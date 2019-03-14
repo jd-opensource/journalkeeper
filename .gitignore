@@ -8,3 +8,9 @@ target
 
 # macOS
 .DS_Store
+
+#Visual Paradigm backup files
+
+.vpp.vbak
+.vpp.bak*
+.vpp.lck
