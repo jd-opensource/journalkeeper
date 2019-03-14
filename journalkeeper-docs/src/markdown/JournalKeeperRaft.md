@@ -208,10 +208,10 @@ JournalKeeper以接口和事件方式对外提供服务，服务的形式可以�
 方法 | 节点 | 说明
 -- | -- | --
 updateClusterState | LEADER | 客户端调用LEADER节点写入操作日志变更状态。
-getClusterState | LEADER | 客户端查询集群当前的状态，保证强一致。
-getServerState | ALL | 客户端查询节点当前的状态，该服务不保证强一致性，只保证顺序一致
-getClusterApplied | LEADER | 客户端调用LEADER节点查询集群最新提交位置，用于二步读取。
-getSnapshotState | ALL | 客户端查询任意节点上指定日志位置对应快照的状态，用于二步读取。
+queryClusterState | LEADER | 客户端查询集群当前的状态，保证强一致。
+queryServerState | ALL | 客户端查询节点当前的状态，该服务不保证强一致性，只保证顺序一致
+lastApplied | LEADER | 客户端调用LEADER节点查询集群最新提交位置，用于二步读取。
+querySnapshot | ALL | 客户端查询任意节点上指定日志位置对应快照的状态，用于二步读取。
 getServers | ALL | 客户端查询任意节点获取集群配置。
 updateVoters | LEADER | 客户端调用LEADER节点变更选民节点配置。 
 updateObservers | LEADER | 客户端调用LEADER节点变更观察者节点配置。
@@ -231,7 +231,7 @@ leaderAddr | 当result = NOT_LEADER时，返回LEADER的地址。
 
 ### 查询状态服务
 
-#### getClusterState
+#### queryClusterState
 客户端调用LEADER节点查询集群当前的状态，即日志在状态机中执行完成后产生的数据。该服务保证强一致性，保证读到的状态总是集群的最新状态。
 参数 | 描述
 -- | --
@@ -241,7 +241,7 @@ query | 查询条件。
 -- | --
 state | 按照查询条件获得的集群最新状态。
 
-#### getServerState
+#### queryServerState
 客户端调用任意节点查询节点当前的状态，即日志在状态机中执行完成后产生的数据。该服务不保证强一致性，只保证顺序一致，由于复制存在时延，集群中各节点的当前状态可能比集群的当前状态更旧。
 参数 | 描述
 -- | --
@@ -253,7 +253,7 @@ state | 按照查询条件获得的节点最新状态。
 lastApplied | state对应的日志位置
 
 
-#### getClusterApplied
+#### lastApplied
 客户端调用LEADER节点查询集群最新提交位置，用于二步读取。
 
 返回 | 描述
@@ -262,7 +262,7 @@ result | 查询结果，包括：<br/>**SUCCESS**: 成功。<br/>**NOT_LEADER**:
 appliedIndex | 当查询成功时返回集群当前状态对应的日志位置。
 leaderAddr | 当result = NOT_LEADER时，返回LEADER的地址。
 
-#### getSnapshotState
+#### querySnapshot
 客户端查询任意节点上指定日志位置对应快照的状态，用于二步读取中，在非LEADER节点获取状态数据。
 参数 | 描述
 -- | --

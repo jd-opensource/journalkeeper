@@ -11,7 +11,14 @@
     <name>Journalkeeper</name>
     <modules>
         <module>journalkeeper-docs</module>
+        <module>journalkeeper-core-api</module>
+        <module>journalkeeper-persistence</module>
+        <module>journalkeeper-rpc</module>
     </modules>
-
+    <properties>
+        <!-- maven properties -->
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+    </properties>
 
 </project>
