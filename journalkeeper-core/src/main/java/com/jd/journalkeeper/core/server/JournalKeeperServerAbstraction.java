@@ -223,7 +223,7 @@ public abstract class JournalKeeperServerAbstraction<E,  S extends Replicable<S>
         return CompletableFuture.supplyAsync(() ->
                 new GetServerEntriesResponse<>(
                         journal.read(request.getIndex(), request.getMaxSize()),
-                        journal.minIndex(), commitIndex));
+                        journal.minIndex(), state.getIndex()));
     }
 
     @Override

@@ -337,6 +337,7 @@ Server提供[服务](#服务)一章中定义的所有方法供客户端调用，
 方法 | 节点 | 描述
 -- | -- | --
 getServerEntries | ALL | 观察者查询任意节点上指定位置的日志，用于观察者复制日志。
+getServerState | ALL | 观察者复制任意节点上的当前最新状态。
 asyncAppendEntries | VOTER | LEADER调用FOLLOWER并行复制日志。
 requestVote | VOTER | 同RAFT中RequestVote RPC，CANDIDATE调用其它VOTER发起投票的请求。
 
@@ -353,7 +354,15 @@ maxSize | 最多返回日志的条数。
 success | 查询结果，包括：<br/>**SUCCESS**: 成功。<br/>**INDEX_OVERFLOW**: 请求位置对应的快照尚未生成。<br/>**INDEX_UNDERFLOW**：请求位置对应的快照已删除。
 entries[] | 查询成功时返回的日志数组。
 minIndex | 当前节点日志的最小位置（含）。
-commitIndex | 当前节点的提交位置。 
+
+#### getServerState
+
+观察者复制任意节点上的当前最新状态，无参数。
+
+返回 | 描述
+-- | --
+state | 当前节点上的状态。
+lastApplied | 状态对应的日志位置。
 
 #### asyncAppendEntries
 

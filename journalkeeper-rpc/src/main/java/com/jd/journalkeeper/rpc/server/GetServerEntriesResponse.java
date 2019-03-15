@@ -1,7 +1,6 @@
 package com.jd.journalkeeper.rpc.server;
 
 import com.jd.journalkeeper.rpc.BaseResponse;
-import com.jd.journalkeeper.rpc.client.GetServersResponse;
 
 /**
  * @author liyue25
@@ -10,21 +9,21 @@ import com.jd.journalkeeper.rpc.client.GetServersResponse;
 public class GetServerEntriesResponse<E> extends BaseResponse {
     private final E [] entries;
     private final long minIndex;
-    private final long commitIndex;
+    private final long lastApplied;
 
     public GetServerEntriesResponse(Throwable exception) {
         this(exception, null, -1L, -1L);
     }
 
-    public GetServerEntriesResponse(E[] entries, long minIndex, long commitIndex) {
-        this(null, entries, minIndex, commitIndex);
+    public GetServerEntriesResponse(E[] entries, long minIndex, long lastApplied) {
+        this(null, entries, minIndex, lastApplied);
     }
 
-    private GetServerEntriesResponse(Throwable exception, E[] entries, long minIndex, long commitIndex) {
+    private GetServerEntriesResponse(Throwable exception, E[] entries, long minIndex, long lastApplied) {
         super(exception);
         this.entries = entries;
         this.minIndex = minIndex;
-        this.commitIndex = commitIndex;
+        this.lastApplied = lastApplied;
     }
 
     public E[] getEntries() {
@@ -35,7 +34,7 @@ public class GetServerEntriesResponse<E> extends BaseResponse {
         return minIndex;
     }
 
-    public long getCommitIndex() {
-        return commitIndex;
+    public long getLastApplied() {
+        return lastApplied;
     }
 }

@@ -17,7 +17,6 @@ import java.net.URI;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 
 /**
  * @author liyue25
@@ -64,8 +63,9 @@ public class Observer<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> exten
             // TODO: 此处可以有二种选择：
             // 1. 复制parents上的全部日志，比较慢。
             // 2. 复制parents上的最新状态，删除自己的全部日志和快照。
+
             snapshots.clear();
-            journal.shrink(response.getMinIndex());
+            journal.shrink(response.getLastApplied());
             commitIndex = response.getMinIndex();
         } catch (IndexOverflowException ignored) {}
 
