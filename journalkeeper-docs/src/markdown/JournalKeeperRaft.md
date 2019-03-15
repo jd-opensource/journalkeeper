@@ -408,14 +408,14 @@ Server模型中，只定义如下通用方法的实现，其它方法在其子�
 
 #### 状态机线程
 每个Server模块中需要运行一个用于执行日志更新状态，保存Snapshot的状态机线程，这个线程监听属性commitIndex的变化，当commitIndex变更时如果commitIndex > lastApplied，反复执行如下流程直到lastApplied == commitIndex：
-1. lastApplied自增，将log[lastApplied]应用到状态机，更新当前状态state；
-1. 依据快照策略判断是否需要将当前状态保存为快照，如果需要保存则下一步，否则退出；
-1. 复制当前状态为新的快照保存到属性snapshorts, 索引值为lastApplied。
 
-#### getServerState 方法
+1. 如果需要，复制当前状态为新的快照保存到属性snapshots, 索引值为lastApplied。
+1. lastApplied自增，将log[lastApplied]应用到状态机，更新当前状态state；
+
+#### queryServerState 方法
 用query参数查询属性state，返回查询结果。
 
-#### getSnapshotState 方法
+#### querySnapshot 方法
 如果请求位置存在对应的快照，直接从快照中读取状态返回；如果请求位置不存在对应的快照，那么需要找到最近快照日志，以这个最近快照日志对应的快照为输入，从最近快照日志开始（不含）直到请求位置（含）依次在状态机中执行这些日志，执行完毕后得到的快照就是请求位置的对应快照，读取这个快照的状态返回给客户端即可。
 实现流程：
 1. 对比logIndex与在属性snapshots数组的上下界，检查请求位置是否越界，如果越界返回INDEX_OVERFLOW/INDEX_UNDERFLOW错误。

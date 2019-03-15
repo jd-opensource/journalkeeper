@@ -9,16 +9,79 @@
     <packaging>pom</packaging>
     <version>1.0-SNAPSHOT</version>
     <name>Journalkeeper</name>
+
+    <organization>
+        <name>JD.com, Inc.</name>
+        <url>http://www.jd.com</url>
+    </organization>
+
     <modules>
         <module>journalkeeper-docs</module>
         <module>journalkeeper-core-api</module>
         <module>journalkeeper-persistence</module>
         <module>journalkeeper-rpc</module>
+        <module>journalkeeper-core</module>
+        <module>journalkeeper-utils</module>
     </modules>
     <properties>
         <!-- maven properties -->
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
+        <journalkeeper.version>1.0-SNAPSHOT</journalkeeper.version>
+        <!--logging-->
+        <log4j.version>2.9.0</log4j.version>
+        <slf4j.version>1.7.25</slf4j.version>
+
+        <!--unit test-->
+        <junit.version>4.12</junit.version>
+        <mockito.version>2.22.0</mockito.version>
     </properties>
 
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-simple</artifactId>
+                <version>${slf4j.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-api</artifactId>
+                <version>${log4j.version}</version>
+                <scope>runtime</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-core</artifactId>
+                <version>${log4j.version}</version>
+                <scope>runtime</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-slf4j-impl</artifactId>
+                <version>${log4j.version}</version>
+                <scope>runtime</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>junit</groupId>
+                <artifactId>junit</artifactId>
+                <version>${junit.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-core</artifactId>
+                <version>${mockito.version}</version>
+                <scope>test</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 </project>

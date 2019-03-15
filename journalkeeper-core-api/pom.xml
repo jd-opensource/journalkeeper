@@ -12,4 +12,11 @@
     <artifactId>journalkeeper-core-api</artifactId>
 
 
+    <dependencies>
+        <dependency>
+            <groupId>io.journalkeeper</groupId>
+            <artifactId>journalkeeper-utils</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
 </project>
