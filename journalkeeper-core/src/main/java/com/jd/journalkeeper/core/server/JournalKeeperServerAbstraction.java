@@ -12,6 +12,7 @@ import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.rpc.client.*;
 import com.jd.journalkeeper.rpc.server.GetServerEntriesRequest;
 import com.jd.journalkeeper.rpc.server.GetServerEntriesResponse;
+import com.jd.journalkeeper.rpc.server.GetStateResponse;
 import com.jd.journalkeeper.rpc.server.ServerRpc;
 import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
@@ -63,6 +64,23 @@ public abstract class JournalKeeperServerAbstraction<E,  S extends Replicable<S>
      * 每个Server模块中需要运行一个用于执行日志更新状态，保存Snapshot的状态机线程，
      */
     protected final LoopThread stateMachineThread;
+
+    /**
+     * 可用状态
+     */
+    private boolean available = false;
+
+    protected void enable(){
+        this.available = true;
+    }
+
+    protected void disable() {
+        this.available = false;
+    }
+
+    protected boolean isAvailable() {
+        return available;
+    }
 
     private Config config;
 
@@ -117,7 +135,7 @@ public abstract class JournalKeeperServerAbstraction<E,  S extends Replicable<S>
      * 如果需要，保存一次快照
      */
     private void takeASnapShotIfNeed() {
-        StateWithIndex<E,S> snapshot = state.getSnapshot();
+        StateWithIndex<E,S> snapshot = state.takeSnapshot();
         if(snapshots.isEmpty() || snapshot.getIndex() - snapshots.lastKey() > config.getSnapshotStep()) {
             snapshots.put(snapshot.getIndex(), snapshot.getState());
         }
@@ -127,7 +145,7 @@ public abstract class JournalKeeperServerAbstraction<E,  S extends Replicable<S>
     public CompletableFuture<QueryStateResponse<R>> queryServerState(QueryStateRequest<Q> request) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                StateWithIndex<E, S> snapshot = state.getSnapshot();
+                StateWithIndex<E, S> snapshot = state.takeSnapshot();
                 return new QueryStateResponse<>(snapshot.getState().query(request.getQuery()).get(), snapshot.getIndex());
             } catch (Throwable throwable) {
                 return new QueryStateResponse<>(throwable);
@@ -149,7 +167,7 @@ public abstract class JournalKeeperServerAbstraction<E,  S extends Replicable<S>
     public CompletableFuture<QueryStateResponse<R>> querySnapshot(QueryStateRequest<Q> request) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                StateWithIndex<E, S> snapshot = state.getSnapshot();
+                StateWithIndex<E, S> snapshot = state.takeSnapshot();
                 if (request.getIndex() > snapshot.getIndex()) {
                     throw new IndexOverflowException();
                 }
@@ -183,6 +201,18 @@ public abstract class JournalKeeperServerAbstraction<E,  S extends Replicable<S>
     @Override
     public CompletableFuture<GetServersResponse> getServer() {
         return CompletableFuture.supplyAsync(() -> new GetServersResponse(new ClusterConfiguration(leader, voters, observers)));
+    }
+
+    @Override
+    public CompletableFuture<GetStateResponse<S>> getServerState() {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                StateWithIndex<E, S> snapshot = state.takeSnapshot();
+                return new GetStateResponse<>(snapshot.getState(), snapshot.getIndex());
+            } catch (Throwable throwable) {
+                return new GetStateResponse<>(throwable);
+            }
+        });
     }
 
     @Override

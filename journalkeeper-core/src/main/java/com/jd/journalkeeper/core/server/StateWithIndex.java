@@ -23,14 +23,14 @@ public class StateWithIndex<E, S extends Replicable<S>> {
         return index;
     }
 
-    public StateWithIndex<E, S> getSnapshot() {
+    public StateWithIndex<E, S> takeSnapshot() {
         StateWithIndex<E, S> snapshot = new StateWithIndex<>();
         long stamp = sl.tryOptimisticRead();
-        snapshot.set(this.state, this.index);
+        snapshot.setUnsafe(this.state, this.index);
         if(!sl.validate(stamp)) {
             stamp = sl.readLock();
             try {
-              snapshot.set(this.state, this.index);
+              snapshot.setUnsafe(this.state, this.index);
             } finally {
                 sl.unlockRead(stamp);
             }
@@ -38,7 +38,15 @@ public class StateWithIndex<E, S extends Replicable<S>> {
         return snapshot;
     }
 
-    private void set(S state, long index) {
+    public void set(S state, long index) {
+        long stamp = sl.writeLock();
+        try {
+            setUnsafe(state, index);
+        } finally {
+            sl.unlockWrite(stamp);
+        }
+    }
+    private void setUnsafe(S state, long index) {
         this.state = state;
         this.index = index;
     }

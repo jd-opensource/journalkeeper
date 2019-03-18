@@ -55,18 +55,28 @@ public class Observer<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> exten
                 currentServer.getServerEntries(new GetServerEntriesRequest(commitIndex,1024)).get();
 
         try {
-
             if (null != response.getException()) {
                 throw response.getException();
             }
-        } catch (IndexUnderflowException e) {
-            // TODO: 此处可以有二种选择：
-            // 1. 复制parents上的全部日志，比较慢。
-            // 2. 复制parents上的最新状态，删除自己的全部日志和快照。
 
-            snapshots.clear();
-            journal.shrink(response.getLastApplied());
-            commitIndex = response.getMinIndex();
+            journal.append(response.getEntries());
+            commitIndex += response.getEntries().length;
+        } catch (IndexUnderflowException e) {
+//            INDEX_UNDERFLOW：Observer的提交位置已经落后目标节点太多，这时需要重置Observer，重置过程中不能提供读服务：
+//            1. 删除log中所有日志和snapshots中的所有快照；
+//            2. 将目标节点提交位置对应的状态复制到Observer上：parentServer.getServerState()，更新属性commitIndex和lastApplied值为返回值中的lastApplied。
+            disable();
+            try {
+                GetStateResponse<S> stateResponse = currentServer.getServerState().get();
+                this.state.set(stateResponse.getState(), stateResponse.getLastApplied());
+
+                snapshots.clear();
+                journal.shrink(response.getLastApplied());
+                commitIndex = response.getLastApplied();
+
+            } finally {
+                enable();
+            }
         } catch (IndexOverflowException ignored) {}
 
 

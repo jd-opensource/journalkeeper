@@ -3,6 +3,7 @@ package com.jd.journalkeeper.rpc.server;
 import com.jd.journalkeeper.base.Queryable;
 import com.jd.journalkeeper.base.Replicable;
 import com.jd.journalkeeper.rpc.client.ClientServerRpc;
+import com.jd.journalkeeper.rpc.client.QueryStateResponse;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -15,5 +16,5 @@ public interface ServerRpc<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> 
     CompletableFuture<AsyncAppendEntriesResponse> asyncAppendEntries(AsyncAppendEntriesRequest request);
     CompletableFuture<RequestVoteResponse> requestVote(RequestVoteRequest request);
     CompletableFuture<GetServerEntriesResponse<E>> getServerEntries(GetServerEntriesRequest request);
-    // TODO: getServerState
+    CompletableFuture<GetStateResponse<S>> getServerState();
 }
