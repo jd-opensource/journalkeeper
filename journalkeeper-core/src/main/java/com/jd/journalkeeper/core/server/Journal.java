@@ -1,6 +1,7 @@
 package com.jd.journalkeeper.core.server;
 
-import java.util.List;
+import com.jd.journalkeeper.core.api.StorageEntry;
+
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -32,7 +33,7 @@ public class Journal<E>  {
         return null;
     }
 
-    public CompletableFuture<Long> append(E... entries) {
+    public CompletableFuture<Long> append(StorageEntry<E>... entries) {
         return null;
     }
 
@@ -42,5 +43,16 @@ public class Journal<E>  {
 
     public E [] read(long index, int length) {
         return null;
+    }
+
+    public StorageEntry<E> [] readRaw(long index, int length) {
+        return null;
+    }
+    public int getTerm(long index) {
+        return 0;
+    }
+
+    public void compareOrAppend(StorageEntry<E>[] entries, long index) {
+
     }
 }

@@ -7,6 +7,9 @@ import com.jd.journalkeeper.rpc.BaseResponse;
  * Date: 2019-03-14
  */
 public class UpdateClusterStateResponse extends BaseResponse {
+    public UpdateClusterStateResponse() {
+        super(null);
+    }
     public UpdateClusterStateResponse(Throwable exception) {
         super(exception);
     }

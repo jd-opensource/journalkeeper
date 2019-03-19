@@ -3,10 +3,7 @@ package com.jd.journalkeeper.core.server;
 import com.jd.journalkeeper.base.Queryable;
 import com.jd.journalkeeper.base.Replicable;
 import com.jd.journalkeeper.base.event.EventWatcher;
-import com.jd.journalkeeper.core.api.ClusterConfiguration;
-import com.jd.journalkeeper.core.api.JournalKeeperClient;
-import com.jd.journalkeeper.core.api.JournalKeeperServer;
-import com.jd.journalkeeper.core.api.StateMachine;
+import com.jd.journalkeeper.core.api.*;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.rpc.client.*;
@@ -20,8 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.*;
 
 /**
  * Server就是集群中的节点，它包含了存储在Server上日志（journal），一组快照（snapshots[]）和一个状态机（stateMachine）实例。
@@ -32,6 +28,15 @@ public abstract class JournalKeeperServerAbstraction<E,  S extends Replicable<S>
         extends JournalKeeperServer<E, S, Q, R>
         implements ServerRpc<E, S, Q, R>, ClientServerRpc<E, S, Q, R> {
     private static final Logger logger = LoggerFactory.getLogger(JournalKeeperServerAbstraction.class);
+
+    protected final ScheduledExecutorService scheduledExecutor;
+
+    protected final ExecutorService asyncExecutor;
+    /**
+     * 心跳间隔、选举超时等随机时间的随机范围
+     */
+    public final static float RAND_INTERVAL_RANGE = 0.25F;
+
     /**
      * 存放日志
      */
@@ -84,14 +89,11 @@ public abstract class JournalKeeperServerAbstraction<E,  S extends Replicable<S>
 
     private Config config;
 
-    public JournalKeeperServerAbstraction(URI uri, Set<URI> voters, StateMachine<E, S> stateMachine, Properties properties){
+    public JournalKeeperServerAbstraction(URI uri, Set<URI> voters, StateMachine<E, S> stateMachine, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties){
         super(uri, voters,stateMachine, properties);
+        this.scheduledExecutor = scheduledExecutor;
+        this.asyncExecutor = asyncExecutor;
         this.config = toConfig(properties);
-        this.stateMachineThread = buildStateMachineThread();
-    }
-    public JournalKeeperServerAbstraction(URI uri, Set<URI> voters, StateMachine<E, S> stateMachine){
-        super(uri, voters,stateMachine);
-        this.config = new Config();
         this.stateMachineThread = buildStateMachineThread();
     }
 
@@ -248,11 +250,15 @@ public abstract class JournalKeeperServerAbstraction<E,  S extends Replicable<S>
         // TODO
     }
 
+    protected long randomInterval(long interval) {
+        return interval + Math.round(ThreadLocalRandom.current().nextDouble(-1 * RAND_INTERVAL_RANGE, RAND_INTERVAL_RANGE) * interval);
+    }
+
     @Override
-    public CompletableFuture<GetServerEntriesResponse<E>> getServerEntries(GetServerEntriesRequest request) {
+    public CompletableFuture<GetServerEntriesResponse<StorageEntry<E>>> getServerEntries(GetServerEntriesRequest request) {
         return CompletableFuture.supplyAsync(() ->
                 new GetServerEntriesResponse<>(
-                        journal.read(request.getIndex(), request.getMaxSize()),
+                        journal.readRaw(request.getIndex(), request.getMaxSize()),
                         journal.minIndex(), state.getIndex()));
     }
 
