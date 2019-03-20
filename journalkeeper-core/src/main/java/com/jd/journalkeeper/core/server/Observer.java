@@ -1,22 +1,22 @@
 package com.jd.journalkeeper.core.server;
 
-import com.jd.journalkeeper.base.Queryable;
-import com.jd.journalkeeper.base.Replicable;
-import com.jd.journalkeeper.core.api.StateMachine;
+import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.api.StorageEntry;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.exceptions.NotVoterException;
+import com.jd.journalkeeper.persistence.ServerMetadata;
 import com.jd.journalkeeper.rpc.client.*;
 import com.jd.journalkeeper.rpc.server.*;
 import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URI;
+import java.util.List;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
@@ -25,16 +25,16 @@ import java.util.concurrent.ScheduledExecutorService;
  * @author liyue25
  * Date: 2019-03-15
  */
-public class Observer<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends JournalKeeperServerAbstraction<E,S,Q,R> {
+public class Observer<E, Q, R> extends Server<E, Q, R> {
     private static final Logger logger = LoggerFactory.getLogger(Observer.class);
     /**
      * 父节点
      */
-    private Set<URI> parents;
+    private List<URI> parents;
     /**
      * 当前连接的父节点RPC代理
      */
-    private ServerRpc<E, S, Q, R> currentServer = null;
+    private ServerRpc<E, Q, R> currentServer = null;
     /**
      * 复制线程
      */
@@ -42,8 +42,8 @@ public class Observer<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> exten
 
     private final Config config;
 
-    public Observer(URI uri, Set<URI> voters, StateMachine<E, S> stateMachine, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
-        super(uri, voters, stateMachine, scheduledExecutor, asyncExecutor, properties);
+    public Observer(StateFactory<E, Q, R> stateFactory, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
+        super(stateFactory, scheduledExecutor, asyncExecutor, properties);
         this.config = toConfig(properties);
         replicationThread = buildReplicationThread();
     }
@@ -93,8 +93,9 @@ public class Observer<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> exten
 //        2. 将目标节点提交位置对应的状态复制到Observer上：parentServer.getServerState()，更新属性commitIndex和lastApplied值为返回值中的lastApplied。
         disable();
         try {
-            GetStateResponse<S> stateResponse = currentServer.getServerState().get();
-            this.state.set(stateResponse.getState(), stateResponse.getLastApplied());
+            // TODO 复制状态
+//            GetStateResponse<S> stateResponse = currentServer.getServerState().get();
+//            this.state.set(stateResponse.getState(), stateResponse.getLastApplied());
 
             snapshots.clear();
             journal.shrink(response.getLastApplied());
@@ -105,7 +106,7 @@ public class Observer<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> exten
         }
     }
 
-    private ServerRpc<E, S, Q, R> selectServer() {
+    private ServerRpc<E, Q, R> selectServer() {
         // TODO
         return null;
     }
@@ -116,9 +117,9 @@ public class Observer<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> exten
     }
 
     @Override
-    public void recover() {
-        super.recover();
-        // TODO
+    protected void onMetadataRecovered(ServerMetadata metadata) {
+        super.onMetadataRecovered(metadata);
+        this.parents = metadata.getParents();
     }
 
     @Override
@@ -134,7 +135,7 @@ public class Observer<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> exten
     }
 
     @Override
-    public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateObserversRequest request) {
+    public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest<E> request) {
         return CompletableFuture.supplyAsync(() -> new UpdateClusterStateResponse(new NotLeaderException()), asyncExecutor);
     }
 
@@ -144,8 +145,8 @@ public class Observer<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> exten
     }
 
     @Override
-    public CompletableFuture<LastAppliedResponse> lastApplied(LastAppliedRequest request) {
-        return CompletableFuture.supplyAsync(() -> new LastAppliedResponse(new NotLeaderException()), asyncExecutor);
+    public CompletableFuture<LastAppliedResponse> lastApplied() {
+        return CompletableFuture.supplyAsync(() -> new LastAppliedResponse(leader), asyncExecutor);
     }
 
     @Override
@@ -168,6 +169,12 @@ public class Observer<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> exten
         return CompletableFuture.supplyAsync(() -> new RequestVoteResponse(new NotVoterException()), asyncExecutor);
     }
 
+    @Override
+    protected ServerMetadata createServerMetadata() {
+        ServerMetadata serverMetadata = super.createServerMetadata();
+        serverMetadata.setParents(parents);
+        return serverMetadata;
+    }
 
     public static class Config {
         public final static int DEFAULT_PULL_BATCH_SIZE = 4 * 1024 * 1024;

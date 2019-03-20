@@ -1,6 +1,7 @@
 package com.jd.journalkeeper.core.api;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -10,11 +11,11 @@ import java.util.Set;
  */
 public class ClusterConfiguration {
     private URI leader;
-    private Set<URI> voters;
-    private Set<URI> observers;
+    private List<URI> voters;
+    private List<URI> observers;
 
     public ClusterConfiguration() {}
-    public ClusterConfiguration(URI leader, Set<URI> voters, Set<URI> observers){
+    public ClusterConfiguration(URI leader, List<URI> voters, List<URI> observers){
         this.leader = leader;
         this.voters = voters;
         this.observers = observers;
@@ -28,19 +29,19 @@ public class ClusterConfiguration {
         this.leader = leader;
     }
 
-    public Set<URI> getVoters() {
+    public List<URI> getVoters() {
         return voters;
     }
 
-    public void setVoters(Set<URI> voters) {
+    public void setVoters(List<URI> voters) {
         this.voters = voters;
     }
 
-    public Set<URI> getObservers() {
+    public List<URI> getObservers() {
         return observers;
     }
 
-    public void setObservers(Set<URI> observers) {
+    public void setObservers(List<URI> observers) {
         this.observers = observers;
     }
 }

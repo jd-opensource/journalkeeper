@@ -2,13 +2,15 @@ package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.core.api.StorageEntry;
 
+import java.io.Flushable;
+import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 
 /**
  * @author liyue25
  * Date: 2019-03-15
  */
-public class Journal<E>  {
+public class Journal<E>  implements Flushable {
     public long minIndex() {
         return 0;
     }
@@ -21,9 +23,6 @@ public class Journal<E>  {
         return 0;
     }
 
-    public CompletableFuture<Long> flush() {
-        return null;
-    }
 
     public CompletableFuture<Void> truncate(long givenMax) {
         return null;
@@ -33,8 +32,8 @@ public class Journal<E>  {
         return null;
     }
 
-    public CompletableFuture<Long> append(StorageEntry<E>... entries) {
-        return null;
+    public long append(StorageEntry<E>... entry) {
+        return 0L;
     }
 
     public E read(long index) {
@@ -53,6 +52,11 @@ public class Journal<E>  {
     }
 
     public void compareOrAppend(StorageEntry<E>[] entries, long index) {
+
+    }
+
+    @Override
+    public void flush() throws IOException {
 
     }
 }

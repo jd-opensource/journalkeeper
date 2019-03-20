@@ -1,23 +1,27 @@
 package com.jd.journalkeeper.core.server;
 
-import com.jd.journalkeeper.base.Queryable;
-import com.jd.journalkeeper.base.Replicable;
-import com.jd.journalkeeper.core.api.StateMachine;
+import com.jd.journalkeeper.core.api.State;
+import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.api.StorageEntry;
+import com.jd.journalkeeper.exceptions.NotLeaderException;
+import com.jd.journalkeeper.persistence.ServerMetadata;
 import com.jd.journalkeeper.rpc.client.*;
 import com.jd.journalkeeper.rpc.server.*;
+import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * @author liyue25
  * Date: 2019-03-18
  */
-public class Voter<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends JournalKeeperServerAbstraction<E,S,Q,R> {
+public class Voter<E, Q, R> extends Server<E, Q, R> {
     private static final Logger logger = LoggerFactory.getLogger(Voter.class);
     /**
      * 选民状态，在LEADER、FOLLOWER和CANDIDATE之间转换。初始值为FOLLOWER。
@@ -43,7 +47,7 @@ public class Voter<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends 
     /**
      * 当角色为LEADER时，记录所有FOLLOWER的位置等信息
      */
-    private Map<URI, Follower> followerMap = new HashMap<>();
+    private List<Follower> followers = new ArrayList<>();
 
     private final BlockingQueue<UpdateStateRequestResponse<E>> pendingUpdateRequests;
 
@@ -60,13 +64,45 @@ public class Voter<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends 
             .thenComparing(ReplicationRequestResponse::getPrevLogIndex));
 
     private final Config config;
+    /**
+     * 串行写入entries
+     */
+    private final LoopThread appendJournalEntryThread;
 
-    public Voter(URI uri, Set<URI> voters, StateMachine<E, S> stateMachine, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
-        super(uri, voters, stateMachine, scheduledExecutor, asyncExecutor, properties);
+    private final CallbackPositioningBelt callbackPositioningBelt = new CallbackPositioningBelt();
+
+    public Voter(StateFactory<E, Q, R> stateFactory, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
+        super(stateFactory, scheduledExecutor, asyncExecutor, properties);
         this.config = toConfig(properties);
 
         pendingUpdateRequests = new ArrayBlockingQueue<>(config.getCacheRequests());
+        appendJournalEntryThread = buildAppendJournalEntryThread();
     }
+
+    private LoopThread buildAppendJournalEntryThread() {
+        return LoopThread.builder()
+                .name("AppendJournalEntryThread")
+                .doWork(this::appendJournalEntry)
+                .sleepTime(0,0)
+                .onException(e -> logger.warn("Write Exception: ", e))
+                .build();
+    }
+
+    /**
+     * 串行写入日志
+     */
+    private void appendJournalEntry() throws InterruptedException {
+        UpdateStateRequestResponse<E> rr = pendingUpdateRequests.take();
+        if(voterState == VoterState.LEADER) {
+            @SuppressWarnings("unchecked")
+            long index = journal.append(new StorageEntry<>(rr.request.getEntry(), currentTerm));
+            callbackPositioningBelt.put(new Callback(index, rr.getResponseFuture()));
+            // TODO 唤醒状态机线程
+        } else {
+            rr.getResponseFuture().complete(new UpdateClusterStateResponse(new NotLeaderException()));
+        }
+    }
+
 
     private Config toConfig(Properties properties) {
         Config config = new Config();
@@ -94,14 +130,13 @@ public class Voter<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends 
      * 发送数据为空的asyncAppendEntries的心跳到每个FOLLOWER上。
      */
     private void sendHeartbeats(){
-        followerMap.values()
-                .parallelStream()
+        followers.parallelStream()
                 .forEach(this::sendHeartbeat);
     }
 
     private void sendHeartbeat(Follower follower) {
         if(System.currentTimeMillis() - follower.lastHeartbeat > heartbeatIntervalMs) {
-            ServerRpc<E, S, Q, R> serverRpc = getServerRpc(follower.uri);
+            ServerRpc<E, Q, R> serverRpc = getServerRpc(follower.uri);
             long prevIndex = follower.nextIndex - 1;
             assert serverRpc != null;
             CompletableFuture<AsyncAppendEntriesResponse> future = serverRpc.asyncAppendEntries(
@@ -134,7 +169,7 @@ public class Voter<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends 
      */
     private boolean checkLeadership() {
         long now = System.currentTimeMillis();
-        return followerMap.values().stream()
+        return followers.stream()
                 .map(Follower::getLastHeartbeat)
                 .filter(lastHeartbeat -> now - lastHeartbeat < 2 * heartbeatIntervalMs)
                 .count() >= voters.size() / 2;
@@ -194,7 +229,7 @@ public class Voter<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends 
      */
     private void replication() {
         long maxIndex = journal.maxIndex();
-        followerMap.values().parallelStream()
+        followers.parallelStream()
             .forEach(follower -> {
                 while (follower.nextIndex < maxIndex) {
                     long nextIndex = Math.max(maxIndex, follower.nextIndex + config.getReplicationBatchSize());
@@ -212,7 +247,7 @@ public class Voter<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends 
     private void sendAsyncAppendEntriesRpc(Follower follower, AsyncAppendEntriesRequest<StorageEntry<E>> request) {
         CompletableFuture<AsyncAppendEntriesResponse> future;
         try {
-            ServerRpc<E, S, Q, R> serverRpc = getServerRpc(follower.getUri());
+            ServerRpc<E, Q, R> serverRpc = getServerRpc(follower.getUri());
             assert serverRpc != null;
             future = serverRpc.asyncAppendEntries(request);
         } catch (Throwable t) {
@@ -264,8 +299,7 @@ public class Voter<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends 
      *  5.3 log[N].term == currentTerm
      */
     private void handleReplicationResponses() {
-        long [] sortedMatchIndex = followerMap.values()
-                .parallelStream()
+        long [] sortedMatchIndex = followers.parallelStream()
                 .peek(this::handleReplicationResponse)
                 .mapToLong(Follower::getMatchIndex)
                 .sorted().toArray();
@@ -285,8 +319,9 @@ public class Voter<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends 
             if(fixTerm == response.getTerm()) {
                 if (follower.getRepStartIndex() == response.getJournalIndex()) {
                     if (response.isSuccess()) {
-                        follower.repStartIndex += response.getEntryCount();
-                        follower.matchIndex = response.getJournalIndex() + response.getEntryCount();
+                        follower.setRepStartIndex(follower.getRepStartIndex() + response.getEntryCount());
+                        follower.setMatchIndex(response.getJournalIndex() + response.getEntryCount());
+                        follower.setLastHeartbeat(System.currentTimeMillis());
 
                     } else {
                         int rollbackSize = (int ) Math.min(config.getReplicationBatchSize(), follower.repStartIndex - journal.minIndex());
@@ -371,8 +406,11 @@ public class Voter<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends 
         // TODO
     }
 
+    private void convertToLeader() {
 
-    private ServerRpc<E, S, Q, R> getServerRpc(URI uri) {
+    }
+
+    private ServerRpc<E, Q, R> getServerRpc(URI uri) {
         return null;
     }
 
@@ -414,28 +452,125 @@ public class Voter<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends 
     }
 
     @Override
-    public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateObserversRequest request) {
-        return null;
+    public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest<E> request) {
+        UpdateStateRequestResponse<E> requestResponse = new UpdateStateRequestResponse<>(request);
+        try {
+            pendingUpdateRequests.put(requestResponse);
+            return requestResponse.getResponseFuture();
+        } catch (InterruptedException e) {
+            logger.warn("Exception: ", e);
+            return CompletableFuture.supplyAsync(() -> new UpdateClusterStateResponse(e));
+        }
     }
 
     @Override
     public CompletableFuture<QueryStateResponse<R>> queryClusterState(QueryStateRequest<Q> request) {
-        return null;
+        return waitLeadership()
+                .thenCompose(aVoid -> state.query(request.getQuery()))
+                .thenApply(QueryStateResponse::new)
+                .exceptionally(exception -> {
+                    try {
+                        throw exception;
+                    } catch (NotLeaderException e) {
+                        return new QueryStateResponse<>(leader);
+                    } catch (Throwable t) {
+                        return new QueryStateResponse<>(t);
+                    }
+                });
     }
 
+    /**
+     * 异步检测Leader有效性，成功返回null，失败抛出异常。
+     */
+    private CompletableFuture<Void> waitLeadership() {
+        CompletableFuture<Void> completableFuture = new CompletableFuture<>();
+        CompletableFuture.runAsync(() -> {
+            try {
+                if(voterState == VoterState.LEADER) {
+                    long start = System.currentTimeMillis();
+                    while (!checkLeadership()) {
+
+                        if (System.currentTimeMillis() - start > getRpcTimeoutMs()) {
+                            throw new TimeoutException();
+                        }
+                        Thread.sleep(heartbeatIntervalMs / 10);
+
+                    }
+                    completableFuture.complete(null);
+                } else {
+                    throw new NotLeaderException();
+                }
+            } catch (InterruptedException e) {
+                completableFuture.completeExceptionally(e);
+                Thread.currentThread().interrupt();
+            } catch (Exception e) {
+                completableFuture.completeExceptionally(e);
+            }
+        });
+        return completableFuture;
+    }
     @Override
-    public CompletableFuture<LastAppliedResponse> lastApplied(LastAppliedRequest request) {
-        return null;
+    public CompletableFuture<LastAppliedResponse> lastApplied() {
+        return waitLeadership()
+                .thenCompose(aVoid -> CompletableFuture.supplyAsync(() -> new LastAppliedResponse(state.lastApplied())))
+                .exceptionally(exception -> {
+                    try {
+                        throw exception;
+                    } catch (NotLeaderException e) {
+                        return new LastAppliedResponse(leader);
+                    } catch (Throwable t) {
+                        return new LastAppliedResponse(t);
+                    }
+                });
     }
 
     @Override
     public CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request) {
+        // TODO
         return null;
     }
 
     @Override
     public CompletableFuture<UpdateObserversResponse> updateObservers(UpdateObserversRequest request) {
+        // TODO
         return null;
+    }
+
+
+    @Override
+    public void start() {
+        super.start();
+        appendJournalEntryThread.start();
+    }
+
+    @Override
+    public void stop() {
+        appendJournalEntryThread.stop();
+        super.stop();
+    }
+
+    @Override
+    protected void onStateChanged() {
+        super.onStateChanged();
+        callbackPositioningBelt.callbackBefore(state.lastApplied());
+    }
+
+    @Override
+    protected ServerMetadata createServerMetadata() {
+        ServerMetadata serverMetadata = super.createServerMetadata();
+        serverMetadata.setCurrentTerm(currentTerm);
+        serverMetadata.setVotedFor(votedFor);
+        serverMetadata.setVoters(voters);
+        return serverMetadata;
+    }
+
+    @Override
+    protected void onMetadataRecovered(ServerMetadata metadata) {
+        super.onMetadataRecovered(metadata);
+        this.currentTerm = metadata.getCurrentTerm();
+        this.votedFor = metadata.getVotedFor();
+        this.voters = metadata.getVoters();
+
     }
 
     enum VoterState {LEADER, FOLLOWER, CANDIDATE}
@@ -472,6 +607,7 @@ public class Voter<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends 
         private final UpdateClusterStateRequest<E> request;
         private final CompletableFuture<UpdateClusterStateResponse> responseFuture;
 
+        private long logIndex;
 
         UpdateStateRequestResponse(UpdateClusterStateRequest<E> request) {
             this.request = request;
@@ -484,6 +620,14 @@ public class Voter<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends 
 
         CompletableFuture<UpdateClusterStateResponse> getResponseFuture() {
             return responseFuture;
+        }
+
+        public long getLogIndex() {
+            return logIndex;
+        }
+
+        public void setLogIndex(long logIndex) {
+            this.logIndex = logIndex;
         }
     }
 
@@ -565,8 +709,66 @@ public class Voter<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> extends 
         }
 
     }
+    private static class Callback {
+        final long position;
+        final long timestamp;
+        final CompletableFuture<UpdateClusterStateResponse> completableFuture;
 
-    public static class Config extends JournalKeeperServerAbstraction.Config {
+        public Callback(long position, CompletableFuture<UpdateClusterStateResponse> completableFuture) {
+            this.position = position;
+            this.timestamp = System.currentTimeMillis();
+            this.completableFuture = completableFuture;
+        }
+    }
+
+    private class CallbackPositioningBelt {
+
+        private final ConcurrentLinkedQueue<Callback> queue = new ConcurrentLinkedQueue<>();
+        private AtomicLong callbackPosition = new AtomicLong(0L);
+        Callback getFirst() {
+            final Callback f = queue.peek();
+            if (f == null)
+                throw new NoSuchElementException();
+            return f;
+        }
+        Callback removeFirst() {
+            final Callback f = queue.poll();
+            if (f == null)
+                throw new NoSuchElementException();
+            return f;
+        }
+
+        boolean remove(Callback callback) { return queue.remove(callback);}
+        void addLast(Callback callback) {
+            queue.add(callback);
+        }
+        /**
+         * NOT Thread-safe!!!!!!
+         */
+        void callbackBefore(long position) {
+            callbackPosition.set(position);
+            try {
+                while (getFirst().position <= position){
+                    Callback callback = removeFirst();
+                    callback.completableFuture.complete(new UpdateClusterStateResponse());
+                }
+                long deadline = System.currentTimeMillis() - getRpcTimeoutMs();
+                while (getFirst().timestamp < deadline) {
+                    Callback callback = removeFirst();
+                    callback.completableFuture.complete(new UpdateClusterStateResponse(new TimeoutException()));
+                }
+            } catch (NoSuchElementException ignored) {}
+        }
+
+        void put(Callback callback) {
+            addLast(callback);
+            if(callback.position <= callbackPosition.get() && remove(callback)){
+                callback.completableFuture.complete(new UpdateClusterStateResponse());
+            }
+        }
+    }
+
+    public static class Config extends Server.Config {
         public final static long DEFAULT_HEARTBEAT_INTERVAL_MS = 50L;
         public final static long DEFAULT_ELECTION_TIMEOUT_MS = 500L;
         public final static int DEFAULT_REPLICATION_BATCH_SIZE = 128;

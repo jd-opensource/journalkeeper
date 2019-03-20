@@ -8,6 +8,6 @@ import java.util.concurrent.CompletableFuture;
  * Date: 2019-03-15
  */
 public interface MetadataPersistence {
-    CompletableFuture<Void> save(byte [] metadata);
-    CompletableFuture<byte []> load();
+    void save(ServerMetadata serverMetadata);
+    ServerMetadata load();
 }

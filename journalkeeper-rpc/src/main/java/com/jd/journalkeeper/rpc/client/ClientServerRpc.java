@@ -1,8 +1,5 @@
 package com.jd.journalkeeper.rpc.client;
 
-import com.jd.journalkeeper.base.Queryable;
-import com.jd.journalkeeper.base.Replicable;
-
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -10,12 +7,12 @@ import java.util.concurrent.CompletableFuture;
  * @author liyue25
  * Date: 2019-03-14
  */
-public interface ClientServerRpc<E,  S extends Replicable<S> & Queryable<Q, R>, Q, R> {
+public interface ClientServerRpc<E, Q, R> {
 
-    CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateObserversRequest request);
+    CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest<E> request);
     CompletableFuture<QueryStateResponse<R>> queryClusterState(QueryStateRequest<Q> request);
     CompletableFuture<QueryStateResponse<R>> queryServerState(QueryStateRequest<Q> request);
-    CompletableFuture<LastAppliedResponse> lastApplied(LastAppliedRequest request);
+    CompletableFuture<LastAppliedResponse> lastApplied();
     CompletableFuture<QueryStateResponse<R>> querySnapshot(QueryStateRequest<Q> request);
     CompletableFuture<GetServersResponse> getServer();
     CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request);

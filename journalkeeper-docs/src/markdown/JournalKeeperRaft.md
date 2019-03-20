@@ -511,7 +511,7 @@ pendingAppendRequests[] | N | 待处理的asyncAppendEntries Request，按照req
 1. 将entries写入log[]中，同时记录log[]的最大位置，记为L；
 1. 等待直到lastApplied >= L，返回SUCCESS；
 
-#### getClusterState 方法
+#### queryClusterState 方法
 1. 检查LEADER有效性，成功则继续，否则返回NOT_LEADER;
 1. 用query参数查询属性state，返回查询结果。
 
