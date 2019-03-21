@@ -53,7 +53,7 @@ public interface JournalPersistence {
      * @param byteBuffers 待写入的内容
      * @return 写入后新的位置
      */
-    CompletableFuture<Long> append(ByteBuffer... byteBuffers);
+    Long append(ByteBuffer... byteBuffers);
 
     /**
      * 读取数据
@@ -61,7 +61,7 @@ public interface JournalPersistence {
      * @param length 读取长度
      * @return 存放数据的ByteBuffer
      */
-    CompletableFuture<ByteBuffer> read(long position, int length);
+    ByteBuffer read(long position, int length);
 
 
 }

@@ -14,20 +14,19 @@ public interface Serializer<E> {
      * @param journalEntry 日志
      * @return 日志序列化后的长度，单位字节。
      */
-    long sizeOf(E journalEntry);
+    int sizeOf(E journalEntry);
 
     /**
      * 将日志序列化
-     * @param journalEntries 日志
+     * @param entry 日志
      * @param destBuffer 序列化后写入的buffer
      */
-    void serialize(ByteBuffer destBuffer, E... journalEntries);
+    void serialize(ByteBuffer destBuffer, E entry);
 
     /**
      * 反序列化日志
      * @param byteBuffer 存放序列化日志的buffer
-     * @param maxSize 最多序列化条数
      * @return 解析出来的日志
      */
-    List<E> parse(ByteBuffer byteBuffer, long maxSize);
+    E parse(ByteBuffer byteBuffer);
 }
