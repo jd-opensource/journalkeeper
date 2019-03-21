@@ -3,8 +3,10 @@ package com.jd.journalkeeper.core.server;
 import com.jd.journalkeeper.base.event.EventWatcher;
 import com.jd.journalkeeper.core.api.*;
 import com.jd.journalkeeper.core.exception.ServiceLoadException;
+import com.jd.journalkeeper.core.journal.Journal;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
+import com.jd.journalkeeper.exceptions.NoSuchSnapshotException;
 import com.jd.journalkeeper.persistence.MetadataPersistence;
 import com.jd.journalkeeper.persistence.PersistenceAccessPoint;
 import com.jd.journalkeeper.persistence.ServerMetadata;
@@ -12,10 +14,7 @@ import com.jd.journalkeeper.rpc.client.ClientServerRpc;
 import com.jd.journalkeeper.rpc.client.GetServersResponse;
 import com.jd.journalkeeper.rpc.client.QueryStateRequest;
 import com.jd.journalkeeper.rpc.client.QueryStateResponse;
-import com.jd.journalkeeper.rpc.server.GetServerEntriesRequest;
-import com.jd.journalkeeper.rpc.server.GetServerEntriesResponse;
-import com.jd.journalkeeper.rpc.server.GetStateResponse;
-import com.jd.journalkeeper.rpc.server.ServerRpc;
+import com.jd.journalkeeper.rpc.server.*;
 import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -93,6 +92,7 @@ public abstract class Server<E, Q, R>
      */
     protected final LoopThread stateMachineThread;
 
+    //TODO: Log Compaction
     protected ScheduledFuture flushFuture, compactionFuture;
 
     /**
@@ -175,6 +175,12 @@ public abstract class Server<E, Q, R>
         config.setWorkingDir(Paths.get(
                 properties.getProperty(Config.WORKING_DIR_KEY,
                         config.getWorkingDir().normalize().toString())));
+
+        config.setGetStateBatchSize(Long.parseLong(
+                properties.getProperty(
+                        Config.GET_STATE_BATCH_SIZE_KEY,
+                        String.valueOf(Config.DEFAULT_GET_STATE_BATCH_SIZE))));
+
         return config;
     }
 
@@ -333,9 +339,26 @@ public abstract class Server<E, Q, R>
     }
 
     @Override
-    public CompletableFuture<GetStateResponse> getServerState() {
-        //TODO
-        return null;
+    public CompletableFuture<GetServerStateResponse> getServerState(GetServerStateRequest request) {
+        return CompletableFuture.supplyAsync(() -> {
+            if(!snapshots.isEmpty()) {
+
+                long snapshotIndex = request.getLastIncludedIndex() + 1;
+                if (snapshotIndex < 0) {
+                    snapshotIndex = snapshots.lastKey();
+                }
+                State<E, Q, R> state = snapshots.get(snapshotIndex);
+                if (null != state) {
+                    byte [] data = state.readSerializedData(request.getOffset(),config.getGetStateBatchSize());
+                    return new GetServerStateResponse(
+                            state.lastIncludedIndex(), state.lastIncludedTerm(),
+                            request.getOffset(),
+                            data,
+                            request.getOffset() + data.length >= state.serializedDataSize());
+                }
+            }
+            return new GetServerStateResponse(new NoSuchSnapshotException());
+        }).exceptionally(GetServerStateResponse::new);
     }
 
     @Override
@@ -492,16 +515,19 @@ public abstract class Server<E, Q, R>
         final static int DEFAULT_SNAPSHOT_STEP = 128;
         final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;
         final static long DEFAULT_FLUSH_INTERVAL_MS = 50L;
+        final static long DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;
 
         final static String SNAPSHOT_STEP_KEY = "snapshot_step";
         final static String RPC_TIMEOUT_MS_KEY = "rpc_timeout_ms";
         final static String FLUSH_INTERVAL_MS_KEY = "flush_interval_ms";
         final static String WORKING_DIR_KEY = "working_dir";
+        final static String GET_STATE_BATCH_SIZE_KEY = "get_state_batch_size";
 
         private int snapshotStep = DEFAULT_SNAPSHOT_STEP;
         private long rpcTimeoutMs = DEFAULT_RPC_TIMEOUT_MS;
         private long flushIntervalMs = DEFAULT_FLUSH_INTERVAL_MS;
         private Path workingDir = Paths.get(System.getProperty("user.dir"));
+        private long getStateBatchSize = DEFAULT_GET_STATE_BATCH_SIZE;
 
         int getSnapshotStep() {
             return snapshotStep;
@@ -533,6 +559,14 @@ public abstract class Server<E, Q, R>
 
         public void setWorkingDir(Path workingDir) {
             this.workingDir = workingDir;
+        }
+
+        public long getGetStateBatchSize() {
+            return getStateBatchSize;
+        }
+
+        public void setGetStateBatchSize(long getStateBatchSize) {
+            this.getStateBatchSize = getStateBatchSize;
         }
     }
 }

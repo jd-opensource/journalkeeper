@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.core.server;
 
+import com.jd.journalkeeper.core.api.State;
 import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.api.StorageEntry;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
@@ -13,6 +14,8 @@ import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
@@ -87,19 +90,51 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
 
     }
 
-    private void reset(GetServerEntriesResponse<StorageEntry<E>> response) throws InterruptedException, java.util.concurrent.ExecutionException {
+    private void reset(GetServerEntriesResponse<StorageEntry<E>> response) throws InterruptedException, java.util.concurrent.ExecutionException, IOException {
 //      INDEX_UNDERFLOW：Observer的提交位置已经落后目标节点太多，这时需要重置Observer，重置过程中不能提供读服务：
 //        1. 删除log中所有日志和snapshots中的所有快照；
 //        2. 将目标节点提交位置对应的状态复制到Observer上：parentServer.getServerState()，更新属性commitIndex和lastApplied值为返回值中的lastApplied。
         disable();
         try {
-            // TODO 复制状态
-//            GetStateResponse<S> stateResponse = currentServer.getServerState().get();
-//            this.state.set(stateResponse.getState(), stateResponse.getLastApplied());
+            // 删除状态
+            if(state instanceof Closeable) {
+                ((Closeable) state).close();
+            }
+            state.clear();
 
+            // 删除所有快照
+            for(State<E, Q, R> snapshot: snapshots.values()) {
+                try {
+                    if (snapshot instanceof Closeable) {
+                        ((Closeable) snapshot).close();
+                    }
+                    snapshot.clear();
+                } catch (Exception e) {
+                    logger.warn("Clear snapshot at index: {} exception: ", snapshot.lastApplied(), e);
+                }
+            }
             snapshots.clear();
-            journal.shrink(response.getLastApplied());
-            commitIndex = response.getLastApplied();
+
+            // 复制远端服务器的最新装的到当前状态
+            long lastIncludedIndex = -1;
+            long offset = 0;
+            boolean done;
+            do {
+                GetServerStateResponse r =
+                        currentServer.getServerState(new GetServerStateRequest(lastIncludedIndex, offset)).get();
+                state.install(r.getData(), r.getOffset());
+                if(done = r.isDone()) {
+
+                    state.installFinish(r.getLastIncludedIndex() + 1, r.getLastIncludedTerm());
+                    journal.shrink(state.lastApplied());
+                    commitIndex = state.lastApplied();
+
+                    State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())));
+                    snapshots.put(snapshot.lastApplied(), snapshot);
+                }
+
+            } while (!done);
+
 
         } finally {
             enable();

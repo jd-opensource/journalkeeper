@@ -1,4 +1,4 @@
-package com.jd.journalkeeper.core.server;
+package com.jd.journalkeeper.core.journal;
 
 import com.jd.journalkeeper.core.api.StorageEntry;
 
@@ -11,6 +11,8 @@ import java.util.concurrent.CompletableFuture;
  * Date: 2019-03-15
  */
 public class Journal<E>  implements Flushable {
+
+
     public long minIndex() {
         return 0;
     }
@@ -52,6 +54,10 @@ public class Journal<E>  implements Flushable {
     }
 
     public void compareOrAppend(StorageEntry<E>[] entries, long index) {
+
+    }
+
+    public void recover() {
 
     }
 

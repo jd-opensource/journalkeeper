@@ -357,12 +357,19 @@ minIndex | 当前节点日志的最小位置（含）。
 
 #### getServerState
 
-观察者复制任意节点上的当前最新状态，无参数。
+观察者复制任意节点上的当前最新状态。如果状态数据比较大，可以分多次请求。
+参数 | 描述
+-- | --
+lastIncludedIndex | 快照中包含的最后日志条目的索引值，首次请求为空。
+offset | 本次请求状态数据的偏移量，首次请求为0。
 
 返回 | 描述
 -- | --
-state | 当前节点上的状态。
-lastApplied | 状态对应的日志位置。
+lastIncludedIndex | 状态中包含的最后日志条目的索引值。
+lastIncludedTerm | 状态中包含的最后日志条目的任期号。
+offset | 本次请求状态数据的偏移量。
+data[] | 状态数据
+done | 如果是最后一块数据则为真
 
 #### asyncAppendEntries
 
@@ -435,6 +442,9 @@ Server模型中，只定义如下通用方法的实现，其它方法在其子�
 
 #### getServers 方法
 直接返回属性leaderAddr，voterAddrs和observerAddrs。
+
+#### getServerState 方法
+返回服务器上最新的快照数据。
 
 ## Observer模块
 Observer模块继承自Server模块，是角色为观察者的Server抽象。观察者从其它节点拉取日志和集群配置，生成Snapshot，提供和选民一样读服务。

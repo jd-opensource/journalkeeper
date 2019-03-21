@@ -2,9 +2,7 @@ package com.jd.journalkeeper.core.api;
 
 import com.jd.journalkeeper.base.Queryable;
 
-import java.nio.ByteBuffer;
 import java.nio.file.Path;
-import java.util.Iterator;
 import java.util.Properties;
 
 /**
@@ -30,6 +28,16 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
      */
     long lastApplied();
 
+    /**
+     * 状态中包含的最后日志条目的索引值。
+     */
+    default long lastIncludedIndex() {return lastApplied() - 1;}
+
+    /**
+     * 状态中包含的最后日志条目的任期号
+     */
+    int lastIncludedTerm();
+
     void init(Path path, Properties properties);
 
     /**
@@ -38,16 +46,28 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
     State<E, Q, R> takeASnapshot(Path path);
 
     /**
-     * 将所有持久化的状态复制序列化成多个字节数组的迭代器，便于网络传输。
+     * 读取序列化后的状态数据。
+     * @param offset 偏移量
+     * @param size 本次读取的长度
+     *
      */
-    Iterator<ByteBuffer> serialize();
+    byte [] readSerializedData(long offset, long size);
 
+    /**
+     * 序列化后的状态长度。
+     */
+    long serializedDataSize();
     /**
      * 恢复状态。
      * 反复调用install复制序列化的状态数据。
      * 所有数据都复制完成后，最后调用installFinish恢复状态。
      * @param data 日志数据片段
      */
-    void install(ByteBuffer data);
-    void installFinish(long lastApplied);
+    void install(byte [] data, long offset);
+    void installFinish(long lastApplied, int lastIncludedTerm);
+
+    /**
+     * 删除所有状态数据。
+     */
+    void clear();
 }

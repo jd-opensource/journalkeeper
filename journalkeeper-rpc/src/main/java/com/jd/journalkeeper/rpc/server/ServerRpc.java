@@ -14,5 +14,5 @@ public interface ServerRpc<E, Q, R> extends ClientServerRpc<E, Q, R> {
     CompletableFuture<AsyncAppendEntriesResponse> asyncAppendEntries(AsyncAppendEntriesRequest<StorageEntry<E>> request);
     CompletableFuture<RequestVoteResponse> requestVote(RequestVoteRequest request);
     CompletableFuture<GetServerEntriesResponse<StorageEntry<E>>> getServerEntries(GetServerEntriesRequest request);
-    CompletableFuture<GetStateResponse> getServerState();
+    CompletableFuture<GetServerStateResponse> getServerState(GetServerStateRequest request);
 }
