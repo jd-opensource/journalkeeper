@@ -213,6 +213,7 @@ public abstract class Server<E, Q, R>
         }
     }
 
+
     /**
      * 当状态变化时触发事件
      */
@@ -376,7 +377,7 @@ public abstract class Server<E, Q, R>
         }
     }
 
-    private void stopAndWaitScheduledFeature(ScheduledFuture scheduledFuture, long timeout) throws TimeoutException {
+    protected void stopAndWaitScheduledFeature(ScheduledFuture scheduledFuture, long timeout) throws TimeoutException {
         if (scheduledFuture != null) {
             long t0 = System.currentTimeMillis();
             while (!scheduledFuture.isDone()) {

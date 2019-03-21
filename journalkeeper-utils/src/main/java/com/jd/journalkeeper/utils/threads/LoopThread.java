@@ -4,6 +4,9 @@ package com.jd.journalkeeper.utils.threads;
 import com.jd.journalkeeper.utils.state.StateServer;
 
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 一个后台线程，实现类似：
@@ -17,11 +20,13 @@ public abstract class LoopThread implements Runnable, StateServer {
     private String name;
     protected long minSleep = 50L,maxSleep = 500L;
     private boolean daemon;
+    private final Lock wakeupLock = new ReentrantLock();
+    private final java.util.concurrent.locks.Condition wakeupCondition = wakeupLock.newCondition();
 
     /**
      * 每次循环需要执行的代码。
      */
-    abstract void doWork() throws Exception, Throwable;
+    abstract void doWork() throws Throwable;
 
     public String getName() {
         return name;
@@ -84,14 +89,13 @@ public abstract class LoopThread implements Runnable, StateServer {
 
             long t0 = System.currentTimeMillis();
             try {
+                wakeupLock.lock();
                 if(condition()) doWork();
                 long t1 = System.currentTimeMillis();
 
                 // 为了避免空转CPU高，如果执行时间过短，等一会儿再进行下一次循环
                 if (t1 - t0 < minSleep) {
-                    synchronized (this) {
-                        wait(minSleep < maxSleep ? ThreadLocalRandom.current().nextLong(minSleep, maxSleep): minSleep);
-                    }
+                    wakeupCondition.await(minSleep < maxSleep ? ThreadLocalRandom.current().nextLong(minSleep, maxSleep): minSleep, TimeUnit.MILLISECONDS);
                 }
 
             } catch (InterruptedException i) {
@@ -100,6 +104,8 @@ public abstract class LoopThread implements Runnable, StateServer {
                 if (!handleException(t)) {
                     break;
                 }
+            } finally {
+                wakeupLock.unlock();
             }
         }
     }
@@ -108,7 +114,13 @@ public abstract class LoopThread implements Runnable, StateServer {
      * 唤醒任务如果任务在Sleep
      */
     public synchronized void weakup() {
-        notify();
+        if(wakeupLock.tryLock()) {
+            try {
+                wakeupCondition.notify();
+            } finally {
+                wakeupLock.unlock();
+            }
+        }
     }
 
     /**

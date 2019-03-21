@@ -13,7 +13,6 @@ import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
@@ -69,7 +68,6 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
         if(null == currentServer) {
             currentServer = selectServer();
         }
-        // TODO: 1024参数化
         GetServerEntriesResponse<StorageEntry<E>> response =
                 currentServer.getServerEntries(new GetServerEntriesRequest(commitIndex,config.getPullBatchSize())).get();
 
@@ -80,6 +78,8 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
 
             journal.append(response.getEntries());
             commitIndex += response.getEntries().length;
+            // 唤醒状态机线程
+            stateMachineThread.weakup();
         } catch (IndexUnderflowException e) {
             reset(response);
         } catch (IndexOverflowException ignored) {}
