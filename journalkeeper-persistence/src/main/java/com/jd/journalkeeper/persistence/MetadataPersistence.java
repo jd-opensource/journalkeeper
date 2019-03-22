@@ -1,6 +1,7 @@
 package com.jd.journalkeeper.persistence;
 
-import java.util.concurrent.CompletableFuture;
+import java.nio.file.Path;
+import java.util.Properties;
 
 /**
  * 元数据存储
@@ -9,5 +10,5 @@ import java.util.concurrent.CompletableFuture;
  */
 public interface MetadataPersistence {
     void save(ServerMetadata serverMetadata);
-    ServerMetadata load();
+    ServerMetadata recover(Path path, Properties properties);
 }

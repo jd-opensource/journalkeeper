@@ -1,6 +1,7 @@
 package com.jd.journalkeeper.rpc.server;
 
 import java.net.URI;
+import java.util.List;
 
 /**
  * @author liyue25
@@ -12,10 +13,10 @@ public class AsyncAppendEntriesRequest<E> {
     private final URI leader;
     private final long prevLogIndex;
     private final int prevLogTerm;
-    private final E [] entries;
+    private final List<E> entries;
     private final long leaderCommit;
 
-    public AsyncAppendEntriesRequest(int term, URI leader, long prevLogIndex, int prevLogTerm, E[] entries, long leaderCommit) {
+    public AsyncAppendEntriesRequest(int term, URI leader, long prevLogIndex, int prevLogTerm, List<E> entries, long leaderCommit) {
         this.term = term;
         this.leader = leader;
         this.prevLogIndex = prevLogIndex;
@@ -40,7 +41,7 @@ public class AsyncAppendEntriesRequest<E> {
         return prevLogTerm;
     }
 
-    public E[] getEntries() {
+    public List<E> getEntries() {
         return entries;
     }
 

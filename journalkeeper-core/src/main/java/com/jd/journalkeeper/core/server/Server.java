@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.core.server;
 
+import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.base.event.EventWatcher;
 import com.jd.journalkeeper.core.api.*;
 import com.jd.journalkeeper.core.exception.ServiceLoadException;
@@ -7,8 +8,9 @@ import com.jd.journalkeeper.core.journal.Journal;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NoSuchSnapshotException;
+import com.jd.journalkeeper.persistence.BufferPool;
 import com.jd.journalkeeper.persistence.MetadataPersistence;
-import com.jd.journalkeeper.persistence.PersistenceAccessPoint;
+import com.jd.journalkeeper.persistence.PersistenceFactory;
 import com.jd.journalkeeper.persistence.ServerMetadata;
 import com.jd.journalkeeper.rpc.client.ClientServerRpc;
 import com.jd.journalkeeper.rpc.client.GetServersResponse;
@@ -103,7 +105,7 @@ public abstract class Server<E, Q, R>
     /**
      * 持久化实现接入点
      */
-    protected PersistenceAccessPoint persistenceAccessPoint;
+    protected PersistenceFactory persistenceFactory;
     /**
      * 元数据持久化服务
      */
@@ -127,19 +129,34 @@ public abstract class Server<E, Q, R>
         return available;
     }
 
+    protected Serializer<E> entrySerializer;
+
+    protected BufferPool bufferPool;
     private Config config;
 
-    public Server(StateFactory<E, Q, R> stateFactory,  ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties){
+    public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer,  ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties){
         super(stateFactory, properties);
         this.scheduledExecutor = scheduledExecutor;
         this.asyncExecutor = asyncExecutor;
         this.config = toConfig(properties);
         this.stateMachineThread = buildStateMachineThread();
         this.state = stateFactory.createState();
-        persistenceAccessPoint = StreamSupport.
-                stream(ServiceLoader.load(PersistenceAccessPoint.class).spliterator(), false)
+        this.entrySerializer = entrySerializer;
+
+
+        persistenceFactory = StreamSupport.
+                stream(ServiceLoader.load(PersistenceFactory.class).spliterator(), false)
                 .findFirst().orElseThrow(ServiceLoadException::new);
-        metadataPersistence = persistenceAccessPoint.getMetadataPersistence(properties);
+
+        bufferPool = StreamSupport.
+                stream(ServiceLoader.load(BufferPool.class).spliterator(), false)
+                .findFirst().orElseThrow(ServiceLoadException::new);
+
+        journal = new Journal<>(
+                persistenceFactory.createJournalPersistenceInstance(),
+                persistenceFactory.createJournalPersistenceInstance(),
+                entrySerializer, bufferPool);
+
     }
 
     private LoopThread buildStateMachineThread() {
@@ -273,8 +290,6 @@ public abstract class Server<E, Q, R>
         return CompletableFuture.supplyAsync(() -> {
 
             try {
-
-
                 if (request.getIndex() > state.lastApplied()) {
                     throw new IndexOverflowException();
                 }
@@ -312,7 +327,7 @@ public abstract class Server<E, Q, R>
                         throw new IndexUnderflowException();
                     }
 
-                    E[] toBeExecutedEntries = journal.read(nearestSnapshot.getKey(), (int) (request.getIndex() - nearestSnapshot.getKey()));
+                    List<E> toBeExecutedEntries = journal.read(nearestSnapshot.getKey(), (int) (request.getIndex() - nearestSnapshot.getKey()));
                     Path tempSnapshotPath = snapshotsPath().resolve(String.valueOf(request.getIndex()));
                     if(Files.exists(tempSnapshotPath)) {
                         throw new ConcurrentModificationException(String.format("A snapshot of position %d is creating, please retry later.", request.getIndex()));
@@ -443,16 +458,22 @@ public abstract class Server<E, Q, R>
      */
     @Override
     public void recover() throws IOException {
-        onMetadataRecovered(metadataPersistence.load());
-        state.init(statePath(), properties);
+
+        onMetadataRecovered(metadataPersistence.recover(workingDir(),properties));
+        state.recover(statePath(), properties);
         recoverSnapshots();
         recoverJournal();
     }
 
-    private void recoverJournal() {
-        // TODO
+
+
+    private void recoverJournal() throws IOException {
+        journal.recover(journalPath(), properties);
     }
 
+    private Path journalPath() {
+        return workingDir().resolve("journal");
+    }
     private void recoverSnapshots() throws IOException {
         StreamSupport.stream(
                 Files.newDirectoryStream(snapshotsPath(),
@@ -460,7 +481,7 @@ public abstract class Server<E, Q, R>
                     ).spliterator(), false)
                 .map(path -> {
                     State<E, Q, R> snapshot = stateFactory.createState();
-                    snapshot.init(path, properties);
+                    snapshot.recover(path, properties);
                     if(Long.parseLong(path.getFileName().toString()) == snapshot.lastApplied()) {
                         return snapshot;
                     } else {

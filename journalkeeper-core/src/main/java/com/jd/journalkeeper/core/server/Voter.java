@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.core.server;
 
+import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.api.StorageEntry;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
@@ -85,8 +86,8 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
     private final CallbackPositioningBelt callbackPositioningBelt = new CallbackPositioningBelt();
 
-    public Voter(StateFactory<E, Q, R> stateFactory, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
-        super(stateFactory, scheduledExecutor, asyncExecutor, properties);
+    public Voter(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
+        super(stateFactory, entrySerializer, scheduledExecutor, asyncExecutor, properties);
         this.config = toConfig(properties);
         electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
 
@@ -142,7 +143,6 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     private void appendJournalEntry() throws InterruptedException {
         UpdateStateRequestResponse<E> rr = pendingUpdateRequests.take();
         if(voterState == VoterState.LEADER) {
-            @SuppressWarnings("unchecked")
             long index = journal.append(new StorageEntry<>(rr.request.getEntry(), currentTerm));
             callbackPositioningBelt.put(new Callback(index, rr.getResponseFuture()));
             // 唤醒复制线程
@@ -277,13 +277,13 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                             int rpcCount = 0;
                             if (follower.nextIndex < maxIndex) {
                                 long nextIndex = Math.max(maxIndex, follower.nextIndex + config.getReplicationBatchSize());
-                                StorageEntry<E>[] entries = journal.readRaw(follower.nextIndex, config.getReplicationBatchSize());
+                                List<StorageEntry<E>> entries = journal.readRaw(follower.nextIndex, config.getReplicationBatchSize());
                                 AsyncAppendEntriesRequest<StorageEntry<E>> request =
                                         new AsyncAppendEntriesRequest<>(currentTerm, leader,
                                                 nextIndex - 1, journal.getTerm(nextIndex - 1),
                                                 entries, commitIndex);
                                 sendAsyncAppendEntriesRpc(follower, request);
-                                follower.nextIndex += entries.length;
+                                follower.nextIndex += entries.size();
                                 rpcCount++;
                             } else {
                                 if(System.currentTimeMillis() - follower.lastHeartbeat >= config.getHeartbeatIntervalMs()) {
@@ -430,7 +430,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         if( rr.getRequest().getTerm() < currentTerm) {
             rr.getResponseFuture()
                     .complete(new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
-                            rr.getRequest().getTerm(), rr.getRequest().getEntries().length));
+                            rr.getRequest().getTerm(), rr.getRequest().getEntries().size()));
             return;
         }
         if(rr.getRequest().getTerm() > currentTerm ) {
@@ -441,7 +441,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         if( journal.getTerm(rr.getPrevLogIndex()) != rr.getRequest().getPrevLogIndex()) {
             rr.getResponseFuture()
                     .complete(new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
-                            rr.getRequest().getTerm(), rr.getRequest().getEntries().length));
+                            rr.getRequest().getTerm(), rr.getRequest().getEntries().size()));
             return;
         }
 
@@ -452,7 +452,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
         rr.getResponseFuture()
                 .complete(new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
-                        rr.getRequest().getTerm(), rr.getRequest().getEntries().length));
+                        rr.getRequest().getTerm(), rr.getRequest().getEntries().size()));
 
     }
 

@@ -1,6 +1,10 @@
 package com.jd.journalkeeper.persistence;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
+import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -8,7 +12,7 @@ import java.util.concurrent.CompletableFuture;
  * @author liyue25
  * Date: 2019-03-14
  */
-public interface JournalPersistence {
+public interface JournalPersistence extends Closeable {
     /**
      * 最小位置，初始化为0
      */
@@ -28,7 +32,7 @@ public interface JournalPersistence {
      * 执行一次刷盘操作
      * @return 刷盘位置
      */
-    default CompletableFuture<Long> flush() {
+    default CompletableFuture<Long> flush() throws IOException {
         CompletableFuture<Long> completableFuture
                 = new CompletableFuture<>();
         completableFuture.complete(flushed());
@@ -63,5 +67,11 @@ public interface JournalPersistence {
      */
     ByteBuffer read(long position, int length);
 
+    /**
+     * 从指定Path恢复Journal，如果没有则创建一个空的。
+     * @param path journal存放路径
+     * @param properties 属性
+     */
+    void recover(Path path, Properties properties);
 
 }

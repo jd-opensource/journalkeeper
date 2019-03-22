@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.core.server;
 
+import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.State;
 import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.api.StorageEntry;
@@ -44,8 +45,8 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
 
     private final Config config;
 
-    public Observer(StateFactory<E, Q, R> stateFactory, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
-        super(stateFactory, scheduledExecutor, asyncExecutor, properties);
+    public Observer(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
+        super(stateFactory, entrySerializer, scheduledExecutor, asyncExecutor, properties);
         this.config = toConfig(properties);
         replicationThread = buildReplicationThread();
     }
@@ -80,7 +81,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
             }
 
             journal.append(response.getEntries());
-            commitIndex += response.getEntries().length;
+            commitIndex += response.getEntries().size();
             // 唤醒状态机线程
             stateMachineThread.weakup();
         } catch (IndexUnderflowException e) {

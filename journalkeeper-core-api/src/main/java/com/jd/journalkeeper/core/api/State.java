@@ -38,7 +38,12 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
      */
     int lastIncludedTerm();
 
-    void init(Path path, Properties properties);
+    /**
+     * 恢复数据
+     * @param path 存放state文件的路径
+     * @param properties 属性
+     */
+    void recover(Path path, Properties properties);
 
     /**
      * 将状态物理复制一份，保存到path

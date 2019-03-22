@@ -7,18 +7,19 @@ import java.nio.ByteBuffer;
 /**
  * 每个Entry Header 包括：
  *
- * Length 4 bytes
- * Term 4 bytes
- * entry 变长
+ * Magic: 2 bytes
+ * Term: 4 bytes
+ * Length of entry: 4 bytes
+ * Entry: Variable length
  *
  * @author liyue25
  * Date: 2019-03-19
  */
 public class StorageEntry<E> {
+    public final static short MAGIC = ByteBuffer.wrap(new byte[] {(byte) 0XC0, (byte) 0X7D}).getShort();
     private  E entry;
     private  int term;
     private int length;
-    private final static int HEADER_SIZE = 8;
     public StorageEntry(){}
     public StorageEntry(E entry, int term){
         this.entry = entry;
@@ -26,6 +27,7 @@ public class StorageEntry<E> {
     }
 
     public E getEntry() {
+
         return entry;
     }
 
@@ -35,11 +37,6 @@ public class StorageEntry<E> {
 
     public static long headerSize() {
         return 8;
-    }
-
-    public void writeHeader(ByteBuffer byteBuffer) {
-        byteBuffer.putInt(length);
-        byteBuffer.putInt(term);
     }
 
     public int getLength() {
@@ -58,11 +55,4 @@ public class StorageEntry<E> {
         this.term = term;
     }
 
-    public static <E> StorageEntry<E> parse(ByteBuffer buffer, Serializer<E> serializer) {
-        StorageEntry<E> storageEntry = new StorageEntry<>();
-        storageEntry.setLength(buffer.getInt());
-        storageEntry.setTerm(buffer.getInt());
-        storageEntry.setEntry(serializer.parse(buffer));
-        return storageEntry;
-    }
 }

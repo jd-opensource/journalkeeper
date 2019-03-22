@@ -2,12 +2,14 @@ package com.jd.journalkeeper.rpc.server;
 
 import com.jd.journalkeeper.rpc.BaseResponse;
 
+import java.util.List;
+
 /**
  * @author liyue25
  * Date: 2019-03-14
  */
 public class GetServerEntriesResponse<E> extends BaseResponse {
-    private final E [] entries;
+    private final List<E> entries;
     private final long minIndex;
     private final long lastApplied;
 
@@ -15,18 +17,18 @@ public class GetServerEntriesResponse<E> extends BaseResponse {
         this(exception, null, -1L, -1L);
     }
 
-    public GetServerEntriesResponse(E[] entries, long minIndex, long lastApplied) {
+    public GetServerEntriesResponse(List<E> entries, long minIndex, long lastApplied) {
         this(null, entries, minIndex, lastApplied);
     }
 
-    private GetServerEntriesResponse(Throwable exception, E[] entries, long minIndex, long lastApplied) {
+    private GetServerEntriesResponse(Throwable exception, List<E> entries, long minIndex, long lastApplied) {
         super(exception);
         this.entries = entries;
         this.minIndex = minIndex;
         this.lastApplied = lastApplied;
     }
 
-    public E[] getEntries() {
+    public List<E> getEntries() {
         return entries;
     }
 
