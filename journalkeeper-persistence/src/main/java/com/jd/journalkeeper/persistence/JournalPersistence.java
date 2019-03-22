@@ -65,7 +65,7 @@ public interface JournalPersistence extends Closeable {
      * @param length 读取长度
      * @return 存放数据的ByteBuffer
      */
-    ByteBuffer read(long position, int length);
+    ByteBuffer read(long position, int length) throws IOException;
 
     /**
      * 从指定Path恢复Journal，如果没有则创建一个空的。

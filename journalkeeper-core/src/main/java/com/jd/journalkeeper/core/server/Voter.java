@@ -11,6 +11,7 @@ import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.*;
 import java.util.concurrent.*;
@@ -174,7 +175,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         return config;
     }
 
-    private void sendHeartbeat(Follower follower) {
+    private void sendHeartbeat(Follower follower) throws IOException {
         if(System.currentTimeMillis() - follower.lastHeartbeat > heartbeatIntervalMs) {
             ServerRpc<E, Q, R> serverRpc = getServerRpc(follower.uri);
             long prevIndex = follower.nextIndex - 1;
@@ -232,7 +233,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
      *  4.2. 如果收到了来自新领导人的asyncAppendEntries请求（heartbeat）：转换状态为FOLLOWER
      *  4.3. 如果选举超时：开始新一轮的选举
      */
-    private void startElection() {
+    private void startElection() throws IOException {
         convertToCandidate();
         currentTerm += 1;
         votedFor = uri;

@@ -14,6 +14,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
  * @author liyue25
@@ -46,7 +47,13 @@ public class Journal<E>  implements Flushable, Closeable {
     public CompletableFuture<Long> shrink(long givenMin) {
 
         return indexPersistence.shrink(givenMin * INDEX_STORAGE_SIZE)
-                .thenApply(min -> indexPersistence.read(min, INDEX_STORAGE_SIZE))
+                .thenApply(min -> {
+                    try {
+                        return indexPersistence.read(min, INDEX_STORAGE_SIZE);
+                    } catch (IOException e) {
+                        throw new CompletionException(e);
+                    }
+                })
                 .thenApply(ByteBuffer::getLong)
                 .thenCompose(journalPersistence::shrink)
                 .thenApply(offset -> minIndex());
@@ -94,14 +101,14 @@ public class Journal<E>  implements Flushable, Closeable {
         return maxIndex();
     }
 
-    public E read(long index) {
+    public E read(long index) throws IOException {
         checkIndex(index);
         StorageEntry<E> storageEntry = readStorageEntry(index);
 
         return storageEntry.getEntry();
     }
 
-    private StorageEntry<E> readStorageEntry(long index) {
+    private StorageEntry<E> readStorageEntry(long index) throws IOException {
         checkIndex(index);
         long offset = readOffset(index);
 
@@ -113,18 +120,18 @@ public class Journal<E>  implements Flushable, Closeable {
         return storageEntry;
     }
 
-    private StorageEntry<E> readHeader(long offset) {
+    private StorageEntry<E> readHeader(long offset) throws IOException {
         ByteBuffer headerBuffer = journalPersistence.read(offset, StorageEntryParser.getHeaderLength());
 
         return StorageEntryParser.parse(headerBuffer);
     }
 
-    private long readOffset(long index) {
+    private long readOffset(long index) throws IOException {
         ByteBuffer indexBuffer = indexPersistence.read(index * INDEX_STORAGE_SIZE, INDEX_STORAGE_SIZE);
         return indexBuffer.getLong();
     }
 
-    public List<E> read(long index, int length) {
+    public List<E> read(long index, int length) throws IOException {
         checkIndex(index);
         List<E> list = new ArrayList<>(length);
         long i = index;
@@ -134,7 +141,7 @@ public class Journal<E>  implements Flushable, Closeable {
         return list;
     }
 
-    public List<StorageEntry<E>> readRaw(long index, int length) {
+    public List<StorageEntry<E>> readRaw(long index, int length) throws IOException {
         checkIndex(index);
         List<StorageEntry<E>> list = new ArrayList<>(length);
         long i = index;
@@ -143,7 +150,7 @@ public class Journal<E>  implements Flushable, Closeable {
         }
         return list;
     }
-    public int getTerm(long index) {
+    public int getTerm(long index) throws IOException {
         checkIndex(index);
         long offset = readOffset(index);
 
@@ -159,7 +166,7 @@ public class Journal<E>  implements Flushable, Closeable {
      * @param entries 待比较的日志
      * @param startIndex 起始位置
      */
-    public void compareOrAppend(List<StorageEntry<E>> entries, long startIndex) {
+    public void compareOrAppend(List<StorageEntry<E>> entries, long startIndex) throws IOException {
 
         long index = startIndex;
 
@@ -177,7 +184,7 @@ public class Journal<E>  implements Flushable, Closeable {
     /**
      * 从索引index位置开始，截掉后面的数据
      */
-    private void truncate(long index) {
+    private void truncate(long index) throws IOException {
         journalPersistence.truncate(readOffset(index));
         indexPersistence.truncate(index * INDEX_STORAGE_SIZE);
     }
@@ -201,7 +208,7 @@ public class Journal<E>  implements Flushable, Closeable {
         indexPersistence.flush();
     }
 
-    private void buildMissingIndices() {
+    private void buildMissingIndices() throws IOException {
         // 找到最新一条没有索引位置
         long indexOffset;
         if (indexPersistence.max() - INDEX_STORAGE_SIZE >= indexPersistence.min()) {
@@ -229,7 +236,7 @@ public class Journal<E>  implements Flushable, Closeable {
         }
     }
 
-    private void truncateExtraIndices() {
+    private void truncateExtraIndices() throws IOException {
 
         long position = indexPersistence.max();
         //noinspection StatementWithEmptyBody

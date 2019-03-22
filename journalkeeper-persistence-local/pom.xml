@@ -9,15 +9,11 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>journalkeeper-core</artifactId>
-
+    <artifactId>journalkeeper-persistence-local</artifactId>
+    <name>Journalkeeper - Persistence Local Implementation</name>
+    <description>Default persistence implementation: save all data to local disks.</description>
 
     <dependencies>
-        <dependency>
-            <groupId>io.journalkeeper</groupId>
-            <artifactId>journalkeeper-core-api</artifactId>
-            <version>${project.version}</version>
-        </dependency>
         <dependency>
             <groupId>io.journalkeeper</groupId>
             <artifactId>journalkeeper-persistence</artifactId>
@@ -25,7 +21,7 @@
         </dependency>
         <dependency>
             <groupId>io.journalkeeper</groupId>
-            <artifactId>journalkeeper-rpc</artifactId>
+            <artifactId>journalkeeper-utils</artifactId>
             <version>${project.version}</version>
         </dependency>
 
@@ -47,5 +43,6 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
         </dependency>
+
     </dependencies>
 </project>
