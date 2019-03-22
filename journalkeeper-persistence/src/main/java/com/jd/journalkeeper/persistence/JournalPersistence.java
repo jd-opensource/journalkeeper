@@ -32,17 +32,12 @@ public interface JournalPersistence extends Closeable {
      * 执行一次刷盘操作
      * @return 刷盘位置
      */
-    default CompletableFuture<Long> flush() throws IOException {
-        CompletableFuture<Long> completableFuture
-                = new CompletableFuture<>();
-        completableFuture.complete(flushed());
-        return completableFuture;
-    }
+    default void flush() throws IOException {};
     /**
      * 截断最新的日志
      * @param givenMax 新的最大位置，不能大于当前的最大位置
      */
-    CompletableFuture<Void> truncate(long givenMax);
+    void truncate(long givenMax) throws IOException;
 
     /**
      * 删除旧日志。考虑到大多数基于文件的实现做到精确按位置删除代价较大，
@@ -50,14 +45,14 @@ public interface JournalPersistence extends Closeable {
      * @param givenMin 给定删除位置，这个位置之前都可以删除。
      * @return 删除后当前最小位置。
      */
-    CompletableFuture<Long> shrink(long givenMin);
+    long shrink(long givenMin) throws IOException;
 
     /**
      * 追加写入
-     * @param byteBuffers 待写入的内容
+     * @param byteBuffer 待写入的内容
      * @return 写入后新的位置
      */
-    Long append(ByteBuffer... byteBuffers);
+    long append(ByteBuffer byteBuffer) throws IOException;
 
     /**
      * 读取数据
@@ -72,6 +67,6 @@ public interface JournalPersistence extends Closeable {
      * @param path journal存放路径
      * @param properties 属性
      */
-    void recover(Path path, Properties properties);
+    void recover(Path path, Properties properties) throws IOException;
 
 }

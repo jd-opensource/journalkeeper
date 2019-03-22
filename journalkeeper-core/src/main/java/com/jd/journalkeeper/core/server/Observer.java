@@ -85,13 +85,13 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
             // 唤醒状态机线程
             stateMachineThread.weakup();
         } catch (IndexUnderflowException e) {
-            reset(response);
+            reset();
         } catch (IndexOverflowException ignored) {}
 
 
     }
 
-    private void reset(GetServerEntriesResponse<StorageEntry<E>> response) throws InterruptedException, java.util.concurrent.ExecutionException, IOException {
+    private void reset() throws InterruptedException, java.util.concurrent.ExecutionException, IOException {
 //      INDEX_UNDERFLOW：Observer的提交位置已经落后目标节点太多，这时需要重置Observer，重置过程中不能提供读服务：
 //        1. 删除log中所有日志和snapshots中的所有快照；
 //        2. 将目标节点提交位置对应的状态复制到Observer上：parentServer.getServerState()，更新属性commitIndex和lastApplied值为返回值中的lastApplied。

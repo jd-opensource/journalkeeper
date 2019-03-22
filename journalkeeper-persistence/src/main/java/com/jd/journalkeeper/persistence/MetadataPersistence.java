@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.persistence;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Properties;
 
@@ -9,6 +10,6 @@ import java.util.Properties;
  * Date: 2019-03-15
  */
 public interface MetadataPersistence {
-    void save(ServerMetadata serverMetadata);
-    ServerMetadata recover(Path path, Properties properties);
+    void save(ServerMetadata serverMetadata) throws IOException;
+    ServerMetadata recover(Path path, Properties properties) throws IOException;
 }

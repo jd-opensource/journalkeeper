@@ -222,7 +222,7 @@ public abstract class Server<E, Q, R>
      * 2. lastApplied自增，将log[lastApplied]应用到状态机，更新当前状态state；
      *
      */
-    private void applyEntries() throws IOException {
+    private void applyEntries()  {
         while ( state.lastApplied() < commitIndex) {
             takeASnapShotIfNeed();
             E entry = journal.read(state.lastApplied());
@@ -517,15 +517,9 @@ public abstract class Server<E, Q, R>
     @Override
     public CompletableFuture<GetServerEntriesResponse<StorageEntry<E>>> getServerEntries(GetServerEntriesRequest request) {
         return CompletableFuture.supplyAsync(() ->
-        {
-            try {
-                return new GetServerEntriesResponse<>(
+                new GetServerEntriesResponse<>(
                         journal.readRaw(request.getIndex(), request.getMaxSize()),
-                        journal.minIndex(), state.lastApplied());
-            } catch (IOException e) {
-                throw new CompletionException(e);
-            }
-        });
+                        journal.minIndex(), state.lastApplied()));
     }
 
     @Override

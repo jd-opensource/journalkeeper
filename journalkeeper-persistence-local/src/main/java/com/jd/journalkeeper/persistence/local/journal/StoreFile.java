@@ -1,4 +1,4 @@
-package com.jd.journalkeeper.persistence.local;
+package com.jd.journalkeeper.persistence.local.journal;
 
 import java.io.File;
 import java.io.IOException;

@@ -1,4 +1,4 @@
-package com.jd.journalkeeper.persistence.local;
+package com.jd.journalkeeper.persistence.local.journal;
 
 
 import com.jd.journalkeeper.utils.buffer.PreloadBufferPool;
@@ -175,7 +175,8 @@ public class LocalStoreFile implements StoreFile {
     }
 
 
-    private <R> R read(int position, int length, BufferReader<R> bufferReader) throws IOException{
+    @Override
+    public ByteBuffer read(int position, int length) throws IOException{
         touch();
         long stamp = bufferLock.readLock();
         try {
@@ -197,30 +198,26 @@ public class LocalStoreFile implements StoreFile {
             ByteBuffer byteBuffer = pageBuffer.asReadOnlyBuffer();
             byteBuffer.position(position);
             byteBuffer.limit(writePosition);
-            return bufferReader.read(byteBuffer, length);
+
+            ByteBuffer dest = ByteBuffer.allocate(length);
+            if (length < byteBuffer.remaining()) {
+                byteBuffer.limit(byteBuffer.position() + length);
+            }
+            dest.put(byteBuffer);
+            dest.flip();
+            return dest;
+
         } finally {
             bufferLock.unlock(stamp);
         }
     }
 
-    @Override
-    public ByteBuffer read(int position, int length) throws IOException{
-
-        return read(position, Math.min(length, writePosition - position), (src, len) -> {
-            ByteBuffer dest = ByteBuffer.allocate(len);
-            if (len < src.remaining()) {
-                src.limit(src.position() + len);
-            }
-            dest.put(src);
-            dest.flip();
-            return dest;
-        });
-    }
-
     // Not thread safe!
-    private  <R> int appendToPageBuffer(R t, BufferAppender<R> bufferAppender) {
+    private int appendToPageBuffer(ByteBuffer byteBuffer) {
         pageBuffer.position(writePosition);
-        int writeLength = bufferAppender.append(t, pageBuffer);
+        int writeLength = byteBuffer.remaining();
+        pageBuffer.put(byteBuffer);
+
         writePosition += writeLength;
         return writeLength;
     }
@@ -247,11 +244,7 @@ public class LocalStoreFile implements StoreFile {
             if(rs != 0L) {
                 stamp = rs;
             }
-            return appendToPageBuffer(byteBuffer, (src, dest) -> {
-                int writeLength = src.remaining();
-                dest.put(src);
-                return writeLength;
-            });
+            return appendToPageBuffer(byteBuffer);
         } finally {
             bufferLock.unlock(stamp);
         }
