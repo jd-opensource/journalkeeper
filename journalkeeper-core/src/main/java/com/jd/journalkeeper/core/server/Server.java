@@ -43,6 +43,11 @@ public abstract class Server<E, Q, R>
         implements ServerRpc<E, Q, R>, ClientServerRpc<E, Q, R> {
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
 
+    @Override
+    public boolean isAlive() {
+        return true;
+    }
+
     /**
      * 节点上的最新状态 和 被状态机执行的最大日志条目的索引值（从 0 开始递增）
      */
@@ -132,6 +137,9 @@ public abstract class Server<E, Q, R>
     protected Serializer<E> entrySerializer;
 
     protected BufferPool bufferPool;
+
+    protected ServerChannel serverChannel;
+
     private Config config;
 
     public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer,  ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties){
@@ -150,6 +158,10 @@ public abstract class Server<E, Q, R>
 
         bufferPool = StreamSupport.
                 stream(ServiceLoader.load(BufferPool.class).spliterator(), false)
+                .findFirst().orElseThrow(ServiceLoadException::new);
+
+        serverChannel = StreamSupport.
+                stream(ServiceLoader.load(ServerChannel.class).spliterator(), false)
                 .findFirst().orElseThrow(ServiceLoadException::new);
 
         journal = new Journal<>(

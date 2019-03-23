@@ -1,6 +1,7 @@
 package com.jd.journalkeeper.rpc.server;
 
 import com.jd.journalkeeper.core.api.StorageEntry;
+import com.jd.journalkeeper.rpc.Detectable;
 import com.jd.journalkeeper.rpc.client.ClientServerRpc;
 
 import java.util.concurrent.CompletableFuture;
@@ -10,7 +11,7 @@ import java.util.concurrent.CompletableFuture;
  * @author liyue25
  * Date: 2019-03-14
  */
-public interface ServerRpc<E, Q, R> extends ClientServerRpc<E, Q, R> {
+public interface ServerRpc<E, Q, R> extends ClientServerRpc<E, Q, R>, Detectable {
     CompletableFuture<AsyncAppendEntriesResponse> asyncAppendEntries(AsyncAppendEntriesRequest<StorageEntry<E>> request);
     CompletableFuture<RequestVoteResponse> requestVote(RequestVoteRequest request);
     CompletableFuture<GetServerEntriesResponse<StorageEntry<E>>> getServerEntries(GetServerEntriesRequest request);

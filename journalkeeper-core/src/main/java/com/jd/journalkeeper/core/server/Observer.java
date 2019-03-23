@@ -23,6 +23,7 @@ import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * @author liyue25
@@ -34,9 +35,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
      * 父节点
      */
     private List<URI> parents;
-    /**
-     * 当前连接的父节点RPC代理
-     */
+
     private ServerRpc<E, Q, R> currentServer = null;
     /**
      * 复制线程
@@ -69,11 +68,9 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
     }
 
     private void pullEntries() throws Throwable {
-        if(null == currentServer) {
-            currentServer = selectServer();
-        }
+
         GetServerEntriesResponse<StorageEntry<E>> response =
-                currentServer.getServerEntries(new GetServerEntriesRequest(commitIndex,config.getPullBatchSize())).get();
+                selectServer().getServerEntries(new GetServerEntriesRequest(commitIndex,config.getPullBatchSize())).get();
 
         try {
             if (null != response.getException()) {
@@ -122,7 +119,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
             boolean done;
             do {
                 GetServerStateResponse r =
-                        currentServer.getServerState(new GetServerStateRequest(lastIncludedIndex, offset)).get();
+                        selectServer().getServerState(new GetServerStateRequest(lastIncludedIndex, offset)).get();
                 state.install(r.getData(), r.getOffset());
                 if(done = r.isDone()) {
 
@@ -143,8 +140,21 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
     }
 
     private ServerRpc<E, Q, R> selectServer() {
-        // TODO
-        return null;
+        long sleep = 0L;
+        while (null == currentServer || !currentServer.isAlive()) {
+            if(sleep > 0) {
+                logger.info("Waiting {} ms to reconnect...", sleep);
+                try {
+                    Thread.sleep(sleep);
+                } catch (InterruptedException ignored) {}
+            }
+            logger.info("Connecting server {}", uri);
+            URI uri = parents.get(ThreadLocalRandom.current().nextInt(parents.size()));
+            currentServer = serverChannel.getServerRpcAgent(uri);
+            sleep += sleep + 100L;
+        }
+
+        return currentServer;
     }
 
     @Override

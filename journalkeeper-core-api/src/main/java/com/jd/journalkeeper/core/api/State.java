@@ -2,6 +2,7 @@ package com.jd.journalkeeper.core.api;
 
 import com.jd.journalkeeper.base.Queryable;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Properties;
 
@@ -48,7 +49,7 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
     /**
      * 将状态物理复制一份，保存到path
      */
-    State<E, Q, R> takeASnapshot(Path path);
+    State<E, Q, R> takeASnapshot(Path path) throws IOException;
 
     /**
      * 读取序列化后的状态数据。

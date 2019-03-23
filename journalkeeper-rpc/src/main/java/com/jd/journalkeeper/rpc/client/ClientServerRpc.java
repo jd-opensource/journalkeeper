@@ -1,5 +1,7 @@
 package com.jd.journalkeeper.rpc.client;
 
+import com.jd.journalkeeper.rpc.Detectable;
+
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -7,7 +9,7 @@ import java.util.concurrent.CompletableFuture;
  * @author liyue25
  * Date: 2019-03-14
  */
-public interface ClientServerRpc<E, Q, R> {
+public interface ClientServerRpc<E, Q, R> extends Detectable {
 
     CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest<E> request);
     CompletableFuture<QueryStateResponse<R>> queryClusterState(QueryStateRequest<Q> request);

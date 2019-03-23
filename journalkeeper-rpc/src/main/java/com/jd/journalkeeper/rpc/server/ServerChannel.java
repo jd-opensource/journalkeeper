@@ -9,5 +9,5 @@ import java.util.concurrent.CompletableFuture;
  * Date: 2019-03-14
  */
 public interface ServerChannel {
-    CompletableFuture<ServerRpc> getServerRpcAgent(URI uri);
+    <E, Q, R> ServerRpc<E, Q, R> getServerRpcAgent(URI uri);
 }
