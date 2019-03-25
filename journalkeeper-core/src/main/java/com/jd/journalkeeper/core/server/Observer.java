@@ -120,7 +120,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
             do {
                 GetServerStateResponse r =
                         selectServer().getServerState(new GetServerStateRequest(lastIncludedIndex, offset)).get();
-                state.install(r.getData(), r.getOffset());
+                state.installSerializedData(r.getData(), r.getOffset());
                 if(done = r.isDone()) {
 
                     state.installFinish(r.getLastIncludedIndex() + 1, r.getLastIncludedTerm());

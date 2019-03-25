@@ -205,7 +205,7 @@ public abstract class Server<E, Q, R>
                 properties.getProperty(Config.WORKING_DIR_KEY,
                         config.getWorkingDir().normalize().toString())));
 
-        config.setGetStateBatchSize(Long.parseLong(
+        config.setGetStateBatchSize(Integer.parseInt(
                 properties.getProperty(
                         Config.GET_STATE_BATCH_SIZE_KEY,
                         String.valueOf(Config.DEFAULT_GET_STATE_BATCH_SIZE))));
@@ -258,9 +258,13 @@ public abstract class Server<E, Q, R>
      * 如果需要，保存一次快照
      */
     private void takeASnapShotIfNeed() {
-        if(snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep()) {
-            State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())));
-            snapshots.put(snapshot.lastApplied(), snapshot);
+        try {
+            if (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep()) {
+                State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())));
+                snapshots.put(snapshot.lastApplied(), snapshot);
+            }
+        } catch (IOException e) {
+            logger.warn("Take snapshot exception: ", e);
         }
     }
 
@@ -548,7 +552,7 @@ public abstract class Server<E, Q, R>
         final static int DEFAULT_SNAPSHOT_STEP = 128;
         final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;
         final static long DEFAULT_FLUSH_INTERVAL_MS = 50L;
-        final static long DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;
+        final static int DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;
 
         final static String SNAPSHOT_STEP_KEY = "snapshot_step";
         final static String RPC_TIMEOUT_MS_KEY = "rpc_timeout_ms";
@@ -560,7 +564,7 @@ public abstract class Server<E, Q, R>
         private long rpcTimeoutMs = DEFAULT_RPC_TIMEOUT_MS;
         private long flushIntervalMs = DEFAULT_FLUSH_INTERVAL_MS;
         private Path workingDir = Paths.get(System.getProperty("user.dir"));
-        private long getStateBatchSize = DEFAULT_GET_STATE_BATCH_SIZE;
+        private int getStateBatchSize = DEFAULT_GET_STATE_BATCH_SIZE;
 
         int getSnapshotStep() {
             return snapshotStep;
@@ -594,11 +598,11 @@ public abstract class Server<E, Q, R>
             this.workingDir = workingDir;
         }
 
-        public long getGetStateBatchSize() {
+        public int getGetStateBatchSize() {
             return getStateBatchSize;
         }
 
-        public void setGetStateBatchSize(long getStateBatchSize) {
+        public void setGetStateBatchSize(int getStateBatchSize) {
             this.getStateBatchSize = getStateBatchSize;
         }
     }

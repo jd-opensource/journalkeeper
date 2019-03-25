@@ -2,6 +2,7 @@ package com.jd.journalkeeper.core.api;
 
 import com.jd.journalkeeper.base.Queryable;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -57,7 +58,7 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
      * @param size 本次读取的长度
      *
      */
-    byte [] readSerializedData(long offset, long size);
+    byte [] readSerializedData(long offset, int size) throws IOException;
 
     /**
      * 序列化后的状态长度。
@@ -69,7 +70,7 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
      * 所有数据都复制完成后，最后调用installFinish恢复状态。
      * @param data 日志数据片段
      */
-    void install(byte [] data, long offset);
+    void installSerializedData(byte [] data, long offset) throws IOException;
     void installFinish(long lastApplied, int lastIncludedTerm);
 
     /**
