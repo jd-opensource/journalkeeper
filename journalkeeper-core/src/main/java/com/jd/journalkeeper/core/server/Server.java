@@ -1,7 +1,6 @@
 package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.base.Serializer;
-import com.jd.journalkeeper.base.event.EventWatcher;
 import com.jd.journalkeeper.core.api.*;
 import com.jd.journalkeeper.core.exception.ServiceLoadException;
 import com.jd.journalkeeper.core.journal.Journal;
@@ -46,6 +45,11 @@ public abstract class Server<E, Q, R>
     @Override
     public boolean isAlive() {
         return true;
+    }
+
+    @Override
+    public URI serverUri() {
+        return uri;
     }
 
     /**
@@ -138,7 +142,7 @@ public abstract class Server<E, Q, R>
 
     protected BufferPool bufferPool;
 
-    protected ServerChannel serverChannel;
+    protected ServerRpcAccessPoint serverRpcAccessPoint;
 
     private Config config;
 
@@ -160,8 +164,8 @@ public abstract class Server<E, Q, R>
                 stream(ServiceLoader.load(BufferPool.class).spliterator(), false)
                 .findFirst().orElseThrow(ServiceLoadException::new);
 
-        serverChannel = StreamSupport.
-                stream(ServiceLoader.load(ServerChannel.class).spliterator(), false)
+        serverRpcAccessPoint = StreamSupport.
+                stream(ServiceLoader.load(ServerRpcAccessPoint.class).spliterator(), false)
                 .findFirst().orElseThrow(ServiceLoadException::new);
 
         journal = new Journal<>(
@@ -365,7 +369,7 @@ public abstract class Server<E, Q, R>
     }
 
     @Override
-    public CompletableFuture<GetServersResponse> getServer() {
+    public CompletableFuture<GetServersResponse> getServers() {
         return CompletableFuture.supplyAsync(() -> new GetServersResponse(new ClusterConfiguration(leader, voters, observers)));
     }
 
@@ -380,7 +384,12 @@ public abstract class Server<E, Q, R>
                 }
                 State<E, Q, R> state = snapshots.get(snapshotIndex);
                 if (null != state) {
-                    byte [] data = state.readSerializedData(request.getOffset(),config.getGetStateBatchSize());
+                    byte [] data;
+                    try {
+                        data = state.readSerializedData(request.getOffset(),config.getGetStateBatchSize());
+                    } catch (IOException e) {
+                        throw new CompletionException(e);
+                    }
                     return new GetServerStateResponse(
                             state.lastIncludedIndex(), state.lastIncludedTerm(),
                             request.getOffset(),
@@ -447,24 +456,6 @@ public abstract class Server<E, Q, R>
             }
         }
     }
-
-    @Override
-    public CompletableFuture<JournalKeeperClient<Q, R, E>> connect(Set<URI> servers, Properties properties) {
-        // TODO
-        return null;
-    }
-
-
-    @Override
-    public void watch(EventWatcher eventWatcher) {
-        // TODO
-    }
-
-    @Override
-    public void unwatch(EventWatcher eventWatcher) {
-        // TODO
-    }
-
 
     /**
      * 从持久化存储恢复

@@ -79,7 +79,6 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
     @Override
     public State<E, Q, R> takeASnapshot(Path destPath) throws IOException {
         State<E, Q, R> state = factory.createState();
-        //TODO: 复制文件的时候是否要停机?
         List<Path> srcFiles = listAllFiles();
 
         List<Path> destFiles = srcFiles.stream()

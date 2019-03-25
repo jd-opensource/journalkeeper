@@ -150,7 +150,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
             }
             logger.info("Connecting server {}", uri);
             URI uri = parents.get(ThreadLocalRandom.current().nextInt(parents.size()));
-            currentServer = serverChannel.getServerRpcAgent(uri);
+            currentServer = serverRpcAccessPoint.getServerRpcAgent(uri);
             sleep += sleep + 100L;
         }
 
@@ -182,27 +182,17 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
 
     @Override
     public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest<E> request) {
-        return CompletableFuture.supplyAsync(() -> new UpdateClusterStateResponse(new NotLeaderException()), asyncExecutor);
+        return CompletableFuture.supplyAsync(() -> new UpdateClusterStateResponse(new NotLeaderException(leader)), asyncExecutor);
     }
 
     @Override
     public CompletableFuture<QueryStateResponse<R>> queryClusterState(QueryStateRequest<Q> request) {
-        return CompletableFuture.supplyAsync(() -> new QueryStateResponse<>(new NotLeaderException()), asyncExecutor);
+        return CompletableFuture.supplyAsync(() -> new QueryStateResponse<>(new NotLeaderException(leader)), asyncExecutor);
     }
 
     @Override
     public CompletableFuture<LastAppliedResponse> lastApplied() {
-        return CompletableFuture.supplyAsync(() -> new LastAppliedResponse(leader), asyncExecutor);
-    }
-
-    @Override
-    public CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request) {
-        return CompletableFuture.supplyAsync(() -> new UpdateVotersResponse(new NotLeaderException()), asyncExecutor);
-    }
-
-    @Override
-    public CompletableFuture<UpdateObserversResponse> updateObservers(UpdateObserversRequest request) {
-        return CompletableFuture.supplyAsync(() -> new UpdateObserversResponse(new NotLeaderException()), asyncExecutor);
+        return CompletableFuture.supplyAsync(() -> new LastAppliedResponse(new NotLeaderException(leader)), asyncExecutor);
     }
 
     @Override

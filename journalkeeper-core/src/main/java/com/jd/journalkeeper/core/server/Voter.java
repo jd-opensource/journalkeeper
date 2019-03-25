@@ -11,7 +11,6 @@ import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.net.URI;
 import java.util.*;
 import java.util.concurrent.*;
@@ -149,7 +148,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             // 唤醒复制线程
             leaderReplicationThread.weakup();
         } else {
-            rr.getResponseFuture().complete(new UpdateClusterStateResponse(new NotLeaderException()));
+            rr.getResponseFuture().complete(new UpdateClusterStateResponse(new NotLeaderException(leader)));
         }
     }
 
@@ -558,7 +557,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                     try {
                         throw exception;
                     } catch (NotLeaderException e) {
-                        return new QueryStateResponse<>(leader);
+                        return new QueryStateResponse<>(new NotLeaderException(leader));
                     } catch (Throwable t) {
                         return new QueryStateResponse<>(t);
                     }
@@ -584,7 +583,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                     }
                     completableFuture.complete(null);
                 } else {
-                    throw new NotLeaderException();
+                    throw new NotLeaderException(leader);
                 }
             } catch (InterruptedException e) {
                 completableFuture.completeExceptionally(e);
@@ -603,25 +602,12 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                     try {
                         throw exception;
                     } catch (NotLeaderException e) {
-                        return new LastAppliedResponse(leader);
+                        return new LastAppliedResponse(new NotLeaderException(leader));
                     } catch (Throwable t) {
                         return new LastAppliedResponse(t);
                     }
                 });
     }
-
-    @Override
-    public CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request) {
-        // TODO
-        return null;
-    }
-
-    @Override
-    public CompletableFuture<UpdateObserversResponse> updateObservers(UpdateObserversRequest request) {
-        // TODO
-        return null;
-    }
-
 
     @Override
     public void start() {

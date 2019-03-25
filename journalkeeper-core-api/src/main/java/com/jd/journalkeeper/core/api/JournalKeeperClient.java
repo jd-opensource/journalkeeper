@@ -1,6 +1,7 @@
 package com.jd.journalkeeper.core.api;
 
 import com.jd.journalkeeper.base.Queryable;
+import com.jd.journalkeeper.base.event.EventWatcher;
 
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
@@ -16,16 +17,15 @@ import java.util.concurrent.CompletableFuture;
  * @param <E> 日志的类型
  *
  */
-public interface JournalKeeperClient<Q, R, E> extends Queryable<Q, R> {
+public interface JournalKeeperClient<E, Q, R> extends Queryable<Q, R> {
 
 
     /**
      * 写入操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
      * 日志在集群中复制到大多数节点，并在状态机执行后返回。
-     * @param journalEntries 操作日志数组
-     * @return true: 成功，其它：失败。
+     * @param entry 操作日志数组
      */
-    CompletableFuture<Boolean> update(E... journalEntries);
+    CompletableFuture<Void> update(E entry);
 
     /**
      * 查询集群当前的状态，即日志在状态机中执行完成后产生的数据。该服务保证强一致性，保证读到的状态总是集群的最新状态。
@@ -48,6 +48,16 @@ public interface JournalKeeperClient<Q, R, E> extends Queryable<Q, R> {
      * @return true：成功，其它：失败。
      */
     CompletableFuture<Boolean> updateVoters(UpdateVoterOperation operation, URI voter);
+
+    /**
+     * 注册事件监听器
+     */
+    void watch(EventWatcher eventWatcher);
+
+    /**
+     * 注销事件监听器
+     */
+    void unwatch(EventWatcher eventWatcher);
 
     enum UpdateVoterOperation {ADD, REMOVE}
 }

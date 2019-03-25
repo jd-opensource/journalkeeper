@@ -15,7 +15,7 @@ import java.util.Properties;
  * @author liyue25
  * Date: 2019-03-14
  */
-public abstract class JournalKeeperServer<E, Q, R> implements ClusterAccessPoint<Q, R, E>, StateServer {
+public abstract class JournalKeeperServer<E, Q, R> implements StateServer {
 
     protected final StateFactory<E, Q, R> stateFactory;
     /**
