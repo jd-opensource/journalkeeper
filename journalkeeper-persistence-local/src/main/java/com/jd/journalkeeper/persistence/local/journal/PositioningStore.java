@@ -113,6 +113,9 @@ public class PositioningStore implements JournalPersistence,Closeable {
         this.base = path.toFile();
         this.config = toConfig(properties);
 
+        // TODO: 自动调节 coreCount， maxCount
+        bufferPool.addPreLoad(config.fileDataSize, 0, 5);
+
         recoverFileMap();
 
         long recoverPosition = this.storeFileMap.isEmpty()? 0L : this.storeFileMap.lastKey() + this.storeFileMap.lastEntry().getValue().fileDataSize();

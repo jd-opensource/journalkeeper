@@ -9,7 +9,6 @@ import com.jd.journalkeeper.utils.buffer.PreloadBufferPool;
 
 public class StoreFactory implements PersistenceFactory {
 
-    // TODO: addPreload
     private final PreloadBufferPool preloadBufferPool = new PreloadBufferPool(1000L);
 
     @Override
