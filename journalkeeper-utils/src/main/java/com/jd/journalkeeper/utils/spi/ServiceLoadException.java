@@ -1,4 +1,4 @@
-package com.jd.journalkeeper.core.exception;
+package com.jd.journalkeeper.utils.spi;
 
 /**
  * @author liyue25

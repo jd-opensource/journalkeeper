@@ -1,15 +1,18 @@
 package com.jd.journalkeeper.core.api;
 
-import java.net.URI;
-import java.util.Properties;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-
 /**
+ * 集群访问接入点
  * @author liyue25
  * Date: 2019-03-14
  */
 public interface ClusterAccessPoint<E, Q, R> {
-    CompletableFuture<JournalKeeperClient<E, Q, R>> connect(Set<URI> servers, Properties properties);
+    /**
+     * 获取客户端实例
+     */
+    JournalKeeperClient<E, Q, R> getClient();
 
+    /**
+     * 获取Server实例，如果本地存在Server返回Server实例，否则返回null
+     */
+    JournalKeeperServer<E, Q, R> getServer();
 }

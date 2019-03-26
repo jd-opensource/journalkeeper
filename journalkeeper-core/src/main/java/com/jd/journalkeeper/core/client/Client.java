@@ -18,10 +18,10 @@ import java.util.concurrent.CompletableFuture;
  */
 public class Client<E, Q, R> implements JournalKeeperClient<E, Q, R> {
 
-    private final ClientServerRpcAccessPoint clientServerRpcAccessPoint;
+    private final ClientServerRpcAccessPoint<E, Q, R> clientServerRpcAccessPoint;
     private final Properties properties;
 
-    public Client(ClientServerRpcAccessPoint clientServerRpcAccessPoint, Properties properties) {
+    public Client(ClientServerRpcAccessPoint<E, Q, R> clientServerRpcAccessPoint, Properties properties) {
         this.clientServerRpcAccessPoint = clientServerRpcAccessPoint;
         this.properties = properties;
     }

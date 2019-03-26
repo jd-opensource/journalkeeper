@@ -44,8 +44,8 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
 
     private final Config config;
 
-    public Observer(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
-        super(stateFactory, entrySerializer, scheduledExecutor, asyncExecutor, properties);
+    public Observer(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
+        super(stateFactory, entrySerializer, querySerializer, resultSerializer, scheduledExecutor, asyncExecutor, properties);
         this.config = toConfig(properties);
         replicationThread = buildReplicationThread();
     }

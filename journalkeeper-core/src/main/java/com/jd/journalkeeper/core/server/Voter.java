@@ -86,8 +86,8 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
     private final CallbackPositioningBelt callbackPositioningBelt = new CallbackPositioningBelt();
 
-    public Voter(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
-        super(stateFactory, entrySerializer, scheduledExecutor, asyncExecutor, properties);
+    public Voter(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
+        super(stateFactory, entrySerializer, querySerializer, resultSerializer, scheduledExecutor, asyncExecutor, properties);
         this.config = toConfig(properties);
         electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
 
@@ -307,7 +307,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             future = serverRpc.asyncAppendEntries(request);
         } catch (Throwable t) {
             // 将所有异常扔到响应里，在处理响应的线程中统一处理
-            future = CompletableFuture.supplyAsync(() -> new AsyncAppendEntriesResponse(t));
+            future = CompletableFuture.supplyAsync(() -> new AsyncAppendEntriesResponse(t), asyncExecutor);
         }
 
         future.whenComplete((response, exception) -> {
@@ -533,7 +533,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 }
                 return new RequestVoteResponse(request.getTerm(), false);
             }
-        });
+        }, asyncExecutor);
     }
 
     @Override
@@ -544,7 +544,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             return requestResponse.getResponseFuture();
         } catch (InterruptedException e) {
             logger.warn("Exception: ", e);
-            return CompletableFuture.supplyAsync(() -> new UpdateClusterStateResponse(e));
+            return CompletableFuture.supplyAsync(() -> new UpdateClusterStateResponse(e), asyncExecutor);
         }
     }
 
@@ -591,7 +591,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             } catch (Exception e) {
                 completableFuture.completeExceptionally(e);
             }
-        });
+        }, asyncExecutor);
         return completableFuture;
     }
     @Override

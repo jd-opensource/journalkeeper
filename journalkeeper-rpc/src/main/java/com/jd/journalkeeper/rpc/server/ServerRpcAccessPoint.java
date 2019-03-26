@@ -8,6 +8,6 @@ import java.util.concurrent.CompletableFuture;
  * @author liyue25
  * Date: 2019-03-14
  */
-public interface ServerRpcAccessPoint {
-    <E, Q, R> ServerRpc<E, Q, R> getServerRpcAgent(URI uri);
+public interface ServerRpcAccessPoint<E, Q, R> {
+    ServerRpc<E, Q, R> getServerRpcAgent(URI uri);
 }

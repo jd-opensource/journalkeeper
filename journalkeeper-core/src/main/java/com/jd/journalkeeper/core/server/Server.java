@@ -2,7 +2,8 @@ package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.*;
-import com.jd.journalkeeper.core.exception.ServiceLoadException;
+import com.jd.journalkeeper.rpc.RpcAccessPointFactory;
+import com.jd.journalkeeper.utils.spi.ServiceLoadException;
 import com.jd.journalkeeper.core.journal.Journal;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
@@ -16,6 +17,7 @@ import com.jd.journalkeeper.rpc.client.GetServersResponse;
 import com.jd.journalkeeper.rpc.client.QueryStateRequest;
 import com.jd.journalkeeper.rpc.client.QueryStateResponse;
 import com.jd.journalkeeper.rpc.server.*;
+import com.jd.journalkeeper.utils.spi.ServiceSupport;
 import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -138,15 +140,19 @@ public abstract class Server<E, Q, R>
         return available;
     }
 
-    protected Serializer<E> entrySerializer;
+    protected final Serializer<E> entrySerializer;
 
-    protected BufferPool bufferPool;
+    protected final Serializer<Q> querySerializer;
 
-    protected ServerRpcAccessPoint serverRpcAccessPoint;
+    protected final Serializer<R> resultSerializer;
+
+    protected final BufferPool bufferPool;
+
+    protected ServerRpcAccessPoint<E, Q, R> serverRpcAccessPoint;
 
     private Config config;
 
-    public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer,  ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties){
+    public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties){
         super(stateFactory, properties);
         this.scheduledExecutor = scheduledExecutor;
         this.asyncExecutor = asyncExecutor;
@@ -154,20 +160,12 @@ public abstract class Server<E, Q, R>
         this.stateMachineThread = buildStateMachineThread();
         this.state = stateFactory.createState();
         this.entrySerializer = entrySerializer;
+        this.querySerializer = querySerializer;
+        this.resultSerializer = resultSerializer;
 
-
-        persistenceFactory = StreamSupport.
-                stream(ServiceLoader.load(PersistenceFactory.class).spliterator(), false)
-                .findFirst().orElseThrow(ServiceLoadException::new);
-
-        bufferPool = StreamSupport.
-                stream(ServiceLoader.load(BufferPool.class).spliterator(), false)
-                .findFirst().orElseThrow(ServiceLoadException::new);
-
-        serverRpcAccessPoint = StreamSupport.
-                stream(ServiceLoader.load(ServerRpcAccessPoint.class).spliterator(), false)
-                .findFirst().orElseThrow(ServiceLoadException::new);
-
+        persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
+        bufferPool = ServiceSupport.load(BufferPool.class);
+        serverRpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class).getServerRpcAccessPoint(entrySerializer, querySerializer, resultSerializer);
         journal = new Journal<>(
                 persistenceFactory.createJournalPersistenceInstance(),
                 persistenceFactory.createJournalPersistenceInstance(),
@@ -292,7 +290,7 @@ public abstract class Server<E, Q, R>
             } catch (Throwable throwable) {
                 return new QueryStateResponse<>(throwable);
             }
-        });
+        }, asyncExecutor);
     }
 
     /**
@@ -365,12 +363,12 @@ public abstract class Server<E, Q, R>
             } catch (Throwable throwable) {
                 return new QueryStateResponse<>(throwable);
             }
-        });
+        }, asyncExecutor);
     }
 
     @Override
     public CompletableFuture<GetServersResponse> getServers() {
-        return CompletableFuture.supplyAsync(() -> new GetServersResponse(new ClusterConfiguration(leader, voters, observers)));
+        return CompletableFuture.supplyAsync(() -> new GetServersResponse(new ClusterConfiguration(leader, voters, observers)), asyncExecutor);
     }
 
     @Override
@@ -398,7 +396,7 @@ public abstract class Server<E, Q, R>
                 }
             }
             return new GetServerStateResponse(new NoSuchSnapshotException());
-        }).exceptionally(GetServerStateResponse::new);
+        }, asyncExecutor).exceptionally(GetServerStateResponse::new);
     }
 
     @Override
@@ -526,7 +524,7 @@ public abstract class Server<E, Q, R>
         return CompletableFuture.supplyAsync(() ->
                 new GetServerEntriesResponse<>(
                         journal.readRaw(request.getIndex(), request.getMaxSize()),
-                        journal.minIndex(), state.lastApplied()));
+                        journal.minIndex(), state.lastApplied()), asyncExecutor);
     }
 
     @Override
@@ -554,7 +552,7 @@ public abstract class Server<E, Q, R>
         private int snapshotStep = DEFAULT_SNAPSHOT_STEP;
         private long rpcTimeoutMs = DEFAULT_RPC_TIMEOUT_MS;
         private long flushIntervalMs = DEFAULT_FLUSH_INTERVAL_MS;
-        private Path workingDir = Paths.get(System.getProperty("user.dir"));
+        private Path workingDir = Paths.get(System.getProperty("user.dir")).resolve("journalkeeper");
         private int getStateBatchSize = DEFAULT_GET_STATE_BATCH_SIZE;
 
         int getSnapshotStep() {
