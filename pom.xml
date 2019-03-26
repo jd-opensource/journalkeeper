@@ -23,6 +23,7 @@
         <module>journalkeeper-core</module>
         <module>journalkeeper-utils</module>
         <module>journalkeeper-persistence-local</module>
+        <module>journalkeeper-rpc-netty</module>
     </modules>
     <properties>
         <!-- maven properties -->
