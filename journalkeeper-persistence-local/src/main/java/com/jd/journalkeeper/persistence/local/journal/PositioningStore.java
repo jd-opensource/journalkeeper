@@ -176,8 +176,9 @@ public class PositioningStore implements JournalPersistence,Closeable {
     }
 
 
-
-    public long append(ByteBuffer buffer) throws IOException{
+    @Override
+    public long append(byte [] bytes) throws IOException{
+        ByteBuffer buffer = ByteBuffer.wrap(bytes);
         if (null == writeStoreFile) writeStoreFile = createStoreFile(writePosition);
         if (config.getFileDataSize() - writeStoreFile.writePosition() < buffer.remaining()) writeStoreFile = createStoreFile(writePosition);
         writePosition += writeStoreFile.append(buffer);
@@ -268,12 +269,12 @@ public class PositioningStore implements JournalPersistence,Closeable {
         }
     }
 
-    public ByteBuffer read(long position, int length) throws IOException{
+    public byte [] read(long position, int length) throws IOException{
         checkReadPosition(position);
         try {
             StoreFile storeFile = storeFileMap.floorEntry(position).getValue();
             int relPosition = (int )(position - storeFile.position());
-            return storeFile.read(relPosition, length);
+            return storeFile.read(relPosition, length).array();
         } catch (Throwable t) {
             logger.warn("Exception on read position {} of store {}.", position, base.getAbsolutePath(), t);
             throw t;

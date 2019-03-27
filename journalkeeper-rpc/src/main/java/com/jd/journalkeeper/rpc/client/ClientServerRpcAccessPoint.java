@@ -7,7 +7,7 @@ import java.net.URI;
  * @author liyue25
  * Date: 2019-03-14
  */
-public interface ClientServerRpcAccessPoint<E, Q, R> {
-   ClientServerRpc<E, Q, R> getClintServerRpc();
-   ClientServerRpc<E, Q, R> getClintServerRpc(URI uri);
+public interface ClientServerRpcAccessPoint {
+   ClientServerRpc getClintServerRpc();
+   ClientServerRpc getClintServerRpc(URI uri);
 }

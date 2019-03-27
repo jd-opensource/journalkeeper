@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 
@@ -49,10 +50,9 @@ public interface JournalPersistence extends Closeable {
 
     /**
      * 追加写入
-     * @param byteBuffer 待写入的内容
      * @return 写入后新的位置
      */
-    long append(ByteBuffer byteBuffer) throws IOException;
+    long append(byte [] entry) throws IOException;
 
     /**
      * 读取数据
@@ -60,7 +60,7 @@ public interface JournalPersistence extends Closeable {
      * @param length 读取长度
      * @return 存放数据的ByteBuffer
      */
-    ByteBuffer read(long position, int length) throws IOException;
+    byte [] read(long position, int length) throws IOException;
 
     /**
      * 从指定Path恢复Journal，如果没有则创建一个空的。

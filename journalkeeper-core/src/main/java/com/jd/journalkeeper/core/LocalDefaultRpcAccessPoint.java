@@ -11,20 +11,20 @@ import java.net.URI;
  * @author liyue25
  * Date: 2019-03-25
  */
-public class LocalDefaultRpcAccessPoint<E, Q, R> implements ClientServerRpcAccessPoint<E, Q, R> {
-    private final Server<E, Q, R> server;
-    private final ClientServerRpcAccessPoint<E, Q, R> clientServerRpcAccessPoint;
-    public LocalDefaultRpcAccessPoint(Server<E, Q, R> server, ClientServerRpcAccessPoint<E, Q, R> clientServerRpcAccessPoint) {
+public class LocalDefaultRpcAccessPoint implements ClientServerRpcAccessPoint {
+    private final Server server;
+    private final ClientServerRpcAccessPoint clientServerRpcAccessPoint;
+    public LocalDefaultRpcAccessPoint(Server server, ClientServerRpcAccessPoint clientServerRpcAccessPoint) {
         this.server = server;
         this.clientServerRpcAccessPoint = clientServerRpcAccessPoint;
     }
     @Override
-    public ClientServerRpc<E, Q, R> getClintServerRpc() {
+    public ClientServerRpc getClintServerRpc() {
         return server;
     }
 
     @Override
-    public ClientServerRpc<E, Q, R> getClintServerRpc(URI uri) {
+    public ClientServerRpc getClintServerRpc(URI uri) {
         return clientServerRpcAccessPoint.getClintServerRpc(uri);
     }
 }

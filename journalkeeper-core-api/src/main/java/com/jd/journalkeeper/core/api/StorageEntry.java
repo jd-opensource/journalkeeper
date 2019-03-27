@@ -1,6 +1,5 @@
 package com.jd.journalkeeper.core.api;
 
-import com.jd.journalkeeper.base.Serializer;
 
 import java.nio.ByteBuffer;
 
@@ -15,18 +14,18 @@ import java.nio.ByteBuffer;
  * @author liyue25
  * Date: 2019-03-19
  */
-public class StorageEntry<E> {
+public class StorageEntry {
     public final static short MAGIC = ByteBuffer.wrap(new byte[] {(byte) 0XC0, (byte) 0X7D}).getShort();
-    private  E entry;
+    private  byte [] entry;
     private  int term;
     private int length;
     public StorageEntry(){}
-    public StorageEntry(E entry, int term){
+    public StorageEntry(byte [] entry, int term){
         this.entry = entry;
         this.term = term;
     }
 
-    public E getEntry() {
+    public byte [] getEntry() {
 
         return entry;
     }
@@ -47,7 +46,7 @@ public class StorageEntry<E> {
         this.length = length;
     }
 
-    public void setEntry(E entry) {
+    public void setEntry(byte [] entry) {
         this.entry = entry;
     }
 

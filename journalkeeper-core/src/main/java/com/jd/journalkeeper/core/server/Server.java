@@ -1,9 +1,10 @@
 package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.base.Serializer;
-import com.jd.journalkeeper.core.api.*;
-import com.jd.journalkeeper.rpc.RpcAccessPointFactory;
-import com.jd.journalkeeper.utils.spi.ServiceLoadException;
+import com.jd.journalkeeper.core.api.ClusterConfiguration;
+import com.jd.journalkeeper.core.api.JournalKeeperServer;
+import com.jd.journalkeeper.core.api.State;
+import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.journal.Journal;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
@@ -12,7 +13,7 @@ import com.jd.journalkeeper.persistence.BufferPool;
 import com.jd.journalkeeper.persistence.MetadataPersistence;
 import com.jd.journalkeeper.persistence.PersistenceFactory;
 import com.jd.journalkeeper.persistence.ServerMetadata;
-import com.jd.journalkeeper.rpc.client.ClientServerRpc;
+import com.jd.journalkeeper.rpc.RpcAccessPointFactory;
 import com.jd.journalkeeper.rpc.client.GetServersResponse;
 import com.jd.journalkeeper.rpc.client.QueryStateRequest;
 import com.jd.journalkeeper.rpc.client.QueryStateResponse;
@@ -32,6 +33,7 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.StampedLock;
+import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 /**
@@ -41,7 +43,7 @@ import java.util.stream.StreamSupport;
  */
 public abstract class Server<E, Q, R>
         extends JournalKeeperServer<E, Q, R>
-        implements ServerRpc<E, Q, R>, ClientServerRpc<E, Q, R> {
+        implements ServerRpc {
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
 
     @Override
@@ -79,7 +81,7 @@ public abstract class Server<E, Q, R>
     /**
      * 存放日志
      */
-    protected Journal<E> journal;
+    protected Journal journal;
     /**
      * 存放节点上所有状态快照的稀疏数组，数组的索引（key）就是快照对应的日志位置的索引
      */
@@ -141,18 +143,18 @@ public abstract class Server<E, Q, R>
     }
 
     protected final Serializer<E> entrySerializer;
-
     protected final Serializer<Q> querySerializer;
-
     protected final Serializer<R> resultSerializer;
 
     protected final BufferPool bufferPool;
 
-    protected ServerRpcAccessPoint<E, Q, R> serverRpcAccessPoint;
+    protected ServerRpcAccessPoint serverRpcAccessPoint;
 
     private Config config;
 
-    public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties){
+    public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
+                  Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor,
+                  ExecutorService asyncExecutor, Properties properties){
         super(stateFactory, properties);
         this.scheduledExecutor = scheduledExecutor;
         this.asyncExecutor = asyncExecutor;
@@ -165,11 +167,11 @@ public abstract class Server<E, Q, R>
 
         persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
         bufferPool = ServiceSupport.load(BufferPool.class);
-        serverRpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class).getServerRpcAccessPoint(entrySerializer, querySerializer, resultSerializer);
-        journal = new Journal<>(
+        serverRpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class).getServerRpcAccessPoint();
+        journal = new Journal(
                 persistenceFactory.createJournalPersistenceInstance(),
                 persistenceFactory.createJournalPersistenceInstance(),
-                entrySerializer, bufferPool);
+                bufferPool);
 
     }
 
@@ -239,7 +241,7 @@ public abstract class Server<E, Q, R>
     private void applyEntries()  {
         while ( state.lastApplied() < commitIndex) {
             takeASnapShotIfNeed();
-            E entry = journal.read(state.lastApplied());
+            E entry = entrySerializer.parse(journal.read(state.lastApplied()));
             long stamp = stateLock.writeLock();
             try {
                 state.execute(entry);
@@ -271,16 +273,22 @@ public abstract class Server<E, Q, R>
     }
 
     @Override
-    public CompletableFuture<QueryStateResponse<R>> queryServerState(QueryStateRequest<Q> request) {
+    public CompletableFuture<QueryStateResponse> queryServerState(QueryStateRequest request) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                QueryStateResponse<R> response;
+                QueryStateResponse response;
                 long stamp = stateLock.tryOptimisticRead();
-                response = new QueryStateResponse<>(state.query(request.getQuery()).get(), state.lastApplied());
+                response = new QueryStateResponse(
+                        resultSerializer.serialize(
+                            state.query(querySerializer.parse(request.getQuery())).get()),
+                        state.lastApplied());
                 if(!stateLock.validate(stamp)) {
                     stamp = stateLock.readLock();
                     try {
-                        response = new QueryStateResponse<>(state.query(request.getQuery()).get(), state.lastApplied());
+                        response = new QueryStateResponse(
+                                resultSerializer.serialize(
+                                        state.query(querySerializer.parse(request.getQuery())).get()),
+                                state.lastApplied());
 
                     } finally {
                         stateLock.unlockRead(stamp);
@@ -288,7 +296,7 @@ public abstract class Server<E, Q, R>
                 }
                 return response;
             } catch (Throwable throwable) {
-                return new QueryStateResponse<>(throwable);
+                return new QueryStateResponse(throwable);
             }
         }, asyncExecutor);
     }
@@ -304,7 +312,7 @@ public abstract class Server<E, Q, R>
      * 调用以nearestSnapshot为输入，依次在状态机stateMachine中执行execLogs，得到logIndex位置对应的快照，从快照中读取状态返回。
      */
     @Override
-    public CompletableFuture<QueryStateResponse<R>> querySnapshot(QueryStateRequest<Q> request) {
+    public CompletableFuture<QueryStateResponse> querySnapshot(QueryStateRequest request) {
         return CompletableFuture.supplyAsync(() -> {
 
             try {
@@ -316,9 +324,12 @@ public abstract class Server<E, Q, R>
                 long stamp = stateLock.tryOptimisticRead();
                 if (request.getIndex() == state.lastApplied()) {
                     try {
-                        return new QueryStateResponse<>(state.query(request.getQuery()).get(), state.lastApplied());
+                        return new QueryStateResponse(
+                                resultSerializer.serialize(
+                                        state.query(querySerializer.parse(request.getQuery())).get()),
+                                state.lastApplied());
                     } catch (Throwable throwable) {
-                        return new QueryStateResponse<>(throwable);
+                        return new QueryStateResponse(throwable);
                     }
                 }
                 if(!stateLock.validate(stamp)) {
@@ -326,9 +337,12 @@ public abstract class Server<E, Q, R>
                     try {
                         if (request.getIndex() == state.lastApplied()) {
                             try {
-                                return new QueryStateResponse<>(state.query(request.getQuery()).get(), state.lastApplied());
+                                return new QueryStateResponse(
+                                        resultSerializer.serialize(
+                                                state.query(querySerializer.parse(request.getQuery())).get()),
+                                        state.lastApplied());
                             } catch (Throwable throwable) {
-                                return new QueryStateResponse<>(throwable);
+                                return new QueryStateResponse(throwable);
                             }
                         }
                     } finally {
@@ -345,7 +359,8 @@ public abstract class Server<E, Q, R>
                         throw new IndexUnderflowException();
                     }
 
-                    List<E> toBeExecutedEntries = journal.read(nearestSnapshot.getKey(), (int) (request.getIndex() - nearestSnapshot.getKey()));
+                    List<E> toBeExecutedEntries = journal.read(nearestSnapshot.getKey(), (int) (request.getIndex() - nearestSnapshot.getKey()))
+                            .stream().map(entrySerializer::parse).collect(Collectors.toList());
                     Path tempSnapshotPath = snapshotsPath().resolve(String.valueOf(request.getIndex()));
                     if(Files.exists(tempSnapshotPath)) {
                         throw new ConcurrentModificationException(String.format("A snapshot of position %d is creating, please retry later.", request.getIndex()));
@@ -359,9 +374,9 @@ public abstract class Server<E, Q, R>
                     }
                     snapshots.putIfAbsent(request.getIndex(), requestState);
                 }
-                return new QueryStateResponse<>(requestState.query(request.getQuery()).get());
+                return new QueryStateResponse(resultSerializer.serialize(requestState.query(querySerializer.parse(request.getQuery())).get()));
             } catch (Throwable throwable) {
-                return new QueryStateResponse<>(throwable);
+                return new QueryStateResponse(throwable);
             }
         }, asyncExecutor);
     }
@@ -520,9 +535,9 @@ public abstract class Server<E, Q, R>
     }
 
     @Override
-    public CompletableFuture<GetServerEntriesResponse<StorageEntry<E>>> getServerEntries(GetServerEntriesRequest request) {
+    public CompletableFuture<GetServerEntriesResponse> getServerEntries(GetServerEntriesRequest request) {
         return CompletableFuture.supplyAsync(() ->
-                new GetServerEntriesResponse<>(
+                new GetServerEntriesResponse(
                         journal.readRaw(request.getIndex(), request.getMaxSize()),
                         journal.minIndex(), state.lastApplied()), asyncExecutor);
     }

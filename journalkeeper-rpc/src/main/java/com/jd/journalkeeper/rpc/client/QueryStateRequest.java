@@ -1,23 +1,25 @@
 package com.jd.journalkeeper.rpc.client;
 
+import java.nio.ByteBuffer;
+
 /**
  * @author liyue25
  * Date: 2019-03-14
  */
-public class QueryStateRequest<Q> {
-    private final Q query;
+public class QueryStateRequest {
+    private final byte [] query;
     private final long index;
 
-    public QueryStateRequest(Q query, long index) {
+    public QueryStateRequest(byte [] query, long index) {
         this.query = query;
         this.index = index;
     }
 
-    public QueryStateRequest(Q query) {
+    public QueryStateRequest(byte [] query) {
         this(query, -1L);
     }
 
-    public Q getQuery() {
+    public byte [] getQuery() {
         return query;
     }
 

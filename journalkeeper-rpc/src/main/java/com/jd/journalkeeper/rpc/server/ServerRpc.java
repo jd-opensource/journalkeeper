@@ -11,9 +11,9 @@ import java.util.concurrent.CompletableFuture;
  * @author liyue25
  * Date: 2019-03-14
  */
-public interface ServerRpc<E, Q, R> extends ClientServerRpc<E, Q, R>, Detectable {
-    CompletableFuture<AsyncAppendEntriesResponse> asyncAppendEntries(AsyncAppendEntriesRequest<StorageEntry<E>> request);
+public interface ServerRpc extends ClientServerRpc, Detectable {
+    CompletableFuture<AsyncAppendEntriesResponse> asyncAppendEntries(AsyncAppendEntriesRequest request);
     CompletableFuture<RequestVoteResponse> requestVote(RequestVoteRequest request);
-    CompletableFuture<GetServerEntriesResponse<StorageEntry<E>>> getServerEntries(GetServerEntriesRequest request);
+    CompletableFuture<GetServerEntriesResponse> getServerEntries(GetServerEntriesRequest request);
     CompletableFuture<GetServerStateResponse> getServerState(GetServerStateRequest request);
 }

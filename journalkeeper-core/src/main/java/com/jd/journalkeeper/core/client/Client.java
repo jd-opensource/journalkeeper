@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.core.client;
 
+import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.base.event.EventWatcher;
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.JournalKeeperClient;
@@ -18,18 +19,25 @@ import java.util.concurrent.CompletableFuture;
  */
 public class Client<E, Q, R> implements JournalKeeperClient<E, Q, R> {
 
-    private final ClientServerRpcAccessPoint<E, Q, R> clientServerRpcAccessPoint;
+    private final ClientServerRpcAccessPoint clientServerRpcAccessPoint;
     private final Properties properties;
+    private final Serializer<E> entrySerializer;
+    private final Serializer<Q> querySerializer;
+    private final Serializer<R> resultSerializer;
 
-    public Client(ClientServerRpcAccessPoint<E, Q, R> clientServerRpcAccessPoint, Properties properties) {
+    public Client(ClientServerRpcAccessPoint clientServerRpcAccessPoint, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
+                  Serializer<R> resultSerializer, Properties properties) {
         this.clientServerRpcAccessPoint = clientServerRpcAccessPoint;
+        this.entrySerializer = entrySerializer;
+        this.querySerializer = querySerializer;
+        this.resultSerializer = resultSerializer;
         this.properties = properties;
     }
 
     @Override
     public CompletableFuture<Void> update(E entry) {
         return invokeLeaderRpc(
-                leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest<>(entry)))
+                leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entrySerializer.serialize(entry))))
                 .thenAccept(resp -> {});
     }
 
@@ -37,8 +45,9 @@ public class Client<E, Q, R> implements JournalKeeperClient<E, Q, R> {
     @Override
     public CompletableFuture<R> query(Q query) {
         return invokeLeaderRpc(
-                leaderRpc -> leaderRpc.queryClusterState(new QueryStateRequest<>(query)))
-                .thenApply(QueryStateResponse::getResult);
+                leaderRpc -> leaderRpc.queryClusterState(new QueryStateRequest(querySerializer.serialize(query))))
+                .thenApply(QueryStateResponse::getResult)
+                .thenApply(resultSerializer::parse);
     }
 
     @Override
@@ -92,10 +101,10 @@ public class Client<E, Q, R> implements JournalKeeperClient<E, Q, R> {
     }
 
     private interface LeaderRpc<T extends BaseResponse, E, Q, R> {
-        CompletableFuture<T> invokeLeader(ClientServerRpc<E, Q, R> leaderRpc);
+        CompletableFuture<T> invokeLeader(ClientServerRpc leaderRpc);
     }
 
-    private CompletableFuture<ClientServerRpc<E, Q, R>> getLeaderRpc() {
+    private CompletableFuture<ClientServerRpc> getLeaderRpc() {
         return clientServerRpcAccessPoint
                 .getClintServerRpc()
                 .getServers()

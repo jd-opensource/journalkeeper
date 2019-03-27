@@ -7,16 +7,16 @@ import java.util.List;
  * @author liyue25
  * Date: 2019-03-14
  */
-public class AsyncAppendEntriesRequest<E> {
+public class AsyncAppendEntriesRequest {
 
     private final int term;
     private final URI leader;
     private final long prevLogIndex;
     private final int prevLogTerm;
-    private final List<E> entries;
+    private final List<byte []> entries;
     private final long leaderCommit;
 
-    public AsyncAppendEntriesRequest(int term, URI leader, long prevLogIndex, int prevLogTerm, List<E> entries, long leaderCommit) {
+    public AsyncAppendEntriesRequest(int term, URI leader, long prevLogIndex, int prevLogTerm, List<byte []> entries, long leaderCommit) {
         this.term = term;
         this.leader = leader;
         this.prevLogIndex = prevLogIndex;
@@ -41,7 +41,7 @@ public class AsyncAppendEntriesRequest<E> {
         return prevLogTerm;
     }
 
-    public List<E> getEntries() {
+    public List<byte []> getEntries() {
         return entries;
     }
 

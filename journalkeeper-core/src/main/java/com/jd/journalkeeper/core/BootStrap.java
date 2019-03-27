@@ -37,7 +37,7 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
     private final ScheduledExecutorService scheduledExecutorService;
     private final ExecutorService asyncExecutorService;
     private final JournalKeeperServer.Roll roll;
-    private final ClientServerRpcAccessPoint<E, Q, R> clientServerRpcAccessPoint;
+    private final ClientServerRpcAccessPoint clientServerRpcAccessPoint;
     private final Server<E, Q, R> server;
 
     /**
@@ -69,7 +69,7 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
         this.asyncExecutorService = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors() * 2, new NamedThreadFactory("JournalKeeper-Async-Executor"));
         this.roll = roll;
         this.server = createServer();
-        this.clientServerRpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class).getClientServerRpcAccessPoint(servers, entrySerializer, querySerializer, resultSerializer);
+        this.clientServerRpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class).getClientServerRpcAccessPoint(servers);
     }
 
     private Server<E, Q, R> createServer() {
@@ -88,9 +88,9 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
     public JournalKeeperClient<E, Q, R> getClient() {
         Client<E, Q, R> client;
         if(this.server == null) {
-            client = new Client<>(clientServerRpcAccessPoint, properties);
+            client = new Client<>(clientServerRpcAccessPoint, entrySerializer, querySerializer, resultSerializer, properties);
         } else {
-            client = new Client<>(new LocalDefaultRpcAccessPoint<>(server, clientServerRpcAccessPoint), properties);
+            client = new Client<>(new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), entrySerializer, querySerializer, resultSerializer,  properties);
         }
         return client;
     }

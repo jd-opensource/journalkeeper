@@ -248,8 +248,8 @@ public class StorageEntryParser {
         }
     }
 
-    public static <E> StorageEntry<E> parse(ByteBuffer headerBuffer) {
-        StorageEntry<E> storageEntry = new StorageEntry<>();
+    public static StorageEntry parseHeader(ByteBuffer headerBuffer) {
+        StorageEntry storageEntry = new StorageEntry();
         checkMagic(headerBuffer);
         storageEntry.setLength(getInt(headerBuffer, LENGTH));
         storageEntry.setTerm(getInt(headerBuffer, TERM));
@@ -262,11 +262,11 @@ public class StorageEntryParser {
         }
     }
 
-    public static <E> void serialze(ByteBuffer destBuffer, StorageEntry<E> storageEntry, Serializer<E> serializer) {
+    public static  void serialize(ByteBuffer destBuffer, StorageEntry storageEntry) {
 
         destBuffer.putInt(storageEntry.getLength());
         destBuffer.putShort(StorageEntry.MAGIC);
         destBuffer.putInt(storageEntry.getTerm());
-        serializer.serialize(destBuffer, storageEntry.getEntry());
+        destBuffer.put(storageEntry.getEntry());
     }
 }

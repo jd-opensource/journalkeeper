@@ -36,7 +36,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
      */
     private List<URI> parents;
 
-    private ServerRpc<E, Q, R> currentServer = null;
+    private ServerRpc currentServer = null;
     /**
      * 复制线程
      */
@@ -69,7 +69,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
 
     private void pullEntries() throws Throwable {
 
-        GetServerEntriesResponse<StorageEntry<E>> response =
+        GetServerEntriesResponse response =
                 selectServer().getServerEntries(new GetServerEntriesRequest(commitIndex,config.getPullBatchSize())).get();
 
         try {
@@ -139,7 +139,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
         }
     }
 
-    private ServerRpc<E, Q, R> selectServer() {
+    private ServerRpc selectServer() {
         long sleep = 0L;
         while (null == currentServer || !currentServer.isAlive()) {
             if(sleep > 0) {
@@ -181,13 +181,13 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
     }
 
     @Override
-    public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest<E> request) {
+    public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
         return CompletableFuture.supplyAsync(() -> new UpdateClusterStateResponse(new NotLeaderException(leader)), asyncExecutor);
     }
 
     @Override
-    public CompletableFuture<QueryStateResponse<R>> queryClusterState(QueryStateRequest<Q> request) {
-        return CompletableFuture.supplyAsync(() -> new QueryStateResponse<>(new NotLeaderException(leader)), asyncExecutor);
+    public CompletableFuture<QueryStateResponse> queryClusterState(QueryStateRequest request) {
+        return CompletableFuture.supplyAsync(() -> new QueryStateResponse(new NotLeaderException(leader)), asyncExecutor);
     }
 
     @Override

@@ -8,26 +8,26 @@ import java.net.URI;
  * @author liyue25
  * Date: 2019-03-14
  */
-public class QueryStateResponse<R>  extends BaseResponse {
-    private final R result;
+public class QueryStateResponse  extends BaseResponse {
+    private final byte [] result;
     private final long lastApplied;
     public QueryStateResponse(Throwable t) {
         this(null, -1,  t);
     }
 
-    public QueryStateResponse(R result, long lastApplied){
+    public QueryStateResponse(byte [] result, long lastApplied){
         this(result, lastApplied, null);
     }
-    public QueryStateResponse(R result){
+    public QueryStateResponse(byte [] result){
         this(result, -1L, null);
     }
 
-    private QueryStateResponse(R result, long lastApplied, Throwable t) {
+    private QueryStateResponse(byte [] result, long lastApplied, Throwable t) {
         super(t);
         this.result = result;
         this.lastApplied = lastApplied;
     }
-    public R getResult() {
+    public byte [] getResult() {
         return result;
     }
 

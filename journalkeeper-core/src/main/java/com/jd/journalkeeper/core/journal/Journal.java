@@ -1,6 +1,5 @@
 package com.jd.journalkeeper.core.journal;
 
-import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.StorageEntry;
 import com.jd.journalkeeper.core.exception.JournalException;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
@@ -16,23 +15,22 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.stream.Collectors;
 
 /**
  * @author liyue25
  * Date: 2019-03-15
  */
-public class Journal<E>  implements Flushable, Closeable {
+public class Journal  implements Flushable, Closeable {
 
-    public final static int INDEX_STORAGE_SIZE = Long.BYTES;
+    private final static int INDEX_STORAGE_SIZE = Long.BYTES;
     private final JournalPersistence indexPersistence;
     private final JournalPersistence journalPersistence;
-    private final Serializer<E> serializer;
     private final BufferPool bufferPool;
 
-    public Journal(JournalPersistence indexPersistence, JournalPersistence journalPersistence, Serializer<E> serializer, BufferPool bufferPool) {
+    public Journal(JournalPersistence indexPersistence, JournalPersistence journalPersistence, BufferPool bufferPool) {
         this.indexPersistence = indexPersistence;
         this.journalPersistence = journalPersistence;
-        this.serializer = serializer;
         this.bufferPool = bufferPool;
     }
 
@@ -61,6 +59,7 @@ public class Journal<E>  implements Flushable, Closeable {
                         throw new CompletionException(e);
                     }
                 })
+                .thenApply(ByteBuffer::wrap)
                 .thenApply(ByteBuffer::getLong)
                 .thenApply(offset -> {
                     try {
@@ -72,68 +71,63 @@ public class Journal<E>  implements Flushable, Closeable {
                 .thenApply(offset -> minIndex());
     }
 
-    public long append(StorageEntry<E> storageEntry) {
-        return append(Collections.singletonList(storageEntry));
+    public long append(StorageEntry storageEntry) {
+        ByteBuffer byteBuffer = ByteBuffer.allocate(storageEntry.getLength());
+        StorageEntryParser.serialize(byteBuffer, storageEntry);
+        return append(Collections.singletonList(byteBuffer.array()));
     }
 
-    public long append(List<StorageEntry<E>> storageEntries) {
+    public long append(List<byte []> storageEntries) {
         // 计算长度
         int journalBufferLength = storageEntries.stream()
-                .peek(storageEntry -> storageEntry.setLength(serializer.sizeOf(storageEntry.getEntry())))
-                .mapToInt(StorageEntry::getLength).sum();
+                .mapToInt(se -> se.length).sum();
         // 计算索引
         long [] indices = new long[storageEntries.size()];
         long offset = journalPersistence.max();
         for (int i = 0; i < indices.length; i++) {
             indices[i] = offset;
-            offset += storageEntries.get(i).getLength();
+            offset += storageEntries.get(i).length;
         }
 
-        ByteBuffer journalBuffer = bufferPool.allocate(journalBufferLength);
+
         try {
-            for (StorageEntry<E> storageEntry : storageEntries) {
-                StorageEntryParser.serialze(journalBuffer, storageEntry, serializer);
+            for (byte [] storageEntry : storageEntries) {
+                journalPersistence.append(storageEntry);
             }
-            journalBuffer.flip();
-            journalPersistence.append(journalBuffer);
         } catch (IOException e) {
             throw new JournalException(e);
-        } finally {
-            bufferPool.release(journalBuffer);
         }
         int indexBufferLength = INDEX_STORAGE_SIZE * storageEntries.size();
-        ByteBuffer indexBuffer = bufferPool.allocate(indexBufferLength);
+        ByteBuffer indexBuffer = ByteBuffer.allocate(indexBufferLength);
         try {
             for (long index: indices) {
                 indexBuffer.putLong(index);
             }
             indexBuffer.flip();
-            indexPersistence.append(indexBuffer);
+            indexPersistence.append(indexBuffer.array());
         } catch (IOException e) {
             throw new JournalException(e);
-        } finally {
-            bufferPool.release(indexBuffer);
         }
 
         return maxIndex();
     }
 
-    public E read(long index){
+    public byte [] read(long index){
         checkIndex(index);
-        StorageEntry<E> storageEntry = readStorageEntry(index);
+        StorageEntry storageEntry = readStorageEntry(index);
 
         return storageEntry.getEntry();
     }
 
-    private StorageEntry<E> readStorageEntry(long index){
+    private StorageEntry readStorageEntry(long index){
         checkIndex(index);
         try {
             long offset = readOffset(index);
 
-            StorageEntry<E> storageEntry = readHeader(offset);
+            StorageEntry storageEntry = readHeader(offset);
 
-            ByteBuffer entryBuffer = journalPersistence.read(offset + StorageEntryParser.getHeaderLength(), storageEntry.getLength());
-            storageEntry.setEntry(serializer.parse(entryBuffer));
+            byte [] entryBytes = journalPersistence.read(offset + StorageEntryParser.getHeaderLength(), storageEntry.getLength() - StorageEntryParser.getHeaderLength());
+            storageEntry.setEntry(entryBytes);
 
             return storageEntry;
         } catch (IOException e) {
@@ -141,11 +135,24 @@ public class Journal<E>  implements Flushable, Closeable {
         }
     }
 
-    private StorageEntry<E> readHeader(long offset) {
+    private byte [] readRawStorageEntry(long index){
+        checkIndex(index);
         try {
-            ByteBuffer headerBuffer = journalPersistence.read(offset, StorageEntryParser.getHeaderLength());
+            long offset = readOffset(index);
 
-            return StorageEntryParser.parse(headerBuffer);
+            StorageEntry storageEntry = readHeader(offset);
+
+            return journalPersistence.read(offset , storageEntry.getLength());
+        } catch (IOException e) {
+            throw new JournalException(e);
+        }
+    }
+
+    private StorageEntry readHeader(long offset) {
+        try {
+            byte [] headerBytes = journalPersistence.read(offset, StorageEntryParser.getHeaderLength());
+
+            return StorageEntryParser.parseHeader(ByteBuffer.wrap(headerBytes));
         } catch (IOException e) {
             throw new JournalException(e);
         }
@@ -153,16 +160,16 @@ public class Journal<E>  implements Flushable, Closeable {
 
     private long readOffset(long index) {
         try {
-            ByteBuffer indexBuffer = indexPersistence.read(index * INDEX_STORAGE_SIZE, INDEX_STORAGE_SIZE);
-            return indexBuffer.getLong();
+            byte [] indexBytes = indexPersistence.read(index * INDEX_STORAGE_SIZE, INDEX_STORAGE_SIZE);
+            return ByteBuffer.wrap(indexBytes).getLong();
         } catch (IOException e) {
             throw new JournalException(e);
         }
     }
 
-    public List<E> read(long index, int length) {
+    public List<byte []> read(long index, int length) {
         checkIndex(index);
-        List<E> list = new ArrayList<>(length);
+        List<byte []> list = new ArrayList<>(length);
         long i = index;
         while (list.size() < length && i < maxIndex()) {
             list.add(read(i++));
@@ -170,12 +177,12 @@ public class Journal<E>  implements Flushable, Closeable {
         return list;
     }
 
-    public List<StorageEntry<E>> readRaw(long index, int length) {
+    public List<byte []> readRaw(long index, int length) {
         checkIndex(index);
-        List<StorageEntry<E>> list = new ArrayList<>(length);
+        List<byte []> list = new ArrayList<>(length);
         long i = index;
         while (list.size() < length && i < maxIndex()) {
-            list.add(readStorageEntry(i++));
+            list.add(readRawStorageEntry(i++));
         }
         return list;
     }
@@ -183,7 +190,7 @@ public class Journal<E>  implements Flushable, Closeable {
         checkIndex(index);
         long offset = readOffset(index);
 
-        StorageEntry<E> storageEntry = readHeader(offset);
+        StorageEntry storageEntry = readHeader(offset);
 
         return storageEntry.getTerm();
     }
@@ -192,11 +199,15 @@ public class Journal<E>  implements Flushable, Closeable {
      * 从index位置开始：
      * 如果一条已经存在的日志与新的冲突（index 相同但是任期号 term 不同），则删除已经存在的日志和它之后所有的日志
      * 添加任何在已有的日志中不存在的条目
-     * @param entries 待比较的日志
+     * @param rawEntries 待比较的日志
      * @param startIndex 起始位置
      */
-    public void compareOrAppend(List<StorageEntry<E>> entries, long startIndex) {
+    public void compareOrAppend(List<byte []> rawEntries, long startIndex) {
 
+        List<StorageEntry> entries = rawEntries.stream()
+                .map(ByteBuffer::wrap)
+                .map(StorageEntryParser::parseHeader)
+                .collect(Collectors.toList());
         try {
             long index = startIndex;
 
@@ -205,7 +216,7 @@ public class Journal<E>  implements Flushable, Closeable {
                     truncate(index);
                 }
                 if (index == maxIndex()) {
-                    append(entries.subList(i, entries.size()));
+                    append(rawEntries.subList(i, entries.size()));
                     break;
                 }
             }
@@ -245,7 +256,7 @@ public class Journal<E>  implements Flushable, Closeable {
         long indexOffset;
         if (indexPersistence.max() - INDEX_STORAGE_SIZE >= indexPersistence.min()) {
             long offset = readOffset(indexPersistence.max() / INDEX_STORAGE_SIZE - 1);
-            StorageEntry<E> storageEntry = readHeader(offset);
+            StorageEntry storageEntry = readHeader(offset);
             indexOffset = offset + storageEntry.getLength();
         } else {
             indexOffset = journalPersistence.min();
@@ -263,7 +274,7 @@ public class Journal<E>  implements Flushable, Closeable {
             ByteBuffer buffer = bufferPool.allocate(indices.size() * INDEX_STORAGE_SIZE);
             indices.forEach(buffer::putLong);
             buffer.flip();
-            indexPersistence.append(buffer);
+            indexPersistence.append(buffer.array());
             bufferPool.release(buffer);
         }
     }
@@ -282,10 +293,10 @@ public class Journal<E>  implements Flushable, Closeable {
 
         long position = journalPersistence.max() - StorageEntryParser.getHeaderLength();
         long lastEntryPosition = -1; // 最后连续2条记录中后面那条的位置
-        StorageEntry<E> lastEntry = null;
+        StorageEntry lastEntry = null;
         while (position >= journalPersistence.min()) {
             try {
-                StorageEntry<E> storageEntry = readHeader(position);
+                StorageEntry storageEntry = readHeader(position);
                 // 找到一条记录的开头位置
                 if(lastEntryPosition < 0) { // 之前是否已经找到一条？
                     // 这是倒数第一条，记录之
@@ -310,7 +321,7 @@ public class Journal<E>  implements Flushable, Closeable {
         journalPersistence.truncate(journalPersistence.min());
     }
 
-    private void truncatePartialEntry(long lastEntryPosition, StorageEntry<E> lastEntry) throws IOException {
+    private void truncatePartialEntry(long lastEntryPosition, StorageEntry lastEntry) throws IOException {
         // 判断最后一条是否完整
         if(lastEntryPosition + lastEntry.getLength() <= journalPersistence.max()) {
             // 完整，截掉后面的部分

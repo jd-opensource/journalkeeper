@@ -12,6 +12,6 @@ import java.util.List;
  * Date: 2019-03-26
  */
 public interface RpcAccessPointFactory {
-    <E, Q, R> ServerRpcAccessPoint<E, Q, R> getServerRpcAccessPoint(Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer);
-    <E, Q, R> ClientServerRpcAccessPoint<E, Q, R> getClientServerRpcAccessPoint(List<URI> servers, Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer);
+    ServerRpcAccessPoint getServerRpcAccessPoint();
+    ClientServerRpcAccessPoint  getClientServerRpcAccessPoint(List<URI> servers);
 }

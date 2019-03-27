@@ -199,7 +199,7 @@ public class LocalStoreFile implements StoreFile {
             byteBuffer.position(position);
             byteBuffer.limit(writePosition);
 
-            ByteBuffer dest = ByteBuffer.allocate(length);
+            ByteBuffer dest = ByteBuffer.allocate(Math.min(length, byteBuffer.remaining()));
             if (length < byteBuffer.remaining()) {
                 byteBuffer.limit(byteBuffer.position() + length);
             }

@@ -10,13 +10,13 @@ import java.util.concurrent.CompletableFuture;
  * @author liyue25
  * Date: 2019-03-14
  */
-public interface ClientServerRpc<E, Q, R> extends Detectable {
+public interface ClientServerRpc extends Detectable {
 
     URI serverUri();
-    CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest<E> request);
-    CompletableFuture<QueryStateResponse<R>> queryClusterState(QueryStateRequest<Q> request);
-    CompletableFuture<QueryStateResponse<R>> queryServerState(QueryStateRequest<Q> request);
+    CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request);
+    CompletableFuture<QueryStateResponse> queryClusterState(QueryStateRequest request);
+    CompletableFuture<QueryStateResponse> queryServerState(QueryStateRequest request);
     CompletableFuture<LastAppliedResponse> lastApplied();
-    CompletableFuture<QueryStateResponse<R>> querySnapshot(QueryStateRequest<Q> request);
+    CompletableFuture<QueryStateResponse> querySnapshot(QueryStateRequest request);
     CompletableFuture<GetServersResponse> getServers();
 }

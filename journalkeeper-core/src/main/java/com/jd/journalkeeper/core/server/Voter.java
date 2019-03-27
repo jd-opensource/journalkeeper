@@ -50,7 +50,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
      */
     private List<Follower> followers = new ArrayList<>();
 
-    private final BlockingQueue<UpdateStateRequestResponse<E>> pendingUpdateRequests;
+    private final BlockingQueue<UpdateStateRequestResponse> pendingUpdateRequests;
 
     /**
      * 上次从LEADER收到心跳（asyncAppendEntries）的时间戳
@@ -60,7 +60,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     /**
      * 待处理的asyncAppendEntries Request，按照request中的preLogTerm和prevLogIndex排序。
      */
-    private BlockingQueue<ReplicationRequestResponse<E>> pendingAppendRequests;
+    private BlockingQueue<ReplicationRequestResponse> pendingAppendRequests;
 
     private final Config config;
     /**
@@ -93,7 +93,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
         pendingUpdateRequests = new ArrayBlockingQueue<>(config.getCacheRequests());
         pendingAppendRequests = new PriorityBlockingQueue<>(config.getCacheRequests(),
-                Comparator.comparing(ReplicationRequestResponse<E>::getPrevLogTerm)
+                Comparator.comparing(ReplicationRequestResponse::getPrevLogTerm)
                         .thenComparing(ReplicationRequestResponse::getPrevLogIndex));
 
         leaderAppendJournalEntryThread = buildLeaderAppendJournalEntryThread();
@@ -141,9 +141,9 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
      * 串行写入日志
      */
     private void appendJournalEntry() throws InterruptedException {
-        UpdateStateRequestResponse<E> rr = pendingUpdateRequests.take();
+        UpdateStateRequestResponse rr = pendingUpdateRequests.take();
         if(voterState == VoterState.LEADER) {
-            long index = journal.append(new StorageEntry<>(rr.request.getEntry(), currentTerm));
+            long index = journal.append(new StorageEntry(rr.request.getEntry(), currentTerm));
             callbackPositioningBelt.put(new Callback(index, rr.getResponseFuture()));
             // 唤醒复制线程
             leaderReplicationThread.weakup();
@@ -176,11 +176,11 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
     private void sendHeartbeat(Follower follower) {
         if(System.currentTimeMillis() - follower.lastHeartbeat > heartbeatIntervalMs) {
-            ServerRpc<E, Q, R> serverRpc = getServerRpc(follower.uri);
+            ServerRpc serverRpc = getServerRpc(follower.uri);
             long prevIndex = follower.nextIndex - 1;
             assert serverRpc != null;
             CompletableFuture<AsyncAppendEntriesResponse> future = serverRpc.asyncAppendEntries(
-                    new AsyncAppendEntriesRequest<>(currentTerm, leader, prevIndex,
+                    new AsyncAppendEntriesRequest(currentTerm, leader, prevIndex,
                             journal.getTerm(prevIndex),null, commitIndex )
             );
             future.exceptionally(exception -> {
@@ -277,9 +277,9 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                             int rpcCount = 0;
                             if (follower.nextIndex < maxIndex) {
                                 long nextIndex = Math.max(maxIndex, follower.nextIndex + config.getReplicationBatchSize());
-                                List<StorageEntry<E>> entries = journal.readRaw(follower.nextIndex, config.getReplicationBatchSize());
-                                AsyncAppendEntriesRequest<StorageEntry<E>> request =
-                                        new AsyncAppendEntriesRequest<>(currentTerm, leader,
+                                List<byte []> entries = journal.readRaw(follower.nextIndex, config.getReplicationBatchSize());
+                                AsyncAppendEntriesRequest request =
+                                        new AsyncAppendEntriesRequest(currentTerm, leader,
                                                 nextIndex - 1, journal.getTerm(nextIndex - 1),
                                                 entries, commitIndex);
                                 sendAsyncAppendEntriesRpc(follower, request);
@@ -299,10 +299,10 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         } while (count > 0);
     }
 
-    private void sendAsyncAppendEntriesRpc(Follower follower, AsyncAppendEntriesRequest<StorageEntry<E>> request) {
+    private void sendAsyncAppendEntriesRpc(Follower follower, AsyncAppendEntriesRequest request) {
         CompletableFuture<AsyncAppendEntriesResponse> future;
         try {
-            ServerRpc<E, Q, R> serverRpc = getServerRpc(follower.getUri());
+            ServerRpc serverRpc = getServerRpc(follower.getUri());
             assert serverRpc != null;
             future = serverRpc.asyncAppendEntries(request);
         } catch (Throwable t) {
@@ -327,7 +327,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         });
     }
 
-    private void delaySendAsyncAppendEntriesRpc(Follower follower, AsyncAppendEntriesRequest<StorageEntry<E>> request) {
+    private void delaySendAsyncAppendEntriesRpc(Follower follower, AsyncAppendEntriesRequest request) {
         new Timer("Retry-AsyncAppendEntriesRpc", true).schedule(new TimerTask() {
             @Override
             public void run() {
@@ -385,12 +385,12 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                         int rollbackSize = (int ) Math.min(config.getReplicationBatchSize(), follower.repStartIndex - journal.minIndex());
                         follower.repStartIndex -= rollbackSize;
                         sendAsyncAppendEntriesRpc(follower,
-                                new AsyncAppendEntriesRequest<>(fixTerm, leader,
+                                new AsyncAppendEntriesRequest(fixTerm, leader,
                                         follower.repStartIndex - 1,
                                         journal.getTerm(follower.repStartIndex - 1),
                                         journal.readRaw(follower.repStartIndex,rollbackSize),
                                         commitIndex ));
-                        delaySendAsyncAppendEntriesRpc(follower, new AsyncAppendEntriesRequest<>(fixTerm, leader,
+                        delaySendAsyncAppendEntriesRpc(follower, new AsyncAppendEntriesRequest(fixTerm, leader,
                                 response.getJournalIndex() - 1,
                                 journal.getTerm(response.getJournalIndex() - 1),
                                 journal.readRaw(response.getJournalIndex(),response.getEntryCount()),
@@ -403,7 +403,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                     if(response.isSuccess()) {
                         // 不可能走到这个分支
                     } else {
-                        delaySendAsyncAppendEntriesRpc(follower, new AsyncAppendEntriesRequest<>(fixTerm, leader,
+                        delaySendAsyncAppendEntriesRpc(follower, new AsyncAppendEntriesRequest(fixTerm, leader,
                                 response.getJournalIndex() - 1,
                                 journal.getTerm(response.getJournalIndex() - 1),
                                 journal.readRaw(response.getJournalIndex(),response.getEntryCount()),
@@ -426,7 +426,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
      */
     private void handleReplicationRequest() throws InterruptedException {
 
-        ReplicationRequestResponse<E> rr = pendingAppendRequests.take();
+        ReplicationRequestResponse rr = pendingAppendRequests.take();
         if( rr.getRequest().getTerm() < currentTerm) {
             rr.getResponseFuture()
                     .complete(new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
@@ -490,7 +490,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
     }
 
-    private ServerRpc<E, Q, R> getServerRpc(URI uri) {
+    private ServerRpc getServerRpc(URI uri) {
         return null;
     }
 
@@ -503,8 +503,8 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
      * 将请求放到待处理队列中。
      */
     @Override
-    public CompletableFuture<AsyncAppendEntriesResponse> asyncAppendEntries(AsyncAppendEntriesRequest<StorageEntry<E>> request) {
-        ReplicationRequestResponse<E> requestResponse = new ReplicationRequestResponse<>(request);
+    public CompletableFuture<AsyncAppendEntriesResponse> asyncAppendEntries(AsyncAppendEntriesRequest request) {
+        ReplicationRequestResponse requestResponse = new ReplicationRequestResponse(request);
         pendingAppendRequests.add(requestResponse);
         return requestResponse.getResponseFuture();
     }
@@ -537,8 +537,8 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     }
 
     @Override
-    public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest<E> request) {
-        UpdateStateRequestResponse<E> requestResponse = new UpdateStateRequestResponse<>(request);
+    public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
+        UpdateStateRequestResponse requestResponse = new UpdateStateRequestResponse(request);
         try {
             pendingUpdateRequests.put(requestResponse);
             return requestResponse.getResponseFuture();
@@ -549,17 +549,18 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     }
 
     @Override
-    public CompletableFuture<QueryStateResponse<R>> queryClusterState(QueryStateRequest<Q> request) {
+    public CompletableFuture<QueryStateResponse> queryClusterState(QueryStateRequest request) {
         return waitLeadership()
-                .thenCompose(aVoid -> state.query(request.getQuery()))
+                .thenCompose(aVoid -> state.query(querySerializer.parse(request.getQuery())))
+                .thenApply(resultSerializer::serialize)
                 .thenApply(QueryStateResponse::new)
                 .exceptionally(exception -> {
                     try {
                         throw exception;
                     } catch (NotLeaderException e) {
-                        return new QueryStateResponse<>(new NotLeaderException(leader));
+                        return new QueryStateResponse(new NotLeaderException(leader));
                     } catch (Throwable t) {
-                        return new QueryStateResponse<>(t);
+                        return new QueryStateResponse(t);
                     }
                 });
     }
@@ -666,17 +667,17 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     enum VoterState {LEADER, FOLLOWER, CANDIDATE}
 
 
-    private static class ReplicationRequestResponse<E> {
-        private final AsyncAppendEntriesRequest<StorageEntry<E>> request;
+    private static class ReplicationRequestResponse {
+        private final AsyncAppendEntriesRequest request;
         private final CompletableFuture<AsyncAppendEntriesResponse> responseFuture;
 
 
-        ReplicationRequestResponse(AsyncAppendEntriesRequest<StorageEntry<E>> request) {
+        ReplicationRequestResponse(AsyncAppendEntriesRequest request) {
             this.request = request;
             responseFuture = new CompletableFuture<>();
         }
 
-        AsyncAppendEntriesRequest<StorageEntry<E>> getRequest() {
+        AsyncAppendEntriesRequest getRequest() {
             return request;
         }
 
@@ -693,18 +694,18 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         }
     }
 
-    private static class UpdateStateRequestResponse<E> {
-        private final UpdateClusterStateRequest<E> request;
+    private static class UpdateStateRequestResponse {
+        private final UpdateClusterStateRequest request;
         private final CompletableFuture<UpdateClusterStateResponse> responseFuture;
 
         private long logIndex;
 
-        UpdateStateRequestResponse(UpdateClusterStateRequest<E> request) {
+        UpdateStateRequestResponse(UpdateClusterStateRequest request) {
             this.request = request;
             responseFuture = new CompletableFuture<>();
         }
 
-        UpdateClusterStateRequest<E> getRequest() {
+        UpdateClusterStateRequest getRequest() {
             return request;
         }
 
