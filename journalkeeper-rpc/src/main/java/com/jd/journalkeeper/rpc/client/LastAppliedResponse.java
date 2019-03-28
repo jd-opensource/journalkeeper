@@ -1,10 +1,6 @@
 package com.jd.journalkeeper.rpc.client;
 
-import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.rpc.BaseResponse;
-import com.sun.xml.internal.rngom.parse.host.Base;
-
-import java.net.URI;
 
 /**
  * @author liyue25

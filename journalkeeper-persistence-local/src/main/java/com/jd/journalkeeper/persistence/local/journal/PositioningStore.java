@@ -14,7 +14,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 带缓存的、无锁、高性能、多文件、基于位置的、Append Only的日志存储存储。
@@ -26,9 +26,9 @@ public class PositioningStore implements JournalPersistence,Closeable {
     private File base;
     private final PreloadBufferPool bufferPool;
     private final NavigableMap<Long, StoreFile> storeFileMap = new ConcurrentSkipListMap<>();
-    private long flushPosition = 0L;
-    private long writePosition = 0L;
-    private long leftPosition = 0L;
+    private AtomicLong flushPosition = new AtomicLong(0L);
+    private AtomicLong writePosition =  new AtomicLong(0L);
+    private AtomicLong leftPosition = new AtomicLong(0L);
     // 正在写入的
     private StoreFile writeStoreFile = null;
     private Config config = null;
@@ -47,20 +47,20 @@ public class PositioningStore implements JournalPersistence,Closeable {
         if(givenMax == max()) return;
         logger.info("Rollback to position: {}, left: {}, right: {}, flushPosition: {}, store: {}...",
                  ThreadSafeFormat.formatWithComma(givenMax),
-                ThreadSafeFormat.formatWithComma(leftPosition),
-                ThreadSafeFormat.formatWithComma(writePosition),
-                ThreadSafeFormat.formatWithComma(flushPosition),
+                ThreadSafeFormat.formatWithComma(leftPosition.get()),
+                ThreadSafeFormat.formatWithComma(writePosition.get()),
+                ThreadSafeFormat.formatWithComma(flushPosition.get()),
                 base.getAbsolutePath());
 
-        if (givenMax <= leftPosition || givenMax > max()) {
+        if (givenMax <= leftPosition.get() || givenMax > max()) {
             clear();
-            this.leftPosition = givenMax;
-            this.writePosition = givenMax;
-            this.flushPosition = givenMax;
+            this.leftPosition.set(givenMax);
+            this.writePosition.set(givenMax);
+            this.flushPosition.set(givenMax);
         } else if (givenMax < max()) {
             rollbackFiles(givenMax);
-            this.writePosition = givenMax;
-            if(this.flushPosition > givenMax) this.flushPosition = givenMax;
+            this.writePosition .set(givenMax);
+            if(this.flushPosition.get() > givenMax) this.flushPosition.set(givenMax);
             resetWriteStoreFile();
         }
     }
@@ -103,7 +103,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
     private void resetWriteStoreFile() {
         if(!storeFileMap.isEmpty()) {
             StoreFile storeFile = storeFileMap.lastEntry().getValue();
-            if(storeFile.position() + config.getFileDataSize() > writePosition) {
+            if(storeFile.position() + config.getFileDataSize() > writePosition.get()) {
                 writeStoreFile = storeFile;
             }
         }
@@ -113,15 +113,14 @@ public class PositioningStore implements JournalPersistence,Closeable {
         this.base = path.toFile();
         this.config = toConfig(properties);
 
-        // TODO: 自动调节 coreCount， maxCount
         bufferPool.addPreLoad(config.fileDataSize, 0, 5);
 
         recoverFileMap();
 
         long recoverPosition = this.storeFileMap.isEmpty()? 0L : this.storeFileMap.lastKey() + this.storeFileMap.lastEntry().getValue().fileDataSize();
-        flushPosition = recoverPosition;
-        writePosition = recoverPosition;
-        leftPosition = this.storeFileMap.isEmpty()? 0L : this.storeFileMap.firstKey();
+        flushPosition.set(recoverPosition);
+        writePosition.set(recoverPosition);
+        leftPosition.set(this.storeFileMap.isEmpty()? 0L : this.storeFileMap.firstKey());
 
         resetWriteStoreFile();
         logger.info("Store loaded, left: {}, right: {},  base: {}.",
@@ -133,14 +132,6 @@ public class PositioningStore implements JournalPersistence,Closeable {
     private Config toConfig(Properties properties) {
         Config config = new Config();
 
-        config.setCachedPageCount(Integer.parseInt(
-                properties.getProperty(
-                        Config.CACHED_PAGE_COUNT_KEY,
-                        String.valueOf(Config.DEFAULT_CACHED_PAGE_COUNT))));
-        config.setCacheLifeTime(Long.parseLong(
-                properties.getProperty(
-                        Config.CACHE_LIFETIME_MS_KEY,
-                        String.valueOf(Config.DEFAULT_CACHE_LIFETIME_MS))));
         config.setFileDataSize(Integer.parseInt(
                 properties.getProperty(
                         Config.FILE_DATA_SIZE_KEY,
@@ -179,40 +170,39 @@ public class PositioningStore implements JournalPersistence,Closeable {
     @Override
     public long append(byte [] bytes) throws IOException{
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
-        if (null == writeStoreFile) writeStoreFile = createStoreFile(writePosition);
-        if (config.getFileDataSize() - writeStoreFile.writePosition() < buffer.remaining()) writeStoreFile = createStoreFile(writePosition);
-        writePosition += writeStoreFile.append(buffer);
-        return writePosition;
+        if (null == writeStoreFile) writeStoreFile = createStoreFile(writePosition.get());
+        if (config.getFileDataSize() - writeStoreFile.writePosition() < buffer.remaining()) writeStoreFile = createStoreFile(writePosition.get());
+        writePosition.getAndAdd(writeStoreFile.append(buffer));
+        return writePosition.get();
     }
 
 
     @Override
     public long min() {
-        return leftPosition;
+        return leftPosition.get();
     }
 
     @Override
     public long max() {
-        return writePosition;
+        return writePosition.get();
     }
 
     @Override
     public long flushed() {
-        return flushPosition;
+        return flushPosition.get();
     }
 
     @Override
     public void flush() throws IOException {
-        while (flushPosition < writePosition) {
-            Map.Entry<Long, StoreFile> entry = storeFileMap.floorEntry(flushPosition);
+        while (flushPosition.get() < writePosition.get()) {
+            Map.Entry<Long, StoreFile> entry = storeFileMap.floorEntry(flushPosition.get());
             if (null == entry) return;
             StoreFile storeFile = entry.getValue();
             if (!storeFile.isClean()) storeFile.flush();
-            if (flushPosition < storeFile.position() + storeFile.flushPosition()) {
-                flushPosition = storeFile.position() + storeFile.flushPosition();
+            if (flushPosition.get() < storeFile.position() + storeFile.flushPosition()) {
+                flushPosition.set(storeFile.position() + storeFile.flushPosition());
             }
         }
-        evict();
     }
 
 
@@ -224,49 +214,6 @@ public class PositioningStore implements JournalPersistence,Closeable {
         }
 
         return storeFile;
-    }
-
-    private static class LruWrapper<V> {
-        private final long lastAccessTime;
-        private final V t;
-        LruWrapper(V t, long lastAccessTime) {
-            this.lastAccessTime = lastAccessTime;
-            this.t = t;
-        }
-        private long getLastAccessTime() {
-            return lastAccessTime;
-        }
-
-        private V get() {
-            return t;
-        }
-    }
-
-    /**
-     * 清除文件缓存页。LRU。
-     */
-    private void evict() {
-        if(storeFileMap.isEmpty()) return ;
-        List<LruWrapper<StoreFile>> sorted;
-        sorted = storeFileMap.values().stream()
-                .filter(StoreFile::hasPage)
-                .map(storeFile -> new LruWrapper<>(storeFile, storeFile.lastAccessTime()))
-                .sorted(Comparator.comparing(LruWrapper::getLastAccessTime))
-                .collect(Collectors.toList());
-
-        long now = System.currentTimeMillis();
-        int count = sorted.size();
-        while (!sorted.isEmpty()) {
-            LruWrapper<StoreFile> storeFileWrapper = sorted.remove(0);
-            StoreFile storeFile = storeFileWrapper.get();
-            if(storeFile.lastAccessTime() == storeFileWrapper.getLastAccessTime()
-                    && (count > config.getCachedPageCount() // 已经超过缓存数量限制
-                        || storeFileWrapper.getLastAccessTime() + config.getCacheLifeTime() > now)){ // 或者缓存太久没有被访问
-                if(storeFile.unload()) {
-                    count--;
-                }
-            }
-        }
     }
 
     public byte [] read(long position, int length) throws IOException{
@@ -285,9 +232,9 @@ public class PositioningStore implements JournalPersistence,Closeable {
 
     private void checkReadPosition(long position){
         long p;
-        if((p = leftPosition) > position) {
+        if((p = leftPosition.get()) > position) {
             throw new PositionUnderflowException(position, p);
-        } else if(position >= (p = writePosition)) {
+        } else if(position >= (p = writePosition.get())) {
             throw new PositionOverflowException(position, p);
         }
 
@@ -299,7 +246,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
      */
     public long shrink(long givenMin) throws IOException {
 
-        if(givenMin > flushPosition) givenMin = flushPosition;
+        if(givenMin > flushPosition.get()) givenMin = flushPosition.get();
 
         Iterator<Map.Entry<Long, StoreFile>> iterator =
                 storeFileMap.entrySet().iterator();
@@ -313,7 +260,8 @@ public class PositioningStore implements JournalPersistence,Closeable {
 
             // 至少保留一个文件
             if(storeFileMap.size() < 2 || start + fileDataSize > givenMin) break;
-            leftPosition += fileDataSize;
+            leftPosition.getAndAdd(fileDataSize);
+
             iterator.remove();
 
             deleteSize += deleteStoreFile(storeFile);
@@ -353,14 +301,9 @@ public class PositioningStore implements JournalPersistence,Closeable {
     public static class Config {
         final static int DEFAULT_FILE_HEADER_SIZE = 128;
         final static int DEFAULT_FILE_DATA_SIZE = 128 * 1024 * 1024;
-        final static int DEFAULT_CACHED_PAGE_COUNT = 2;
-        final static long DEFAULT_CACHE_LIFETIME_MS = 5000L;
-
 
         final static String FILE_HEADER_SIZE_KEY = "persistence.local.file_header_size";
         final static String FILE_DATA_SIZE_KEY = "persistence.local.file_data_size";
-        final static String CACHED_PAGE_COUNT_KEY = "persistence.local.cached_page_count";
-        final static String CACHE_LIFETIME_MS_KEY = "persistence.local.cache_lifetime_ms";
         /**
          * 文件头长度
          */
@@ -369,15 +312,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
          * 文件内数据最大长度
          */
         private int fileDataSize;
-        /**
-         * 最多缓存的页面数量
-         */
-        private int cachedPageCount;
 
-        /**
-         * 缓存最长存活时间
-         */
-        private long cacheLifeTime;
 
         int getFileHeaderSize() {
             return fileHeaderSize;
@@ -395,21 +330,6 @@ public class PositioningStore implements JournalPersistence,Closeable {
             this.fileDataSize = fileDataSize;
         }
 
-        int getCachedPageCount() {
-            return cachedPageCount;
-        }
-
-        void setCachedPageCount(int cachedPageCount) {
-            this.cachedPageCount = cachedPageCount;
-        }
-
-        long getCacheLifeTime() {
-            return cacheLifeTime;
-        }
-
-        void setCacheLifeTime(long cacheLifeTime) {
-            this.cacheLifeTime = cacheLifeTime;
-        }
     }
 
 

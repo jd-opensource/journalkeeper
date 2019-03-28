@@ -1,5 +1,7 @@
 package com.jd.journalkeeper.utils.buffer;
 
+
+import com.jd.journalkeeper.utils.format.Format;
 import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,12 +11,11 @@ import sun.nio.ch.DirectBuffer;
 
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
-import java.util.Map;
-import java.util.NoSuchElementException;
-import java.util.Queue;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 /**
  * @author liyue25
@@ -23,50 +24,116 @@ import java.util.concurrent.atomic.AtomicLong;
 public class PreloadBufferPool {
     private static final Logger logger = LoggerFactory.getLogger(PreloadBufferPool.class);
     private Map<Integer,PreLoadCache> bufferCache = new ConcurrentHashMap<>();
-    private final LoopThread loopThread;
-    private final LoopThread printThread;
-
-    // 缓存比率： 如果非堆内存使用率超过这个比率，就不再申请内存，抛出OOM。
+    private final LoopThread preloadThread;
+    private final LoopThread metricThread;
+    private final LoopThread evictThread;
+    private final long cacheLifetimeMs;
+    private final long maxMemorySize;
+    // 缓存比率：如果非堆内存使用率超过这个比率，就不再申请内存，抛出OOM。
     // 由于jvm在读写文件的时候会用到少量DirectBuffer作为缓存，必须预留一部分。
-    private final static float CACHE_RATIO = 0.9f;
+    private final static double CACHE_RATIO = 0.9d;
+    /**
+     * 缓存清理比率阈值，超过这个阈值执行缓存清理。
+     */
+    private final static double EVICT_RATIO = 0.8d;
+    private final static long DEFAULT_CACHE_LIFE_TIME_MS = 60000L;
+
+    private final static long EVICT_INTERVAL_MS = 1000L;
+    private final static long PRELOAD_INTERVAL_MS = 50L;
     private final AtomicLong usedSize = new AtomicLong(0L);
-    public PreloadBufferPool(long intervalMs) {
-        this(intervalMs, 0L);
+    private final Set<BufferHolder> bufferHolders = ConcurrentHashMap.newKeySet();
+
+    public PreloadBufferPool() {
+        this(0L, DEFAULT_CACHE_LIFE_TIME_MS, Math.round(VM.maxDirectMemory() * CACHE_RATIO));
     }
-    public PreloadBufferPool(long intervalMs, long dmuInterval) {
-        loopThread = LoopThread.builder()
+    public PreloadBufferPool(long printMetricIntervalMs) {
+        this(printMetricIntervalMs, DEFAULT_CACHE_LIFE_TIME_MS, Math.round(VM.maxDirectMemory() * CACHE_RATIO));
+    }
+    public PreloadBufferPool(long printMetricInterval, long cacheLifetimeMs, long maxMemorySize) {
+        this.cacheLifetimeMs = cacheLifetimeMs;
+        preloadThread = buildPreloadThread();
+        preloadThread.start();
+
+        if(printMetricInterval > 0) {
+            metricThread = buildMetricThread(printMetricInterval);
+            metricThread.start();
+        } else {
+            metricThread = null;
+        }
+
+        evictThread = buildEvictThread();
+        evictThread.start();
+        this.maxMemorySize = maxMemorySize;
+        logger.info("Max direct memory size : {}.", Format.formatTraffic(maxMemorySize));
+    }
+
+    private LoopThread buildMetricThread(long printMetricInterval) {
+        return LoopThread.builder()
+                .name("DirectBufferPrintThread")
+                .sleepTime(printMetricInterval, printMetricInterval)
+                .doWork(() -> {
+                    long used = usedSize.get();
+                    long plUsed = bufferCache.values().stream().mapToLong(preLoadCache -> {
+                        long cached = preLoadCache.cache.size();
+                        long fly = preLoadCache.onFlyCounter.get();
+                        long totalSize = preLoadCache.bufferSize * (cached + fly);
+                        logger.info("PreloadCache usage: cached: {} * {} = {}, onFly: {} * {} = {}, total: {}",
+                                preLoadCache.bufferSize, cached, String.format("%.2f MB", (double) preLoadCache.bufferSize * cached / 1024 / 1024),
+                                preLoadCache.bufferSize, fly, String.format("%.2f MB", (double) preLoadCache.bufferSize * fly / 1024 / 1024),
+                                String.format("%.2f MB", (double) totalSize / 1024 / 1024));
+                        return totalSize;
+                    }).sum();
+                    logger.info("DirectBuffer usage cached/used/max: {}/{}/{}.",
+                            Format.formatTraffic(plUsed),
+                            Format.formatTraffic(used),
+                            Format.formatTraffic(maxMemorySize));
+
+                })
+                .daemon(true)
+                .build();
+    }
+
+    private LoopThread buildPreloadThread() {
+        return LoopThread.builder()
                 .name("PreloadBufferPoolThread")
-                .sleepTime(intervalMs, intervalMs)
+                .sleepTime(PRELOAD_INTERVAL_MS, PRELOAD_INTERVAL_MS)
                 .doWork(this::preLoadBuffer)
                 .onException(e -> logger.warn("PreloadBufferPoolThread exception:", e))
                 .daemon(true)
                 .build();
-        loopThread.start();
+    }
 
-        if(dmuInterval > 0) {
-            printThread = LoopThread.builder()
-                    .name("DirectBufferPrintThread")
-                    .sleepTime(dmuInterval, dmuInterval)
-                    .doWork(() -> {
-                        long used = usedSize.get();
-                        long plUsed = bufferCache.values().stream().mapToLong(preLoadCache -> {
-                            long cached = preLoadCache.cache.size();
-                            long fly = preLoadCache.onFlyCounter.get();
-                            long totalSize = preLoadCache.bufferSize * (cached + fly);
-                            logger.info("PreloadCache usage: cached: {} * {} = {}, onFly: {} * {} = {}, total: {}",
-                                    preLoadCache.bufferSize, cached, String.format("%.2f MB", (double) preLoadCache.bufferSize * cached / 1024 / 1024),
-                                    preLoadCache.bufferSize, fly, String.format("%.2f MB", (double) preLoadCache.bufferSize * fly / 1024 / 1024),
-                                    String.format("%.2f MB", (double) totalSize / 1024 / 1024));
-                            return totalSize;
-                        }).sum();
-                        logger.info("DirectBuffer usage: {}.", String.format("%.2f MB/%.2f MB/%.2f MB", plUsed * 1D / 1024 /1024, used * 1D / 1024 / 1024, VM.maxDirectMemory() * 1D / 1024 / 1024));
+    private LoopThread buildEvictThread() {
+        return LoopThread.builder()
+                .name("EvictThread")
+                .sleepTime(EVICT_INTERVAL_MS, EVICT_INTERVAL_MS)
+                .condition(() -> usedSize.get() > maxMemorySize * EVICT_RATIO)
+                .doWork(this::evict)
+                .onException(e -> logger.warn("EvictThread exception:", e))
+                .daemon(true)
+                .build();
+    }
 
-                    })
-                    .daemon(true)
-                    .build();
-            printThread.start();
-        } else {
-            printThread = null;
+
+    /**
+     * 清除文件缓存页。LRU。
+     */
+    private void evict() {
+        if(bufferHolders.isEmpty()) return;
+        List<LruWrapper<BufferHolder>> sorted;
+        sorted = bufferHolders.stream()
+                .filter(BufferHolder::isFree)
+                .map(bufferHolder -> new LruWrapper<>(bufferHolder, bufferHolder.lastAccessTime()))
+                .sorted(Comparator.comparing(LruWrapper::getLastAccessTime))
+                .collect(Collectors.toList());
+
+        while (!sorted.isEmpty()) {
+            LruWrapper<BufferHolder> wrapper = sorted.remove(0);
+            BufferHolder holder = wrapper.get();
+            if((holder.lastAccessTime() == wrapper.getLastAccessTime() && usedSize.get() > maxMemorySize * EVICT_RATIO )
+                    || System.currentTimeMillis() - holder.lastAccessTime() > cacheLifetimeMs){ // 或者缓存太久没有被访问
+                holder.evict();
+            }
         }
     }
 
@@ -75,9 +142,9 @@ public class PreloadBufferPool {
     }
 
     public void close() {
-        this.loopThread.stop();
-        if(this.printThread != null) {
-            this.printThread.stop();
+        this.preloadThread.stop();
+        if(this.metricThread != null) {
+            this.metricThread.stop();
         }
         bufferCache.values().forEach(p -> {
             while (!p.cache.isEmpty()) {
@@ -111,7 +178,7 @@ public class PreloadBufferPool {
     }
 
     private ByteBuffer createOne(int size) {
-        while (usedSize.get() + size > VM.maxDirectMemory() * CACHE_RATIO) {
+        while (usedSize.get() + size > maxMemorySize) {
             PreLoadCache preLoadCache = bufferCache.values().stream()
                     .filter(p -> p.cache.size() > 0)
                     .findAny().orElse(null);
@@ -122,11 +189,28 @@ public class PreloadBufferPool {
             }
         }
 
-        if(usedSize.get() + size > VM.maxDirectMemory() * CACHE_RATIO)
-            throw new OutOfMemoryError();
+        if(usedSize.get() + size > maxMemorySize) {
+            // 如果内存不足，唤醒清理线程立即执行清理
+            evictThread.weakup();
+            // 等待5x10ms，如果还不足抛出异常
+            for (int i = 0; i < 5 && usedSize.get() + size > maxMemorySize; i++) {
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException e) {
+                    logger.warn("Interrupted: ", e);
+                }
+            }
+            if(usedSize.get() + size > maxMemorySize) {
+                throw new OutOfMemoryError();
+            }
+        }
         long u;
         while (!usedSize.compareAndSet(u = usedSize.get(), u + size)){
             Thread.yield();
+        }
+
+        if(usedSize.get() > maxMemorySize * EVICT_RATIO) {
+            evictThread.weakup();
         }
 //        logger.info("Allocate : {}", size);
         return ByteBuffer.allocateDirect(size);
@@ -147,8 +231,13 @@ public class PreloadBufferPool {
         }
     }
 
+    public ByteBuffer allocate(int bufferSize, BufferHolder bufferHolder) {
+        ByteBuffer buffer = allocate(bufferSize);
+        bufferHolders.add(bufferHolder);
+        return buffer;
+    }
 
-    public ByteBuffer allocate(int bufferSize) {
+    private ByteBuffer allocate(int bufferSize) {
         try {
             PreLoadCache preLoadCache = bufferCache.get(bufferSize);
             if(null != preLoadCache) {
@@ -166,11 +255,12 @@ public class PreloadBufferPool {
 
             }
         } catch (OutOfMemoryError outOfMemoryError) {
-            logger.debug("OOM: {}.", String.format("%.2f MB/%.2f MB", usedSize.get() * 1D / 1024 / 1024, VM.maxDirectMemory() * 1D / 1024 / 1024));
+            logger.debug("OOM: {}.", String.format("%.2f MB/%.2f MB", usedSize.get() * 1D / 1024 / 1024, maxMemorySize * 1D / 1024 / 1024));
             throw outOfMemoryError;
         }
     }
-    public void release(ByteBuffer byteBuffer) {
+    public void release(ByteBuffer byteBuffer, BufferHolder bufferHolder) {
+        bufferHolders.remove(bufferHolder);
         int size = byteBuffer.capacity();
         PreLoadCache preLoadCache = bufferCache.get(size);
         if(null != preLoadCache) {
@@ -182,11 +272,6 @@ public class PreloadBufferPool {
         }
     }
 
-    public long maxMemorySize() {
-        return bufferCache.entrySet().stream().mapToLong(entry -> entry.getKey() * entry.getValue().maxCount).sum();
-    }
-
-
     static class PreLoadCache {
         final int bufferSize;
         final int coreCount, maxCount;
@@ -196,6 +281,22 @@ public class PreloadBufferPool {
             this.bufferSize = bufferSize;
             this.coreCount = coreCount;
             this.maxCount = maxCount;
+        }
+    }
+
+    private static class LruWrapper<V> {
+        private final long lastAccessTime;
+        private final V t;
+        LruWrapper(V t, long lastAccessTime) {
+            this.lastAccessTime = lastAccessTime;
+            this.t = t;
+        }
+        private long getLastAccessTime() {
+            return lastAccessTime;
+        }
+
+        private V get() {
+            return t;
         }
     }
 }

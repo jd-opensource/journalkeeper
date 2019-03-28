@@ -1,6 +1,7 @@
 package com.jd.journalkeeper.persistence.local.journal;
 
 
+import com.jd.journalkeeper.utils.buffer.BufferHolder;
 import com.jd.journalkeeper.utils.buffer.PreloadBufferPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,7 +21,7 @@ import java.util.concurrent.locks.StampedLock;
 /**
  * 支持并发、带缓存页、顺序写入的文件
  */
-public class LocalStoreFile implements StoreFile {
+public class LocalStoreFile implements StoreFile, BufferHolder {
     private static final Logger logger = LoggerFactory.getLogger(LocalStoreFile.class);
     // 文件全局位置
     private final long filePosition;
@@ -97,7 +98,7 @@ public class LocalStoreFile implements StoreFile {
                 unloadUnsafe();
             }
             try {
-                ByteBuffer buffer = bufferPool.allocate(capacity);
+                ByteBuffer buffer = bufferPool.allocate(capacity, this);
                 loadDirectBuffer(buffer);
             } catch (OutOfMemoryError oom) {
                 logger.warn("Insufficient direct memory, use write map instead. File: {}", file.getAbsolutePath());
@@ -360,7 +361,7 @@ public class LocalStoreFile implements StoreFile {
         final ByteBuffer direct = pageBuffer;
         pageBuffer = null;
         this.bufferType = NO_BUFFER;
-        if(null != direct) bufferPool.release(direct);
+        if(null != direct) bufferPool.release(direct, this);
     }
 
     private void unloadMappedBuffer() {
@@ -378,6 +379,20 @@ public class LocalStoreFile implements StoreFile {
         }catch (Exception e) {
             logger.warn("Release direct buffer exception: ", e);
         }
+    }
+    @Override
+    public int size() {
+        return capacity;
+    }
+
+    @Override
+    public boolean isFree() {
+        return isClean();
+    }
+
+    @Override
+    public boolean evict() {
+        return unload();
     }
 
 }
