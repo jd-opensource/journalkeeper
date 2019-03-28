@@ -1,6 +1,6 @@
 package com.jd.journalkeeper.rpc.client;
 
-import com.jd.journalkeeper.rpc.transport.command.Payload;
+import com.jd.journalkeeper.rpc.remoting.transport.command.Payload;
 
 /**
  * @author liyue25

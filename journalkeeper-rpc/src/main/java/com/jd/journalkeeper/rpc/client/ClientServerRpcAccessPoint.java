@@ -8,6 +8,6 @@ import java.net.URI;
  * Date: 2019-03-14
  */
 public interface ClientServerRpcAccessPoint {
-   ClientServerRpc getClintServerRpc();
-   ClientServerRpc getClintServerRpc(URI uri);
+    ClientServerRpc getClintServerRpc();
+    ClientServerRpc getClintServerRpc(URI uri);
 }

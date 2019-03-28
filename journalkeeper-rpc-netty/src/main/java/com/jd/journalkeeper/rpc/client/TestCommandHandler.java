@@ -1,9 +1,9 @@
 package com.jd.journalkeeper.rpc.client;
 
-import com.jd.journalkeeper.rpc.transport.Transport;
-import com.jd.journalkeeper.rpc.transport.command.Command;
-import com.jd.journalkeeper.rpc.transport.command.Direction;
-import com.jd.journalkeeper.rpc.transport.command.handler.CommandHandler;
+import com.jd.journalkeeper.rpc.remoting.transport.Transport;
+import com.jd.journalkeeper.rpc.remoting.transport.command.Command;
+import com.jd.journalkeeper.rpc.remoting.transport.command.Direction;
+import com.jd.journalkeeper.rpc.remoting.transport.command.handler.CommandHandler;
 
 /**
  * @author liyue25

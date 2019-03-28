@@ -1,9 +1,9 @@
 package com.jd.journalkeeper.rpc.client;
 
-import com.jd.journalkeeper.rpc.transport.Transport;
-import com.jd.journalkeeper.rpc.transport.TransportClient;
-import com.jd.journalkeeper.rpc.transport.config.ClientConfig;
-import com.jd.journalkeeper.rpc.transport.support.DefaultTransportClientFactory;
+import com.jd.journalkeeper.rpc.remoting.transport.Transport;
+import com.jd.journalkeeper.rpc.remoting.transport.TransportClient;
+import com.jd.journalkeeper.rpc.remoting.transport.config.ClientConfig;
+import com.jd.journalkeeper.rpc.remoting.transport.support.DefaultTransportClientFactory;
 
 /**
  * @author liyue25

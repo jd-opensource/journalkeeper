@@ -1,8 +1,8 @@
 package com.jd.journalkeeper.rpc.client;
 
 
-import com.jd.journalkeeper.rpc.transport.codec.*;
-import com.jd.journalkeeper.rpc.transport.exception.TransportException;
+import com.jd.journalkeeper.rpc.remoting.transport.codec.*;
+import com.jd.journalkeeper.rpc.remoting.transport.exception.TransportException;
 import io.netty.buffer.ByteBuf;
 
 /**
