@@ -1,6 +1,9 @@
 package com.jd.journalkeeper.rpc.server;
 
+import com.jd.journalkeeper.exceptions.IndexOverflowException;
+import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.rpc.BaseResponse;
+import com.jd.journalkeeper.rpc.StatusCode;
 
 import java.util.List;
 
@@ -38,5 +41,18 @@ public class GetServerEntriesResponse extends BaseResponse {
 
     public long getLastApplied() {
         return lastApplied;
+    }
+
+    @Override
+    public void setException(Throwable throwable) {
+        try {
+            throw throwable;
+        } catch (IndexOverflowException e) {
+            setStatusCode(StatusCode.INDEX_OVERFLOW);
+        } catch (IndexUnderflowException e) {
+            setStatusCode(StatusCode.INDEX_UNDERFLOW);
+        } catch (Throwable t) {
+            super.setException(throwable);
+        }
     }
 }

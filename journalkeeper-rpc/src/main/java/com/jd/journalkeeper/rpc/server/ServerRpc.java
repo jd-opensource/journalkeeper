@@ -1,6 +1,5 @@
 package com.jd.journalkeeper.rpc.server;
 
-import com.jd.journalkeeper.core.api.StorageEntry;
 import com.jd.journalkeeper.rpc.Detectable;
 import com.jd.journalkeeper.rpc.client.ClientServerRpc;
 

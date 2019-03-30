@@ -6,6 +6,8 @@ import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.JournalKeeperClient;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.rpc.BaseResponse;
+import com.jd.journalkeeper.rpc.LeaderResponse;
+import com.jd.journalkeeper.rpc.StatusCode;
 import com.jd.journalkeeper.rpc.client.*;
 
 import java.net.URI;
@@ -85,18 +87,15 @@ public class Client<E, Q, R> implements JournalKeeperClient<E, Q, R> {
      * @param invoke 真正去Leader要调用的方法
      * @param <T> 返回的Response
      */
-    private <T extends BaseResponse> CompletableFuture<T> invokeLeaderRpc(LeaderRpc<T, E, Q, R> invoke) {
+    private <T extends LeaderResponse> CompletableFuture<T> invokeLeaderRpc(LeaderRpc<T, E, Q, R> invoke) {
         return getLeaderRpc()
                 .thenCompose(invoke::invokeLeader)
                 .thenCompose(resp -> {
-                    try {
-                        if (resp.getException() != null) {
-                            throw resp.getException();
-                        }
-                    } catch (NotLeaderException nle) {
-                        return invoke.invokeLeader(clientServerRpcAccessPoint.getClintServerRpc(nle.getLeader()));
-                    } catch (Throwable ignored) {}
-                    return CompletableFuture.supplyAsync(() -> resp);
+                    if (resp.getStatusCode() == StatusCode.NOT_LEADER) {
+                        return invoke.invokeLeader(clientServerRpcAccessPoint.getClintServerRpc(resp.getLeader()));
+                    } else {
+                        return CompletableFuture.supplyAsync(() -> resp);
+                    }
                 });
     }
 

@@ -1,7 +1,7 @@
 package com.jd.journalkeeper.rpc.header;
 
 
-import com.jd.journalkeeper.rpc.client.TestHeader;
+import com.jd.journalkeeper.rpc.remoting.example.TestHeader;
 import com.jd.journalkeeper.rpc.remoting.serialize.SerializeSupport;
 import com.jd.journalkeeper.rpc.remoting.transport.codec.Codec;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Direction;
@@ -35,7 +35,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class JournalKeeperHeaderCodec implements Codec {
 
-    public static final int HEADER_LENGTH = 4 + 1 + 1 + 4 + 1 + 8;
+    private static final int HEADER_LENGTH = 4 + 1 + 1 + 4 + 1 + 8;
 
     @Override
     public JournalKeeperHeader decode(ByteBuf buffer) throws TransportException.CodecException {

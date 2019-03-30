@@ -167,7 +167,7 @@ public abstract class Server<E, Q, R>
 
         persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
         bufferPool = ServiceSupport.load(BufferPool.class);
-        serverRpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class).getServerRpcAccessPoint();
+        serverRpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class).createServerRpcAccessPoint(properties);
         journal = new Journal(
                 persistenceFactory.createJournalPersistenceInstance(),
                 persistenceFactory.createJournalPersistenceInstance(),

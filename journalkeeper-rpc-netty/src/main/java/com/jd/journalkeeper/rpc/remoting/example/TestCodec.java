@@ -1,4 +1,4 @@
-package com.jd.journalkeeper.rpc.client;
+package com.jd.journalkeeper.rpc.remoting.example;
 
 
 import com.jd.journalkeeper.rpc.remoting.transport.codec.*;
@@ -21,9 +21,7 @@ public class TestCodec implements Codec {
 
     public TestCodec() {
         PayloadCodecFactory payloadCodecFactory = new PayloadCodecFactory();
-        payloadCodecFactory.register(1, new StringPayloadCodec()); // 请求
-        payloadCodecFactory.register(-1, new StringPayloadCodec());// 响应
-//        JMQPayloadCodecRegistry.register(payloadCodecFactory);
+        payloadCodecFactory.register(new StringPayloadCodec());// 响应
         this.headerCodec = new TestHeaderCodec();
         this.payloadCodecFactory = payloadCodecFactory;
         this.decoder = new DefaultDecoder(headerCodec, payloadCodecFactory);

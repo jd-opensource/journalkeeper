@@ -1,4 +1,4 @@
-package com.jd.journalkeeper.rpc.client;
+package com.jd.journalkeeper.rpc.remoting.example;
 
 import com.jd.journalkeeper.rpc.remoting.transport.command.support.DefaultCommandHandlerFactory;
 import com.jd.journalkeeper.rpc.remoting.transport.config.ServerConfig;
@@ -11,7 +11,7 @@ import com.jd.journalkeeper.rpc.remoting.transport.support.DefaultTransportServe
 public class Server {
     public static void main(String [] args) throws Exception {
         DefaultCommandHandlerFactory handlerFactory = new DefaultCommandHandlerFactory();
-        handlerFactory.register(1,  new TestCommandHandler(new TestInterfaceImpl()));
+        handlerFactory.register(new TestCommandHandler(new TestInterfaceImpl()));
         DefaultTransportServerFactory defaultTransportServerFactory = new DefaultTransportServerFactory(
                 new TestCodec(), handlerFactory
                );

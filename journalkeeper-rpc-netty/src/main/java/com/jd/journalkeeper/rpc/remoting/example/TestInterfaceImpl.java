@@ -1,4 +1,4 @@
-package com.jd.journalkeeper.rpc.client;
+package com.jd.journalkeeper.rpc.remoting.example;
 
 /**
  * @author liyue25

@@ -1,4 +1,4 @@
-package com.jd.journalkeeper.rpc.client;
+package com.jd.journalkeeper.rpc.remoting.example;
 
 import com.jd.journalkeeper.rpc.remoting.transport.command.Direction;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Header;

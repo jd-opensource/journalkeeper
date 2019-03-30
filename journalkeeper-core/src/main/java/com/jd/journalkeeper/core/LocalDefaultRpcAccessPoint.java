@@ -5,6 +5,7 @@ import com.jd.journalkeeper.rpc.client.ClientServerRpc;
 import com.jd.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 
 import java.net.URI;
+import java.util.List;
 
 /**
  * 优先访问本地的ClientServerRpc接入点
@@ -18,6 +19,12 @@ public class LocalDefaultRpcAccessPoint implements ClientServerRpcAccessPoint {
         this.server = server;
         this.clientServerRpcAccessPoint = clientServerRpcAccessPoint;
     }
+
+    @Override
+    public void updateServers(List<URI> uriList) {
+        // nothing to do
+    }
+
     @Override
     public ClientServerRpc getClintServerRpc() {
         return server;
@@ -26,5 +33,10 @@ public class LocalDefaultRpcAccessPoint implements ClientServerRpcAccessPoint {
     @Override
     public ClientServerRpc getClintServerRpc(URI uri) {
         return clientServerRpcAccessPoint.getClintServerRpc(uri);
+    }
+
+    @Override
+    public void setServiceProvider(ClientServerRpc clientServerRpc) {
+
     }
 }

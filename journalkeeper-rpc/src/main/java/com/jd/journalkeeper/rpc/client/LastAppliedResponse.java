@@ -1,12 +1,12 @@
 package com.jd.journalkeeper.rpc.client;
 
-import com.jd.journalkeeper.rpc.BaseResponse;
+import com.jd.journalkeeper.rpc.LeaderResponse;
 
 /**
  * @author liyue25
  * Date: 2019-03-14
  */
-public class LastAppliedResponse  extends BaseResponse {
+public class LastAppliedResponse  extends LeaderResponse {
     private final long lastApplied;
     public LastAppliedResponse(Throwable throwable){
         this(throwable, -1L);

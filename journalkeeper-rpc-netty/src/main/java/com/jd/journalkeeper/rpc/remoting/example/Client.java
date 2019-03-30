@@ -1,4 +1,4 @@
-package com.jd.journalkeeper.rpc.client;
+package com.jd.journalkeeper.rpc.remoting.example;
 
 import com.jd.journalkeeper.rpc.remoting.transport.Transport;
 import com.jd.journalkeeper.rpc.remoting.transport.TransportClient;
@@ -13,7 +13,7 @@ public class Client {
     public static void main(String [] args) {
         DefaultTransportClientFactory defaultTransportClientFactory = new DefaultTransportClientFactory(new TestCodec());
         TransportClient transportClient = defaultTransportClientFactory.create(new ClientConfig());
-        Transport transport = transportClient.createTransport("127.0.0.1:9999");
+        Transport transport = transportClient.createTransport("localhost:9999");
 
         TestInterface testTpc = new TestInterfaceStub(transport);
         System.out.println("Response from server: " + testTpc.hello("JournalKeeper"));

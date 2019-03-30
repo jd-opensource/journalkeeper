@@ -1,7 +1,5 @@
 package com.jd.journalkeeper.rpc.client;
 
-import java.nio.ByteBuffer;
-
 /**
  * @author liyue25
  * Date: 2019-03-14

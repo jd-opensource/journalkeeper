@@ -69,7 +69,7 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
         this.asyncExecutorService = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors() * 2, new NamedThreadFactory("JournalKeeper-Async-Executor"));
         this.roll = roll;
         this.server = createServer();
-        this.clientServerRpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class).getClientServerRpcAccessPoint(servers);
+        this.clientServerRpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class).createClientServerRpcAccessPoint(servers, properties);
     }
 
     private Server<E, Q, R> createServer() {

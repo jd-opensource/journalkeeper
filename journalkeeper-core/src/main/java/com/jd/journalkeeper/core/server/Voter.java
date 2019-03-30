@@ -188,10 +188,10 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 return null;
             });
             future.thenAccept(asyncAppendEntriesResponse -> {
-                if(asyncAppendEntriesResponse.getException() != null) {
+                if(asyncAppendEntriesResponse.success()) {
                     follower.setLastHeartbeat(System.currentTimeMillis());
                 } else {
-                    logger.warn("Heartbeat Exception on {}, : ", follower.getUri(), asyncAppendEntriesResponse.getException());
+                    logger.warn("Heartbeat Exception on {}, {} : ", follower.getUri(), asyncAppendEntriesResponse.errorString());
                 }
             });
         }
@@ -312,12 +312,16 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
         future.whenComplete((response, exception) -> {
             if(request.getTerm() == currentTerm) {
-                if(response != null && response.getException() != null) {
+                if(response != null && response.success()) {
                     follower.addResponse(response);
                     leaderReplicationResponseThread.weakup();
                 } else {
+                    if(response == null) {
+                        logger.warn("Replication exception: ", exception);
+                    } else {
+                        logger.warn("Replication response error: {}", response.errorString());
 
-                    logger.warn("Replication exception: ", response == null ? exception: response.getException());
+                    }
                     delaySendAsyncAppendEntriesRpc(follower, request);
                 }
             } else {

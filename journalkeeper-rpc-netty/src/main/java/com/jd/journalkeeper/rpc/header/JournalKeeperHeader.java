@@ -10,6 +10,7 @@ import com.jd.journalkeeper.rpc.remoting.transport.command.Header;
 public class JournalKeeperHeader implements Header {
 
     public final static int MAGIC = 0x3f4e93d7;
+    private final static int DEFAULT_VERSION = 1;
     private boolean oneWay;
     private int status;
     private String error;
@@ -20,8 +21,10 @@ public class JournalKeeperHeader implements Header {
     private long sendTime;
 
     public JournalKeeperHeader(){}
-
-    public JournalKeeperHeader(int version, boolean oneWay, Direction direction, int requestId, int type, long sendTime, short status, String error) {
+    public JournalKeeperHeader(Direction direction, int requestId, int type) {
+        this(DEFAULT_VERSION, false, direction, requestId, type, System.currentTimeMillis(),  0, null);
+    }
+    public JournalKeeperHeader(int version, boolean oneWay, Direction direction, int requestId, int type, long sendTime, int status, String error) {
         this.version = version;
         this.oneWay = oneWay;
         this.direction = direction;

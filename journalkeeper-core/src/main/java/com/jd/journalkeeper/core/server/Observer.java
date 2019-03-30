@@ -3,12 +3,12 @@ package com.jd.journalkeeper.core.server;
 import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.State;
 import com.jd.journalkeeper.core.api.StateFactory;
-import com.jd.journalkeeper.core.api.StorageEntry;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.exceptions.NotVoterException;
 import com.jd.journalkeeper.persistence.ServerMetadata;
+import com.jd.journalkeeper.rpc.StatusCode;
 import com.jd.journalkeeper.rpc.client.*;
 import com.jd.journalkeeper.rpc.server.*;
 import com.jd.journalkeeper.utils.threads.LoopThread;
@@ -72,18 +72,17 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
         GetServerEntriesResponse response =
                 selectServer().getServerEntries(new GetServerEntriesRequest(commitIndex,config.getPullBatchSize())).get();
 
-        try {
-            if (null != response.getException()) {
-                throw response.getException();
-            }
+        if(response.success()){
 
             journal.append(response.getEntries());
             commitIndex += response.getEntries().size();
             // 唤醒状态机线程
             stateMachineThread.weakup();
-        } catch (IndexUnderflowException e) {
+        } else if( response.getStatusCode() == StatusCode.INDEX_UNDERFLOW){
             reset();
-        } catch (IndexOverflowException ignored) {}
+        } else {
+            logger.warn("Pull entry failed! {}", response.errorString());
+        }
 
 
     }
