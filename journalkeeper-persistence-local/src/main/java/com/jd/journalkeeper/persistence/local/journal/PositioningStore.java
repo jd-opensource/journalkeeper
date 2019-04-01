@@ -29,7 +29,8 @@ public class PositioningStore implements JournalPersistence,Closeable {
     private AtomicLong flushPosition = new AtomicLong(0L);
     private AtomicLong writePosition =  new AtomicLong(0L);
     private AtomicLong leftPosition = new AtomicLong(0L);
-    // 正在写入的
+    // 删除和回滚不能同时操作fileMap，需要做一下互斥。
+    private final Object fileMapMutex = new Object();    // 正在写入的
     private StoreFile writeStoreFile = null;
     private Config config = null;
     public PositioningStore(PreloadBufferPool bufferPool) {
@@ -44,24 +45,26 @@ public class PositioningStore implements JournalPersistence,Closeable {
      * append()
      */
     public void truncate(long givenMax) throws IOException {
-        if(givenMax == max()) return;
-        logger.info("Rollback to position: {}, left: {}, right: {}, flushPosition: {}, store: {}...",
-                 ThreadSafeFormat.formatWithComma(givenMax),
-                ThreadSafeFormat.formatWithComma(leftPosition.get()),
-                ThreadSafeFormat.formatWithComma(writePosition.get()),
-                ThreadSafeFormat.formatWithComma(flushPosition.get()),
-                base.getAbsolutePath());
+        synchronized (fileMapMutex) {
+            if (givenMax == max()) return;
+            logger.info("Rollback to position: {}, left: {}, right: {}, flushPosition: {}, store: {}...",
+                    ThreadSafeFormat.formatWithComma(givenMax),
+                    ThreadSafeFormat.formatWithComma(leftPosition.get()),
+                    ThreadSafeFormat.formatWithComma(writePosition.get()),
+                    ThreadSafeFormat.formatWithComma(flushPosition.get()),
+                    base.getAbsolutePath());
 
-        if (givenMax <= leftPosition.get() || givenMax > max()) {
-            clear();
-            this.leftPosition.set(givenMax);
-            this.writePosition.set(givenMax);
-            this.flushPosition.set(givenMax);
-        } else if (givenMax < max()) {
-            rollbackFiles(givenMax);
-            this.writePosition .set(givenMax);
-            if(this.flushPosition.get() > givenMax) this.flushPosition.set(givenMax);
-            resetWriteStoreFile();
+            if (givenMax <= leftPosition.get() || givenMax > max()) {
+                clear();
+                this.leftPosition.set(givenMax);
+                this.writePosition.set(givenMax);
+                this.flushPosition.set(givenMax);
+            } else if (givenMax < max()) {
+                rollbackFiles(givenMax);
+                this.writePosition.set(givenMax);
+                if (this.flushPosition.get() > givenMax) this.flushPosition.set(givenMax);
+                resetWriteStoreFile();
+            }
         }
     }
 
@@ -91,7 +94,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
 
             for(StoreFile sf : toBeRemoved.values()) {
                 logger.info("Delete store file {}.", sf.file().getAbsolutePath());
-                deleteStoreFile(sf);
+                forceDeleteStoreFile(sf);
             }
             toBeRemoved.clear();
         }
@@ -245,48 +248,46 @@ public class PositioningStore implements JournalPersistence,Closeable {
      * 删除 position之前的文件
      */
     public long shrink(long givenMin) throws IOException {
+        synchronized (fileMapMutex) {
 
-        if(givenMin > flushPosition.get()) givenMin = flushPosition.get();
+            if (givenMin > flushPosition.get()) givenMin = flushPosition.get();
 
-        Iterator<Map.Entry<Long, StoreFile>> iterator =
-                storeFileMap.entrySet().iterator();
-        long deleteSize = 0L;
+            Iterator<Map.Entry<Long, StoreFile>> iterator =
+                    storeFileMap.entrySet().iterator();
+            long deleteSize = 0L;
 
-        while (iterator.hasNext()) {
-            Map.Entry<Long, StoreFile> entry = iterator.next();
-            StoreFile storeFile = entry.getValue();
-            long start = entry.getKey();
-            long fileDataSize = storeFile.hasPage()? storeFile.writePosition(): storeFile.fileDataSize();
+            while (iterator.hasNext()) {
+                Map.Entry<Long, StoreFile> entry = iterator.next();
+                StoreFile storeFile = entry.getValue();
+                long start = entry.getKey();
+                long fileDataSize = storeFile.hasPage() ? storeFile.writePosition() : storeFile.fileDataSize();
 
-            // 至少保留一个文件
-            if(storeFileMap.size() < 2 || start + fileDataSize > givenMin) break;
-            leftPosition.getAndAdd(fileDataSize);
+                // 至少保留一个文件
+                if (storeFileMap.size() < 2 || start + fileDataSize > givenMin) break;
+                leftPosition.getAndAdd(fileDataSize);
+                if (flushPosition.get() < leftPosition.get()) flushPosition.set(leftPosition.get());
+                iterator.remove();
+                forceDeleteStoreFile(storeFile);
+                deleteSize += fileDataSize;
+            }
 
-            iterator.remove();
-
-            deleteSize += deleteStoreFile(storeFile);
+            return deleteSize;
         }
-
-        return deleteSize;
-
     }
 
 
-    private long deleteStoreFile(StoreFile storeFile) throws IOException {
-        if(storeFile.isClean()) {
-            storeFile.unload();
-        }
+    /**
+     * 删除文件，丢弃未刷盘的数据，用于rollback
+     */
+    private void forceDeleteStoreFile(StoreFile storeFile) throws IOException {
+        storeFile.forceUnload();
         File file = storeFile.file();
-        long fileSize = file.length();
         if(file.exists()) {
             if (file.delete()) {
                 logger.debug("File {} deleted.", file.getAbsolutePath());
-                return fileSize;
             } else {
                 throw new IOException(String.format("Delete file %s failed!", file.getAbsolutePath()));
             }
-        } else {
-            return 0;
         }
     }
 

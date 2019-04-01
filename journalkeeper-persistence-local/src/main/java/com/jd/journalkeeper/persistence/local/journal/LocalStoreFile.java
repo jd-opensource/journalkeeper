@@ -80,15 +80,17 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     }
 
     private void loadRoUnsafe() throws IOException{
-            if (null != pageBuffer) throw new IOException("Buffer already loaded!");
-            ByteBuffer loadBuffer;
-            try (RandomAccessFile raf = new RandomAccessFile(file, "r"); FileChannel fileChannel = raf.getChannel()) {
-                loadBuffer =
-                        fileChannel.map(FileChannel.MapMode.READ_ONLY, headerSize, file.length() - headerSize);
-            }
-            pageBuffer = loadBuffer;
-            bufferType = MAPPED_BUFFER;
-            pageBuffer.clear();
+        if (null != pageBuffer) throw new IOException("Buffer already loaded!");
+        ByteBuffer loadBuffer;
+        try (RandomAccessFile raf = new RandomAccessFile(file, "r"); FileChannel fileChannel = raf.getChannel()) {
+            loadBuffer =
+                    fileChannel.map(FileChannel.MapMode.READ_ONLY, headerSize, file.length() - headerSize);
+        }
+        pageBuffer = loadBuffer;
+        bufferType = MAPPED_BUFFER;
+        pageBuffer.clear();
+        bufferPool.addMemoryMappedBufferHolder(this);
+
     }
 
     private void loadRwUnsafe() throws IOException{
@@ -165,6 +167,16 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
             } else {
                 return false;
             }
+        }finally {
+            bufferLock.unlockWrite(stamp);
+        }
+    }
+
+    @Override
+    public void forceUnload() {
+        long stamp = bufferLock.writeLock();
+        try {
+            unloadUnsafe();
         }finally {
             bufferLock.unlockWrite(stamp);
         }
