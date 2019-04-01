@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.rpc;
 
+import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.rpc.client.ClientServerRpc;
 import com.jd.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import com.jd.journalkeeper.rpc.client.UpdateClusterStateRequest;
@@ -13,9 +14,12 @@ import org.junit.Test;
 import org.mockito.stubbing.Answer;
 
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
@@ -29,7 +33,7 @@ import static org.mockito.Mockito.*;
  */
 public class RpcTest {
     private ServerRpc serverRpcMock = mock(ServerRpc.class);
-    ClientServerRpcAccessPoint clientServerRpcAccessPoint;
+    private ClientServerRpcAccessPoint clientServerRpcAccessPoint;
     private StateServer server;
     @Before
     public void before() throws IOException, URISyntaxException {
@@ -52,15 +56,33 @@ public class RpcTest {
             entry[i] = (byte) i;
         }
         UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry);
-
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc();
+        UpdateClusterStateResponse response;
+        // Test success response
         when(serverRpcMock.updateClusterState(any(UpdateClusterStateRequest.class)))
                 .thenReturn(CompletableFuture.supplyAsync(UpdateClusterStateResponse::new));
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc();
-
-        UpdateClusterStateResponse response = clientServerRpc.updateClusterState(request).get();
+        response = clientServerRpc.updateClusterState(request).get();
         Assert.assertTrue(response.success());
+        verify(serverRpcMock).updateClusterState(argThat((UpdateClusterStateRequest r) -> Arrays.equals(entry, r.getEntry())));
 
-        verify(serverRpcMock).updateClusterState(any(UpdateClusterStateRequest.class));
+        // Test exception response
+        String errorMsg = "blablabla";
+        Throwable t = new RuntimeException(errorMsg);
+        when(serverRpcMock.updateClusterState(any(UpdateClusterStateRequest.class)))
+                .thenThrow(t);
+        response = clientServerRpc.updateClusterState(request).get();
+        Assert.assertFalse(response.success());
+        Assert.assertEquals(StatusCode.EXCEPTION, response.getStatusCode());
+        Assert.assertTrue(response.getError().contains(errorMsg));
+
+        // Test NOT_LEADER
+        String leaderUriStr = "jk://leader.host:8888";
+        when(serverRpcMock.updateClusterState(any(UpdateClusterStateRequest.class)))
+                .thenThrow(new NotLeaderException(URI.create(leaderUriStr)));
+        response = clientServerRpc.updateClusterState(request).get();
+        Assert.assertFalse(response.success());
+        Assert.assertEquals(StatusCode.NOT_LEADER, response.getStatusCode());
+        Assert.assertEquals(leaderUriStr, response.getLeader().toString());
     }
 
     @After

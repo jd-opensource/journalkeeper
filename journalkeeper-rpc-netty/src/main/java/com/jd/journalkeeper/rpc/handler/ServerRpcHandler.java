@@ -11,6 +11,8 @@ import com.jd.journalkeeper.rpc.remoting.transport.command.handler.CommandHandle
 import com.jd.journalkeeper.rpc.server.ServerRpc;
 import com.jd.journalkeeper.rpc.utils.CommandSupport;
 
+import java.util.concurrent.CompletableFuture;
+
 import static com.jd.journalkeeper.rpc.codec.RpcTypes.*;
 
 /**
@@ -41,9 +43,13 @@ public class ServerRpcHandler implements CommandHandler, Types {
         JournalKeeperHeader header = (JournalKeeperHeader) command.getHeader();
         switch (header.getType()) {
             case UPDATE_CLUSTER_STATE_REQUEST:
-                serverRpc.updateClusterState(GenericPayload.get(command.getPayload()))
-                        .exceptionally(UpdateClusterStateResponse::new)
-                        .thenAccept(response -> CommandSupport.sendResponse(response, UPDATE_CLUSTER_STATE_RESPONSE, command, transport));
+                try {
+                    serverRpc.updateClusterState(GenericPayload.get(command.getPayload()))
+                            .exceptionally(UpdateClusterStateResponse::new)
+                            .thenAccept(response -> CommandSupport.sendResponse(response, UPDATE_CLUSTER_STATE_RESPONSE, command, transport));
+                } catch (Throwable throwable) {
+                    CommandSupport.sendResponse(new UpdateClusterStateResponse(throwable), UPDATE_CLUSTER_STATE_RESPONSE, command, transport);
+                }
                 break;
             case QUERY_CLUSTER_STATE_REQUEST:
                 serverRpc.queryClusterState(GenericPayload.get(command.getPayload()))

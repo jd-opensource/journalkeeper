@@ -47,9 +47,12 @@ public class CommandSupport {
 
     }
 
-    public static void sendResponse(Object response, int responseType,  Command requestCommand, Transport transport) {
+    public static void sendResponse(BaseResponse response, int responseType,  Command requestCommand, Transport transport) {
         Header requestHeader = requestCommand.getHeader();
         JournalKeeperHeader header = new JournalKeeperHeader(Direction.RESPONSE, requestHeader.getRequestId(), responseType);
+        header.setStatus(response.getStatusCode().getCode());
+        header.setError(response.getError());
+
         Command responseCommand = new Command(header,new GenericPayload<>(response));
         transport.acknowledge(requestCommand, responseCommand);
     }

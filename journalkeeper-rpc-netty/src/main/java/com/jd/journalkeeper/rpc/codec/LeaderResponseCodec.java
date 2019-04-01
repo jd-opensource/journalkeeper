@@ -11,23 +11,21 @@ import java.net.URI;
  * @author liyue25
  * Date: 2019-03-29
  */
-public abstract class LeaderResponseCodec<R extends LeaderResponse> extends GenericPayloadCodec<R> {
+public abstract class LeaderResponseCodec<R extends LeaderResponse> extends ResponseCodec<R> {
     @Override
-    public final R decodePayload(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
-        R response = decodeLeaderResponse(header, buffer);
-        String leaderStr = SerializeSupport.readString(buffer);
-        if(leaderStr != null && leaderStr.length() > 0) {
-            response.setLeader(URI.create(leaderStr));
-        }
-        return response;
+    protected void encodeResponse(R response, ByteBuf buffer) throws Exception {
+        encodeLeaderResponse(response, buffer);
+        SerializeSupport.writeString(buffer,response.getLeader() == null ? null: response.getLeader().toString());
     }
 
     @Override
-    public final void encodePayload(R response, ByteBuf buffer) throws Exception {
-
-        encodeLeaderResponse(response, buffer);
-        SerializeSupport.writeString(buffer,response.getLeader() == null ? null: response.getLeader().toString());
-
+    protected R decodeResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
+        R response = decodeLeaderResponse(header, buffer);
+        String leaderStr = SerializeSupport.readString(buffer);
+        if(leaderStr.length() > 0) {
+            response.setLeader(URI.create(leaderStr));
+        }
+        return response;
     }
 
     protected abstract void encodeLeaderResponse(R leaderResponse, ByteBuf buffer) throws Exception;

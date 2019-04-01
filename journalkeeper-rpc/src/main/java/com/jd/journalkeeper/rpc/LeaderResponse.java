@@ -25,6 +25,7 @@ public abstract class LeaderResponse extends BaseResponse {
         try {
             throw throwable;
         } catch (NotLeaderException e) {
+            setStatusCode(StatusCode.NOT_LEADER);
             setLeader(e.getLeader());
         } catch (Throwable t) {
             super.setException(throwable);
