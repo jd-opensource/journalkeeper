@@ -1,7 +1,13 @@
 package com.jd.journalkeeper.rpc.client;
 
+import com.jd.journalkeeper.rpc.codec.RpcTypes;
+import com.jd.journalkeeper.rpc.remoting.transport.Transport;
+import com.jd.journalkeeper.rpc.utils.CommandSupport;
+
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
+
+import static com.jd.journalkeeper.rpc.remoting.transport.TransportState.CONNECTED;
 
 /**
  * 客户端桩
@@ -9,43 +15,58 @@ import java.util.concurrent.CompletableFuture;
  * Date: 2019-03-30
  */
 public class ClientServerRpcStub implements ClientServerRpc {
+    private final Transport transport;
+    private final URI uri;
+    public ClientServerRpcStub(Transport transport, URI uri) {
+        this.transport = transport;
+        this.uri = uri;
+    }
+
+
     @Override
     public URI serverUri() {
-        return null;
+        return uri;
     }
 
     @Override
     public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
-        return null;
+        return CommandSupport.sendRequest(request, RpcTypes.UPDATE_CLUSTER_STATE_REQUEST, transport);
     }
 
     @Override
     public CompletableFuture<QueryStateResponse> queryClusterState(QueryStateRequest request) {
-        return null;
+        return CommandSupport.sendRequest(request, RpcTypes.QUERY_CLUSTER_STATE_REQUEST, transport);
     }
 
     @Override
     public CompletableFuture<QueryStateResponse> queryServerState(QueryStateRequest request) {
-        return null;
+        return CommandSupport.sendRequest(request, RpcTypes.QUERY_SERVER_STATE_REQUEST, transport);
     }
 
     @Override
     public CompletableFuture<LastAppliedResponse> lastApplied() {
-        return null;
+        return CommandSupport.sendRequest(null, RpcTypes.UPDATE_CLUSTER_STATE_REQUEST, transport);
+
     }
 
     @Override
     public CompletableFuture<QueryStateResponse> querySnapshot(QueryStateRequest request) {
-        return null;
+        return CommandSupport.sendRequest(request, RpcTypes.QUERY_SNAPSHOT_REQUEST, transport);
     }
 
     @Override
     public CompletableFuture<GetServersResponse> getServers() {
-        return null;
+        return CommandSupport.sendRequest(null, RpcTypes.GET_SERVERS_REQUEST, transport);
     }
 
     @Override
     public boolean isAlive() {
-        return false;
+        return null != transport  && transport.state() == CONNECTED;
+    }
+
+    void stop() {
+        if(null != transport) {
+            transport.stop();
+        }
     }
 }

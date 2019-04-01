@@ -35,8 +35,4 @@ public class LocalDefaultRpcAccessPoint implements ClientServerRpcAccessPoint {
         return clientServerRpcAccessPoint.getClintServerRpc(uri);
     }
 
-    @Override
-    public void setServiceProvider(ClientServerRpc clientServerRpc) {
-
-    }
 }

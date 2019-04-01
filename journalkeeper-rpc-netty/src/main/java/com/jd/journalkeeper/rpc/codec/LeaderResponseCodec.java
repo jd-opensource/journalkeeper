@@ -11,7 +11,7 @@ import java.net.URI;
  * @author liyue25
  * Date: 2019-03-29
  */
-public abstract class LeaderResponeCodec<R extends LeaderResponse> extends GenericPayloadCodec<R> {
+public abstract class LeaderResponseCodec<R extends LeaderResponse> extends GenericPayloadCodec<R> {
     @Override
     public final R decodePayload(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
         R response = decodeLeaderResponse(header, buffer);
@@ -26,7 +26,7 @@ public abstract class LeaderResponeCodec<R extends LeaderResponse> extends Gener
     public final void encodePayload(R response, ByteBuf buffer) throws Exception {
 
         encodeLeaderResponse(response, buffer);
-        SerializeSupport.writeString(buffer,response.getLeader().toString());
+        SerializeSupport.writeString(buffer,response.getLeader() == null ? null: response.getLeader().toString());
 
     }
 

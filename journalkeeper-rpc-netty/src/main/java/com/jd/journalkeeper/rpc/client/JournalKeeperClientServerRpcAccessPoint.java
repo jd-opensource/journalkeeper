@@ -1,5 +1,9 @@
 package com.jd.journalkeeper.rpc.client;
 
+import com.jd.journalkeeper.rpc.remoting.transport.Transport;
+import com.jd.journalkeeper.rpc.remoting.transport.TransportClient;
+import com.jd.journalkeeper.rpc.utils.UriUtils;
+
 import java.net.URI;
 import java.util.*;
 
@@ -9,15 +13,26 @@ import java.util.*;
  */
 public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcAccessPoint {
     private final Properties properties;
-    private Map<URI, ClientServerRpc> serverInstances = new HashMap<>();
+    private final TransportClient transportClient;
+    private Map<URI, ClientServerRpcStub> serverInstances = new HashMap<>();
     private URI currentServerUri = null;
-    public JournalKeeperClientServerRpcAccessPoint(List<URI> servers, Properties properties) {
+    public JournalKeeperClientServerRpcAccessPoint(List<URI> servers, TransportClient transportClient, Properties properties) {
+        this.transportClient = transportClient;
         servers.forEach(server -> serverInstances.put(server, null));
         this.properties = properties;
     }
 
     @Override
     public void updateServers(List<URI> uriList) {
+        // 删除
+        serverInstances.keySet().stream()
+                .filter(uri -> !uriList.contains(uri))
+                .map(serverInstances::remove)
+                .forEach(this::disconnect);
+        // 增加
+        uriList.forEach(uri -> serverInstances.putIfAbsent(uri, null));
+
+
     }
 
     @Override
@@ -29,11 +44,6 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     public ClientServerRpc getClintServerRpc(URI uri) {
         if(null == uri ) return null;
         return serverInstances.computeIfAbsent(uri, this::connect);
-    }
-
-    @Override
-    public void setServiceProvider(ClientServerRpc clientServerRpc) {
-
     }
 
     private URI selectServer() {
@@ -48,8 +58,14 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
         return currentServerUri;
     }
 
-    private ClientServerRpc connect(URI server) {
-        // TODO
-        return null;
+    private ClientServerRpcStub connect(URI server) {
+        Transport transport = transportClient.createTransport(UriUtils.toSockAddress(server));
+        return new ClientServerRpcStub(transport, server);
     }
+
+    private void disconnect(ClientServerRpcStub clientServerRpc) {
+        clientServerRpc.stop();
+    }
+
+
 }

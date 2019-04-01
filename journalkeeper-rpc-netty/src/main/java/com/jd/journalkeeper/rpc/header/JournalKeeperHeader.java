@@ -3,6 +3,9 @@ package com.jd.journalkeeper.rpc.header;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Direction;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Header;
 
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+
 /**
  * @author liyue25
  * Date: 2019-03-28
@@ -10,6 +13,7 @@ import com.jd.journalkeeper.rpc.remoting.transport.command.Header;
 public class JournalKeeperHeader implements Header {
 
     public final static int MAGIC = 0x3f4e93d7;
+    private static final AtomicInteger requestIdGenerator = new AtomicInteger(0);
     private final static int DEFAULT_VERSION = 1;
     private boolean oneWay;
     private int status;
@@ -21,7 +25,10 @@ public class JournalKeeperHeader implements Header {
     private long sendTime;
 
     public JournalKeeperHeader(){}
-    public JournalKeeperHeader(Direction direction, int requestId, int type) {
+    public JournalKeeperHeader(Direction direction, int type) {
+        this(DEFAULT_VERSION, false, direction, nextRequestId(), type, System.currentTimeMillis(),  0, null);
+    }
+    public JournalKeeperHeader(Direction direction, int requestId,  int type) {
         this(DEFAULT_VERSION, false, direction, requestId, type, System.currentTimeMillis(),  0, null);
     }
     public JournalKeeperHeader(int version, boolean oneWay, Direction direction, int requestId, int type, long sendTime, int status, String error) {
@@ -112,4 +119,9 @@ public class JournalKeeperHeader implements Header {
     public void setSendTime(long sendTime) {
         this.sendTime = sendTime;
     }
+
+    private static int nextRequestId() {
+        return requestIdGenerator.incrementAndGet();
+    }
+
 }

@@ -1,10 +1,10 @@
-package com.jd.journalkeeper.rpc.client;
+package com.jd.journalkeeper.rpc.codec;
 
 /**
  * @author liyue25
  * Date: 2019-03-29
  */
-public class ClientServerRpcTypes {
+public class RpcTypes {
     public final static int UPDATE_CLUSTER_STATE_REQUEST = 1;
     public final static int UPDATE_CLUSTER_STATE_RESPONSE = -1;
     public final static int QUERY_CLUSTER_STATE_REQUEST = 2;

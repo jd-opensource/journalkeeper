@@ -1,7 +1,9 @@
 package com.jd.journalkeeper.rpc;
 
 import com.jd.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
+import com.jd.journalkeeper.rpc.server.ServerRpc;
 import com.jd.journalkeeper.rpc.server.ServerRpcAccessPoint;
+import com.jd.journalkeeper.utils.state.StateServer;
 
 import java.net.URI;
 import java.util.List;
@@ -23,4 +25,7 @@ public interface RpcAccessPointFactory {
      * @param servers 可连接的服务器列表
      */
     ClientServerRpcAccessPoint createClientServerRpcAccessPoint(List<URI> servers, Properties properties);
+
+    StateServer bindServerService(ServerRpc serverRpc);
+
 }

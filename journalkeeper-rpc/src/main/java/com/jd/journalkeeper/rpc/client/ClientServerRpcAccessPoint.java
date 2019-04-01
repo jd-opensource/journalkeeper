@@ -27,10 +27,5 @@ public interface ClientServerRpcAccessPoint {
      */
     ClientServerRpc getClintServerRpc(URI uri);
 
-    /**
-     * 服务端使用
-     * 设置提供远程服务的ClientServerRpc实现。
-     * @param clientServerRpc 服务端实现
-     */
-    void setServiceProvider(ClientServerRpc clientServerRpc);
+
 }

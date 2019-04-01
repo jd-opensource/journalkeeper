@@ -44,7 +44,7 @@ public class JournalKeeperHeaderCodec implements Codec {
         }
 
         int magic = buffer.readInt();
-        if (magic != TestHeader.MAGIC) {
+        if (magic != JournalKeeperHeader.MAGIC) {
             return null;
         }
 
