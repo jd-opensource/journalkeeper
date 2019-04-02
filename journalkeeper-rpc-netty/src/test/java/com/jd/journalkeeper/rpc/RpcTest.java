@@ -38,7 +38,6 @@ public class RpcTest {
     @Before
     public void before() throws IOException, URISyntaxException {
         int port = findRandomOpenPortOnAllLocalInterfaces();
-        ;
         when(serverRpcMock.serverUri()).thenReturn(new URI("jk://localhost:" + port));
         logger.info("Server URI: {}", serverRpcMock.serverUri());
         RpcAccessPointFactory rpcAccessPointFactory = new JournalKeeperRpcAccessPointFactory();
@@ -314,7 +313,7 @@ public class RpcTest {
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         GetServerEntriesResponse response, serverResponse;
         serverResponse = new GetServerEntriesResponse(
-                createByteList(1024, 1024),
+                createByteList(2048, 1024),
                 87783L
                 , 9384884L);
         // Test success response
