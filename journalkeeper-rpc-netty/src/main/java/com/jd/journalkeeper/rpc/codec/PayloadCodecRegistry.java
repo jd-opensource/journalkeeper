@@ -6,7 +6,7 @@ import com.jd.journalkeeper.rpc.remoting.transport.codec.PayloadCodecFactory;
  * @author liyue25
  * Date: 2019-04-01
  */
-public class PayloadCodeRegistry {
+public class PayloadCodecRegistry {
     public static void register(PayloadCodecFactory payloadCodecFactory) {
         payloadCodecFactory.register(new UpdateClusterStateRequestCodec());
         payloadCodecFactory.register(new UpdateClusterStateResponseCodec());
@@ -16,5 +16,15 @@ public class PayloadCodeRegistry {
         payloadCodecFactory.register(new QueryStateResponseCodec());
         payloadCodecFactory.register(new GetServersRequestCodec());
         payloadCodecFactory.register(new GetServersResponseCodec());
+
+        payloadCodecFactory.register(new AsyncAppendEntriesRequestCodec());
+        payloadCodecFactory.register(new AsyncAppendEntriesResponseCodec());
+        payloadCodecFactory.register(new RequestVoteRequestCodec());
+        payloadCodecFactory.register(new RequestVoteResponseCodec());
+        payloadCodecFactory.register(new GetServerEntriesRequestCodec());
+        payloadCodecFactory.register(new GetServerEntriesResponseCodec());
+        payloadCodecFactory.register(new GetServerStateRequestCodec());
+        payloadCodecFactory.register(new GetServerStateResponseCodec());
+
     }
 }

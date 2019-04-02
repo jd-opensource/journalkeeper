@@ -18,7 +18,7 @@ public class JournalKeeperCodec implements Codec {
 
     public JournalKeeperCodec() {
         PayloadCodecFactory payloadCodecFactory = new PayloadCodecFactory();
-        PayloadCodeRegistry.register(payloadCodecFactory);
+        PayloadCodecRegistry.register(payloadCodecFactory);
         this.headerCodec = new JournalKeeperHeaderCodec();
         this.payloadCodecFactory = payloadCodecFactory;
         this.decoder = new DefaultDecoder(headerCodec, payloadCodecFactory);

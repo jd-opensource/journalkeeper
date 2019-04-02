@@ -23,6 +23,6 @@ public abstract class ResponseCodec<R extends BaseResponse> extends GenericPaylo
         encodeResponse(response, buffer);
     }
 
-    protected abstract void encodeResponse(R leaderResponse, ByteBuf buffer) throws Exception;
+    protected abstract void encodeResponse(R response, ByteBuf buffer) throws Exception;
     protected abstract R decodeResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception;
 }

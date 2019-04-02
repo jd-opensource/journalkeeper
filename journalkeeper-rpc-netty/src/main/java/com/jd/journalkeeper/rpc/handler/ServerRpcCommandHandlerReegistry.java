@@ -16,5 +16,10 @@ public class ServerRpcCommandHandlerReegistry {
         factory.register(new QuerySnapshotHandler(serverRpc));
         factory.register(new GetServersHandler(serverRpc));
 
+        factory.register(new AsyncAppendEntriesHandler(serverRpc));
+        factory.register(new RequestVoteHandler(serverRpc));
+        factory.register(new GetServerEntriesHandler(serverRpc));
+        factory.register(new GetServerStateHandler(serverRpc));
+
     }
 }

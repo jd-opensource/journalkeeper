@@ -10,6 +10,4 @@ import java.util.concurrent.CompletableFuture;
  */
 public interface ServerRpcAccessPoint {
     ServerRpc getServerRpcAgent(URI uri);
-    void setServiceProvider(ServerRpc clientServerRpc);
-
 }

@@ -8,13 +8,13 @@ import java.net.URI;
  */
 public class RequestVoteRequest {
     private final int term;
-    private final URI candidateAddr;
+    private final URI candidate;
     private final long lastLogIndex;
     private final int lastLogTerm;
 
-    public RequestVoteRequest(int term, URI candidateAddr, long lastLogIndex, int lastLogTerm) {
+    public RequestVoteRequest(int term, URI candidate, long lastLogIndex, int lastLogTerm) {
         this.term = term;
-        this.candidateAddr = candidateAddr;
+        this.candidate = candidate;
         this.lastLogIndex = lastLogIndex;
         this.lastLogTerm = lastLogTerm;
     }
@@ -23,8 +23,8 @@ public class RequestVoteRequest {
         return term;
     }
 
-    public URI getCandidateAddr() {
-        return candidateAddr;
+    public URI getCandidate() {
+        return candidate;
     }
 
     public long getLastLogIndex() {

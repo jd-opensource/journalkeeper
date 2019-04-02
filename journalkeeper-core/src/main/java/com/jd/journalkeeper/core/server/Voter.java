@@ -531,8 +531,8 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                     currentTerm = request.getTerm();
                     convertToFollower();
                 }
-                if(votedFor == null || votedFor.equals(request.getCandidateAddr())) {
-                    votedFor = request.getCandidateAddr();
+                if(votedFor == null || votedFor.equals(request.getCandidate())) {
+                    votedFor = request.getCandidate();
                     return new RequestVoteResponse(request.getTerm(), true);
                 }
                 return new RequestVoteResponse(request.getTerm(), false);

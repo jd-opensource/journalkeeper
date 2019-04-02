@@ -5,6 +5,7 @@ package com.jd.journalkeeper.rpc.codec;
  * Date: 2019-03-29
  */
 public class RpcTypes {
+    // Client server RPCs
     public final static int UPDATE_CLUSTER_STATE_REQUEST = 1;
     public final static int UPDATE_CLUSTER_STATE_RESPONSE = -1;
     public final static int QUERY_CLUSTER_STATE_REQUEST = 2;
@@ -21,4 +22,15 @@ public class RpcTypes {
     public final static int UPDATE_VOTERS_RESPONSE = -7;
     public final static int UPDATE_OBSERVERS_REQUEST = 8;
     public final static int UPDATE_OBSERVERS_RESPONSE = -8;
+
+    // Server RPCs
+    public final static int ASYNC_APPEND_ENTRIES_REQUEST = 9;
+    public final static int ASYNC_APPEND_ENTRIES_RESPONSE = -9;
+    public final static int REQUEST_VOTE_REQUEST = 10;
+    public final static int REQUEST_VOTE_RESPONSE = -10;
+    public final static int GET_SERVER_ENTRIES_REQUEST = 11;
+    public final static int GET_SERVER_ENTRIES_RESPONSE = -11;
+    public final static int GET_SERVER_STATE_REQUEST = 12;
+    public final static int GET_SERVER_STATE_RESPONSE = -12;
+
 }

@@ -4,6 +4,7 @@ import com.jd.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import com.jd.journalkeeper.rpc.client.JournalKeeperClientServerRpcAccessPoint;
 import com.jd.journalkeeper.rpc.codec.JournalKeeperCodec;
 import com.jd.journalkeeper.rpc.handler.ServerRpcCommandHandlerReegistry;
+import com.jd.journalkeeper.rpc.remoting.transport.TransportClient;
 import com.jd.journalkeeper.rpc.remoting.transport.TransportClientFactory;
 import com.jd.journalkeeper.rpc.remoting.transport.TransportServer;
 import com.jd.journalkeeper.rpc.remoting.transport.command.support.DefaultCommandHandlerFactory;
@@ -11,6 +12,7 @@ import com.jd.journalkeeper.rpc.remoting.transport.config.ClientConfig;
 import com.jd.journalkeeper.rpc.remoting.transport.config.ServerConfig;
 import com.jd.journalkeeper.rpc.remoting.transport.support.DefaultTransportClientFactory;
 import com.jd.journalkeeper.rpc.remoting.transport.support.DefaultTransportServerFactory;
+import com.jd.journalkeeper.rpc.server.JournalKeeperServerRpcAccessPoint;
 import com.jd.journalkeeper.rpc.server.ServerRpc;
 import com.jd.journalkeeper.rpc.server.ServerRpcAccessPoint;
 import com.jd.journalkeeper.utils.state.StateServer;
@@ -25,13 +27,15 @@ import java.util.Properties;
  */
 public class JournalKeeperRpcAccessPointFactory implements RpcAccessPointFactory {
     private final TransportClientFactory transportClientFactory;
+
     public JournalKeeperRpcAccessPointFactory() {
         JournalKeeperCodec journalKeeperCodec = new JournalKeeperCodec();
         transportClientFactory = new DefaultTransportClientFactory(journalKeeperCodec);
     }
     @Override
     public ServerRpcAccessPoint createServerRpcAccessPoint(Properties properties) {
-        return null;
+        ClientConfig clientConfig = toClientConfig(properties);
+        return new JournalKeeperServerRpcAccessPoint(transportClientFactory.create(clientConfig), properties);
     }
 
     @Override

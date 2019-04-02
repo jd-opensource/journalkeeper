@@ -4,6 +4,7 @@ import com.jd.journalkeeper.rpc.remoting.transport.codec.Decoder;
 import com.jd.journalkeeper.rpc.remoting.transport.codec.Encoder;
 import io.netty.buffer.ByteBuf;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -72,5 +73,23 @@ public class CodecSupport {
             list.add((T) itemDecoder.decode(byteBuf));
         }
         return list;
+    }
+
+    public static void encodeUri(ByteBuf byteBuf, URI uri) {
+        encodeString(byteBuf, null == uri ? null : uri.toString());
+    }
+
+    public static URI decodeUri(ByteBuf byteBuf) {
+        String uriString = decodeString(byteBuf);
+        if(uriString.isEmpty()) return null;
+        else return URI.create(uriString);
+    }
+
+    public static void encodeBoolean(ByteBuf byteBuf, boolean bool) {
+        byteBuf.writeByte(bool ? 0X1 : 0X0);
+    }
+
+    public static boolean decodeBoolean(ByteBuf byteBuf) {
+        return byteBuf.readByte() == 0X1;
     }
 }

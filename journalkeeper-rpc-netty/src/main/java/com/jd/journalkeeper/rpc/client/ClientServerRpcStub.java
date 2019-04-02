@@ -15,8 +15,8 @@ import static com.jd.journalkeeper.rpc.remoting.transport.TransportState.CONNECT
  * Date: 2019-03-30
  */
 public class ClientServerRpcStub implements ClientServerRpc {
-    private final Transport transport;
-    private final URI uri;
+    protected final Transport transport;
+    protected final URI uri;
     public ClientServerRpcStub(Transport transport, URI uri) {
         this.transport = transport;
         this.uri = uri;
@@ -64,7 +64,7 @@ public class ClientServerRpcStub implements ClientServerRpc {
         return null != transport  && transport.state() == CONNECTED;
     }
 
-    void stop() {
+    public void stop() {
         if(null != transport) {
             transport.stop();
         }
