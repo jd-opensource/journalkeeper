@@ -45,7 +45,7 @@ public class ClientServerRpcStub implements ClientServerRpc {
 
     @Override
     public CompletableFuture<LastAppliedResponse> lastApplied() {
-        return CommandSupport.sendRequest(null, RpcTypes.UPDATE_CLUSTER_STATE_REQUEST, transport);
+        return CommandSupport.sendRequest(null, RpcTypes.LAST_APPLIED_REQUEST, transport);
 
     }
 

@@ -30,7 +30,6 @@ public abstract class LeaderResponse extends BaseResponse {
         } catch (Throwable t) {
             super.setException(throwable);
         }
-
     }
 
     public URI getLeader() {

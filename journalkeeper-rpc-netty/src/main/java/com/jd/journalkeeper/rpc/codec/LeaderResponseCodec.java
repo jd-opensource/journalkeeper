@@ -2,7 +2,7 @@ package com.jd.journalkeeper.rpc.codec;
 
 import com.jd.journalkeeper.rpc.LeaderResponse;
 import com.jd.journalkeeper.rpc.header.JournalKeeperHeader;
-import com.jd.journalkeeper.rpc.remoting.serialize.SerializeSupport;
+import com.jd.journalkeeper.rpc.remoting.serialize.CodecSupport;
 import io.netty.buffer.ByteBuf;
 
 import java.net.URI;
@@ -15,13 +15,13 @@ public abstract class LeaderResponseCodec<R extends LeaderResponse> extends Resp
     @Override
     protected void encodeResponse(R response, ByteBuf buffer) throws Exception {
         encodeLeaderResponse(response, buffer);
-        SerializeSupport.writeString(buffer,response.getLeader() == null ? null: response.getLeader().toString());
+        CodecSupport.encodeString(buffer,response.getLeader() == null ? null: response.getLeader().toString());
     }
 
     @Override
     protected R decodeResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
         R response = decodeLeaderResponse(header, buffer);
-        String leaderStr = SerializeSupport.readString(buffer);
+        String leaderStr = CodecSupport.decodeString(buffer);
         if(leaderStr.length() > 0) {
             response.setLeader(URI.create(leaderStr));
         }

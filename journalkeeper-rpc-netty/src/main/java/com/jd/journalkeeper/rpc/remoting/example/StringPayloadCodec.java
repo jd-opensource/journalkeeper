@@ -1,6 +1,6 @@
 package com.jd.journalkeeper.rpc.remoting.example;
 
-import com.jd.journalkeeper.rpc.remoting.serialize.SerializeSupport;
+import com.jd.journalkeeper.rpc.remoting.serialize.CodecSupport;
 import com.jd.journalkeeper.rpc.remoting.transport.codec.PayloadCodec;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Types;
 import io.netty.buffer.ByteBuf;
@@ -12,12 +12,12 @@ import io.netty.buffer.ByteBuf;
 public class StringPayloadCodec implements PayloadCodec<TestHeader, StringPayload> , Types {
     @Override
     public Object decode(TestHeader header, ByteBuf buffer) throws Exception {
-        return new StringPayload(SerializeSupport.readString(buffer));
+        return new StringPayload(CodecSupport.decodeString(buffer));
     }
 
     @Override
     public void encode(StringPayload payload, ByteBuf buffer) throws Exception {
-        SerializeSupport.writeString(buffer,payload.getPayload());
+        CodecSupport.encodeString(buffer,payload.getPayload());
     }
 
     @Override

@@ -12,8 +12,10 @@ public abstract class BaseResponse {
     private String error = null;
     public BaseResponse () {}
     public BaseResponse(Throwable throwable) {
-        statusCode = StatusCode.EXCEPTION;
-        setException(throwable);
+        if(null != throwable) {
+            statusCode = StatusCode.EXCEPTION;
+            setException(throwable);
+        }
     }
 
     public BaseResponse(StatusCode statusCode) {

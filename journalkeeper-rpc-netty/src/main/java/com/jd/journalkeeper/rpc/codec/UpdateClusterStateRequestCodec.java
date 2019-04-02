@@ -2,7 +2,7 @@ package com.jd.journalkeeper.rpc.codec;
 
 import com.jd.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import com.jd.journalkeeper.rpc.header.JournalKeeperHeader;
-import com.jd.journalkeeper.rpc.remoting.serialize.SerializeSupport;
+import com.jd.journalkeeper.rpc.remoting.serialize.CodecSupport;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Type;
 import io.netty.buffer.ByteBuf;
 
@@ -13,12 +13,12 @@ import io.netty.buffer.ByteBuf;
 public class UpdateClusterStateRequestCodec extends GenericPayloadCodec<UpdateClusterStateRequest> implements Type {
     @Override
     protected void encodePayload(UpdateClusterStateRequest request, ByteBuf buffer) throws Exception {
-        SerializeSupport.writeBytes(buffer, request.getEntry());
+        CodecSupport.encodeBytes(buffer, request.getEntry());
     }
 
     @Override
     protected UpdateClusterStateRequest decodePayload(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
-        return new UpdateClusterStateRequest(SerializeSupport.readBytes(buffer));
+        return new UpdateClusterStateRequest(CodecSupport.decodeBytes(buffer));
     }
 
     @Override

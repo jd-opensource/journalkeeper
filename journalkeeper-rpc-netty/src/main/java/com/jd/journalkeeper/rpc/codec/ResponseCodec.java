@@ -3,10 +3,7 @@ package com.jd.journalkeeper.rpc.codec;
 import com.jd.journalkeeper.rpc.BaseResponse;
 import com.jd.journalkeeper.rpc.StatusCode;
 import com.jd.journalkeeper.rpc.header.JournalKeeperHeader;
-import com.jd.journalkeeper.rpc.remoting.serialize.SerializeSupport;
 import io.netty.buffer.ByteBuf;
-
-import java.net.URI;
 
 /**
  * @author liyue25

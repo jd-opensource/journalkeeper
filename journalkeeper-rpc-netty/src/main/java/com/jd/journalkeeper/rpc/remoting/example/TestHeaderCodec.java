@@ -1,7 +1,7 @@
 package com.jd.journalkeeper.rpc.remoting.example;
 
 
-import com.jd.journalkeeper.rpc.remoting.serialize.SerializeSupport;
+import com.jd.journalkeeper.rpc.remoting.serialize.CodecSupport;
 import com.jd.journalkeeper.rpc.remoting.transport.codec.Codec;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Direction;
 import com.jd.journalkeeper.rpc.remoting.transport.exception.TransportException;
@@ -45,7 +45,7 @@ public class TestHeaderCodec implements Codec {
             // 2个字节的异常长度
             // 异常信息
             try {
-                error = SerializeSupport.readString(buffer);
+                error = CodecSupport.decodeString(buffer);
             } catch (Exception e) {
                 throw new TransportException.CodecException(e.getMessage());
             }
@@ -69,7 +69,7 @@ public class TestHeaderCodec implements Codec {
         if (header.getDirection().equals(Direction.RESPONSE)) {
             buffer.writeByte(header.getStatus());
             try {
-                SerializeSupport.writeString(buffer, header.getError());
+                CodecSupport.encodeString(buffer, header.getError());
             } catch (Exception e) {
                 throw new TransportException.CodecException(e.getMessage());
             }

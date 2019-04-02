@@ -1,6 +1,10 @@
 package com.jd.journalkeeper.rpc.client;
 
+import com.jd.journalkeeper.exceptions.IndexOverflowException;
+import com.jd.journalkeeper.exceptions.IndexUnderflowException;
+import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.rpc.LeaderResponse;
+import com.jd.journalkeeper.rpc.StatusCode;
 
 /**
  * @author liyue25
@@ -31,5 +35,18 @@ public class QueryStateResponse  extends LeaderResponse {
 
     public long getLastApplied() {
         return lastApplied;
+    }
+
+    @Override
+    public void setException(Throwable throwable) {
+        try {
+            throw throwable;
+        } catch (IndexOverflowException e) {
+            setStatusCode(StatusCode.INDEX_OVERFLOW);
+        } catch (IndexUnderflowException e) {
+            setStatusCode(StatusCode.INDEX_UNDERFLOW);
+        } catch (Throwable t) {
+            super.setException(throwable);
+        }
     }
 }

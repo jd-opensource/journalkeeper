@@ -4,24 +4,27 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
+ * Response 状态码
+ * 范围：0 ~ 254
  * @author liyue25
  * Date: 2019-03-29
  */
 public enum StatusCode {
 
+
     SUCCESS(0, "SUCCESS"),
 
-    //0001 ~ 1000 Common
+    //001 ~ 100 Common
     UNKNOWN_ERROR(1, "UNKNOWN_ERROR"),
     EXCEPTION(2, "EXCEPTION"),
     NOT_LEADER(100, "NOT_LEADER"),
 
-    // 1001 ~ 2000 Client Server Rpc
+    // 101 ~ 200 Client Server Rpc
 
 
-    // 2001 ~ 3000 Server Rpc
-    INDEX_UNDERFLOW(2001, "INDEX_UNDERFLOW"),
-    INDEX_OVERFLOW(2002, "INDEX_OVERFLOW");
+    // 201 ~ 254 Server Rpc
+    INDEX_UNDERFLOW(201, "INDEX_UNDERFLOW"),
+    INDEX_OVERFLOW(202, "INDEX_OVERFLOW");
 
     private static Map<Integer, StatusCode> codes = new HashMap<>();
     private int code;

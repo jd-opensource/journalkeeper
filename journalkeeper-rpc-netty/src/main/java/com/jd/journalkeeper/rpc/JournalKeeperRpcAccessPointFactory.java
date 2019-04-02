@@ -3,6 +3,7 @@ package com.jd.journalkeeper.rpc;
 import com.jd.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import com.jd.journalkeeper.rpc.client.JournalKeeperClientServerRpcAccessPoint;
 import com.jd.journalkeeper.rpc.codec.JournalKeeperCodec;
+import com.jd.journalkeeper.rpc.handler.ServerRpcCommandHandlerReegistry;
 import com.jd.journalkeeper.rpc.remoting.transport.TransportClientFactory;
 import com.jd.journalkeeper.rpc.remoting.transport.TransportServer;
 import com.jd.journalkeeper.rpc.remoting.transport.command.support.DefaultCommandHandlerFactory;
@@ -12,7 +13,6 @@ import com.jd.journalkeeper.rpc.remoting.transport.support.DefaultTransportClien
 import com.jd.journalkeeper.rpc.remoting.transport.support.DefaultTransportServerFactory;
 import com.jd.journalkeeper.rpc.server.ServerRpc;
 import com.jd.journalkeeper.rpc.server.ServerRpcAccessPoint;
-import com.jd.journalkeeper.rpc.handler.ServerRpcHandler;
 import com.jd.journalkeeper.utils.state.StateServer;
 
 import java.net.URI;
@@ -43,7 +43,7 @@ public class JournalKeeperRpcAccessPointFactory implements RpcAccessPointFactory
     @Override
     public StateServer bindServerService(ServerRpc serverRpc) {
         DefaultCommandHandlerFactory handlerFactory = new DefaultCommandHandlerFactory();
-        handlerFactory.register(new ServerRpcHandler(serverRpc));
+        ServerRpcCommandHandlerReegistry.register(handlerFactory, serverRpc);
         DefaultTransportServerFactory defaultTransportServerFactory = new DefaultTransportServerFactory(
                 new JournalKeeperCodec(), handlerFactory
         );
