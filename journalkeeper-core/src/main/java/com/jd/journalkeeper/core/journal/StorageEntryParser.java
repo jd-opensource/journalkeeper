@@ -254,7 +254,7 @@ public class StorageEntryParser {
     }
 
     private static void checkMagic(ByteBuffer headerBuffer) {
-        if (MAGIC != getShort(headerBuffer,StorageEntryParser.MAGIC)) {
+        if (StorageEntry.MAGIC != getShort(headerBuffer,StorageEntryParser.MAGIC)) {
             throw new ParseJournalException("Check magic failed！");
         }
     }

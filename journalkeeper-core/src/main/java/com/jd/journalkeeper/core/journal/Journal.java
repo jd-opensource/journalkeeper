@@ -335,6 +335,8 @@ public class Journal  implements Flushable, Closeable {
 
     @Override
     public void flush() {
+        while (journalPersistence.flushed() < journalPersistence.max() ||
+            indexPersistence.flushed() < indexPersistence.max())
         try {
             journalPersistence.flush();
             indexPersistence.flush();
