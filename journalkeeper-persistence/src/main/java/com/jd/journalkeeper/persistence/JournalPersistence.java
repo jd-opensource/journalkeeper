@@ -35,8 +35,9 @@ public interface JournalPersistence extends Closeable {
      */
     default void flush() throws IOException {};
     /**
-     * 截断最新的日志
-     * @param givenMax 新的最大位置，不能大于当前的最大位置
+     * 截断最新的日志。
+     * 如果givenMax不在最大最小位置之间，则清空所有数据，并将最大最小位置置为givenMax
+     * @param givenMax 新的最大位置.
      */
     void truncate(long givenMax) throws IOException;
 

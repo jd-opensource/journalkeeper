@@ -7,6 +7,7 @@ import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.rpc.client.*;
 import com.jd.journalkeeper.rpc.server.*;
 import com.jd.journalkeeper.utils.state.StateServer;
+import com.jd.journalkeeper.utils.test.ByteUtils;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -18,10 +19,12 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ThreadLocalRandom;
 
 import static org.mockito.Mockito.*;
 
@@ -244,7 +247,7 @@ public class RpcTest {
                 URI.create("jk://leader.host:8888"),
                 838472234228L,
                 87,
-                createByteList(1024, 1000),
+                ByteUtils.createByteList(1024, 1000),
                 6666666L
         );
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
@@ -313,7 +316,7 @@ public class RpcTest {
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         GetServerEntriesResponse response, serverResponse;
         serverResponse = new GetServerEntriesResponse(
-                createByteList(2048, 1024),
+                ByteUtils.createByteList(2048, 1024),
                 87783L
                 , 9384884L);
         // Test success response
@@ -359,7 +362,7 @@ public class RpcTest {
                 2342345L,
                 883,
                 899334545L,
-                createBytes(1024 * 1024 * 10),
+                ByteUtils.createBytes(1024 * 1024 * 10),
                 false);
         // Test success response
         when(serverRpcMock.getServerState(any(GetServerStateRequest.class)))
@@ -404,21 +407,6 @@ public class RpcTest {
         }
     }
 
-    private static List<byte []> createByteList(int maxLength, int size) {
-        List<byte []> bytesList = new ArrayList<>(size);
-        for (int i = 0; i < size; i++) {
-            byte[] bytes = createBytes(maxLength);
-            bytesList.add(bytes);
-        }
-        return bytesList;
-    }
 
-    private static byte[] createBytes(int maxLength) {
-        byte [] bytes = new byte[ThreadLocalRandom.current().nextInt(maxLength)];
-        for (int j = 0; j < bytes.length; j++) {
-            bytes[j] = (byte ) j;
-        }
-        return bytes;
-    }
 
 }

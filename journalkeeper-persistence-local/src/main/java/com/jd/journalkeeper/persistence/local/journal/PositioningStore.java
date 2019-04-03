@@ -47,7 +47,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
     public void truncate(long givenMax) throws IOException {
         synchronized (fileMapMutex) {
             if (givenMax == max()) return;
-            logger.info("Rollback to position: {}, left: {}, right: {}, flushPosition: {}, store: {}...",
+            logger.info("Truncate to position: {}, min: {}, max: {}, flushed: {}, path: {}...",
                     ThreadSafeFormat.formatWithComma(givenMax),
                     ThreadSafeFormat.formatWithComma(leftPosition.get()),
                     ThreadSafeFormat.formatWithComma(writePosition.get()),
@@ -197,7 +197,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
 
     @Override
     public void flush() throws IOException {
-        while (flushPosition.get() < writePosition.get()) {
+        if (flushPosition.get() < writePosition.get()) {
             Map.Entry<Long, StoreFile> entry = storeFileMap.floorEntry(flushPosition.get());
             if (null == entry) return;
             StoreFile storeFile = entry.getValue();

@@ -25,11 +25,16 @@ public class MetadataStore implements MetadataPersistence {
 
     @Override
     public ServerMetadata recover(Path path, Properties properties) throws IOException {
+
         this.path = path;
-        try {
-            return gson.fromJson(new String(Files.readAllBytes(path.resolve("0")), StandardCharsets.UTF_8), ServerMetadata.class);
-        } catch (Throwable ignored) {
-            return gson.fromJson(new String(Files.readAllBytes(path.resolve("1")), StandardCharsets.UTF_8), ServerMetadata.class);
+        if(Files.isDirectory(path) && ( Files.exists(path.resolve("0")) || Files.exists(path.resolve("0")))) {
+            try {
+                return gson.fromJson(new String(Files.readAllBytes(path.resolve("0")), StandardCharsets.UTF_8), ServerMetadata.class);
+            } catch (Throwable ignored) {
+                return gson.fromJson(new String(Files.readAllBytes(path.resolve("1")), StandardCharsets.UTF_8), ServerMetadata.class);
+            }
+        } else {
+            return new ServerMetadata();
         }
     }
 }

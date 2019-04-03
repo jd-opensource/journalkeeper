@@ -56,7 +56,7 @@ public abstract class LoopThread implements Runnable, StateServer {
     public synchronized void start() {
         if(!isStarted()) {
             thread = new Thread(this);
-            thread.setName(name);
+            thread.setName(name == null ? "LoopThread": name);
             thread.setDaemon(daemon);
             thread.start();
         }
