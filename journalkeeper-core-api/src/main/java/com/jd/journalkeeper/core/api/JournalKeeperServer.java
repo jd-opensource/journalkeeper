@@ -30,7 +30,7 @@ public abstract class JournalKeeperServer<E, Q, R> implements StateServer {
         return properties;
     }
     public abstract Roll roll();
-    public abstract void init(URI uri, List<URI> voters);
+    public abstract void init(URI uri, List<URI> voters) throws IOException;
     public abstract void recover() throws IOException;
 
     public enum Roll {VOTER, OBSERVER}

@@ -9,7 +9,7 @@ import com.jd.journalkeeper.utils.buffer.PreloadBufferPool;
 
 public class StoreFactory implements PersistenceFactory {
 
-    private final PreloadBufferPool preloadBufferPool = new PreloadBufferPool(1000L);
+    private final PreloadBufferPool preloadBufferPool = new PreloadBufferPool();
 
     @Override
     public MetadataPersistence createMetadataPersistenceInstance() {

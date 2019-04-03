@@ -8,10 +8,10 @@ import java.util.List;
  * Date: 2019-03-20
  */
 public class ServerMetadata {
-    private long commitIndex;
+    private long commitIndex = 0L;
     private List<URI> voters;
     private List<URI> parents;
-    private Integer currentTerm;
+    private int currentTerm = 0;
     private URI votedFor;
     private URI thisServer;
 
@@ -39,11 +39,11 @@ public class ServerMetadata {
         this.parents = parents;
     }
 
-    public Integer getCurrentTerm() {
+    public int getCurrentTerm() {
         return currentTerm;
     }
 
-    public void setCurrentTerm(Integer currentTerm) {
+    public void setCurrentTerm(int currentTerm) {
         this.currentTerm = currentTerm;
     }
 

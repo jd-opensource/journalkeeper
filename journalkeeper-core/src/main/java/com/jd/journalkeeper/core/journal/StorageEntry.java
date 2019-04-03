@@ -1,4 +1,4 @@
-package com.jd.journalkeeper.core.api;
+package com.jd.journalkeeper.core.journal;
 
 
 import java.nio.ByteBuffer;
@@ -23,6 +23,7 @@ public class StorageEntry {
     public StorageEntry(byte [] entry, int term){
         this.entry = entry;
         this.term = term;
+        this.length = StorageEntryParser.getHeaderLength() + entry.length;
     }
 
     public byte [] getEntry() {

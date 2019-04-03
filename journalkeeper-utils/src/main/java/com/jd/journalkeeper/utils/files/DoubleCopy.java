@@ -71,7 +71,6 @@ public abstract class DoubleCopy implements Closeable {
             doFlush();
             raf.close();
             raf = null;
-            logger.info(getName() + " is stopped.");
         } catch (IOException e) {
             logger.warn("Close file exception: ", e);
         }

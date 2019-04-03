@@ -19,6 +19,7 @@ import com.jd.journalkeeper.rpc.client.QueryStateRequest;
 import com.jd.journalkeeper.rpc.client.QueryStateResponse;
 import com.jd.journalkeeper.rpc.server.*;
 import com.jd.journalkeeper.utils.spi.ServiceSupport;
+import com.jd.journalkeeper.utils.state.StateServer;
 import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -149,7 +150,8 @@ public abstract class Server<E, Q, R>
     protected final BufferPool bufferPool;
 
     protected ServerRpcAccessPoint serverRpcAccessPoint;
-
+    protected final RpcAccessPointFactory rpcAccessPointFactory;
+    protected StateServer rpcServer = null;
     private Config config;
 
     public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
@@ -166,8 +168,10 @@ public abstract class Server<E, Q, R>
         this.resultSerializer = resultSerializer;
 
         persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
+        metadataPersistence = persistenceFactory.createMetadataPersistenceInstance();
         bufferPool = ServiceSupport.load(BufferPool.class);
-        serverRpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class).createServerRpcAccessPoint(properties);
+        rpcAccessPointFactory = ServiceSupport.load(RpcAccessPointFactory.class);
+        serverRpcAccessPoint = rpcAccessPointFactory.createServerRpcAccessPoint(properties);
         journal = new Journal(
                 persistenceFactory.createJournalPersistenceInstance(),
                 persistenceFactory.createJournalPersistenceInstance(),
@@ -177,7 +181,7 @@ public abstract class Server<E, Q, R>
 
     private LoopThread buildStateMachineThread() {
         return LoopThread.builder()
-                .name(String.format("StateMachineThread-%s", uri.toString()))
+                .name("StateMachineThread")
                 .doWork(this::applyEntries)
                 .sleepTime(50,100)
                 .onException(e -> logger.warn("StateMachineThread Exception: ", e))
@@ -185,9 +189,21 @@ public abstract class Server<E, Q, R>
     }
 
     @Override
-    public void init(URI uri, List<URI> voters) {
+    public void init(URI uri, List<URI> voters) throws IOException {
         this.uri = uri;
         this.voters = voters;
+
+        createMissingDirectories();
+
+        metadataPersistence.recover(metadataPath(), properties);
+        metadataPersistence.save(createServerMetadata());
+
+    }
+
+    private void createMissingDirectories() throws IOException {
+        Files.createDirectories(metadataPath());
+        Files.createDirectories(statePath());
+        Files.createDirectories(snapshotsPath());
     }
 
     private Config toConfig(Properties properties) {
@@ -227,6 +243,9 @@ public abstract class Server<E, Q, R>
 
     protected Path statePath() {
         return workingDir().resolve("state");
+    }
+    protected Path metadataPath() {
+        return workingDir().resolve("metadata");
     }
 
     /**
@@ -416,11 +435,13 @@ public abstract class Server<E, Q, R>
 
     @Override
     public void start() {
+
         stateMachineThread.start();
         flushFuture = scheduledExecutor.scheduleAtFixedRate(this::flush,
                 ThreadLocalRandom.current().nextLong(500L, 1000L),
                 config.getFlushIntervalMs(), TimeUnit.MILLISECONDS);
-
+        rpcServer = rpcAccessPointFactory.bindServerService(this);
+        rpcServer.start();
     }
 
     /**
@@ -445,6 +466,9 @@ public abstract class Server<E, Q, R>
     @Override
     public void stop() {
         try {
+            if(rpcServer != null) {
+                rpcServer.stop();
+            }
             stateMachineThread.stop();
             stopAndWaitScheduledFeature(flushFuture, 1000L);
         } catch (Throwable t) {
@@ -479,7 +503,7 @@ public abstract class Server<E, Q, R>
     @Override
     public void recover() throws IOException {
 
-        onMetadataRecovered(metadataPersistence.recover(workingDir(),properties));
+        onMetadataRecovered(metadataPersistence.recover(metadataPath(),properties));
         state.recover(statePath(), properties);
         recoverSnapshots();
         recoverJournal();
@@ -495,6 +519,9 @@ public abstract class Server<E, Q, R>
         return workingDir().resolve("journal");
     }
     private void recoverSnapshots() throws IOException {
+        if(!Files.isDirectory(snapshotsPath())) {
+            Files.createDirectories(snapshotsPath());
+        }
         StreamSupport.stream(
                 Files.newDirectoryStream(snapshotsPath(),
                         entry -> entry.getFileName().toString().matches("\\d+")

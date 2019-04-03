@@ -4,15 +4,20 @@ import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.base.event.EventWatcher;
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.JournalKeeperClient;
+import com.jd.journalkeeper.core.exception.NoLeaderException;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.rpc.BaseResponse;
 import com.jd.journalkeeper.rpc.LeaderResponse;
+import com.jd.journalkeeper.rpc.RpcException;
 import com.jd.journalkeeper.rpc.StatusCode;
 import com.jd.journalkeeper.rpc.client.*;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 
 /**
  * 客户端实现
@@ -107,9 +112,19 @@ public class Client<E, Q, R> implements JournalKeeperClient<E, Q, R> {
         return clientServerRpcAccessPoint
                 .getClintServerRpc()
                 .getServers()
-                .thenApply(resp ->
-                        clientServerRpcAccessPoint.getClintServerRpc(
-                                resp.getClusterConfiguration().getLeader()));
+                .exceptionally(GetServersResponse::new)
+                .thenApply(resp -> {
+                    if(resp.success()) {
+                        if(resp.getClusterConfiguration() != null && resp.getClusterConfiguration().getLeader() != null) {
+                            return clientServerRpcAccessPoint.getClintServerRpc(
+                                    resp.getClusterConfiguration().getLeader());
+                        } else {
+                            throw new NoLeaderException();
+                        }
+                    } else {
+                         throw new RpcException(resp);
+                    }
+                });
     }
 
 }

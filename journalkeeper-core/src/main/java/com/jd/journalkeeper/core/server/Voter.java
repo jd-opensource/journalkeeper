@@ -2,7 +2,7 @@ package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.StateFactory;
-import com.jd.journalkeeper.core.api.StorageEntry;
+import com.jd.journalkeeper.core.journal.StorageEntry;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.persistence.ServerMetadata;
 import com.jd.journalkeeper.rpc.client.*;
@@ -216,8 +216,12 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     }
 
     private void checkElectionTimeout() {
-        if(voterState != VoterState.LEADER && System.currentTimeMillis() - lastHeartbeat > electionTimeoutMs) {
-            startElection();
+        try {
+            if (voterState != VoterState.LEADER && System.currentTimeMillis() - lastHeartbeat > electionTimeoutMs) {
+                startElection();
+            }
+        } catch (Throwable t) {
+            logger.warn("CheckElectionTimeout Exception: ", t);
         }
     }
 
@@ -238,8 +242,14 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         votedFor = uri;
         lastHeartbeat = System.currentTimeMillis();
         electionTimeoutMs = randomInterval(config.electionTimeoutMs);
-        long lastLogIndex = journal.maxIndex() - 1;
-        RequestVoteRequest request = new RequestVoteRequest(currentTerm, uri, lastLogIndex, journal.getTerm(lastLogIndex));
+        long lastLogIndex = journal.maxIndex() - 1 ;
+        int lastLogTerm = 0;
+        if(lastLogIndex < 0) {
+            lastLogIndex = 0;
+        } else {
+            lastLogTerm = journal.getTerm(lastLogIndex);
+        }
+        RequestVoteRequest request = new RequestVoteRequest(currentTerm, uri, lastLogIndex, lastLogTerm);
 
         int grantedVotes = 1; // 自己投给自己一票
         grantedVotes += voters.parallelStream()
@@ -257,7 +267,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 }).filter(voteGranted -> voteGranted).count();
 
 
-        if(grantedVotes > voters.size() / 2 + 1) {
+        if(grantedVotes >= voters.size() / 2 + 1) {
             convertToLeader();
         }
     }
@@ -359,16 +369,26 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
      *  5.3 log[N].term == currentTerm
      */
     private void handleReplicationResponses() {
-        long [] sortedMatchIndex = followers.parallelStream()
-                .peek(this::handleReplicationResponse)
-                .mapToLong(Follower::getMatchIndex)
-                .sorted().toArray();
-
-        long N = sortedMatchIndex[sortedMatchIndex.length / 2];
-        if(voterState == VoterState.LEADER && N > commitIndex && journal.getTerm(N) == currentTerm) {
-            commitIndex = N;
-            // 唤醒状态机线程
-            stateMachineThread.weakup();
+        if(followers.isEmpty()) { // 单节点情况需要单独处理
+            long N = journal.maxIndex();
+            if (voterState == VoterState.LEADER && N > commitIndex && journal.getTerm(N - 1) == currentTerm) {
+                commitIndex = N;
+                // 唤醒状态机线程
+                stateMachineThread.weakup();
+            }
+        } else {
+            long[] sortedMatchIndex = followers.parallelStream()
+                    .peek(this::handleReplicationResponse)
+                    .mapToLong(Follower::getMatchIndex)
+                    .sorted().toArray();
+            if (sortedMatchIndex.length > 0) {
+                long N = sortedMatchIndex[sortedMatchIndex.length / 2];
+                if (voterState == VoterState.LEADER && N > commitIndex && journal.getTerm(N - 1) == currentTerm) {
+                    commitIndex = N;
+                    // 唤醒状态机线程
+                    stateMachineThread.weakup();
+                }
+            }
         }
     }
 
@@ -479,6 +499,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 .collect(Collectors.toList());
         // 变更状态
         this.voterState = VoterState.LEADER;
+        this.leader = this.uri;
         // 发送心跳
         leaderReplicationThread.weakup();
         logger.info("Convert to LEADER, currentTerm: {}.", currentTerm);

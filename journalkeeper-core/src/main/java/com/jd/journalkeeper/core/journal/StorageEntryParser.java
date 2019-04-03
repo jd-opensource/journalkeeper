@@ -1,8 +1,5 @@
 package com.jd.journalkeeper.core.journal;
 
-import com.jd.journalkeeper.base.Serializer;
-import com.jd.journalkeeper.core.api.StorageEntry;
-
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedList;

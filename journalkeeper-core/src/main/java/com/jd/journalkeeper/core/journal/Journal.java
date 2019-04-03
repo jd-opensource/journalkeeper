@@ -1,6 +1,5 @@
 package com.jd.journalkeeper.core.journal;
 
-import com.jd.journalkeeper.core.api.StorageEntry;
 import com.jd.journalkeeper.core.exception.JournalException;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
@@ -11,6 +10,7 @@ import java.io.Closeable;
 import java.io.Flushable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -234,11 +234,15 @@ public class Journal  implements Flushable, Closeable {
     }
 
     public void recover(Path path, Properties properties) throws IOException {
-        journalPersistence.recover(path.resolve("journal"), properties);
+        Path journalPath = path.resolve("journal");
+        Path indexPath = path.resolve("index");
+        Files.createDirectories(journalPath);
+        Files.createDirectories(indexPath);
+        journalPersistence.recover(journalPath, properties);
         // 截掉末尾半条数据
         truncateJournalTailPartialEntry();
 
-        indexPersistence.recover(path.resolve("index"), properties);
+        indexPersistence.recover(indexPath, properties);
         // 截掉末尾半条数据
         indexPersistence.truncate(indexPersistence.max() - indexPersistence.min() % INDEX_STORAGE_SIZE);
 
@@ -283,7 +287,7 @@ public class Journal  implements Flushable, Closeable {
 
         long position = indexPersistence.max();
         //noinspection StatementWithEmptyBody
-        while ((position -= INDEX_STORAGE_SIZE) >= indexPersistence.min() && readOffset(position) < journalPersistence.max()) {}
+        while ((position -= INDEX_STORAGE_SIZE) >= indexPersistence.min() && readOffset(position / INDEX_STORAGE_SIZE) >= journalPersistence.max()) {}
         indexPersistence.truncate(position + INDEX_STORAGE_SIZE);
     }
 

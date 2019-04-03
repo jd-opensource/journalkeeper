@@ -116,7 +116,7 @@ public abstract class LoopThread implements Runnable, StateServer {
     public synchronized void weakup() {
         if(wakeupLock.tryLock()) {
             try {
-                wakeupCondition.notify();
+                wakeupCondition.signal();
             } finally {
                 wakeupLock.unlock();
             }

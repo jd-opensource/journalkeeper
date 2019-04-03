@@ -58,7 +58,7 @@ public class MetadataStoreTest {
         writeStore.recover(path,new Properties());
         writeStore.save(writeMetadata);
 
-        try(RandomAccessFile raf = new RandomAccessFile(path.resolve("0").toFile(),"rw"); FileChannel fileChannel = raf.getChannel()) {
+        try(RandomAccessFile raf = new RandomAccessFile(path.resolve(MetadataStore.FIRST_COPY).toFile(),"rw"); FileChannel fileChannel = raf.getChannel()) {
             fileChannel.truncate(fileChannel.size() - 10);
         }
 
@@ -69,7 +69,7 @@ public class MetadataStoreTest {
 
         writeStore.save(writeMetadata);
 
-        try(RandomAccessFile raf = new RandomAccessFile(path.resolve("1").toFile(),"rw"); FileChannel fileChannel = raf.getChannel()) {
+        try(RandomAccessFile raf = new RandomAccessFile(path.resolve(MetadataStore.SECOND_COPY).toFile(),"rw"); FileChannel fileChannel = raf.getChannel()) {
             fileChannel.truncate(fileChannel.size() - 10);
         }
 

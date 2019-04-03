@@ -18,7 +18,9 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     private URI currentServerUri = null;
     public JournalKeeperClientServerRpcAccessPoint(List<URI> servers, TransportClient transportClient, Properties properties) {
         this.transportClient = transportClient;
-        servers.forEach(server -> serverInstances.put(server, null));
+        if(null != servers) {
+            servers.forEach(server -> serverInstances.put(server, null));
+        }
         this.properties = properties;
     }
 

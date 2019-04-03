@@ -24,7 +24,7 @@ public class StateMetadata extends DoubleCopy {
 
     @Override
     protected byte[] serialize() {
-        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(Long.BYTES + Integer.BYTES);
+        ByteBuffer byteBuffer = ByteBuffer.allocate(Long.BYTES + Integer.BYTES);
         byteBuffer.putLong(getLastApplied());
         byteBuffer.putInt(getLastIncludedTerm());
         byteBuffer.flip();
