@@ -36,11 +36,11 @@ public class Journal  implements Flushable, Closeable {
 
 
     public long minIndex() {
-        return indexPersistence.max() / INDEX_STORAGE_SIZE;
+        return indexPersistence.min() / INDEX_STORAGE_SIZE;
     }
 
     public long maxIndex() {
-        return indexPersistence.min() / INDEX_STORAGE_SIZE;
+        return indexPersistence.max() / INDEX_STORAGE_SIZE;
     }
 
     public CompletableFuture<Long> shrink(long givenMin) {
@@ -78,9 +78,6 @@ public class Journal  implements Flushable, Closeable {
     }
 
     public long append(List<byte []> storageEntries) {
-        // 计算长度
-        int journalBufferLength = storageEntries.stream()
-                .mapToInt(se -> se.length).sum();
         // 计算索引
         long [] indices = new long[storageEntries.size()];
         long offset = journalPersistence.max();

@@ -26,6 +26,7 @@
         <module>journalkeeper-rpc-netty</module>
         <module>journalkeeper-journal-store</module>
         <module>journalkeeper-examples</module>
+        <module>journalkeeper-core-test</module>
     </modules>
     <properties>
         <!-- maven properties -->
