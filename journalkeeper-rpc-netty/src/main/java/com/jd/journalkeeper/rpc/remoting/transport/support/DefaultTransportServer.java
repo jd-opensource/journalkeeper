@@ -66,6 +66,7 @@ public class DefaultTransportServer extends TransportServerSupport {
     @Override
     protected void doStop() {
         super.doStop();
+        responseHandler.stop();
         transportEventBus.stop(true);
         requestBarrier.clear();
     }

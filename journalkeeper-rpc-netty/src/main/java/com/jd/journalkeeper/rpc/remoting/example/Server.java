@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.rpc.remoting.example;
 
+import com.jd.journalkeeper.rpc.remoting.transport.TransportServer;
 import com.jd.journalkeeper.rpc.remoting.transport.command.support.DefaultCommandHandlerFactory;
 import com.jd.journalkeeper.rpc.remoting.transport.config.ServerConfig;
 import com.jd.journalkeeper.rpc.remoting.transport.support.DefaultTransportServerFactory;
@@ -15,7 +16,12 @@ public class Server {
         DefaultTransportServerFactory defaultTransportServerFactory = new DefaultTransportServerFactory(
                 new TestCodec(), handlerFactory
                );
-        defaultTransportServerFactory.bind(new ServerConfig(), "localhost", 9999).start();
+        TransportServer server = defaultTransportServerFactory.bind(new ServerConfig(), "localhost", 9999);
+        server.start();
+        System.in.read();
+        System.out.println("Stopping...");
+        server.stop();
+
 
     }
 }

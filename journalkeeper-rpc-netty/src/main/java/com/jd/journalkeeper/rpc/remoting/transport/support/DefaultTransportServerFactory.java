@@ -32,7 +32,7 @@ public class DefaultTransportServerFactory implements TransportServerFactory {
     }
 
     public DefaultTransportServerFactory(Codec codec, CommandHandlerFactory commandHandlerFactory, ExceptionHandler exceptionHandler) {
-        this(codec, commandHandlerFactory, exceptionHandler, new EventBus());
+        this(codec, commandHandlerFactory, exceptionHandler, new EventBus<>("DefaultTransportServerEventBus"));
     }
 
     public DefaultTransportServerFactory(Codec codec, CommandHandlerFactory commandHandlerFactory, ExceptionHandler exceptionHandler, EventBus<TransportEvent> eventBus) {

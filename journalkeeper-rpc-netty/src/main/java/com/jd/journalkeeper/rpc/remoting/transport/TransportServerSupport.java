@@ -116,7 +116,7 @@ public abstract class TransportServerSupport extends Service implements Transpor
     }
 
     protected EventLoopGroup newAcceptEventGroup() {
-        NamedThreadFactory threadFactory = new NamedThreadFactory("jmq-server-accept-loopGroup");
+        NamedThreadFactory threadFactory = new NamedThreadFactory("Transport-Accept-IO-LoopGroup");
         if (Epoll.isAvailable()) {
             return new EpollEventLoopGroup(serverConfig.getAcceptThread(), threadFactory);
         } else {
@@ -125,7 +125,7 @@ public abstract class TransportServerSupport extends Service implements Transpor
     }
 
     protected EventLoopGroup newIoEventGroup() {
-        NamedThreadFactory threadFactory = new NamedThreadFactory("jmq-server-io-loopGroup");
+        NamedThreadFactory threadFactory = new NamedThreadFactory("Transport-Server-IO-LoopGroup");
         int iothreadNum = serverConfig.getIoThread();
         if (port == 50088) {
             iothreadNum = 128;

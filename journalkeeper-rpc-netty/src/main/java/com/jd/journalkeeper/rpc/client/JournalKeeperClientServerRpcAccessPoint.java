@@ -79,7 +79,9 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     }
 
     private void disconnect(ClientServerRpcStub clientServerRpc) {
-        clientServerRpc.stop();
+        if(null != clientServerRpc) {
+            clientServerRpc.stop();
+        }
     }
 
 

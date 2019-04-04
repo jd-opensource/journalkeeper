@@ -515,9 +515,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
     }
 
-    private ServerRpc getServerRpc(URI uri) {
-        return null;
-    }
+
 
     @Override
     public Roll roll() {

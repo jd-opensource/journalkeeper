@@ -10,12 +10,15 @@ import com.jd.journalkeeper.rpc.remoting.transport.support.DefaultTransportClien
  * Date: 2019-03-28
  */
 public class Client {
-    public static void main(String [] args) {
+    public static void main(String [] args) throws Exception {
         DefaultTransportClientFactory defaultTransportClientFactory = new DefaultTransportClientFactory(new TestCodec());
         TransportClient transportClient = defaultTransportClientFactory.create(new ClientConfig());
+        transportClient.start();
         Transport transport = transportClient.createTransport("localhost:9999");
 
         TestInterface testTpc = new TestInterfaceStub(transport);
         System.out.println("Response from server: " + testTpc.hello("JournalKeeper"));
+        transport.stop();
+        transportClient.stop();
     }
 }

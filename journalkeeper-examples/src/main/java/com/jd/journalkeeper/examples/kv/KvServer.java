@@ -38,10 +38,6 @@ public class KvServer implements StateServer {
 
     }
 
-    public void shutdown() {
-        bootStrap.shutdown();
-    }
-
 
 
     public void recover() throws IOException {

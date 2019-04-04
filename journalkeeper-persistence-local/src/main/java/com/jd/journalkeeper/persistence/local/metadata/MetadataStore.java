@@ -5,6 +5,7 @@ import com.jd.journalkeeper.persistence.MetadataPersistence;
 import com.jd.journalkeeper.persistence.ServerMetadata;
 
 import java.io.IOException;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,8 +23,10 @@ public class MetadataStore implements MetadataPersistence {
     @Override
     public void save(ServerMetadata serverMetadata) throws IOException {
         byte [] serialized = gson.toJson(serverMetadata).getBytes(StandardCharsets.UTF_8);
-        Files.write(path.resolve(FIRST_COPY), serialized);
-        Files.write(path.resolve(SECOND_COPY), serialized);
+        try {
+            Files.write(path.resolve(FIRST_COPY), serialized);
+            Files.write(path.resolve(SECOND_COPY), serialized);
+        } catch (ClosedByInterruptException ignored) {}
     }
 
     @Override

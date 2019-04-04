@@ -152,6 +152,8 @@ public abstract class Server<E, Q, R>
     protected ServerRpcAccessPoint serverRpcAccessPoint;
     protected final RpcAccessPointFactory rpcAccessPointFactory;
     protected StateServer rpcServer = null;
+
+    protected final Map<URI, ServerRpc> remoteServers = new HashMap<>();
     private Config config;
 
     public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
@@ -463,9 +465,14 @@ public abstract class Server<E, Q, R>
         }
     }
 
+    protected ServerRpc getServerRpc(URI uri) {
+        return remoteServers.computeIfAbsent(uri, uri1 -> serverRpcAccessPoint.getServerRpcAgent(uri1));
+    }
+
     @Override
     public void stop() {
         try {
+            remoteServers.values().forEach(ServerRpc::stop);
             if(rpcServer != null) {
                 rpcServer.stop();
             }

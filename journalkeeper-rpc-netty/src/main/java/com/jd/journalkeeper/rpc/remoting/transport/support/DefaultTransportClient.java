@@ -117,5 +117,6 @@ public class DefaultTransportClient extends TransportClientSupport implements Tr
         clearTimer.cancel();
         transportEventBus.stop(true);
         requestBarrier.clear();
+        responseHandler.stop();
     }
 }

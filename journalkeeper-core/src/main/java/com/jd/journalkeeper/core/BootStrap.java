@@ -111,7 +111,7 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
         if(null != server ) {
             server.stop();
         }
-        if(null != clientServerRpcAccessPoint) {
+        if(null != clientServerRpcAccessPoint ) {
             clientServerRpcAccessPoint.stop();
         }
         this.scheduledExecutorService.shutdown();

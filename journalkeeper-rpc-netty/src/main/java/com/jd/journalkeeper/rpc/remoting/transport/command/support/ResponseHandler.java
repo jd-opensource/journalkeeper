@@ -94,4 +94,9 @@ public class ResponseHandler {
     protected ExecutorService newAsyncExecutorService() {
         return Executors.newFixedThreadPool(config.getCallbackThreads(), new NamedThreadFactory("JournalKeeper-Async-Callback"));
     }
+
+    public void stop() {
+        asyncExecutorService.shutdown();
+        this.barrier.clear();
+    }
 }

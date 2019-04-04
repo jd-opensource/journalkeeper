@@ -145,6 +145,9 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
                     Thread.sleep(sleep);
                 } catch (InterruptedException ignored) {}
             }
+            if(null != currentServer) {
+                currentServer.stop();
+            }
             logger.info("Connecting server {}", uri);
             URI uri = parents.get(ThreadLocalRandom.current().nextInt(parents.size()));
             currentServer = serverRpcAccessPoint.getServerRpcAgent(uri);
@@ -174,6 +177,9 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
     @Override
     public void stop() {
         replicationThread.stop();
+        if(null != currentServer) {
+            currentServer.stop();
+        }
         super.stop();
     }
 
