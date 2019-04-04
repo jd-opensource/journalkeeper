@@ -14,3 +14,7 @@ target
 .vpp.vbak
 .vpp.bak*
 .vpp.lck
+
+# Runtime generated files
+
+/journalkeeper
