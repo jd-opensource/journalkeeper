@@ -5,6 +5,9 @@ import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.persistence.BufferPool;
 import com.jd.journalkeeper.persistence.JournalPersistence;
+import com.jd.journalkeeper.persistence.TooManyBytesException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.io.Flushable;
@@ -22,7 +25,7 @@ import java.util.stream.Collectors;
  * Date: 2019-03-15
  */
 public class Journal  implements Flushable, Closeable {
-
+    private static final Logger logger = LoggerFactory.getLogger(Journal.class);
     private final static int INDEX_STORAGE_SIZE = Long.BYTES;
     private final JournalPersistence indexPersistence;
     private final JournalPersistence journalPersistence;
@@ -34,15 +37,25 @@ public class Journal  implements Flushable, Closeable {
         this.bufferPool = bufferPool;
     }
 
-
+    /**
+     * 最小索引位置
+     */
     public long minIndex() {
         return indexPersistence.min() / INDEX_STORAGE_SIZE;
     }
 
+    /**
+     * 最大索引位置
+     */
     public long maxIndex() {
         return indexPersistence.max() / INDEX_STORAGE_SIZE;
     }
 
+    /**
+     * 删除给定索引位置之前的数据。
+     * 不保证给定位置之前的数据全都被删除。
+     * 保证给定位置（含）之后的数据不会被删除。
+     */
     public CompletableFuture<Long> shrink(long givenMin) {
 
         return CompletableFuture.supplyAsync(() -> {
@@ -71,13 +84,18 @@ public class Journal  implements Flushable, Closeable {
                 .thenApply(offset -> minIndex());
     }
 
+    /**
+     * 追加写入StorageEntry
+     */
     public long append(StorageEntry storageEntry) {
         ByteBuffer byteBuffer = ByteBuffer.allocate(storageEntry.getLength());
         StorageEntryParser.serialize(byteBuffer, storageEntry);
-        return append(Collections.singletonList(byteBuffer.array()));
+        return appendRaw(Collections.singletonList(byteBuffer.array()));
     }
-
-    public long append(List<byte []> storageEntries) {
+    /**
+     * 批量追加写入序列化之后的StorageEntry
+     */
+    public long appendRaw(List<byte []> storageEntries) {
         // 计算索引
         long [] indices = new long[storageEntries.size()];
         long offset = journalPersistence.max();
@@ -94,21 +112,37 @@ public class Journal  implements Flushable, Closeable {
         } catch (IOException e) {
             throw new JournalException(e);
         }
-        int indexBufferLength = INDEX_STORAGE_SIZE * storageEntries.size();
-        ByteBuffer indexBuffer = ByteBuffer.allocate(indexBufferLength);
         try {
+            int indexBufferLength = INDEX_STORAGE_SIZE * storageEntries.size();
+            ByteBuffer indexBuffer = ByteBuffer.allocate(indexBufferLength);
+
             for (long index: indices) {
                 indexBuffer.putLong(index);
             }
             indexBuffer.flip();
-            indexPersistence.append(indexBuffer.array());
-        } catch (IOException e) {
+            try {
+                indexPersistence.append(indexBuffer.array());
+            } catch (TooManyBytesException e) {
+                // 如果批量写入超长，改为单条写入
+                ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
+                for (long index: indices) {
+                    buffer.putLong(0, index);
+                    indexPersistence.append(buffer.array());
+                }
+            }
+        }  catch (IOException e) {
             throw new JournalException(e);
         }
 
         return maxIndex();
     }
 
+    /**
+     * 给定索引位置读取Entry
+     * @return Entry
+     * @throws IndexUnderflowException 如果 index< minIndex()
+     * @throws IndexOverflowException 如果index >= maxIndex()
+     */
     public byte [] read(long index){
         checkIndex(index);
         StorageEntry storageEntry = readStorageEntry(index);
@@ -164,25 +198,48 @@ public class Journal  implements Flushable, Closeable {
         }
     }
 
-    public List<byte []> read(long index, int length) {
+    /**
+     * 批量读取Entry
+     * @param index 起始索引位置
+     * @param size 期望读取的条数
+     * @return Entry列表。
+     * @throws IndexUnderflowException 如果 index< minIndex()
+     * @throws IndexOverflowException 如果index >= maxIndex()
+     */
+    public List<byte []> read(long index, int size) {
         checkIndex(index);
-        List<byte []> list = new ArrayList<>(length);
+        List<byte []> list = new ArrayList<>(size);
         long i = index;
-        while (list.size() < length && i < maxIndex()) {
+        while (list.size() < size && i < maxIndex()) {
             list.add(read(i++));
         }
         return list;
     }
 
-    public List<byte []> readRaw(long index, int length) {
+    /**
+     * 批量读取StorageEntry
+     * @param index 起始索引位置
+     * @param size 期望读取的条数
+     * @return 未反序列化的StorageEntry列表。
+     * @throws IndexUnderflowException 如果 index< minIndex()
+     * @throws IndexOverflowException 如果index >= maxIndex()
+     */
+    public List<byte []> readRaw(long index, int size) {
         checkIndex(index);
-        List<byte []> list = new ArrayList<>(length);
+        List<byte []> list = new ArrayList<>(size);
         long i = index;
-        while (list.size() < length && i < maxIndex()) {
+        while (list.size() < size && i < maxIndex()) {
             list.add(readRawStorageEntry(i++));
         }
         return list;
     }
+    /**
+     * 读取指定索引位置上Entry的Term。
+     * @param index 索引位置。
+     * @return Term。
+     * @throws IndexUnderflowException 如果 index< minIndex()
+     * @throws IndexOverflowException 如果index >= maxIndex()
+     */
     public int getTerm(long index) {
         checkIndex(index);
         long offset = readOffset(index);
@@ -195,11 +252,13 @@ public class Journal  implements Flushable, Closeable {
     /**
      * 从index位置开始：
      * 如果一条已经存在的日志与新的冲突（index 相同但是任期号 term 不同），则删除已经存在的日志和它之后所有的日志
-     * 添加任何在已有的日志中不存在的条目
+     * 添加任何在已有的日志中不存在的条目。
      * @param rawEntries 待比较的日志
      * @param startIndex 起始位置
+     * @throws IndexUnderflowException 如果 startIndex< minIndex()
+     * @throws IndexOverflowException 如果 startIndex >= maxIndex()
      */
-    public void compareOrAppend(List<byte []> rawEntries, long startIndex) {
+    public void compareOrAppendRaw(List<byte []> rawEntries, long startIndex) {
 
         List<StorageEntry> entries = rawEntries.stream()
                 .map(ByteBuffer::wrap)
@@ -213,7 +272,7 @@ public class Journal  implements Flushable, Closeable {
                     truncate(index);
                 }
                 if (index == maxIndex()) {
-                    append(rawEntries.subList(i, entries.size()));
+                    appendRaw(rawEntries.subList(i, entries.size()));
                     break;
                 }
             }
@@ -224,24 +283,31 @@ public class Journal  implements Flushable, Closeable {
 
     /**
      * 从索引index位置开始，截掉后面的数据
+     * @throws IndexUnderflowException 如果 index < minIndex()
+     * @throws IndexOverflowException 如果 index >= maxIndex()
      */
     private void truncate(long index) throws IOException {
         journalPersistence.truncate(readOffset(index));
         indexPersistence.truncate(index * INDEX_STORAGE_SIZE);
     }
 
+    /**
+     * 从指定path恢复Journal。
+     * 1. 删除journal或者index文件末尾可能存在的不完整的数据。
+     * 2. 以Journal为准，修复Index：删除多余的索引，并创建缺失的索引。
+     */
     public void recover(Path path, Properties properties) throws IOException {
         Path journalPath = path.resolve("journal");
         Path indexPath = path.resolve("index");
         Files.createDirectories(journalPath);
         Files.createDirectories(indexPath);
-        journalPersistence.recover(journalPath, properties);
+        journalPersistence.recover(journalPath, replacePropertiesNames(properties, "^persistence\\.journal\\.(.*)$", "$1"));
         // 截掉末尾半条数据
         truncateJournalTailPartialEntry();
 
-        indexPersistence.recover(indexPath, properties);
+        indexPersistence.recover(indexPath, replacePropertiesNames(properties, "^persistence\\.index\\.(.*)$", "$1"));
         // 截掉末尾半条数据
-        indexPersistence.truncate(indexPersistence.max() - indexPersistence.min() % INDEX_STORAGE_SIZE);
+        indexPersistence.truncate(indexPersistence.max() - indexPersistence.max() % INDEX_STORAGE_SIZE);
 
         // 删除多余的索引
         truncateExtraIndices();
@@ -250,6 +316,16 @@ public class Journal  implements Flushable, Closeable {
         buildMissingIndices();
 
         flush();
+        logger.info("Journal recovered, minIndex: {}, maxIndex: {}.", minIndex(), maxIndex());
+    }
+
+    private Properties replacePropertiesNames(Properties properties, String fromNameRegex, String toNameRegex ){
+        Properties jp = new Properties();
+        properties.stringPropertyNames().forEach(k -> {
+            String name = k.replaceAll(fromNameRegex, toNameRegex);
+            jp.setProperty(name, properties.getProperty(k));
+        });
+        return jp;
     }
 
     private void buildMissingIndices() throws IOException {
@@ -333,6 +409,9 @@ public class Journal  implements Flushable, Closeable {
         }
     }
 
+    /**
+     * 将所有内存中的Journal和Index写入磁盘。
+     */
     @Override
     public void flush() {
         while (journalPersistence.flushed() < journalPersistence.max() ||

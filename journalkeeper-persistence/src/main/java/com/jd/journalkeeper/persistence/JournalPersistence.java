@@ -52,6 +52,7 @@ public interface JournalPersistence extends Closeable {
     /**
      * 追加写入
      * @return 写入后新的位置
+     * @throws TooManyBytesException 当写入数据超长时抛出
      */
     long append(byte [] entry) throws IOException;
 

@@ -45,7 +45,7 @@ public class PositioningStoreTest {
             int size = 10;
             int maxLength = 999;
             long start = store.max();
-            List<byte []> journals = ByteUtils.createByteList(maxLength, size);
+            List<byte []> journals = ByteUtils.createRandomSizeByteList(maxLength, size);
             int length = journals.stream().mapToInt(journal -> journal.length).sum();
 
             long writePosition = 0L;
@@ -72,7 +72,7 @@ public class PositioningStoreTest {
             int size = 10;
             int maxLength = 999;
             long start = store.max();
-            List<byte []> journals = ByteUtils.createByteList(maxLength, size);
+            List<byte []> journals = ByteUtils.createRandomSizeByteList(maxLength, size);
             int length = journals.stream().mapToInt(journal -> journal.length).sum();
 
             long writePosition = 0L;
@@ -112,7 +112,7 @@ public class PositioningStoreTest {
             int size = 10;
             int maxLength = 999;
             long start = store.max();
-            List<byte []> journals = ByteUtils.createByteList(maxLength, size);
+            List<byte []> journals = ByteUtils.createRandomSizeByteList(maxLength, size);
             int length = journals.stream().mapToInt(journal -> journal.length).sum();
 
             long writePosition = 0L;
@@ -162,7 +162,7 @@ public class PositioningStoreTest {
         int batchSize = 1024 * 10;
 
         try (PreloadBufferPool bufferPool = new PreloadBufferPool();JournalPersistence store = prepareStore(bufferPool)) {
-            write(store, maxSize, ByteUtils.createBytes(batchSize));
+            write(store, maxSize, ByteUtils.createRandomSizeBytes(batchSize));
         }
     }
 
@@ -175,7 +175,7 @@ public class PositioningStoreTest {
 
         try (PreloadBufferPool bufferPool = new PreloadBufferPool();JournalPersistence store = prepareStore(bufferPool)) {
 
-            write(store, maxSize, ByteUtils.createBytes(batchSize));
+            write(store, maxSize, ByteUtils.createRandomSizeBytes(batchSize));
             read(store, batchSize, maxSize);
         }
     }
@@ -226,7 +226,7 @@ public class PositioningStoreTest {
             long spendTimeMs = t - start;
             long bps = (currentMax - startPosition) * 1000 / spendTimeMs;
 
-            logger.info("Final write size: {}, write performance: {} .", currentMax - startPosition, Format.formatTraffic(bps));
+            logger.info("Final write size: {}, write performance: {}/S.", currentMax - startPosition, Format.formatTraffic(bps));
 
             while (store.flushed() < store.max()) {
                 Thread.yield();
@@ -235,7 +235,7 @@ public class PositioningStoreTest {
             spendTimeMs = t - start;
             bps = (currentMax - startPosition) * 1000 / spendTimeMs;
 
-            logger.info("Flush performance: {}.", Format.formatTraffic(bps));
+            logger.info("Flush performance: {}/S.", Format.formatTraffic(bps));
         } finally {
             flushThread.stop();
         }
@@ -251,7 +251,7 @@ public class PositioningStoreTest {
         long shrinkPosition = 300 * 1024 * 1024;
 
         try (PreloadBufferPool bufferPool = new PreloadBufferPool();JournalPersistence store = prepareStore(bufferPool)) {
-            write(store, maxSize, ByteUtils.createBytes(batchSize));
+            write(store, maxSize, ByteUtils.createRandomSizeBytes(batchSize));
 
             store.shrink(shrinkPosition);
             Assert.assertTrue(store.min() <= shrinkPosition);

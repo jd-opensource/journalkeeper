@@ -3,8 +3,6 @@ package com.jd.journalkeeper.core.server;
 import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.State;
 import com.jd.journalkeeper.core.api.StateFactory;
-import com.jd.journalkeeper.exceptions.IndexOverflowException;
-import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.exceptions.NotVoterException;
 import com.jd.journalkeeper.persistence.ServerMetadata;
@@ -74,7 +72,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
 
         if(response.success()){
 
-            journal.append(response.getEntries());
+            journal.appendRaw(response.getEntries());
             commitIndex += response.getEntries().size();
             // 唤醒状态机线程
             stateMachineThread.weakup();

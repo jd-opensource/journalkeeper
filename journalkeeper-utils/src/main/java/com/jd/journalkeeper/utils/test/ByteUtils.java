@@ -12,17 +12,34 @@ import java.util.concurrent.ThreadLocalRandom;
  * Date: 2019-04-03
  */
 public class ByteUtils {
-    public static List<byte []> createByteList(int maxLength, int size) {
+    public static List<byte []> createRandomSizeByteList(int maxLength, int size) {
         List<byte []> bytesList = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
-            byte[] bytes = createBytes(maxLength);
+            byte[] bytes = createRandomSizeBytes(maxLength);
             bytesList.add(bytes);
         }
         return bytesList;
     }
 
-    public static byte[] createBytes(int maxLength) {
+    public static byte[] createRandomSizeBytes(int maxLength) {
         byte [] bytes = new byte[ThreadLocalRandom.current().nextInt(maxLength)];
+        for (int j = 0; j < bytes.length; j++) {
+            bytes[j] = (byte ) j;
+        }
+        return bytes;
+    }
+
+    public static List<byte []> createFixedSizeByteList(int length, int size) {
+        List<byte []> bytesList = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            byte[] bytes = createFixedSizeBytes(length);
+            bytesList.add(bytes);
+        }
+        return bytesList;
+    }
+
+    public static byte[] createFixedSizeBytes(int length) {
+        byte [] bytes = new byte[length];
         for (int j = 0; j < bytes.length; j++) {
             bytes[j] = (byte ) j;
         }

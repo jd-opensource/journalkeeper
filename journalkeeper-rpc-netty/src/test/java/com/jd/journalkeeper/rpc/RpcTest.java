@@ -247,7 +247,7 @@ public class RpcTest {
                 URI.create("jk://leader.host:8888"),
                 838472234228L,
                 87,
-                ByteUtils.createByteList(1024, 1000),
+                ByteUtils.createRandomSizeByteList(1024, 1000),
                 6666666L
         );
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
@@ -316,7 +316,7 @@ public class RpcTest {
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         GetServerEntriesResponse response, serverResponse;
         serverResponse = new GetServerEntriesResponse(
-                ByteUtils.createByteList(2048, 1024),
+                ByteUtils.createRandomSizeByteList(2048, 1024),
                 87783L
                 , 9384884L);
         // Test success response
@@ -362,7 +362,7 @@ public class RpcTest {
                 2342345L,
                 883,
                 899334545L,
-                ByteUtils.createBytes(1024 * 1024 * 10),
+                ByteUtils.createRandomSizeBytes(1024 * 1024 * 10),
                 false);
         // Test success response
         when(serverRpcMock.getServerState(any(GetServerStateRequest.class)))

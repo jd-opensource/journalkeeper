@@ -469,7 +469,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             return;
         }
 
-        journal.compareOrAppend(rr.getRequest().getEntries(), rr.getRequest().getPrevLogIndex() + 1);
+        journal.compareOrAppendRaw(rr.getRequest().getEntries(), rr.getRequest().getPrevLogIndex() + 1);
         if(rr.getRequest().getLeaderCommit() > commitIndex) {
             commitIndex = Math.min(rr.getRequest().getLeaderCommit(), journal.maxIndex());
         }

@@ -2,6 +2,7 @@ package com.jd.journalkeeper.persistence.local.journal;
 
 
 import com.jd.journalkeeper.persistence.JournalPersistence;
+import com.jd.journalkeeper.persistence.TooManyBytesException;
 import com.jd.journalkeeper.utils.ThreadSafeFormat;
 import com.jd.journalkeeper.utils.buffer.PreloadBufferPool;
 import org.slf4j.Logger;
@@ -172,6 +173,9 @@ public class PositioningStore implements JournalPersistence,Closeable {
 
     @Override
     public long append(byte [] bytes) throws IOException{
+        if(bytes.length > config.fileDataSize) {
+            throw new TooManyBytesException(bytes.length, config.fileDataSize, base.toPath());
+        }
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         if (null == writeStoreFile) writeStoreFile = createStoreFile(writePosition.get());
         if (config.getFileDataSize() - writeStoreFile.writePosition() < buffer.remaining()) writeStoreFile = createStoreFile(writePosition.get());
@@ -303,8 +307,8 @@ public class PositioningStore implements JournalPersistence,Closeable {
         final static int DEFAULT_FILE_HEADER_SIZE = 128;
         final static int DEFAULT_FILE_DATA_SIZE = 128 * 1024 * 1024;
 
-        final static String FILE_HEADER_SIZE_KEY = "persistence.local.file_header_size";
-        final static String FILE_DATA_SIZE_KEY = "persistence.local.file_data_size";
+        final static String FILE_HEADER_SIZE_KEY = "file_header_size";
+        final static String FILE_DATA_SIZE_KEY = "file_data_size";
         /**
          * 文件头长度
          */
