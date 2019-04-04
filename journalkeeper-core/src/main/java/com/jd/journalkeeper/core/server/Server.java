@@ -469,8 +469,12 @@ public abstract class Server<E, Q, R>
             if(rpcServer != null) {
                 rpcServer.stop();
             }
+            serverRpcAccessPoint.stop();
             stateMachineThread.stop();
             stopAndWaitScheduledFeature(flushFuture, 1000L);
+            if(persistenceFactory instanceof Closeable) {
+                ((Closeable) persistenceFactory).close();
+            }
         } catch (Throwable t) {
             t.printStackTrace();
             logger.warn("Exception: ", t);

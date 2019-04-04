@@ -44,6 +44,7 @@ public class SingleNodeServerMain {
 
         logger.info("KEYS");
         logger.info("Result: {}", client.listKeys());
+        kvServer.stop();
 
     }
 }

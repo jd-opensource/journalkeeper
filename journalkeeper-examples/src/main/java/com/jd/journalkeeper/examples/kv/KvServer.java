@@ -67,7 +67,8 @@ public class KvServer implements StateServer {
 
     @Override
     public void stop() {
-        bootStrap.getServer().stop();
+        bootStrap.shutdown();
+
     }
 
     @Override

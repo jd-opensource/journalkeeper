@@ -1,5 +1,7 @@
 package com.jd.journalkeeper.rpc.client;
 
+import com.jd.journalkeeper.utils.state.StateServer;
+
 import java.net.URI;
 import java.util.List;
 
@@ -8,7 +10,7 @@ import java.util.List;
  * @author liyue25
  * Date: 2019-03-14
  */
-public interface ClientServerRpcAccessPoint {
+public interface ClientServerRpcAccessPoint  {
     /**
      * 客户端使用
      * 更新可供连接的server列表
@@ -27,5 +29,6 @@ public interface ClientServerRpcAccessPoint {
      */
     ClientServerRpc getClintServerRpc(URI uri);
 
+    void stop();
 
 }

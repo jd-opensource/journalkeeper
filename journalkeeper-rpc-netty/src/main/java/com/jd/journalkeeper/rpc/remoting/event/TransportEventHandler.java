@@ -23,10 +23,6 @@ public class TransportEventHandler extends ChannelInboundHandlerAdapter {
     public TransportEventHandler(RequestBarrier requestBarrier, EventBus<TransportEvent> eventBus) {
         this.requestBarrier = requestBarrier;
         this.eventBus = eventBus;
-        try {
-            this.eventBus.start();
-        } catch (Exception e) {
-        }
     }
 
     @Override

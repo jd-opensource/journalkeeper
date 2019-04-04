@@ -46,15 +46,9 @@ public class DefaultTransportClient extends TransportClientSupport implements Tr
         this.requestHandler = requestHandler;
         this.responseHandler = responseHandler;
         this.transportEventBus = transportEventBus;
-        this.clearTimer = new Timer("jmq-client-clear-timer");
+        this.clearTimer = new Timer("DefaultTransportClient-Clear-Timer");
 
-        // TODO 延迟和调度时间
-        this.clearTimer.scheduleAtFixedRate(new TimerTask() {
-            @Override
-            public void run() {
-                requestBarrier.evict();
-            }
-        }, 1000 * 3, 1000);
+
     }
 
     @Override
@@ -105,8 +99,23 @@ public class DefaultTransportClient extends TransportClientSupport implements Tr
     }
 
     @Override
+    protected void doStart() throws Exception {
+        super.doStart();
+        // TODO 延迟和调度时间
+        this.clearTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                requestBarrier.evict();
+            }
+        }, 1000 * 3, 1000);
+        transportEventBus.start();
+    }
+
+    @Override
     protected void doStop() {
         super.doStop();
+        clearTimer.cancel();
+        transportEventBus.stop(true);
         requestBarrier.clear();
     }
 }

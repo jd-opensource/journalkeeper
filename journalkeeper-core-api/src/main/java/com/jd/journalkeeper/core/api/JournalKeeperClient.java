@@ -59,5 +59,7 @@ public interface JournalKeeperClient<E, Q, R> extends Queryable<Q, R> {
      */
     void unwatch(EventWatcher eventWatcher);
 
+    void stop();
+
     enum UpdateVoterOperation {ADD, REMOVE}
 }

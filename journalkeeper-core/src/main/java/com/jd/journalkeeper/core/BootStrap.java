@@ -12,6 +12,7 @@ import com.jd.journalkeeper.core.server.Voter;
 import com.jd.journalkeeper.rpc.RpcAccessPointFactory;
 import com.jd.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import com.jd.journalkeeper.utils.spi.ServiceSupport;
+import com.jd.journalkeeper.utils.state.StateServer;
 import com.jd.journalkeeper.utils.threads.NamedThreadFactory;
 
 import java.net.URI;
@@ -41,6 +42,7 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
     private ClientServerRpcAccessPoint clientServerRpcAccessPoint = null;
     private final List<URI> servers;
     private final Server<E, Q, R> server;
+    private Client<E, Q, R> client = null;
 
     /**
      * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。
@@ -89,20 +91,29 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
 
     @Override
     public JournalKeeperClient<E, Q, R> getClient() {
-        Client<E, Q, R> client;
-
-        if(null == this.clientServerRpcAccessPoint) {
-            this.clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.servers, this.properties);
-        }
-        if(this.server == null) {
-            client = new Client<>(clientServerRpcAccessPoint, entrySerializer, querySerializer, resultSerializer, properties);
-        } else {
-            client = new Client<>(new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), entrySerializer, querySerializer, resultSerializer,  properties);
+        if(null == client) {
+            if (null == this.clientServerRpcAccessPoint) {
+                this.clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.servers, this.properties);
+            }
+            if (this.server == null) {
+                client = new Client<>(clientServerRpcAccessPoint, entrySerializer, querySerializer, resultSerializer, properties);
+            } else {
+                client = new Client<>(new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), entrySerializer, querySerializer, resultSerializer, properties);
+            }
         }
         return client;
     }
 
     public void shutdown() {
+        if(null != client) {
+            client.stop();
+        }
+        if(null != server ) {
+            server.stop();
+        }
+        if(null != clientServerRpcAccessPoint) {
+            clientServerRpcAccessPoint.stop();
+        }
         this.scheduledExecutorService.shutdown();
         this.asyncExecutorService.shutdown();
     }

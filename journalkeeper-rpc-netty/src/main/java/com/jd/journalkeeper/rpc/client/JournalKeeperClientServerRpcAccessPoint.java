@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.rpc.client;
 
+import com.jd.journalkeeper.rpc.RpcException;
 import com.jd.journalkeeper.rpc.remoting.transport.Transport;
 import com.jd.journalkeeper.rpc.remoting.transport.TransportClient;
 import com.jd.journalkeeper.rpc.utils.UriUtils;
@@ -18,6 +19,11 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     private URI currentServerUri = null;
     public JournalKeeperClientServerRpcAccessPoint(List<URI> servers, TransportClient transportClient, Properties properties) {
         this.transportClient = transportClient;
+        try {
+            this.transportClient.start();
+        } catch (Exception e) {
+            throw new RpcException(e);
+        }
         if(null != servers) {
             servers.forEach(server -> serverInstances.put(server, null));
         }
@@ -46,6 +52,13 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     public ClientServerRpc getClintServerRpc(URI uri) {
         if(null == uri ) return null;
         return serverInstances.computeIfAbsent(uri, this::connect);
+    }
+
+    @Override
+    public void stop() {
+        serverInstances.values()
+                .forEach(this::disconnect);
+        transportClient.stop();
     }
 
     private URI selectServer() {

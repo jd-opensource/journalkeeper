@@ -64,6 +64,7 @@ public class ClientServerRpcStub implements ClientServerRpc {
         return null != transport  && transport.state() == CONNECTED;
     }
 
+    @Override
     public void stop() {
         if(null != transport) {
             transport.stop();

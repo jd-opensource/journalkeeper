@@ -7,7 +7,10 @@ import com.jd.journalkeeper.persistence.local.journal.PositioningStore;
 import com.jd.journalkeeper.persistence.local.metadata.MetadataStore;
 import com.jd.journalkeeper.utils.buffer.PreloadBufferPool;
 
-public class StoreFactory implements PersistenceFactory {
+import java.io.Closeable;
+import java.io.IOException;
+
+public class StoreFactory implements PersistenceFactory, Closeable {
 
     private final PreloadBufferPool preloadBufferPool = new PreloadBufferPool();
 
@@ -19,5 +22,10 @@ public class StoreFactory implements PersistenceFactory {
     @Override
     public JournalPersistence createJournalPersistenceInstance() {
         return new PositioningStore(preloadBufferPool);
+    }
+
+    @Override
+    public void close() {
+        preloadBufferPool.close();
     }
 }

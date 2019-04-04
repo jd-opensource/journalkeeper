@@ -57,4 +57,16 @@ public class DefaultTransportServer extends TransportServerSupport {
             }
         };
     }
+
+    @Override
+    protected void doStart() throws Exception {
+        super.doStart();
+        transportEventBus.start();
+    }
+    @Override
+    protected void doStop() {
+        super.doStop();
+        transportEventBus.stop(true);
+        requestBarrier.clear();
+    }
 }

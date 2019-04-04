@@ -11,6 +11,7 @@ import com.jd.journalkeeper.rpc.LeaderResponse;
 import com.jd.journalkeeper.rpc.RpcException;
 import com.jd.journalkeeper.rpc.StatusCode;
 import com.jd.journalkeeper.rpc.client.*;
+import com.jd.journalkeeper.utils.state.StateServer;
 
 import java.io.IOException;
 import java.net.URI;
@@ -127,4 +128,8 @@ public class Client<E, Q, R> implements JournalKeeperClient<E, Q, R> {
                 });
     }
 
+
+    public void stop() {
+        clientServerRpcAccessPoint.stop();
+    }
 }

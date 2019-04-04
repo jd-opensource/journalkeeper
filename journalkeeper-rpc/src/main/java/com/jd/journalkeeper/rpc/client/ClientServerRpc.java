@@ -1,6 +1,7 @@
 package com.jd.journalkeeper.rpc.client;
 
 import com.jd.journalkeeper.rpc.Detectable;
+import com.jd.journalkeeper.utils.state.StateServer;
 
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
@@ -19,4 +20,5 @@ public interface ClientServerRpc extends Detectable {
     CompletableFuture<LastAppliedResponse> lastApplied();
     CompletableFuture<QueryStateResponse> querySnapshot(QueryStateRequest request);
     CompletableFuture<GetServersResponse> getServers();
+    void stop();
 }

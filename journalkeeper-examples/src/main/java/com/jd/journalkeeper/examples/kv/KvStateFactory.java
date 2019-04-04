@@ -10,6 +10,6 @@ import com.jd.journalkeeper.core.api.StateFactory;
 public class KvStateFactory implements StateFactory<KvEntry, KvQuery, KvResult> {
     @Override
     public State<KvEntry, KvQuery, KvResult> createState() {
-        return new KvState();
+        return new KvState(this);
     }
 }

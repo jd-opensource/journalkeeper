@@ -35,4 +35,9 @@ public class LocalDefaultRpcAccessPoint implements ClientServerRpcAccessPoint {
         return clientServerRpcAccessPoint.getClintServerRpc(uri);
     }
 
+    @Override
+    public void stop() {
+        clientServerRpcAccessPoint.stop();
+    }
+
 }

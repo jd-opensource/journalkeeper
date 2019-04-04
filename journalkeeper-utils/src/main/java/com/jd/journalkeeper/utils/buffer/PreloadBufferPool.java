@@ -169,6 +169,7 @@ public class PreloadBufferPool implements Closeable {
 
     public void close() {
         this.preloadThread.stop();
+        this.evictThread.stop();
         if(this.metricThread != null) {
             this.metricThread.stop();
         }

@@ -3,6 +3,7 @@ package com.jd.journalkeeper.examples.kv;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.state.LocalState;
 
 import java.io.IOException;
@@ -27,6 +28,10 @@ public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
     private final static String FILENAME = "map";
     private final Gson gson = new Gson();
 
+    public KvState(KvStateFactory stateFactory) {
+        super(stateFactory);
+    }
+
     @Override
     protected void recoverLocalState(Path path, Properties properties) {
         try {
@@ -49,6 +54,7 @@ public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
                 stateMap.remove(entry.getKey());
                 break;
         }
+        lastApplied ++;
     }
 
     @Override

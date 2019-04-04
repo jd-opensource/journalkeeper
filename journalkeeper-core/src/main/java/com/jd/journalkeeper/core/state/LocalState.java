@@ -18,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
@@ -32,7 +31,12 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
     protected int lastIncludedTerm = 0;
     protected Path path;
     protected Properties properties;
-    protected StateFactory<E, Q, R> factory;
+    protected final StateFactory<E, Q, R> factory;
+
+    protected LocalState(StateFactory<E, Q, R> stateFactory) {
+        this.factory = stateFactory;
+    }
+
     @Override
     public long lastApplied() {
         return lastApplied;
@@ -51,6 +55,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
             stateMetadata.recover();
             lastApplied = stateMetadata.getLastApplied();
             lastIncludedTerm = stateMetadata.getLastIncludedTerm();
+            Files.createDirectories(localStatePath());
 
             recoverLocalState(path, properties);
 
@@ -58,6 +63,10 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
             throw new StateRecoverException(e);
         }
 
+    }
+
+    private Path localStatePath() {
+        return path.resolve("data");
     }
 
     /**
@@ -70,7 +79,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
      */
     protected List<Path> listAllFiles() {
         return FileUtils.listFiles(
-                path.toFile(),
+                localStatePath().toFile(),
                 new RegexFileFilter("^(.*?)"),
                 DirectoryFileFilter.DIRECTORY
         ).stream().map(File::toPath).collect(Collectors.toList());
@@ -85,13 +94,11 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
                 .map(src -> src.relativize(path))
                 .map(destPath::resolve)
                 .collect(Collectors.toList());
+        Files.createDirectories(destPath);
         for (int i = 0; i < destFiles.size(); i++) {
             Path srcFile = srcFiles.get(i);
             Path destFile = destFiles.get(i);
-            File folder = destFile.getParent().toFile();
-            if(!folder.isDirectory()) {
-                folder.mkdirs();
-            }
+            Files.createDirectories(destFile.getParent());
             FileUtils.copyFile(srcFile.toFile(), destFile.toFile());
         }
 
@@ -269,7 +276,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
      * 存放state元数据文件的路径
      */
     protected Path metadataPath() {
-       return Paths.get("StateMetadata");
+       return Paths.get("metadata");
     }
     @Override
     public void installFinish(long lastApplied, int lastIncludedTerm) {
