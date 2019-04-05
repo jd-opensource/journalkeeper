@@ -7,7 +7,7 @@ import java.util.List;
  * @author liyue25
  * Date: 2019-03-14
  */
-public class AsyncAppendEntriesRequest {
+public class AsyncAppendEntriesRequest implements Termed{
 
     private final int term;
     private final URI leader;

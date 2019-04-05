@@ -6,7 +6,7 @@ import com.jd.journalkeeper.rpc.BaseResponse;
  * @author liyue25
  * Date: 2019-03-14
  */
-public class AsyncAppendEntriesResponse extends BaseResponse {
+public class AsyncAppendEntriesResponse extends BaseResponse implements Termed{
     private final boolean success;
     private AsyncAppendEntriesResponse(Throwable exception, boolean success, long journalIndex, int term, int entryCount) {
         super(exception);

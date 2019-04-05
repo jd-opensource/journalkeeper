@@ -6,7 +6,7 @@ import java.net.URI;
  * @author liyue25
  * Date: 2019-03-14
  */
-public class RequestVoteRequest {
+public class RequestVoteRequest implements Termed{
     private final int term;
     private final URI candidate;
     private final long lastLogIndex;

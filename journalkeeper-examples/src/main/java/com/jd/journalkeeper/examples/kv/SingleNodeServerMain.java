@@ -22,6 +22,7 @@ public class SingleNodeServerMain {
         kvServer.recover();
         kvServer.start();
 
+        kvServer.waitForLeaderReady();
         KvClient client = kvServer.getClient();
 
         logger.info("SET {} {}", "key1", "hello!");

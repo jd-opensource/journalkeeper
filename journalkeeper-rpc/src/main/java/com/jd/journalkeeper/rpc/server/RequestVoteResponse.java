@@ -6,7 +6,7 @@ import com.jd.journalkeeper.rpc.BaseResponse;
  * @author liyue25
  * Date: 2019-03-14
  */
-public class RequestVoteResponse  extends BaseResponse {
+public class RequestVoteResponse  extends BaseResponse implements Termed{
 
     private final int term;
     private final boolean voteGranted;

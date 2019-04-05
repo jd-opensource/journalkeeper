@@ -241,6 +241,7 @@ public class Journal  implements Flushable, Closeable {
      * @throws IndexOverflowException 如果index >= maxIndex()
      */
     public int getTerm(long index) {
+        if(index == -1) return -1;
         checkIndex(index);
         long offset = readOffset(index);
 

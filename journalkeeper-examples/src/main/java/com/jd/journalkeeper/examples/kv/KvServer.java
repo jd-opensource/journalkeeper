@@ -48,6 +48,9 @@ public class KvServer implements StateServer {
     @Override
     public void start() {
         bootStrap.getServer().start();
+    }
+
+    public void waitForLeaderReady() {
         // 等待选出leader
         URI leader = null;
         while (leader == null) {
