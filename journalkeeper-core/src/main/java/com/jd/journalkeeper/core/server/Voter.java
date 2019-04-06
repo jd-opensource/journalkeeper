@@ -3,6 +3,8 @@ package com.jd.journalkeeper.core.server;
 import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.journal.StorageEntry;
+import com.jd.journalkeeper.exceptions.IndexOverflowException;
+import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.persistence.ServerMetadata;
 import com.jd.journalkeeper.rpc.client.*;
@@ -274,7 +276,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 .thenAccept(response -> {
                     checkTerm(response.getTerm());
                     synchronized (voteResponseMutex) {
-                        if (response.getTerm() == currentTerm.get() && response.isVoteGranted()) {
+                        if (response.getTerm() == currentTerm.get() && voterState == VoterState.CANDIDATE && response.isVoteGranted()) {
                             grantedVotes.incrementAndGet();
                             logger.info("{} votes granted, currentTerm: {}, server: {}.", grantedVotes.get(), currentTerm, uri);
                             if (grantedVotes.get() >= voters.size() / 2 + 1) {
@@ -299,14 +301,13 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                             long maxIndex = journal.maxIndex();
                             int rpcCount = 0;
                             if (follower.nextIndex < maxIndex) {
-                                long nextIndex = Math.max(maxIndex, follower.nextIndex + config.getReplicationBatchSize());
-                                List<byte []> entries = journal.readRaw(follower.nextIndex, config.getReplicationBatchSize());
+                                List<byte []> entries = journal.readRaw(follower.getNextIndex(), config.getReplicationBatchSize());
                                 AsyncAppendEntriesRequest request =
                                         new AsyncAppendEntriesRequest(currentTerm.get(), leader,
-                                                nextIndex - 1, journal.getTerm(nextIndex - 1),
+                                                follower.getNextIndex() - 1, getPreLogTerm(follower.getNextIndex()),
                                                 entries, commitIndex);
                                 sendAsyncAppendEntriesRpc(follower, request);
-                                follower.nextIndex += entries.size();
+                                follower.setNextIndex(follower.getNextIndex() + entries.size());
                                 rpcCount++;
                             } else {
                                 if(System.currentTimeMillis() - follower.lastHeartbeat >= config.getHeartbeatIntervalMs()) {
@@ -322,11 +323,29 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         } while (count > 0);
     }
 
+
+    private int getPreLogTerm(long currentLogIndex) {
+        if(currentLogIndex > journal.minIndex()) {
+            return journal.getTerm(currentLogIndex - 1);
+        } else if (currentLogIndex == journal.maxIndex() && snapshots.containsKey(currentLogIndex)) {
+            return snapshots.get(currentLogIndex).lastIncludedTerm();
+        } else if (currentLogIndex == 0 ) {
+            return  -1;
+        } else {
+            throw new IndexUnderflowException();
+        }
+    }
+
     private void sendAsyncAppendEntriesRpc(Follower follower, AsyncAppendEntriesRequest request) {
         CompletableFuture<AsyncAppendEntriesResponse> future;
         try {
             ServerRpc serverRpc = getServerRpc(follower.getUri());
             assert serverRpc != null;
+            logger.info("Send appendEntriesRequest, term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, " +
+                            "entries: {}, leaderCommit: {}, server: {}, currentTerm: {}",
+                    request.getTerm(), request.getLeader(), request.getPrevLogIndex(), request.getPrevLogTerm(),
+                    request.getEntries().size(), request.getLeaderCommit(), uri, currentTerm.get());
+
             future = serverRpc.asyncAppendEntries(request);
         } catch (Throwable t) {
             // 将所有异常扔到响应里，在处理响应的线程中统一处理
@@ -400,6 +419,8 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             if (sortedMatchIndex.length > 0) {
                 long N = sortedMatchIndex[sortedMatchIndex.length / 2];
                 if (voterState == VoterState.LEADER && N > commitIndex && journal.getTerm(N - 1) == currentTerm.get()) {
+                    logger.info("Set commitIndex {} to {}, server: {}, currentTerm: {}.",
+                            commitIndex, N, uri, currentTerm);
                     commitIndex = N;
                     // 唤醒状态机线程
                     stateMachineThread.weakup();
@@ -413,6 +434,11 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         int retry = 0;
         while (iterator.hasNext() && retry < config.getReplicationParallelism()){
             AsyncAppendEntriesResponse response = iterator.next();
+
+            logger.info("Received appendEntriesResponse, success: {}, journalIndex: {}, entryCount: {}, term: {}, follower: {}, " +
+                    "server: {}, currentTerm: {}.",
+                    response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
+                    follower.getUri(), uri, currentTerm.get());
             int fixTerm = currentTerm.get();
             if(fixTerm == response.getTerm()) {
                 if (follower.getRepStartIndex() == response.getJournalIndex()) {
@@ -420,7 +446,10 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                         follower.setRepStartIndex(follower.getRepStartIndex() + response.getEntryCount());
                         follower.setMatchIndex(response.getJournalIndex() + response.getEntryCount());
                         follower.setLastHeartbeat(System.currentTimeMillis());
-
+                        logger.info("Replication success, RepStartIndex: {}, matchIndex: {}, follower: {}, " +
+                                "server: {}, currentTerm: {}.",
+                                follower.getRepStartIndex(), follower.getMatchIndex(), follower.getUri(),
+                                uri, currentTerm.get());
                     } else {
                         int rollbackSize = (int ) Math.min(config.getReplicationBatchSize(), follower.repStartIndex - journal.minIndex());
                         follower.repStartIndex -= rollbackSize;
@@ -437,7 +466,6 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                                 commitIndex));
                         retry++;
                     }
-                    follower.repStartIndex += response.getEntryCount();
                 } else {
                     //noinspection StatementWithEmptyBody
                     if(response.isSuccess()) {
@@ -467,28 +495,65 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     private void handleReplicationRequest() throws InterruptedException {
 
         ReplicationRequestResponse rr = pendingAppendRequests.take();
-        checkTerm(rr.getRequest().getTerm());
-        if( rr.getRequest().getTerm() < currentTerm.get()) {
-            rr.getResponseFuture()
-                    .complete(new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
-                            rr.getRequest().getTerm(), rr.getRequest().getEntries().size()));
-            return;
-        }
-        if( journal.getTerm(rr.getPrevLogIndex()) != rr.getRequest().getPrevLogIndex()) {
-            rr.getResponseFuture()
-                    .complete(new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
-                            rr.getRequest().getTerm(), rr.getRequest().getEntries().size()));
-            return;
-        }
+        AsyncAppendEntriesRequest request = rr.getRequest();
 
-        journal.compareOrAppendRaw(rr.getRequest().getEntries(), rr.getRequest().getPrevLogIndex() + 1);
-        if(rr.getRequest().getLeaderCommit() > commitIndex) {
-            commitIndex = Math.min(rr.getRequest().getLeaderCommit(), journal.maxIndex());
-        }
+        try {
+            checkTerm(request.getTerm());
+            if(request.getEntries() != null && !request.getEntries().isEmpty()) {
+                logger.info("Received appendEntriesRequest, term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, " +
+                                "entries: {}, leaderCommit: {}, server: {}, currentTerm: {}",
+                        request.getTerm(), request.getLeader(), request.getPrevLogIndex(), request.getPrevLogTerm(),
+                        request.getEntries().size(), request.getLeaderCommit(), uri, currentTerm.get());
+            }
 
-        rr.getResponseFuture()
-                .complete(new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
-                        rr.getRequest().getTerm(), rr.getRequest().getEntries().size()));
+            try {
+                if (request.getTerm() >= currentTerm.get() &&
+                        (rr.getPrevLogIndex() < journal.minIndex() || journal.getTerm(rr.getPrevLogIndex()) == request.getPrevLogTerm())) {
+
+                    // reset heartbeat
+                    lastHeartbeat = System.currentTimeMillis();
+                    if(!request.getLeader().equals(leader)) {
+                        leader = request.getLeader();
+                    }
+                    journal.compareOrAppendRaw(request.getEntries(), request.getPrevLogIndex() + 1);
+                    if (request.getLeaderCommit() > commitIndex) {
+                        commitIndex = Math.min(request.getLeaderCommit(), journal.maxIndex());
+                    }
+
+                    AsyncAppendEntriesResponse response = new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
+                            currentTerm.get(), request.getEntries().size());
+                    rr.getResponseFuture()
+                            .complete(response);
+                    if(request.getEntries() != null && !request.getEntries().isEmpty()) {
+                        logger.info("Send appendEntriesResponse, success: {}, journalIndex: {}, entryCount: {}, term: {}, " +
+                                        "server: {}, currentTerm: {}.",
+                                response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
+                                uri, currentTerm.get());
+                    }
+                    return;
+                }
+            } catch (IndexOverflowException | IndexUnderflowException ignored) {}
+
+            AsyncAppendEntriesResponse response = new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
+                    currentTerm.get(), request.getEntries().size());
+            rr.getResponseFuture()
+                    .complete(response);
+            if(request.getEntries() != null && !request.getEntries().isEmpty()) {
+                logger.info("Send appendEntriesResponse, success: {}, journalIndex: {}, entryCount: {}, term: {}, " +
+                                "server: {}, currentTerm: {}.",
+                        response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
+                        uri, currentTerm.get());
+            }
+        } catch (Throwable t) {
+
+            logger.warn("Exception when handle AsyncReplicationRequest, " +
+                    "term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, entries: {}, leaderCommits: {}, " +
+                            "server: {}.",
+                    request.getTerm(), request.getLeader(), request.getPrevLogIndex(),
+                    request.getPrevLogTerm(), request.getEntries().size(),
+                    request.getLeaderCommit(), uri, t);
+            throw t;
+        }
 
     }
 
@@ -510,6 +575,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
      */
     private void convertToLeader() {
         synchronized (rollMutex) {
+
             // 初始化followers
             this.followers = this.voters.stream()
                     .filter(uri -> !uri.equals(this.uri))

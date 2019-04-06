@@ -1,10 +1,13 @@
 package com.jd.journalkeeper.examples.kv;
 
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -21,11 +24,12 @@ public class TripleNodeServerMain {
                 URI.create("jk://localhost:32553"));
         List<KvServer> kvServers = new ArrayList<>(serverURIs.size());
         for (int i = 0; i < serverURIs.size(); i++) {
-
+            Path workingDir = Paths.get(System.getProperty("user.dir")).resolve("journalkeeper").resolve("server" + i);
+            FileUtils.deleteDirectory(workingDir.toFile());
             Properties properties = new Properties();
             properties.put("working_dir", Paths.get(System.getProperty("user.dir")).resolve("journalkeeper").resolve("server" + i).toString());
-//            properties.put("heartbeat_interval_ms", "5000");
-//            properties.put("election_timeout_ms", "50000");
+            properties.put("heartbeat_interval_ms", "100");
+            properties.put("election_timeout_ms", "1000");
             KvServer kvServer = new KvServer(serverURIs.get(i), serverURIs, properties);
             kvServers.add(kvServer);
             kvServer.recover();
