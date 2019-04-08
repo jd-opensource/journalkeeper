@@ -1,6 +1,8 @@
 package com.jd.journalkeeper.rpc.utils;
 
 import com.jd.journalkeeper.rpc.BaseResponse;
+import com.jd.journalkeeper.rpc.RpcException;
+import com.jd.journalkeeper.rpc.StatusCode;
 import com.jd.journalkeeper.rpc.header.JournalKeeperHeader;
 import com.jd.journalkeeper.rpc.payload.GenericPayload;
 import com.jd.journalkeeper.rpc.payload.VoidPayload;
@@ -27,7 +29,7 @@ public class CommandSupport {
         return new Command(header, new VoidPayload());
     }
 
-    public static <Q, R> CompletableFuture<R> sendRequest(Q request, int requestType, Transport transport) {
+    public static <Q, R extends BaseResponse> CompletableFuture<R> sendRequest(Q request, int requestType, Transport transport) {
         CompletableFuture<R> future = new CompletableFuture<>();
         transport.async(
                 null == request ? newRequestCommand(requestType): newRequestCommand(requestType, request),
@@ -42,7 +44,13 @@ public class CommandSupport {
                         future.completeExceptionally(cause);
                     }
                 });
-        return future;
+        return future.thenApply(response -> {
+            if(!response.success() && response.getStatusCode() == StatusCode.EXCEPTION) {
+                throw new RpcException(response);
+            } else {
+                return response;
+            }
+        });
     }
 
     public static void sendResponse(BaseResponse response, int responseType,  Command requestCommand, Transport transport) {

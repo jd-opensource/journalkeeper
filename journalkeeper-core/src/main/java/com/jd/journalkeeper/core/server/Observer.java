@@ -59,6 +59,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
     private LoopThread buildReplicationThread() {
         return LoopThread.builder()
                 .name(String.format("ObserverReplicationThread-%s", uri.toString()))
+                .condition(() ->this.serverState() == ServerState.RUNNING)
                 .doWork(this::pullEntries)
                 .sleepTime(50,100)
                 .onException(e -> logger.warn("ObserverReplicationThread Exception: ", e))
@@ -169,18 +170,16 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
     }
 
     @Override
-    public void start() {
-        super.start();
+    public void doStart() {
         replicationThread.start();
     }
 
     @Override
-    public void stop() {
+    public void doStop() {
         replicationThread.stop();
         if(null != currentServer) {
             currentServer.stop();
         }
-        super.stop();
     }
 
     @Override

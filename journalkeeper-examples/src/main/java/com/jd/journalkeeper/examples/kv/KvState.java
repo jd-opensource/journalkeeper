@@ -3,7 +3,6 @@ package com.jd.journalkeeper.examples.kv;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.state.LocalState;
 
 import java.io.IOException;

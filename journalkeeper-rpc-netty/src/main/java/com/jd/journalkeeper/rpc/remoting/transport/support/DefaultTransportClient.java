@@ -115,7 +115,7 @@ public class DefaultTransportClient extends TransportClientSupport implements Tr
     protected void doStop() {
         super.doStop();
         clearTimer.cancel();
-        transportEventBus.stop(true);
+        transportEventBus.stop(false);
         requestBarrier.clear();
         responseHandler.stop();
     }

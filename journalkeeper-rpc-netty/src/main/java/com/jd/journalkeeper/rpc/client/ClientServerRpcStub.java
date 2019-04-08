@@ -51,7 +51,8 @@ public class ClientServerRpcStub implements ClientServerRpc {
 
     @Override
     public CompletableFuture<QueryStateResponse> querySnapshot(QueryStateRequest request) {
-        return CommandSupport.sendRequest(request, RpcTypes.QUERY_SNAPSHOT_REQUEST, transport);
+        return CommandSupport
+                .sendRequest(request, RpcTypes.QUERY_SNAPSHOT_REQUEST, transport);
     }
 
     @Override

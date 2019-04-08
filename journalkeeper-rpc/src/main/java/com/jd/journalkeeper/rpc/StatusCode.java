@@ -17,6 +17,7 @@ public enum StatusCode {
     //001 ~ 100 Common
     UNKNOWN_ERROR(1, "UNKNOWN_ERROR"),
     EXCEPTION(2, "EXCEPTION"),
+    TRANSPORT_FAILED(3, "TRANSPORT_FAILED"),
     NOT_LEADER(100, "NOT_LEADER"),
 
     // 101 ~ 200 Client Server Rpc

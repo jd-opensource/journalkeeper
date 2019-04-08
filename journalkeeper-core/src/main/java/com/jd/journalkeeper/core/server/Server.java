@@ -156,6 +156,9 @@ public abstract class Server<E, Q, R>
     protected final Map<URI, ServerRpc> remoteServers = new HashMap<>();
     private Config config;
 
+    private ServerState serverState = ServerState.STOPPED;
+    private ServerMetadata lastSavedServerMetadata = null;
+
     public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
                   Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor,
                   ExecutorService asyncExecutor, Properties properties){
@@ -184,6 +187,7 @@ public abstract class Server<E, Q, R>
     private LoopThread buildStateMachineThread() {
         return LoopThread.builder()
                 .name("StateMachineThread")
+                .condition(() ->this.serverState() == ServerState.RUNNING)
                 .doWork(this::applyEntries)
                 .sleepTime(50,100)
                 .onException(e -> logger.warn("StateMachineThread Exception: ", e))
@@ -198,7 +202,8 @@ public abstract class Server<E, Q, R>
         createMissingDirectories();
 
         metadataPersistence.recover(metadataPath(), properties);
-        metadataPersistence.save(createServerMetadata());
+        lastSavedServerMetadata = createServerMetadata();
+        metadataPersistence.save(lastSavedServerMetadata);
 
     }
 
@@ -436,16 +441,19 @@ public abstract class Server<E, Q, R>
     }
 
     @Override
-    public void start() {
-
+    public final void start() {
+        this.serverState = ServerState.STARTING;
+        doStart();
         stateMachineThread.start();
         flushFuture = scheduledExecutor.scheduleAtFixedRate(this::flush,
                 ThreadLocalRandom.current().nextLong(500L, 1000L),
                 config.getFlushIntervalMs(), TimeUnit.MILLISECONDS);
         rpcServer = rpcAccessPointFactory.bindServerService(this);
         rpcServer.start();
+        this.serverState = ServerState.RUNNING;
     }
 
+    protected abstract void doStart();
     /**
      * 刷盘：
      * 1. 日志
@@ -459,7 +467,11 @@ public abstract class Server<E, Q, R>
             if(state instanceof Flushable) {
                 ((Flushable) state).flush();
             }
-            metadataPersistence.save(createServerMetadata());
+            ServerMetadata serverMetadata = createServerMetadata();
+            if(!serverMetadata.equals(lastSavedServerMetadata)) {
+                metadataPersistence.save(serverMetadata);
+                lastSavedServerMetadata = serverMetadata;
+            }
         } catch (IOException e) {
             logger.warn("Flush exception: ", e);
         }
@@ -470,8 +482,10 @@ public abstract class Server<E, Q, R>
     }
 
     @Override
-    public void stop() {
+    public final void stop() {
         try {
+            this.serverState = ServerState.STOPPING;
+            doStop();
             remoteServers.values().forEach(ServerRpc::stop);
             if(rpcServer != null) {
                 rpcServer.stop();
@@ -482,12 +496,13 @@ public abstract class Server<E, Q, R>
             if(persistenceFactory instanceof Closeable) {
                 ((Closeable) persistenceFactory).close();
             }
+            this.serverState = ServerState.STOPPED;
         } catch (Throwable t) {
             t.printStackTrace();
             logger.warn("Exception: ", t);
         }
     }
-
+    protected abstract void doStop();
     protected void stopAndWaitScheduledFeature(ScheduledFuture scheduledFuture, long timeout) throws TimeoutException {
         if (scheduledFuture != null) {
             long t0 = System.currentTimeMillis();
@@ -513,8 +528,8 @@ public abstract class Server<E, Q, R>
      */
     @Override
     public void recover() throws IOException {
-
-        onMetadataRecovered(metadataPersistence.recover(metadataPath(),properties));
+        lastSavedServerMetadata = metadataPersistence.recover(metadataPath(), properties);
+        onMetadataRecovered(lastSavedServerMetadata);
         state.recover(statePath(), properties);
         recoverSnapshots();
         recoverJournal();
@@ -582,7 +597,7 @@ public abstract class Server<E, Q, R>
 
     @Override
     public ServerState serverState() {
-        return stateMachineThread.serverState();
+        return this.serverState;
     }
 
     protected long getRpcTimeoutMs() {

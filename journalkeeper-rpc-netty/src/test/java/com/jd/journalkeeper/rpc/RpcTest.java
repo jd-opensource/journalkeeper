@@ -6,6 +6,7 @@ import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.rpc.client.*;
 import com.jd.journalkeeper.rpc.server.*;
+import com.jd.journalkeeper.utils.net.NetworkingUtils;
 import com.jd.journalkeeper.utils.state.StateServer;
 import com.jd.journalkeeper.utils.test.ByteUtils;
 import org.junit.After;
@@ -40,7 +41,7 @@ public class RpcTest {
     private StateServer server;
     @Before
     public void before() throws IOException, URISyntaxException {
-        int port = findRandomOpenPortOnAllLocalInterfaces();
+        int port = NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces();
         when(serverRpcMock.serverUri()).thenReturn(new URI("jk://localhost:" + port));
         logger.info("Server URI: {}", serverRpcMock.serverUri());
         RpcAccessPointFactory rpcAccessPointFactory = new JournalKeeperRpcAccessPointFactory();
@@ -401,11 +402,7 @@ public class RpcTest {
         if(null != server) server.stop();
     }
 
-    private static Integer findRandomOpenPortOnAllLocalInterfaces() throws IOException {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            return socket.getLocalPort();
-        }
-    }
+
 
 
 

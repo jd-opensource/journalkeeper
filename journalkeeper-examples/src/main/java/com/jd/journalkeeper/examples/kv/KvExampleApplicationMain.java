@@ -1,35 +1,39 @@
 package com.jd.journalkeeper.examples.kv;
 
+import com.jd.journalkeeper.utils.net.NetworkingUtils;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import java.util.stream.Collectors;
 
-public class TripleNodeServerMain {
-    private static final Logger logger = LoggerFactory.getLogger(TripleNodeServerMain.class);
+public class KvExampleApplicationMain {
+    private static final Logger logger = LoggerFactory.getLogger(KvExampleApplicationMain.class);
     public static void main(String [] args) throws IOException {
-        List<URI> serverURIs = Arrays.asList(
-                URI.create("jk://localhost:32551"),
-                URI.create("jk://localhost:32552"),
-                URI.create("jk://localhost:32553"));
+        int nodes = 3;
+        logger.info("Usage: java " + KvExampleApplicationMain.class.getName() + " [nodes(default 3)]");
+        if(args.length > 0) {
+            nodes = Integer.parseInt(args[0]);
+        }
+        logger.info("Nodes: {}", nodes);
+        List<URI> serverURIs = new ArrayList<>(nodes);
+        for (int i = 0; i < nodes; i++) {
+            URI uri = URI.create("jk://localhost:" + NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces());
+            serverURIs.add(uri);
+        }
         List<KvServer> kvServers = new ArrayList<>(serverURIs.size());
         for (int i = 0; i < serverURIs.size(); i++) {
             Path workingDir = Paths.get(System.getProperty("user.dir")).resolve("journalkeeper").resolve("server" + i);
             FileUtils.deleteDirectory(workingDir.toFile());
             Properties properties = new Properties();
             properties.put("working_dir", Paths.get(System.getProperty("user.dir")).resolve("journalkeeper").resolve("server" + i).toString());
-            properties.put("heartbeat_interval_ms", "100");
-            properties.put("election_timeout_ms", "1000");
             KvServer kvServer = new KvServer(serverURIs.get(i), serverURIs, properties);
             kvServers.add(kvServer);
             kvServer.recover();
@@ -39,30 +43,29 @@ public class TripleNodeServerMain {
         List<KvClient> kvClients = kvServers.stream().map(KvServer::getClient).collect(Collectors.toList());
 
 
-
+        int i = 0;
         logger.info("SET {} {}", "key1", "hello!");
-        kvClients.get(0).set("key1", "hello!");
+        kvClients.get(i++ % serverURIs.size()).set("key1", "hello!");
 
         logger.info("SET {} {}", "key2", "hello!");
-        kvClients.get(1).set("key2", "world!");
+        kvClients.get(i++ % serverURIs.size()).set("key2", "world!");
 
         logger.info("GET {}", "key1");
-        logger.info("Result: {}", kvClients.get(2).get("key1"));
+        logger.info("Result: {}", kvClients.get(i++ % serverURIs.size()).get("key1"));
 
         logger.info("KEYS");
-        logger.info("Result: {}", kvClients.get(0).listKeys());
+        logger.info("Result: {}", kvClients.get(i++ % serverURIs.size()).listKeys());
 
         logger.info("DEL key2");
-        kvClients.get(1).del("key2");
+        kvClients.get(i++ % serverURIs.size()).del("key2");
 
         logger.info("GET {}", "key2");
-        logger.info("Result: {}", kvClients.get(2).get("key2"));
+        logger.info("Result: {}", kvClients.get(i++ % serverURIs.size()).get("key2"));
 
         logger.info("KEYS");
-        logger.info("Result: {}", kvClients.get(0).listKeys());
-        for(KvServer kvServer: kvServers) {
-            kvServer.stop();
-        }
+        logger.info("Result: {}", kvClients.get(i ++ % serverURIs.size()).listKeys());
+
+        kvServers.parallelStream().forEach(KvServer::stop);
 
     }
 

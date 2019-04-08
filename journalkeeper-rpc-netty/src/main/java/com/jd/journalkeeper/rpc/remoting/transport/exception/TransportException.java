@@ -8,18 +8,18 @@ import java.io.IOException;
  */
 public class TransportException extends RuntimeException {
 
-    public static final String UNKNOWN_HOST = "无限主机";
-    public static final String CONNECTION_TIMEOUT = "连接超时";
-    public static final String REQUEST_TIMEOUT = "请求超时";
-    public static final String CONNECTION_ERROR = "连接错误";
-    public static final String ILLEGAL_STATE = "状态无效";
-    public static final String REQUEST_ERROR = "请求错误";
-    public static final String THREAD_EXHAUST = "线程耗尽";
-    public static final String NO_PERMISSION = "无权限";
-    public static final String INVALID_PROTOCOL = "无效协议";
-    public static final String REQUEST_EXCESSIVE = "请求过多";
-    public static final String THREAD_INTERRUPTED = "线程被终止";
-    public static final String CODEC_EXCEPTION = "解码出错";
+    public static final String UNKNOWN_HOST = "UNKNOWN_HOST";
+    public static final String CONNECTION_TIMEOUT = "CONNECTION_TIMEOUT";
+    public static final String REQUEST_TIMEOUT = "REQUEST_TIMEOUT";
+    public static final String CONNECTION_ERROR = "CONNECTION_ERROR";
+    public static final String ILLEGAL_STATE = "ILLEGAL_STATE";
+    public static final String REQUEST_ERROR = "REQUEST_ERROR";
+    public static final String THREAD_EXHAUST = "THREAD_EXHAUST";
+    public static final String NO_PERMISSION = "NO_PERMISSION";
+    public static final String INVALID_PROTOCOL = "INVALID_PROTOCOL";
+    public static final String REQUEST_EXCESSIVE = "REQUEST_EXCESSIVE";
+    public static final String THREAD_INTERRUPTED = "THREAD_INTERRUPTED";
+    public static final String CODEC_EXCEPTION = "CODEC_EXCEPTION";
 
     protected int code;
 

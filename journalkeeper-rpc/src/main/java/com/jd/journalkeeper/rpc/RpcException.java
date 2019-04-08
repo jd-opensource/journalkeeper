@@ -8,4 +8,7 @@ public class RpcException extends RuntimeException {
     public RpcException(BaseResponse response) {
         super(response.getError());
     }
+    public RpcException(Throwable t) {
+        super(t);
+    }
 }

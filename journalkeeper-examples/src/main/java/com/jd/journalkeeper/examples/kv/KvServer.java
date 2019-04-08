@@ -1,7 +1,6 @@
 package com.jd.journalkeeper.examples.kv;
 
 import com.jd.journalkeeper.core.BootStrap;
-import com.jd.journalkeeper.core.api.JournalKeeperClient;
 import com.jd.journalkeeper.core.api.JournalKeeperServer;
 import com.jd.journalkeeper.core.exception.NoLeaderException;
 import com.jd.journalkeeper.utils.state.StateServer;
@@ -10,7 +9,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 
