@@ -33,6 +33,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.StampedLock;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -158,6 +159,7 @@ public abstract class Server<E, Q, R>
 
     private ServerState serverState = ServerState.STOPPED;
     private ServerMetadata lastSavedServerMetadata = null;
+    private AtomicBoolean flushGate = new AtomicBoolean(false);
 
     public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
                   Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor,
@@ -460,20 +462,29 @@ public abstract class Server<E, Q, R>
      * 2. 状态
      * 3. 元数据
      */
-    private void flush() {
+    @Override
+    public boolean flush() {
         //FIXME: 如果刷盘异常，如何保证日志、状态和元数据三者一致？
-        try {
-            journal.flush();
-            if(state instanceof Flushable) {
-                ((Flushable) state).flush();
+        if (flushGate.compareAndSet(false, true)) {
+            try {
+
+                journal.flush();
+                if (state instanceof Flushable) {
+                    ((Flushable) state).flush();
+                }
+                ServerMetadata serverMetadata = createServerMetadata();
+                if (!serverMetadata.equals(lastSavedServerMetadata)) {
+                    metadataPersistence.save(serverMetadata);
+                    lastSavedServerMetadata = serverMetadata;
+                }
+            } catch(IOException e){
+                logger.warn("Flush exception: ", e);
+            } finally {
+                flushGate.set(false);
             }
-            ServerMetadata serverMetadata = createServerMetadata();
-            if(!serverMetadata.equals(lastSavedServerMetadata)) {
-                metadataPersistence.save(serverMetadata);
-                lastSavedServerMetadata = serverMetadata;
-            }
-        } catch (IOException e) {
-            logger.warn("Flush exception: ", e);
+            return true;
+        } else {
+            return false;
         }
     }
 

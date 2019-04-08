@@ -1,8 +1,10 @@
 package com.jd.journalkeeper.examples.kv;
 
+import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.JournalKeeperClient;
 
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 /**
  * @author liyue25
@@ -52,6 +54,14 @@ public class KvClient {
                     .getKeys();
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    public ClusterConfiguration getClusterConfiguration() {
+        try {
+            return client.getServers().get();
+        } catch (Throwable e) {
+            return null;
         }
     }
 

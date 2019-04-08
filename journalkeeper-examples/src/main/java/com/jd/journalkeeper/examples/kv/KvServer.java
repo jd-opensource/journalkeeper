@@ -19,14 +19,8 @@ import java.util.Properties;
 public class KvServer implements StateServer {
     private static final Logger logger = LoggerFactory.getLogger(KvServer.class);
     private final BootStrap<KvEntry, KvQuery, KvResult> bootStrap;
-    private final Properties properties;
-    private final URI uri;
-    private final List<URI> voters;
 
-    public KvServer(URI uri, List<URI> voters, Properties properties) {
-        this.properties = properties;
-        this.uri = uri;
-        this.voters = voters;
+    public KvServer(Properties properties) {
         bootStrap =
                 new BootStrap<>(JournalKeeperServer.Roll.VOTER,
                         new KvStateFactory(),
@@ -36,10 +30,11 @@ public class KvServer implements StateServer {
 
     }
 
-
+    public void init(URI uri, List<URI> voters) throws IOException {
+        bootStrap.getServer().init(uri, voters);
+    }
 
     public void recover() throws IOException {
-        bootStrap.getServer().init(uri, voters);
         bootStrap.getServer().recover();
     }
 
@@ -62,6 +57,10 @@ public class KvServer implements StateServer {
         }
     }
 
+    public boolean flush() {
+        return bootStrap.getServer().flush();
+    }
+
     @Override
     public void stop() {
         bootStrap.shutdown();
@@ -73,7 +72,15 @@ public class KvServer implements StateServer {
         return bootStrap.getServer().serverState();
     }
 
-    public KvClient getClient() {
+    public KvClient createClient() {
         return new KvClient(bootStrap.getClient());
+    }
+
+    public JournalKeeperServer.Roll roll() {
+        return this.bootStrap.getServer().roll();
+    }
+
+    public URI serverUri() {
+        return this.bootStrap.getServer().serverUri();
     }
 }

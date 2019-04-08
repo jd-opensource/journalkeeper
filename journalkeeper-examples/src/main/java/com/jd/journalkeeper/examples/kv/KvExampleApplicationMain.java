@@ -33,14 +33,15 @@ public class KvExampleApplicationMain {
             Path workingDir = Paths.get(System.getProperty("user.dir")).resolve("journalkeeper").resolve("server" + i);
             FileUtils.deleteDirectory(workingDir.toFile());
             Properties properties = new Properties();
-            properties.put("working_dir", Paths.get(System.getProperty("user.dir")).resolve("journalkeeper").resolve("server" + i).toString());
-            KvServer kvServer = new KvServer(serverURIs.get(i), serverURIs, properties);
+            properties.put("working_dir", workingDir.toString());
+            KvServer kvServer = new KvServer( properties);
             kvServers.add(kvServer);
+            kvServer.init(serverURIs.get(i), serverURIs);
             kvServer.recover();
             kvServer.start();
         }
         kvServers.get(0).waitForLeaderReady();
-        List<KvClient> kvClients = kvServers.stream().map(KvServer::getClient).collect(Collectors.toList());
+        List<KvClient> kvClients = kvServers.stream().map(KvServer::createClient).collect(Collectors.toList());
 
 
         int i = 0;

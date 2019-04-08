@@ -5,6 +5,7 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.jd.journalkeeper.core.state.LocalState;
 
+import java.io.Flushable;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -32,15 +33,20 @@ public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
     }
 
     @Override
-    protected void recoverLocalState(Path path, Properties properties) {
+    protected void recoverLocalState(Path statePath, Properties properties) {
         try {
-            stateMap =  gson.fromJson(new String(Files.readAllBytes(path.resolve(FILENAME)), StandardCharsets.UTF_8),
+            stateMap =  gson.fromJson(new String(Files.readAllBytes(statePath.resolve(FILENAME)), StandardCharsets.UTF_8),
                     new TypeToken<HashMap<String, String>>(){}.getType());
         } catch (NoSuchFileException e) {
             stateMap = new HashMap<>();
         }catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Override
+    protected void flushState(Path statePath) throws IOException {
+        Files.write(statePath.resolve(FILENAME),gson.toJson(stateMap).getBytes(StandardCharsets.UTF_8));
     }
 
     @Override

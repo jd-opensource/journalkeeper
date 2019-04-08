@@ -380,6 +380,11 @@ public class Journal  implements Flushable, Closeable {
                     // 这是倒数第一条，记录之
                     lastEntryPosition = position;
                     lastEntry = storageEntry;
+                    if(lastEntryPosition == journalPersistence.min()) {
+                        // 只有一条完整的记录也认为OK，保留之。
+                        truncatePartialEntry(lastEntryPosition, lastEntry);
+                        return;
+                    }
                 } else {
                     // 这是倒数第二条
                     if(position + storageEntry.getLength() == lastEntryPosition) {

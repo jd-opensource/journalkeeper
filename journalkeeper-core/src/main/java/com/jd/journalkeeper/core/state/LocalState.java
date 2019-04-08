@@ -57,7 +57,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
             lastIncludedTerm = stateMetadata.getLastIncludedTerm();
             Files.createDirectories(localStatePath());
 
-            recoverLocalState(path, properties);
+            recoverLocalState(localStatePath(), properties);
 
         } catch (IOException e) {
             throw new StateRecoverException(e);
@@ -87,11 +87,12 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
 
     @Override
     public State<E, Q, R> takeASnapshot(Path destPath) throws IOException {
+        flushState(localStatePath());
         State<E, Q, R> state = factory.createState();
         List<Path> srcFiles = listAllFiles();
 
         List<Path> destFiles = srcFiles.stream()
-                .map(src -> src.relativize(path))
+                .map(src -> path.relativize(src))
                 .map(destPath::resolve)
                 .collect(Collectors.toList());
         Files.createDirectories(destPath);
@@ -300,8 +301,11 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
             stateMetadata.flush();
         }
 
+        flushState(localStatePath());
+
     }
 
+    protected abstract void flushState(Path statePath) throws IOException;
     @Override
     public void clear() {
         lastApplied = -1L;
