@@ -51,17 +51,22 @@ public abstract class DoubleCopy implements Closeable {
     }
 
     protected void validate() throws IOException {
-        if (!(file.exists() || file.createNewFile())) {
-            throw new IOException(String.format("create file error,%s", file.getPath()));
-        }
-        if (!file.canWrite()) {
-            throw new IOException(String.format("file can not be written,%s", file.getPath()));
-        }
-        if (!file.canRead()) {
-            throw new IOException(String.format("file can not be read,%s", file.getPath()));
-        }
-        if (raf == null) {
-            raf = new RandomAccessFile(file, "rw");
+        try {
+            if (!(file.exists() || file.createNewFile())) {
+                throw new IOException(String.format("create file error,%s", file.getPath()));
+            }
+            if (!file.canWrite()) {
+                throw new IOException(String.format("file can not be written,%s", file.getPath()));
+            }
+            if (!file.canRead()) {
+                throw new IOException(String.format("file can not be read,%s", file.getPath()));
+            }
+            if (raf == null) {
+                raf = new RandomAccessFile(file, "rw");
+            }
+        } catch (IOException e) {
+            logger.warn("File Exception, file: {}:", file.getAbsolutePath(), e);
+            throw e;
         }
     }
 

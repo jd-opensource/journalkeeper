@@ -6,6 +6,7 @@ import com.jd.journalkeeper.core.api.JournalKeeperServer;
 import com.jd.journalkeeper.core.api.State;
 import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.journal.Journal;
+import com.jd.journalkeeper.core.journal.StorageEntry;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NoSuchSnapshotException;
@@ -269,14 +270,19 @@ public abstract class Server<E, Q, R>
     private void applyEntries()  {
         while ( state.lastApplied() < commitIndex) {
             takeASnapShotIfNeed();
-            E entry = entrySerializer.parse(journal.read(state.lastApplied()));
-            long stamp = stateLock.writeLock();
-            try {
-                state.execute(entry);
-            } finally {
-                stateLock.unlockWrite(stamp);
+            StorageEntry storageEntry = journal.readStorageEntry(state.lastApplied());
+            if(storageEntry.getType() > 0) {
+                E entry = entrySerializer.parse(storageEntry.getEntry());
+                long stamp = stateLock.writeLock();
+                try {
+                    state.execute(entry);
+                } finally {
+                    stateLock.unlockWrite(stamp);
+                }
+                CompletableFuture.runAsync(this::onStateChanged);
             }
-            CompletableFuture.runAsync(this::onStateChanged);
+            // Ignore StorageEntry.TYPE_LEADER_ANNOUNCEMENT
+            state.setLastApplied(state.lastApplied() + 1);
         }
     }
 
@@ -478,7 +484,8 @@ public abstract class Server<E, Q, R>
                     lastSavedServerMetadata = serverMetadata;
                 }
             } catch(IOException e){
-                logger.warn("Flush exception: ", e);
+                logger.warn("Flush exception, commitIndex: {}, lastApplied: {}, server: {}: ",
+                       commitIndex, state.lastApplied(), uri ,e);
             } finally {
                 flushGate.set(false);
             }

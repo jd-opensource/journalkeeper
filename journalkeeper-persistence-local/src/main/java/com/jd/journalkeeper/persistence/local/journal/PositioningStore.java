@@ -224,6 +224,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
     }
 
     public byte [] read(long position, int length) throws IOException{
+        if(length == 0) return new byte [0];
         checkReadPosition(position);
         try {
             StoreFile storeFile = storeFileMap.floorEntry(position).getValue();

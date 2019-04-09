@@ -60,6 +60,18 @@ public class JournalTest {
             index++;
         }
 
+        index = journal.minIndex();
+
+        while (index < journal.maxIndex()) {
+            StorageEntry readStorageEntry = journal.readStorageEntry(index);
+            StorageEntry writeStorageEntry = storageEntries.get((int) index);
+            Assert.assertEquals(writeStorageEntry.getLength(), readStorageEntry.getLength());
+            Assert.assertEquals(writeStorageEntry.getTerm(), readStorageEntry.getTerm());
+            Assert.assertEquals(writeStorageEntry.getType(), readStorageEntry.getType());
+            Assert.assertArrayEquals(writeStorageEntry.getEntry(), readStorageEntry.getEntry());
+            index++;
+        }
+
     }
     @Test
     public void writeReadRawTest() {

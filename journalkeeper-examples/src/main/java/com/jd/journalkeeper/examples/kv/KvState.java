@@ -7,6 +7,7 @@ import com.jd.journalkeeper.core.state.LocalState;
 
 import java.io.Flushable;
 import java.io.IOException;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -46,7 +47,9 @@ public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
 
     @Override
     protected void flushState(Path statePath) throws IOException {
-        Files.write(statePath.resolve(FILENAME),gson.toJson(stateMap).getBytes(StandardCharsets.UTF_8));
+        try {
+            Files.write(statePath.resolve(FILENAME), gson.toJson(stateMap).getBytes(StandardCharsets.UTF_8));
+        } catch (ClosedByInterruptException ignored) {}
     }
 
     @Override
@@ -59,7 +62,6 @@ public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
                 stateMap.remove(entry.getKey());
                 break;
         }
-        lastApplied ++;
     }
 
     @Override

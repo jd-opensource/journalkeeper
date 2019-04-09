@@ -16,7 +16,7 @@ public class TestPathUtils {
         File tempDirFile = new File(tempDir);
         assert tempDirFile.exists() && tempDirFile.isDirectory() && tempDirFile.canWrite();
 
-        File base = new File(basePath);
+        File base = new File(tempDirFile, basePath);
         if (base.exists()){
             if(base.isDirectory()) deleteFolder(base); else base.delete();
         }
@@ -25,9 +25,7 @@ public class TestPathUtils {
     }
 
     public static Path prepareBaseDir() throws IOException {
-        String property = "java.io.tmpdir";
-        String tempDir = System.getProperty(property);
-        return prepareBaseDir(tempDir + File.separator + "journalkeeper");
+        return prepareBaseDir( "journalkeeper");
     }
 
     public static void destroyBaseDir() {

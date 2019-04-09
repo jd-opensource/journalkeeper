@@ -57,6 +57,22 @@ public class KvServer implements StateServer {
         }
     }
 
+    public boolean waitForLeaderReady(long timeout) {
+        // 等待选出leader
+        URI leader = null;
+        long t0 = System.currentTimeMillis();
+        while (leader == null && System.currentTimeMillis() - t0 < timeout) {
+            try {
+                leader = bootStrap.getClient().getServers().get().getLeader();
+                Thread.sleep(10);
+            } catch (NoLeaderException ignored) {}
+            catch (Exception e) {
+                logger.warn("Exception:", e);
+            }
+        }
+        return leader != null;
+    }
+
     public boolean flush() {
         return bootStrap.getServer().flush();
     }

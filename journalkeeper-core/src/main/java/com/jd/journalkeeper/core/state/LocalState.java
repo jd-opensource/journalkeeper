@@ -55,10 +55,10 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
             stateMetadata.recover();
             lastApplied = stateMetadata.getLastApplied();
             lastIncludedTerm = stateMetadata.getLastIncludedTerm();
+
             Files.createDirectories(localStatePath());
 
             recoverLocalState(localStatePath(), properties);
-
         } catch (IOException e) {
             throw new StateRecoverException(e);
         }
@@ -315,5 +315,10 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
         } catch (IOException e) {
             throw new StateInstallException(e);
         }
+    }
+
+    @Override
+    public void setLastApplied(long lastApplied) {
+        this.lastApplied = lastApplied;
     }
 }

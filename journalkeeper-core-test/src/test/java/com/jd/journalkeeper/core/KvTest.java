@@ -1,13 +1,10 @@
 package com.jd.journalkeeper.core;
 
-import com.jd.journalkeeper.core.exception.NoLeaderException;
 import com.jd.journalkeeper.examples.kv.KvClient;
 import com.jd.journalkeeper.examples.kv.KvServer;
 import com.jd.journalkeeper.utils.net.NetworkingUtils;
 import com.jd.journalkeeper.utils.test.TestPathUtils;
-import org.junit.After;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,38 +21,46 @@ import java.util.stream.Collectors;
  */
 public class KvTest {
     private static final Logger logger = LoggerFactory.getLogger(KvTest.class);
-    private Path path = null;
 
     @Test
     public void singleNodeTest() throws IOException {
-        List<KvServer> kvServers = createServers(1);
+        Path path = TestPathUtils.prepareBaseDir("singleNodeTest");
+        List<KvServer> kvServers = createServers(1, path);
         setGetTest(kvServers);
         stopServers(kvServers);
+        TestPathUtils.destroyBaseDir(path.toFile());
     }
 
     @Test
     public void tripleNodesTest() throws IOException {
-        List<KvServer> kvServers = createServers(3);
+        Path path = TestPathUtils.prepareBaseDir("tripleNodesTest");
+        List<KvServer> kvServers = createServers(3, path);
         setGetTest(kvServers);
         stopServers(kvServers);
+        TestPathUtils.destroyBaseDir(path.toFile());
     }
 
     @Test
     public void fiveNodesTest() throws IOException {
-        List<KvServer> kvServers = createServers(5);
+        Path path = TestPathUtils.prepareBaseDir("fiveNodesTest");
+        List<KvServer> kvServers = createServers(5, path);
         setGetTest(kvServers);
         stopServers(kvServers);
+        TestPathUtils.destroyBaseDir(path.toFile());
     }
     @Test
     public void sevenNodesTest() throws IOException {
-        List<KvServer> kvServers = createServers(7);
+        Path path = TestPathUtils.prepareBaseDir("sevenNodesTest");
+        List<KvServer> kvServers = createServers(7, path);
         setGetTest(kvServers);
         stopServers(kvServers);
+        TestPathUtils.destroyBaseDir(path.toFile());
     }
 
     @Test
     public void singleNodeRecoverTest() throws IOException {
-        KvServer kvServer = createServers(1).get(0);
+        Path path = TestPathUtils.prepareBaseDir("singleNodeTest");
+        KvServer kvServer = createServers(1, path).get(0);
         KvClient kvClient = kvServer.createClient();
         kvClient.set("key", "value");
         while (!kvServer.flush()) {
@@ -63,16 +68,30 @@ public class KvTest {
         }
         kvServer.stop();
 
-        kvServer = recoverServer("server0");
+        kvServer = recoverServer("server0", path);
         kvServer.waitForLeaderReady();
         kvClient = kvServer.createClient();
         Assert.assertEquals("value", kvClient.get("key"));
         kvServer.stop();
+        TestPathUtils.destroyBaseDir(path.toFile());
 
     }
+    @Test
+    public void singleNodeAvailabilityTest() throws IOException, InterruptedException {
+        availabilityTest(1);
+    }
 
-    private void availabilityTest(int nodes) throws IOException {
+    @Test
+    public void tripleNodesAvailabilityTest() throws IOException, InterruptedException {
+        availabilityTest(3);
+    }
+
+    /**
+     * 创建N个server，依次停掉每个server，再依次启动，验证集群可用性
+     */
+    private void availabilityTest(int nodes) throws IOException, InterruptedException {
         logger.info("Nodes: {}", nodes);
+        Path path = TestPathUtils.prepareBaseDir("availabilityTest" + nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
         List<Properties> propertiesList = new ArrayList<>(nodes);
         for (int i = 0; i < nodes; i++) {
@@ -84,30 +103,65 @@ public class KvTest {
             propertiesList.add(properties);
         }
         List<KvServer> kvServers = createServers(serverURIs, propertiesList,true);
-        int i = 0;
+        int keyNum = 0;
         while (!kvServers.isEmpty()) {
             KvClient kvClient = kvServers.get(0).createClient();
-            kvClient.set("key" + i, "value" + i);
-            KvServer leader = kvServers.stream()
-                    .filter(kvServer -> kvServer.serverUri() == kvClient.getClusterConfiguration().getLeader())
-                    .findAny().orElse(null);
-            Assert.assertNotNull(leader);
-            leader.stop();
-            kvServers.remove(leader);
-            //TODO: 小于半数的情况下，选不出Leader
-            kvServers.get(0).waitForLeaderReady();
-            Assert.assertEquals("value" + i, kvServers.get(0).createClient().get("key" + i));
-            i ++;
+            if (kvServers.size() > nodes / 2) {
+                logger.info("SET {} {}.", "key" + keyNum, "value" + keyNum);
+                kvClient.set("key" + keyNum, "value" + keyNum);
+                logger.info("OK!");
+            }
+
+
+            KvServer toBeRemoved = kvServers.get(0);
+
+            while (!toBeRemoved.flush()) {
+                Thread.yield();
+            }
+            logger.info("Shutting down server: {}.", toBeRemoved.serverUri());
+            toBeRemoved.stop();
+            kvServers.remove(toBeRemoved);
+            if (kvServers.size() > nodes / 2) {
+                // 等待新的Leader选出来
+                logger.info("Wait for new leader...");
+                Thread.sleep(5000L);
+                Assert.assertEquals("value" + keyNum, kvServers.get(0).createClient().get("key" + keyNum));
+                keyNum++;
+            }
         }
 
+        for (int j = 0; j < nodes; j++) {
+
+            KvServer kvServer = recoverServer(propertiesList.get(j));
+            kvServers.add(kvServer);
+            if(kvServers.size() > nodes / 2) {
+                // 等待新的Leader选出来
+                logger.info("Wait for new leader...");
+                Thread.sleep(5000L);
+                for (int i = 0; i < keyNum; i++) {
+                    Assert.assertEquals("value" + i, kvServers.get(0).createClient().get("key" + i));
+                }
+            }
+        }
+
+        stopServers(kvServers);
+        TestPathUtils.destroyBaseDir(path.toFile());
     }
 
 
-    private KvServer recoverServer(String serverPath) throws IOException {
+    private KvServer recoverServer(String serverPath, Path path) throws IOException {
         KvServer kvServer;
         Path workingDir = path.resolve(serverPath);
         Properties properties = new Properties();
         properties.put("working_dir", workingDir.toString());
+        kvServer = new KvServer(properties);
+        kvServer.recover();
+        kvServer.start();
+        return kvServer;
+    }
+
+    private KvServer recoverServer(Properties properties) throws IOException {
+        KvServer kvServer;
         kvServer = new KvServer(properties);
         kvServer.recover();
         kvServer.start();
@@ -130,24 +184,16 @@ public class KvTest {
         Assert.assertEquals(Collections.singletonList("key1"),kvClients.get(i++ % kvServers.size()).listKeys());
     }
 
-
-
-    @Before
-    public void before() throws IOException {
-        path = TestPathUtils.prepareBaseDir();
-
-    }
-
     private void stopServers(List<KvServer> kvServers) {
         try {
             kvServers.parallelStream().forEach(KvServer::stop);
         } catch (Throwable ignored) {}
     }
 
-    private List<KvServer> createServers(int nodes) throws IOException {
-        return createServers(nodes, true);
+    private List<KvServer> createServers(int nodes, Path path) throws IOException {
+        return createServers(nodes, path ,true);
     }
-    private List<KvServer> createServers(int nodes, boolean waitForLeader) throws IOException {
+    private List<KvServer> createServers(int nodes, Path path, boolean waitForLeader) throws IOException {
         logger.info("Nodes: {}", nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
         List<Properties> propertiesList = new ArrayList<>(nodes);
@@ -191,9 +237,5 @@ public class KvTest {
         }
         return kvServers;
     }
-    @After
-    public void after() {
-        TestPathUtils.destroyBaseDir();
 
-    }
 }

@@ -19,7 +19,6 @@ import java.util.Properties;
 public interface State<E, Q, R> extends Queryable<Q, R> {
     /**
      * 在状态state上执行命令entries。要求线性语义和原子性.
-     * 执行成功后lastApplied自增1.
      * 成功返回新状态，否则抛异常。
      * @param entry 待执行的命令
      */
@@ -78,4 +77,6 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
      * 删除所有状态数据。
      */
     void clear();
+
+    void setLastApplied(long lastApplied);
 }

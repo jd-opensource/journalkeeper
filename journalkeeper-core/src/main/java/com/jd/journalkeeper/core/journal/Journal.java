@@ -150,7 +150,7 @@ public class Journal  implements Flushable, Closeable {
         return storageEntry.getEntry();
     }
 
-    private StorageEntry readStorageEntry(long index){
+    public StorageEntry readStorageEntry(long index){
         checkIndex(index);
         try {
             long offset = readOffset(index);

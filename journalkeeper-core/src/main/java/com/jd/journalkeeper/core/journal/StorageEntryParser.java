@@ -12,6 +12,7 @@ import java.util.List;
 public class StorageEntryParser {
 
     public final static int VARIABLE_LENGTH = -1;
+    public final static int FIXED_LENGTH_1 = 1;
     public final static int FIXED_LENGTH_2 = 2;
     public final static int FIXED_LENGTH_4 = 4;
     private static int offset = 0;
@@ -24,6 +25,7 @@ public class StorageEntryParser {
     public final static int LENGTH = createAttribute("LENGTH",FIXED_LENGTH_4);
     public final static int MAGIC = createAttribute("MAGIC",FIXED_LENGTH_2);
     public final static int TERM = createAttribute("TERM",FIXED_LENGTH_4);
+    public final static int TYPE = createAttribute("TYPE",FIXED_LENGTH_1);
     public final static int ENTRY = createAttribute("ENTRY",VARIABLE_LENGTH);
 
 
@@ -250,6 +252,7 @@ public class StorageEntryParser {
         checkMagic(headerBuffer);
         storageEntry.setLength(getInt(headerBuffer, LENGTH));
         storageEntry.setTerm(getInt(headerBuffer, TERM));
+        storageEntry.setType(getByte(headerBuffer, TYPE));
         return storageEntry;
     }
 
@@ -264,6 +267,7 @@ public class StorageEntryParser {
         destBuffer.putInt(storageEntry.getLength());
         destBuffer.putShort(StorageEntry.MAGIC);
         destBuffer.putInt(storageEntry.getTerm());
+        destBuffer.put(storageEntry.getType());
         destBuffer.put(storageEntry.getEntry());
     }
 }
