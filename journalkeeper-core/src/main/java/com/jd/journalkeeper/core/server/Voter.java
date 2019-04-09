@@ -524,17 +524,18 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             }
 
             try {
-                if (request.getTerm() >= currentTerm.get() &&
-                        (rr.getPrevLogIndex() < journal.minIndex() || journal.getTerm(rr.getPrevLogIndex()) == request.getPrevLogTerm())) {
+                if (rr.getPrevLogIndex() < journal.minIndex() || journal.getTerm(rr.getPrevLogIndex()) == request.getPrevLogTerm()) {
 
                     // reset heartbeat
                     lastHeartbeat = System.currentTimeMillis();
+                    logger.info("Update lastHeartbeat, {}.", voterInfo());
                     if(!request.getLeader().equals(leader)) {
                         leader = request.getLeader();
                     }
                     journal.compareOrAppendRaw(request.getEntries(), request.getPrevLogIndex() + 1);
                     if (request.getLeaderCommit() > commitIndex) {
                         commitIndex = Math.min(request.getLeaderCommit(), journal.maxIndex());
+                        stateMachineThread.weakup();
                     }
 
                     AsyncAppendEntriesResponse response = new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
