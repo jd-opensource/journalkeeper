@@ -361,6 +361,18 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                         if (response.success()) {
                             checkTerm(response.getTerm());
                             if(response.getTerm() == currentTerm.get()) {
+                                if(response.getEntryCount() > 0) {
+                                    logger.info("Handle appendEntriesResponse, success: {}, journalIndex: {}, " +
+                                                    "entryCount: {}, term: {}, follower: {}, {}.",
+                                            response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
+                                            follower.getUri(), voterInfo());
+                                } else {
+                                    logger.debug("Handle heartbeat response, success: {}, journalIndex: {}, " +
+                                                    "entryCount: {}, term: {}, follower: {}, {}.",
+                                            response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
+                                            follower.getUri(), voterInfo());
+                                }
+
                                 follower.addResponse(response);
                                 leaderReplicationResponseHandlerThread.wakeup();
                             } else {
@@ -368,6 +380,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                                         follower.getUri(), response.getTerm(), response.getJournalIndex(), voterInfo());
                             }
                         } else {
+                            //TODO 打开注释
                             // logger.warn("Replication response error: {}", response.errorString());
                             delaySendAsyncAppendEntriesRpc(follower, request);
                         }

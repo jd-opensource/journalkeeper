@@ -107,9 +107,8 @@ public class KvTest {
         while (!kvServers.isEmpty()) {
             KvClient kvClient = kvServers.get(0).createClient();
             if (kvServers.size() > nodes / 2) {
-                logger.info("SET {} {}.", "key" + keyNum, "value" + keyNum);
+                long t0 = System.currentTimeMillis();
                 kvClient.set("key" + keyNum, "value" + keyNum);
-                logger.info("OK!");
             }
 
 
@@ -186,7 +185,7 @@ public class KvTest {
 
     private void stopServers(List<KvServer> kvServers) {
         try {
-            kvServers.parallelStream().forEach(KvServer::stop);
+            kvServers.forEach(KvServer::stop);
         } catch (Throwable ignored) {}
     }
 

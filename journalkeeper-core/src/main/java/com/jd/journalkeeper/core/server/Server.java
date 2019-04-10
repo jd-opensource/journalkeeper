@@ -296,14 +296,17 @@ public abstract class Server<E, Q, R>
      * 如果需要，保存一次快照
      */
     private void takeASnapShotIfNeed() {
-        try {
-            if (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep()) {
-                State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())));
-                snapshots.put(snapshot.lastApplied(), snapshot);
+        asyncExecutor.submit(() -> {
+            try {
+                if (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep()) {
+
+                    State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())));
+                    snapshots.put(snapshot.lastApplied(), snapshot);
+                }
+            } catch (IOException e) {
+                logger.warn("Take snapshot exception: ", e);
             }
-        } catch (IOException e) {
-            logger.warn("Take snapshot exception: ", e);
-        }
+        });
     }
 
     @Override
