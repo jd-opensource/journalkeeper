@@ -528,7 +528,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
                     // reset heartbeat
                     lastHeartbeat = System.currentTimeMillis();
-                    logger.info("Update lastHeartbeat, {}.", voterInfo());
+                    logger.debug("Update lastHeartbeat, {}.", voterInfo());
                     if(!request.getLeader().equals(leader)) {
                         leader = request.getLeader();
                     }
