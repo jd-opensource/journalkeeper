@@ -332,7 +332,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
         }
     }
 
-    protected abstract void flushState(Path statePath) throws IOException;
+    protected void flushState(Path statePath) throws IOException {};
     @Override
     public void clear() {
         lastApplied = -1L;

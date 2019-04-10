@@ -31,28 +31,24 @@ public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
     private Map<String, String> stateMap = new HashMap<>();
     private final static String FILENAME = "map";
     private final Gson gson = new Gson();
-
+    private Path statePath;
     public KvState(KvStateFactory stateFactory) {
         super(stateFactory);
     }
 
     @Override
     protected void recoverLocalState(Path statePath, Properties properties) {
+        this.statePath = statePath;
         try {
             stateMap =  gson.fromJson(new String(Files.readAllBytes(statePath.resolve(FILENAME)), StandardCharsets.UTF_8),
                     new TypeToken<HashMap<String, String>>(){}.getType());
+            int keys  = stateMap == null ? -1 : stateMap.size();
+            logger.info("State map recovered from {}, keys {} ", statePath.toString(), keys);
         } catch (NoSuchFileException e) {
             stateMap = new HashMap<>();
         }catch (IOException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    @Override
-    protected void flushState(Path statePath) throws IOException {
-        try {
-            Files.write(statePath.resolve(FILENAME), gson.toJson(stateMap).getBytes(StandardCharsets.UTF_8));
-        } catch (ClosedByInterruptException ignored) {}
     }
 
     @Override
@@ -65,6 +61,12 @@ public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
                 stateMap.remove(entry.getKey());
                 break;
         }
+        try {
+            Files.write(statePath.resolve(FILENAME), gson.toJson(stateMap).getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            logger.warn("Exception:", e);
+        }
+
     }
 
     @Override
