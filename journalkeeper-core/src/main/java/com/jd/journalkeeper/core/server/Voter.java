@@ -166,7 +166,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             callbackPositioningBelt.put(new Callback(index, rr.getResponseFuture()));
             logger.info("Append journal entry, {}", voterInfo());
             // 唤醒复制线程
-            leaderReplicationThread.weakup();
+            leaderReplicationThread.wakeup();
         } else {
             rr.getResponseFuture().complete(new UpdateClusterStateResponse(new NotLeaderException(leader)));
         }
@@ -362,7 +362,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                             checkTerm(response.getTerm());
                             if(response.getTerm() == currentTerm.get()) {
                                 follower.addResponse(response);
-                                leaderReplicationResponseHandlerThread.weakup();
+                                leaderReplicationResponseHandlerThread.wakeup();
                             } else {
                                 logger.warn("Drop outdated AsyncAppendEntries Response: follower: {}, term: {}, index: {}, {}.",
                                         follower.getUri(), response.getTerm(), response.getJournalIndex(), voterInfo());
@@ -419,7 +419,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             if (voterState == VoterState.LEADER && N > commitIndex && journal.getTerm(N - 1) == currentTerm.get()) {
                 commitIndex = N;
                 // 唤醒状态机线程
-                stateMachineThread.weakup();
+                stateMachineThread.wakeup();
             }
         } else {
             long[] sortedMatchIndex = followers.parallelStream()
@@ -433,7 +433,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                             commitIndex, N, voterInfo());
                     commitIndex = N;
                     // 唤醒状态机线程
-                    stateMachineThread.weakup();
+                    stateMachineThread.wakeup();
                 }
             }
         }
@@ -535,7 +535,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                     journal.compareOrAppendRaw(request.getEntries(), request.getPrevLogIndex() + 1);
                     if (request.getLeaderCommit() > commitIndex) {
                         commitIndex = Math.min(request.getLeaderCommit(), journal.maxIndex());
-                        stateMachineThread.weakup();
+                        stateMachineThread.wakeup();
                     }
 
                     AsyncAppendEntriesResponse response = new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
@@ -604,7 +604,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             this.voterState = VoterState.LEADER;
             this.leader = this.uri;
             // Leader announcement
-            leaderReplicationThread.weakup();
+            leaderReplicationThread.wakeup();
             logger.info("Convert to LEADER, {}.", voterInfo());
         }
 

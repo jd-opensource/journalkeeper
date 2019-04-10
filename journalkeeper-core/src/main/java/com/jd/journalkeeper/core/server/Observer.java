@@ -76,7 +76,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
             journal.appendRaw(response.getEntries());
             commitIndex += response.getEntries().size();
             // 唤醒状态机线程
-            stateMachineThread.weakup();
+            stateMachineThread.wakeup();
         } else if( response.getStatusCode() == StatusCode.INDEX_UNDERFLOW){
             reset();
         } else {

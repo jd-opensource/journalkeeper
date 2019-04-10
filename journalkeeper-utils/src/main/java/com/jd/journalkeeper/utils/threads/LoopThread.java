@@ -22,7 +22,7 @@ public abstract class LoopThread implements Runnable, StateServer {
     private boolean daemon;
     private final Lock wakeupLock = new ReentrantLock();
     private final java.util.concurrent.locks.Condition wakeupCondition = wakeupLock.newCondition();
-
+    private ServerState serverState = ServerState.STOPPED;
     /**
      * 每次循环需要执行的代码。
      */
@@ -55,6 +55,7 @@ public abstract class LoopThread implements Runnable, StateServer {
     @Override
     public synchronized void start() {
         if(!isStarted()) {
+            serverState = ServerState.STARTING;
             thread = new Thread(this);
             thread.setName(name == null ? "LoopThread": name);
             thread.setDaemon(daemon);
@@ -65,10 +66,11 @@ public abstract class LoopThread implements Runnable, StateServer {
     @Override
     public synchronized void stop() {
 
-
-        while (isStarted()){
-            thread.interrupt();
+        serverState = ServerState.STOPPING;
+        thread.interrupt();
+        while (serverState != ServerState.STOPPED){
             try {
+                wakeup();
                 Thread.sleep(10L);
             } catch (InterruptedException ignored) {}
         }
@@ -80,17 +82,22 @@ public abstract class LoopThread implements Runnable, StateServer {
     }
     @Override
     public ServerState serverState() {
-        return (thread!= null && thread.isAlive()) ? ServerState.RUNNING : ServerState.STOPPED;
+        return serverState;
     }
 
     @Override
     public void run() {
-        while (!Thread.currentThread().isInterrupted()) {
+        if(serverState == ServerState.STARTING) {
+            serverState = ServerState.RUNNING;
+        }
+        while (serverState == ServerState.RUNNING) {
 
             long t0 = System.currentTimeMillis();
             try {
                 wakeupLock.lock();
-                if(condition()) doWork();
+                if(condition()) {
+                    doWork();
+                }
                 long t1 = System.currentTimeMillis();
 
                 // 为了避免空转CPU高，如果执行时间过短，等一会儿再进行下一次循环
@@ -108,12 +115,13 @@ public abstract class LoopThread implements Runnable, StateServer {
                 wakeupLock.unlock();
             }
         }
+        serverState = ServerState.STOPPED;
     }
 
     /**
      * 唤醒任务如果任务在Sleep
      */
-    public synchronized void weakup() {
+    public synchronized void wakeup() {
         if(wakeupLock.tryLock()) {
             try {
                 wakeupCondition.signal();

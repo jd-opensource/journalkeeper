@@ -99,12 +99,10 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
             } else if(bufferType == MAPPED_BUFFER) {
                 unloadUnsafe();
             }
-            try {
-                ByteBuffer buffer = bufferPool.allocate(capacity, this);
-                loadDirectBuffer(buffer);
-            } catch (OutOfMemoryError oom) {
-                logger.warn("Insufficient direct memory, use write map instead. File: {}", file.getAbsolutePath());
-            }
+
+            ByteBuffer buffer = bufferPool.allocate(capacity, this);
+            loadDirectBuffer(buffer);
+
     }
 
     private void loadDirectBuffer(ByteBuffer buffer) throws IOException {
