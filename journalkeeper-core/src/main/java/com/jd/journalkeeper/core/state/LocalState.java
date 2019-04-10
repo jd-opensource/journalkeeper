@@ -18,6 +18,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 /**
@@ -32,6 +36,10 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
     protected Path path;
     protected Properties properties;
     protected final StateFactory<E, Q, R> factory;
+    /**
+     * State文件读写锁
+     */
+    protected final ReadWriteLock stateFilesLock = new ReentrantReadWriteLock();
 
     protected LocalState(StateFactory<E, Q, R> stateFactory) {
         this.factory = stateFactory;
@@ -57,8 +65,12 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
             lastIncludedTerm = stateMetadata.getLastIncludedTerm();
 
             Files.createDirectories(localStatePath());
-
-            recoverLocalState(localStatePath(), properties);
+            try {
+                stateFilesLock.writeLock().lock();
+                recoverLocalState(localStatePath(), properties);
+            } finally {
+                stateFilesLock.writeLock().unlock();
+            }
         } catch (IOException e) {
             throw new StateRecoverException(e);
         }
@@ -87,24 +99,35 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
 
     @Override
     public State<E, Q, R> takeASnapshot(Path destPath) throws IOException {
-        flushState(localStatePath());
-        State<E, Q, R> state = factory.createState();
-        List<Path> srcFiles = listAllFiles();
-
-        List<Path> destFiles = srcFiles.stream()
-                .map(src -> path.relativize(src))
-                .map(destPath::resolve)
-                .collect(Collectors.toList());
-        Files.createDirectories(destPath);
-        for (int i = 0; i < destFiles.size(); i++) {
-            Path srcFile = srcFiles.get(i);
-            Path destFile = destFiles.get(i);
-            Files.createDirectories(destFile.getParent());
-            FileUtils.copyFile(srcFile.toFile(), destFile.toFile());
+        try {
+            stateFilesLock.writeLock().lock();
+            flushState(localStatePath());
+        } finally {
+            stateFilesLock.writeLock().unlock();
         }
+        try {
+            stateFilesLock.readLock().lock();
 
-        state.recover(destPath, properties);
-        return state;
+            State<E, Q, R> state = factory.createState();
+            List<Path> srcFiles = listAllFiles();
+
+            List<Path> destFiles = srcFiles.stream()
+                    .map(src -> path.relativize(src))
+                    .map(destPath::resolve)
+                    .collect(Collectors.toList());
+            Files.createDirectories(destPath);
+            for (int i = 0; i < destFiles.size(); i++) {
+                Path srcFile = srcFiles.get(i);
+                Path destFile = destFiles.get(i);
+                Files.createDirectories(destFile.getParent());
+                FileUtils.copyFile(srcFile.toFile(), destFile.toFile());
+            }
+
+            state.recover(destPath, properties);
+            return state;
+        } finally {
+            stateFilesLock.readLock().unlock();
+        }
     }
 
     /**
@@ -301,8 +324,12 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
             stateMetadata.flush();
         }
 
-        flushState(localStatePath());
-
+        try {
+            stateFilesLock.writeLock().lock();
+            flushState(localStatePath());
+        } finally {
+            stateFilesLock.writeLock().unlock();
+        }
     }
 
     protected abstract void flushState(Path statePath) throws IOException;

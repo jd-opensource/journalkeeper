@@ -179,6 +179,9 @@ public class PreloadBufferPool implements Closeable {
 
             }
         });
+        directBufferHolders.parallelStream().forEach(BufferHolder::evict);
+        mMapBufferHolders.parallelStream().forEach(BufferHolder::evict);
+
     }
 
     private void destroyOne(ByteBuffer byteBuffer) {
