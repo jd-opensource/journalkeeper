@@ -113,7 +113,7 @@ public abstract class DoubleCopy implements Closeable {
                 throw new IOException(String.format("Recover file %s failed!", getName()));
             }
         }
-        logger.info(getName() + " recover success.");
+        logger.info(getName() + " recover success, file: {}.", file.getAbsolutePath());
     }
 
 

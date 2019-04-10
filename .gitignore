@@ -5,15 +5,15 @@ target
 .settings
 .project
 *.log
-
+.vscode/
 # macOS
 .DS_Store
 
 #Visual Paradigm backup files
 
-.vpp.vbak
-.vpp.bak*
-.vpp.lck
+*.vpp.vbak
+*.vpp.bak*
+*.vpp.lck
 
 # Runtime generated files
 

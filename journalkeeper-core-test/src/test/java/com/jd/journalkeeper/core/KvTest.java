@@ -24,37 +24,21 @@ public class KvTest {
 
     @Test
     public void singleNodeTest() throws IOException {
-        Path path = TestPathUtils.prepareBaseDir("singleNodeTest");
-        List<KvServer> kvServers = createServers(1, path);
-        setGetTest(kvServers);
-        stopServers(kvServers);
-        TestPathUtils.destroyBaseDir(path.toFile());
+        setGetTest(1);
     }
 
     @Test
     public void tripleNodesTest() throws IOException {
-        Path path = TestPathUtils.prepareBaseDir("tripleNodesTest");
-        List<KvServer> kvServers = createServers(3, path);
-        setGetTest(kvServers);
-        stopServers(kvServers);
-        TestPathUtils.destroyBaseDir(path.toFile());
+        setGetTest(3);
     }
 
     @Test
     public void fiveNodesTest() throws IOException {
-        Path path = TestPathUtils.prepareBaseDir("fiveNodesTest");
-        List<KvServer> kvServers = createServers(5, path);
-        setGetTest(kvServers);
-        stopServers(kvServers);
-        TestPathUtils.destroyBaseDir(path.toFile());
+        setGetTest(5);
     }
     @Test
     public void sevenNodesTest() throws IOException {
-        Path path = TestPathUtils.prepareBaseDir("sevenNodesTest");
-        List<KvServer> kvServers = createServers(7, path);
-        setGetTest(kvServers);
-        stopServers(kvServers);
-        TestPathUtils.destroyBaseDir(path.toFile());
+        setGetTest(7);
     }
 
     @Test
@@ -90,7 +74,7 @@ public class KvTest {
      * 创建N个server，依次停掉每个server，再依次启动，验证集群可用性
      */
     private void availabilityTest(int nodes) throws IOException, InterruptedException {
-        logger.info("Nodes: {}", nodes);
+        logger.info("{} nodes availability test.", nodes);
         Path path = TestPathUtils.prepareBaseDir("availabilityTest" + nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
         List<Properties> propertiesList = new ArrayList<>(nodes);
@@ -167,33 +151,45 @@ public class KvTest {
         return kvServer;
     }
 
-    private void setGetTest(List<KvServer> kvServers) {
-        List<KvClient> kvClients = kvServers.stream().map(KvServer::createClient).collect(Collectors.toList());
+    private void setGetTest(int nodes) throws IOException {
+
+        Path path = TestPathUtils.prepareBaseDir("SetGetTest-" + nodes);
+        List<KvServer> kvServers = createServers(nodes, path);
+        try {
+            List<KvClient> kvClients = kvServers.stream().map(KvServer::createClient).collect(Collectors.toList());
 
 
-        int i = 0;
-        kvClients.get(i++ % kvServers.size()).set("key1", "hello!");
-        kvClients.get(i++ % kvServers.size()).set("key2", "world!");
-        Assert.assertEquals("hello!", kvClients.get(i++ % kvServers.size()).get("key1"));
-        Assert.assertEquals(new HashSet<>(Arrays.asList("key1", "key2")),
-                new HashSet<>(kvClients.get(i++ % kvServers.size()).listKeys()));
+            int i = 0;
+            kvClients.get(i++ % kvServers.size()).set("key1", "hello!");
+            kvClients.get(i++ % kvServers.size()).set("key2", "world!");
+            Assert.assertEquals("hello!", kvClients.get(i++ % kvServers.size()).get("key1"));
+            Assert.assertEquals(new HashSet<>(Arrays.asList("key1", "key2")),
+                    new HashSet<>(kvClients.get(i++ % kvServers.size()).listKeys()));
 
-        kvClients.get(i++ % kvServers.size()).del("key2");
-        Assert.assertNull(kvClients.get(i++ % kvServers.size()).get("key2"));
-        Assert.assertEquals(Collections.singletonList("key1"),kvClients.get(i++ % kvServers.size()).listKeys());
+            kvClients.get(i++ % kvServers.size()).del("key2");
+            Assert.assertNull(kvClients.get(i++ % kvServers.size()).get("key2"));
+            Assert.assertEquals(Collections.singletonList("key1"), kvClients.get(i++ % kvServers.size()).listKeys());
+        } finally {
+            stopServers(kvServers);
+            TestPathUtils.destroyBaseDir(path.toFile());
+        }
     }
 
     private void stopServers(List<KvServer> kvServers) {
-        try {
-            kvServers.forEach(KvServer::stop);
-        } catch (Throwable ignored) {}
+        for(KvServer kvServer: kvServers) {
+            try {
+                kvServer.stop();
+            } catch (Throwable t) {
+                logger.warn("Stop server {} exception:", kvServer.serverUri(), t);
+            }
+        }
     }
 
     private List<KvServer> createServers(int nodes, Path path) throws IOException {
         return createServers(nodes, path ,true);
     }
     private List<KvServer> createServers(int nodes, Path path, boolean waitForLeader) throws IOException {
-        logger.info("Nodes: {}", nodes);
+        logger.info("Create {} nodes servers", nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
         List<Properties> propertiesList = new ArrayList<>(nodes);
         for (int i = 0; i < nodes; i++) {

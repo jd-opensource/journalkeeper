@@ -279,10 +279,11 @@ public abstract class Server<E, Q, R>
                 } finally {
                     stateLock.unlockWrite(stamp);
                 }
-                CompletableFuture.runAsync(this::onStateChanged);
+
             }
             // Ignore StorageEntry.TYPE_LEADER_ANNOUNCEMENT
             state.setLastApplied(state.lastApplied() + 1);
+            asyncExecutor.submit(this::onStateChanged);
         }
     }
 
@@ -298,10 +299,12 @@ public abstract class Server<E, Q, R>
     private void takeASnapShotIfNeed() {
         asyncExecutor.submit(() -> {
             try {
-                if (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep()) {
+                synchronized (snapshots) {
+                    if (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep()) {
 
-                    State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())));
-                    snapshots.put(snapshot.lastApplied(), snapshot);
+                        State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())));
+                        snapshots.put(snapshot.lastApplied(), snapshot);
+                    }
                 }
             } catch (IOException e) {
                 logger.warn("Take snapshot exception: ", e);
