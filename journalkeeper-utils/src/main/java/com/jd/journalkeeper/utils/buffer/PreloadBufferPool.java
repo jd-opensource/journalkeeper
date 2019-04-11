@@ -2,14 +2,12 @@ package com.jd.journalkeeper.utils.buffer;
 
 import com.jd.journalkeeper.utils.format.Format;
 import com.jd.journalkeeper.utils.threads.LoopThread;
-import com.sun.javafx.runtime.SystemProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sun.misc.Cleaner;
 import sun.misc.VM;
 import sun.nio.ch.DirectBuffer;
 
-import java.io.Closeable;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.util.*;
@@ -61,7 +59,7 @@ public class PreloadBufferPool {
     private PreloadBufferPool() {
         long printMetricInterval = Long.parseLong(System.getProperty(PRINT_METRIC_INTERVAL_MS_KEY,"0"));
         this.cacheLifetimeMs = Long.parseLong(System.getProperty(CACHE_LIFE_TIME_MS_KEY,String.valueOf(DEFAULT_CACHE_LIFE_TIME_MS)));
-        long maxMemorySize = Format.parseSize(SystemProperties.getProperty(MAX_MEMORY_KEY), Math.round(VM.maxDirectMemory() * CACHE_RATIO));
+        long maxMemorySize = Format.parseSize(System.getProperty(MAX_MEMORY_KEY), Math.round(VM.maxDirectMemory() * CACHE_RATIO));
 
         preloadThread = buildPreloadThread();
         preloadThread.start();
