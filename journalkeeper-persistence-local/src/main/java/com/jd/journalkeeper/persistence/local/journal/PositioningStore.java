@@ -34,8 +34,8 @@ public class PositioningStore implements JournalPersistence,Closeable {
     private final Object fileMapMutex = new Object();    // 正在写入的
     private StoreFile writeStoreFile = null;
     private Config config = null;
-    public PositioningStore(PreloadBufferPool bufferPool) {
-        this.bufferPool = bufferPool;
+    public PositioningStore() {
+        this.bufferPool = PreloadBufferPool.getInstance();
     }
 
 
@@ -117,7 +117,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
         this.base = path.toFile();
         this.config = toConfig(properties);
 
-        bufferPool.addPreLoad(config.fileDataSize, 0, 5);
+        bufferPool.addPreLoad(config.getFileDataSize(), config.getCachedFileCoreCount(), config.getCachedFileMaxCount());
 
         recoverFileMap();
 
@@ -144,6 +144,16 @@ public class PositioningStore implements JournalPersistence,Closeable {
                 properties.getProperty(
                         Config.FILE_HEADER_SIZE_KEY,
                         String.valueOf(Config.DEFAULT_FILE_HEADER_SIZE))));
+
+        config.setCachedFileCoreCount(Integer.parseInt(
+                properties.getProperty(
+                        Config.CACHED_FILE_CORE_COUNT_KEY,
+                        String.valueOf(Config.DEFAULT_CACHED_FILE_CORE_COUNT))));
+
+        config.setCachedFileMaxCount(Integer.parseInt(
+                properties.getProperty(
+                        Config.CACHED_FILE_MAX_COUNT_KEY,
+                        String.valueOf(Config.DEFAULT_CACHED_FILE_MAX_COUNT))));
 
         return config;
     }
@@ -302,14 +312,18 @@ public class PositioningStore implements JournalPersistence,Closeable {
         for(StoreFile storeFile : storeFileMap.values()) {
             storeFile.unload();
         }
+        bufferPool.removePreLoad(config.fileDataSize);
     }
 
     public static class Config {
         final static int DEFAULT_FILE_HEADER_SIZE = 128;
         final static int DEFAULT_FILE_DATA_SIZE = 128 * 1024 * 1024;
-
+        final static int DEFAULT_CACHED_FILE_CORE_COUNT = 0;
+        final static int DEFAULT_CACHED_FILE_MAX_COUNT = 2;
         final static String FILE_HEADER_SIZE_KEY = "file_header_size";
         final static String FILE_DATA_SIZE_KEY = "file_data_size";
+        final static String CACHED_FILE_CORE_COUNT_KEY = "cached_file_core_count";
+        final static String CACHED_FILE_MAX_COUNT_KEY = "cached_file_max_count";
         /**
          * 文件头长度
          */
@@ -318,6 +332,15 @@ public class PositioningStore implements JournalPersistence,Closeable {
          * 文件内数据最大长度
          */
         private int fileDataSize;
+
+        /**
+         * 缓存文件的核心数量。
+         */
+        private int cachedFileCoreCount;
+        /**
+         * 缓存文件的最大数量。
+         */
+        private int cachedFileMaxCount;
 
 
         int getFileHeaderSize() {
@@ -336,6 +359,21 @@ public class PositioningStore implements JournalPersistence,Closeable {
             this.fileDataSize = fileDataSize;
         }
 
+        int getCachedFileCoreCount() {
+            return cachedFileCoreCount;
+        }
+
+        void setCachedFileCoreCount(int cachedFileCoreCount) {
+            this.cachedFileCoreCount = cachedFileCoreCount;
+        }
+
+        int getCachedFileMaxCount() {
+            return cachedFileMaxCount;
+        }
+
+        void setCachedFileMaxCount(int cachedFileMaxCount) {
+            this.cachedFileMaxCount = cachedFileMaxCount;
+        }
     }
 
 

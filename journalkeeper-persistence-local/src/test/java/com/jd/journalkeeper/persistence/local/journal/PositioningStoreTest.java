@@ -7,10 +7,7 @@ import com.jd.journalkeeper.utils.format.Format;
 import com.jd.journalkeeper.utils.test.ByteUtils;
 import com.jd.journalkeeper.utils.test.TestPathUtils;
 import com.jd.journalkeeper.utils.threads.LoopThread;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,36 +35,32 @@ public class PositioningStoreTest {
 
     @Test
     public void journalReadWriteTest() throws IOException {
-        try (PreloadBufferPool bufferPool = new PreloadBufferPool();
-             JournalPersistence store =
-                new PositioningStore(bufferPool)) {
-            store.recover(path, new Properties());
+        try (JournalPersistence store = prepareStore()) {
             int size = 10;
             int maxLength = 999;
             long start = store.max();
-            List<byte []> journals = ByteUtils.createRandomSizeByteList(maxLength, size);
+            List<byte[]> journals = ByteUtils.createRandomSizeByteList(maxLength, size);
             int length = journals.stream().mapToInt(journal -> journal.length).sum();
 
             long writePosition = 0L;
-            for(byte [] journal: journals) {
+            for (byte[] journal : journals) {
                 writePosition = store.append(journal);
             }
 
             Assert.assertEquals(length + start, writePosition);
             Assert.assertEquals(writePosition, store.max());
 
-            byte [] readBytes = store.read(start, length);
-            byte [] writeBytes = ByteUtils.concatBytes(journals);
+            byte[] readBytes = store.read(start, length);
+            byte[] writeBytes = ByteUtils.concatBytes(journals);
             Assert.assertArrayEquals(writeBytes, readBytes);
-
         }
+
     }
     // recover
     @Test
     public void recoverTest() throws IOException {
-        try (PreloadBufferPool bufferPool = new PreloadBufferPool()) {
              JournalPersistence store =
-                     new PositioningStore(bufferPool);
+                     new PositioningStore();
             store.recover(path, new Properties());
             int size = 10;
             int maxLength = 999;
@@ -89,14 +82,13 @@ public class PositioningStoreTest {
 
             store.close();
             store =
-                    new PositioningStore(bufferPool);
+                    new PositioningStore();
             store.recover(path, new Properties());
 
             byte [] readBytes = store.read(start, length);
             byte [] writeBytes = ByteUtils.concatBytes(journals);
             Assert.assertArrayEquals(writeBytes, readBytes);
             store.close();
-        }
 
     }
 
@@ -105,10 +97,7 @@ public class PositioningStoreTest {
 
     @Test
     public void truncateTest() throws IOException {
-        try (PreloadBufferPool bufferPool = new PreloadBufferPool();
-             JournalPersistence store =
-                     new PositioningStore(bufferPool)) {
-            store.recover(path, new Properties());
+        try (JournalPersistence store = prepareStore()) {
             int size = 10;
             int maxLength = 999;
             long start = store.max();
@@ -161,7 +150,7 @@ public class PositioningStoreTest {
         // 每条消息消息体大小
         int batchSize = 1024 * 10;
 
-        try (PreloadBufferPool bufferPool = new PreloadBufferPool();JournalPersistence store = prepareStore(bufferPool)) {
+        try (JournalPersistence store = prepareStore()) {
             write(store, maxSize, ByteUtils.createRandomSizeBytes(batchSize));
         }
     }
@@ -173,16 +162,16 @@ public class PositioningStoreTest {
         // 每条消息消息体大小
         int batchSize = 1024 * 10;
 
-        try (PreloadBufferPool bufferPool = new PreloadBufferPool();JournalPersistence store = prepareStore(bufferPool)) {
-
+        try (JournalPersistence store =
+                     prepareStore()) {
             write(store, maxSize, ByteUtils.createRandomSizeBytes(batchSize));
             read(store, batchSize, maxSize);
         }
     }
 
-    private JournalPersistence prepareStore(PreloadBufferPool bufferPool) throws IOException {
+    private JournalPersistence prepareStore() throws IOException {
         JournalPersistence store =
-                new PositioningStore(bufferPool);
+                new PositioningStore();
         store.recover(path, new Properties());
         return store;
     }
@@ -204,7 +193,7 @@ public class PositioningStoreTest {
         spendTimeMs = t - start;
         bps = maxSize * 1000 / spendTimeMs;
 
-        logger.info("Read performance: {}/S.", Format.formatTraffic(bps));
+        logger.info("Read performance: {}/S.", Format.formatSize(bps));
         Assert.assertEquals(maxSize, position);
     }
 
@@ -226,7 +215,7 @@ public class PositioningStoreTest {
             long spendTimeMs = t - start;
             long bps = (currentMax - startPosition) * 1000 / spendTimeMs;
 
-            logger.info("Final write size: {}, write performance: {}/S.", currentMax - startPosition, Format.formatTraffic(bps));
+            logger.info("Final write size: {}, write performance: {}/S.", currentMax - startPosition, Format.formatSize(bps));
 
             while (store.flushed() < store.max()) {
                 Thread.yield();
@@ -235,7 +224,7 @@ public class PositioningStoreTest {
             spendTimeMs = t - start;
             bps = (currentMax - startPosition) * 1000 / spendTimeMs;
 
-            logger.info("Flush performance: {}/S.", Format.formatTraffic(bps));
+            logger.info("Flush performance: {}/S.", Format.formatSize(bps));
         } finally {
             flushThread.stop();
         }
@@ -250,7 +239,7 @@ public class PositioningStoreTest {
 
         long shrinkPosition = 300 * 1024 * 1024;
 
-        try (PreloadBufferPool bufferPool = new PreloadBufferPool();JournalPersistence store = prepareStore(bufferPool)) {
+        try (JournalPersistence store = prepareStore()) {
             write(store, maxSize, ByteUtils.createRandomSizeBytes(batchSize));
 
             store.shrink(shrinkPosition);
@@ -261,17 +250,14 @@ public class PositioningStoreTest {
 
     }
 
-
     @Before
     public void before() throws Exception {
         prepareBaseDir();
-
     }
 
     @After
     public void after() {
         destroyBaseDir();
-
     }
 
     private void destroyBaseDir() {

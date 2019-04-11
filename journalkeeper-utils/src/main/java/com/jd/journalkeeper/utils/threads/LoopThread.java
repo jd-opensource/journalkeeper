@@ -66,15 +66,18 @@ public abstract class LoopThread implements Runnable, StateServer {
     @Override
     public synchronized void stop() {
 
-        serverState = ServerState.STOPPING;
-        thread.interrupt();
-        while (serverState != ServerState.STOPPED){
-            try {
-                wakeup();
-                Thread.sleep(10L);
-            } catch (InterruptedException ignored) {}
-        }
+        if(serverState != ServerState.STOPPED) {
+            serverState = ServerState.STOPPING;
+            thread.interrupt();
+            while (serverState != ServerState.STOPPED) {
+                try {
+                    wakeup();
+                    Thread.sleep(10L);
+                } catch (InterruptedException ignored) {
+                }
+            }
 
+        }
     }
 
     private boolean isStarted() {

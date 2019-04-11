@@ -2,6 +2,7 @@ package com.jd.journalkeeper.utils.buffer;
 
 import com.jd.journalkeeper.utils.format.Format;
 import com.jd.journalkeeper.utils.threads.LoopThread;
+import com.sun.javafx.runtime.SystemProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sun.misc.Cleaner;
@@ -14,6 +15,7 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -21,7 +23,7 @@ import java.util.stream.Collectors;
  * @author liyue25
  * Date: 2018-12-20
  */
-public class PreloadBufferPool implements Closeable {
+public class PreloadBufferPool {
     private static final Logger logger = LoggerFactory.getLogger(PreloadBufferPool.class);
     private Map<Integer,PreLoadCache> bufferCache = new ConcurrentHashMap<>();
     private final LoopThread preloadThread;
@@ -36,21 +38,31 @@ public class PreloadBufferPool implements Closeable {
      * 缓存清理比率阈值，超过这个阈值执行缓存清理。
      */
     private final static double EVICT_RATIO = 0.8d;
-    public final static long DEFAULT_CACHE_LIFE_TIME_MS = 60000L;
+    private final static long DEFAULT_CACHE_LIFE_TIME_MS = 60000L;
+    private final static long INTERVAL_MS = 50L;
 
-    public final static long INTERVAL_MS = 50L;
+    public final static String CACHE_LIFE_TIME_MS_KEY = "PreloadBufferPool.CacheLifeTimeMs";
+    public final static String PRINT_METRIC_INTERVAL_MS_KEY = "PreloadBufferPool.PrintMetricIntervalMs";
+    public final static String MAX_MEMORY_KEY = "PreloadBufferPool.MaxMemory";
+
     private final AtomicLong usedSize = new AtomicLong(0L);
     private final Set<BufferHolder> directBufferHolders = ConcurrentHashMap.newKeySet();
     private final Set<BufferHolder> mMapBufferHolders = ConcurrentHashMap.newKeySet();
 
-    public PreloadBufferPool() {
-        this(0L, DEFAULT_CACHE_LIFE_TIME_MS, Math.round(VM.maxDirectMemory() * CACHE_RATIO));
+    private static PreloadBufferPool instance = null;
+
+    public static PreloadBufferPool getInstance() {
+        if(null == instance) {
+            instance = new PreloadBufferPool();
+        }
+        return instance;
     }
-    public PreloadBufferPool(long printMetricIntervalMs) {
-        this(printMetricIntervalMs, DEFAULT_CACHE_LIFE_TIME_MS, Math.round(VM.maxDirectMemory() * CACHE_RATIO));
-    }
-    public PreloadBufferPool(long printMetricInterval, long cacheLifetimeMs, long maxMemorySize) {
-        this.cacheLifetimeMs = cacheLifetimeMs;
+
+    private PreloadBufferPool() {
+        long printMetricInterval = Long.parseLong(System.getProperty(PRINT_METRIC_INTERVAL_MS_KEY,"0"));
+        this.cacheLifetimeMs = Long.parseLong(System.getProperty(CACHE_LIFE_TIME_MS_KEY,String.valueOf(DEFAULT_CACHE_LIFE_TIME_MS)));
+        long maxMemorySize = Format.parseSize(SystemProperties.getProperty(MAX_MEMORY_KEY), Math.round(VM.maxDirectMemory() * CACHE_RATIO));
+
         preloadThread = buildPreloadThread();
         preloadThread.start();
 
@@ -64,7 +76,7 @@ public class PreloadBufferPool implements Closeable {
         evictThread = buildEvictThread();
         evictThread.start();
         this.maxMemorySize = maxMemorySize;
-        logger.info("Max direct memory size : {}.", Format.formatTraffic(maxMemorySize));
+        logger.info("Max direct memory size : {}.", Format.formatSize(maxMemorySize));
     }
 
     private LoopThread buildMetricThread(long printMetricInterval) {
@@ -78,15 +90,15 @@ public class PreloadBufferPool implements Closeable {
                         long usedPreLoad = preLoadCache.onFlyCounter.get();
                         long totalSize = preLoadCache.bufferSize * (cached + usedPreLoad);
                         logger.info("PreloadCache usage: cached: {} * {} = {}, used: {} * {} = {}, total: {}",
-                                Format.formatTraffic(preLoadCache.bufferSize), cached, Format.formatTraffic(preLoadCache.bufferSize * cached),
-                                Format.formatTraffic(preLoadCache.bufferSize), usedPreLoad, Format.formatTraffic(preLoadCache.bufferSize * usedPreLoad),
-                                Format.formatTraffic(totalSize));
+                                Format.formatSize(preLoadCache.bufferSize), cached, Format.formatSize(preLoadCache.bufferSize * cached),
+                                Format.formatSize(preLoadCache.bufferSize), usedPreLoad, Format.formatSize(preLoadCache.bufferSize * usedPreLoad),
+                                Format.formatSize(totalSize));
                         return totalSize;
                     }).sum();
                     logger.info("DirectBuffer preload/used/max: {}/{}/{}.",
-                            Format.formatTraffic(plUsed),
-                            Format.formatTraffic(used),
-                            Format.formatTraffic(maxMemorySize));
+                            Format.formatSize(plUsed),
+                            Format.formatSize(used),
+                            Format.formatSize(maxMemorySize));
 
                 })
                 .daemon(true)
@@ -118,7 +130,7 @@ public class PreloadBufferPool implements Closeable {
     /**
      * 清除文件缓存页。LRU。
      */
-    private void evict() {
+    private synchronized void evict() {
         // 先清除过期的
         for(BufferHolder holder: directBufferHolders) {
             if(System.currentTimeMillis() - holder.lastAccessTime() > cacheLifetimeMs){
@@ -163,25 +175,40 @@ public class PreloadBufferPool implements Closeable {
 
     }
 
-    public synchronized boolean addPreLoad(int bufferSize, int coreCount, int maxCount) {
-        return bufferCache.putIfAbsent(bufferSize, new PreLoadCache(bufferSize, coreCount, maxCount)) == null;
+    public synchronized void addPreLoad(int bufferSize, int coreCount, int maxCount) {
+        PreLoadCache preLoadCache =  bufferCache.putIfAbsent(bufferSize, new PreLoadCache(bufferSize, coreCount, maxCount));
+        if(null != preLoadCache) {
+            preLoadCache.referenceCount.incrementAndGet();
+        }
     }
 
-    public void close() {
-        this.preloadThread.stop();
-        this.evictThread.stop();
-        if(this.metricThread != null) {
-            this.metricThread.stop();
-        }
-        bufferCache.values().forEach(p -> {
-            while (!p.cache.isEmpty()) {
-                destroyOne(p.cache.remove());
-
+    public synchronized void removePreLoad(int bufferSize) {
+        PreLoadCache preLoadCache =  bufferCache.get(bufferSize);
+        if(null != preLoadCache) {
+            if(preLoadCache.referenceCount.decrementAndGet() <= 0) {
+                bufferCache.remove(bufferSize);
+                preLoadCache.cache.forEach(this::destroyOne);
             }
-        });
-        directBufferHolders.parallelStream().forEach(BufferHolder::evict);
-        mMapBufferHolders.parallelStream().forEach(BufferHolder::evict);
+        }
+    }
 
+    public static void close() {
+        if(null != instance) {
+            instance.preloadThread.stop();
+            instance.evictThread.stop();
+            if (instance.metricThread != null) {
+                instance.metricThread.stop();
+            }
+            instance.bufferCache.values().forEach(p -> {
+                while (!p.cache.isEmpty()) {
+                    instance.destroyOne(p.cache.remove());
+
+                }
+            });
+            instance.directBufferHolders.parallelStream().forEach(BufferHolder::evict);
+            instance.mMapBufferHolders.parallelStream().forEach(BufferHolder::evict);
+        }
+        logger.info("Preload buffer pool closed.");
     }
 
     private void destroyOne(ByteBuffer byteBuffer) {
@@ -285,7 +312,7 @@ public class PreloadBufferPool implements Closeable {
 
             }
         } catch (OutOfMemoryError outOfMemoryError) {
-            logger.debug("OOM: {}/{}.", Format.formatTraffic(usedSize.get()),Format.formatTraffic(maxMemorySize));
+            logger.debug("OOM: {}/{}.", Format.formatSize(usedSize.get()),Format.formatSize(maxMemorySize));
             throw outOfMemoryError;
         }
     }
@@ -307,10 +334,12 @@ public class PreloadBufferPool implements Closeable {
         final int coreCount, maxCount;
         final Queue<ByteBuffer> cache = new ConcurrentLinkedQueue<>();
         final AtomicLong onFlyCounter = new AtomicLong(0L);
+        final AtomicInteger referenceCount;
         PreLoadCache(int bufferSize, int coreCount, int maxCount) {
             this.bufferSize = bufferSize;
             this.coreCount = coreCount;
             this.maxCount = maxCount;
+            this.referenceCount = new AtomicInteger(1);
         }
     }
 

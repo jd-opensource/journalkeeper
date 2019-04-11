@@ -295,6 +295,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         }
         do {
             if (serverState() == ServerState.RUNNING && voterState == VoterState.LEADER && !Thread.currentThread().isInterrupted()) {
+                // TODO: Concurrent modification exception
                 count = followers.parallelStream()
                         .mapToInt(follower -> {
                             long maxIndex = journal.maxIndex();
