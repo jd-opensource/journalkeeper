@@ -21,7 +21,6 @@ import java.util.stream.Collectors;
  */
 public class KvTest {
     private static final Logger logger = LoggerFactory.getLogger(KvTest.class);
-    // TODO: OOM 问题
     @Test
     public void singleNodeTest() throws IOException {
         setGetTest(1);
@@ -83,7 +82,9 @@ public class KvTest {
             serverURIs.add(uri);
             Path workingDir = path.resolve("server" + i);
             Properties properties = new Properties();
-            properties.put("working_dir", workingDir.toString());
+            properties.setProperty("working_dir", workingDir.toString());
+            properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
+            properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
             propertiesList.add(properties);
         }
         List<KvServer> kvServers = createServers(serverURIs, propertiesList,true);
@@ -136,7 +137,9 @@ public class KvTest {
         KvServer kvServer;
         Path workingDir = path.resolve(serverPath);
         Properties properties = new Properties();
-        properties.put("working_dir", workingDir.toString());
+        properties.setProperty("working_dir", workingDir.toString());
+        properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
+        properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
         kvServer = new KvServer(properties);
         kvServer.recover();
         kvServer.start();
@@ -197,7 +200,10 @@ public class KvTest {
             serverURIs.add(uri);
             Path workingDir = path.resolve("server" + i);
             Properties properties = new Properties();
-            properties.put("working_dir", workingDir.toString());
+            properties.setProperty("working_dir", workingDir.toString());
+            properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
+            properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
+
             propertiesList.add(properties);
         }
         return createServers(serverURIs, propertiesList,waitForLeader);
@@ -218,19 +224,6 @@ public class KvTest {
         }
         return kvServers;
     }
-    private List<KvServer> restoreServers(List<Properties> propertiesList, boolean waitForLeader) throws IOException {
 
-        List<KvServer> kvServers = new ArrayList<>(propertiesList.size());
-        for (Properties properties : propertiesList) {
-            KvServer kvServer = new KvServer(properties);
-            kvServers.add(kvServer);
-            kvServer.recover();
-            kvServer.start();
-        }
-        if(waitForLeader) {
-            kvServers.get(0).waitForLeaderReady();
-        }
-        return kvServers;
-    }
 
 }

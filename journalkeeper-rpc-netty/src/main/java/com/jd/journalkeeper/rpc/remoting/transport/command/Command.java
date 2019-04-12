@@ -69,7 +69,6 @@ public class Command {
         if (payload == null || !(payload instanceof Releasable)) {
             return;
         }
-        //TODO
         if (!released.compareAndSet(false, true)) {
             return;
         }

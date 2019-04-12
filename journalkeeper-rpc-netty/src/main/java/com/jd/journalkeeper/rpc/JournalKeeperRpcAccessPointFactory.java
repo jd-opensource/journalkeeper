@@ -76,7 +76,7 @@ public class JournalKeeperRpcAccessPointFactory implements RpcAccessPointFactory
     }
 
     private ClientConfig toClientConfig(Properties properties) {
-        // TODO
+        // TODO ClientConfig可配置
         return new ClientConfig();
     }
 

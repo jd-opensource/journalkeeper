@@ -168,7 +168,6 @@ public class IpUtil {
      * @param address 地址
      * @return 地址字符串
      */
-    //TODO
     public static String toAddress(final SocketAddress address) {
         if (address == null) {
             return null;

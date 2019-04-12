@@ -85,7 +85,7 @@ public class Client<E, Q, R> implements JournalKeeperClient<E, Q, R> {
     // 1. 去LEADER上直接读取 <-- 现在用的是这种
     // 2. 二步读取
 
-    //FIXME：考虑这种情况：A，B2个server，A认为B是leader， B认为A是leader，此时会出现死循环。
+    //FIXME：考虑这种情况：A，B 2个server，A认为B是leader， B认为A是leader，此时会出现死循环。
 
     /**
      * 去Leader上请求数据，如果返回NotLeaderException，更换Leader重试。

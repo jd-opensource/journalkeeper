@@ -59,8 +59,8 @@ public abstract class TransportClientSupport extends Service {
 
     protected EventLoopGroup newIoEventGroup() {
         NamedThreadFactory threadFactory = new NamedThreadFactory("Transport-Client-IO-LoopGroup");
-        // TODO 临时代码
-        int ioThread = Runtime.getRuntime().availableProcessors() * 2;
+
+        int ioThread = config.getIoThread();
         if (Epoll.isAvailable()) {
             return new EpollEventLoopGroup(ioThread, threadFactory);
         } else {
@@ -111,7 +111,6 @@ public abstract class TransportClientSupport extends Service {
     }
 
 
-    //TODO IPV6 support
     public static InetSocketAddress createInetSocketAddress(String address) throws TransportException {
         if (address == null || address.isEmpty()) {
             throw new IllegalArgumentException("address must not be empty!");
