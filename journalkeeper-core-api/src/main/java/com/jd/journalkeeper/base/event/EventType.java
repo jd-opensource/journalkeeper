@@ -7,6 +7,7 @@ package com.jd.journalkeeper.base.event;
 public class EventType {
     // 0 - 999 Journal Store API(JK-JS API)
     public static final int ON_JOURNAL_CHANGE = 0;
+    public static final int ON_STATE_CHANGE = 1;
 
     // 1000 - 1999 Journal Keeper Configuration API（JK-C API）
     public static final int ON_LEADER_CHANGE = 1000;

@@ -52,7 +52,7 @@ public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
     }
 
     @Override
-    public void execute(KvEntry entry) {
+    public Map<String, Object> execute(KvEntry entry) {
         switch (entry.getCmd()) {
             case KvEntry.CMD_SET:
                 stateMap.put(entry.getKey(), entry.getValue());
@@ -66,7 +66,7 @@ public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
         } catch (IOException e) {
             logger.warn("Exception:", e);
         }
-
+        return null;
     }
 
     @Override

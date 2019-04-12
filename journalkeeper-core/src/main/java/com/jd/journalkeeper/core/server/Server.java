@@ -1,6 +1,7 @@
 package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.base.Serializer;
+import com.jd.journalkeeper.base.event.EventType;
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.JournalKeeperServer;
 import com.jd.journalkeeper.core.api.State;
@@ -271,20 +272,30 @@ public abstract class Server<E, Q, R>
         while ( state.lastApplied() < commitIndex) {
             takeASnapShotIfNeed();
             StorageEntry storageEntry = journal.readStorageEntry(state.lastApplied());
+            Map<String, Object> customizedParameters = null;
             if(storageEntry.getType() > 0) {
                 E entry = entrySerializer.parse(storageEntry.getEntry());
                 long stamp = stateLock.writeLock();
                 try {
-                    state.execute(entry);
+                    customizedParameters = state.execute(entry);
                 } finally {
                     stateLock.unlockWrite(stamp);
                 }
-
             }
             // Ignore StorageEntry.TYPE_LEADER_ANNOUNCEMENT
             state.setLastApplied(state.lastApplied() + 1);
             asyncExecutor.submit(this::onStateChanged);
+            Map<String, Object> parameters = new HashMap<>(customizedParameters == null ? 1: customizedParameters.size() + 1);
+            if(null != customizedParameters) {
+                customizedParameters.forEach(parameters::put);
+            }
+            parameters.put("lastApplied", state.lastApplied());
+            fireEvent(EventType.ON_STATE_CHANGE, parameters);
         }
+    }
+
+    protected void fireEvent(int eventType, Map<String, Object> parameters) {
+
     }
 
 

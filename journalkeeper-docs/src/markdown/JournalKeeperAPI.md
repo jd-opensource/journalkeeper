@@ -178,9 +178,9 @@ result | 按照查询条件获得的集群最新状态。
 
 ## 事件
 
-事件 | 内容 | 说明
+事件 | 参数 | 说明
 -- | -- | --
-onStateChanged | | 集群状态变更
+onStateChanged | lastApplied: 当前状态对应日志位置<br/>自定参数 | 集群状态变更
 
 ## 状态机
 

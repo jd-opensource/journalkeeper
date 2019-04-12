@@ -1,10 +1,11 @@
 package com.jd.journalkeeper.core.api;
 
 import com.jd.journalkeeper.base.Queryable;
+import com.jd.journalkeeper.base.event.EventType;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -12,7 +13,7 @@ import java.util.Properties;
  * 状态数据
  * 状态持久化
  * 对应日志位置
- * 可选实现：java.io.Flushable, java.io.Closable
+ * 可选实现：{@link java.io.Flushable}, {@link java.io.Closeable}
  * @author liyue25
  * Date: 2019-03-20
  */
@@ -21,8 +22,9 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
      * 在状态state上执行命令entries。要求线性语义和原子性.
      * 成功返回新状态，否则抛异常。
      * @param entry 待执行的命令
+     * @return 提供给事件 {@link EventType#ON_STATE_CHANGE} 的参数，如果没有参数可以返回null；
      */
-    void execute(E entry);
+    Map<String, Object> execute(E entry);
 
     /**
      * 当前状态对应的日志位置
