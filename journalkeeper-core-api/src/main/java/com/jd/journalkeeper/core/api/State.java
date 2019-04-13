@@ -24,7 +24,7 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
      * @param entry 待执行的命令
      * @return 提供给事件 {@link EventType#ON_STATE_CHANGE} 的参数，如果没有参数可以返回null；
      */
-    Map<String, Object> execute(E entry);
+    Map<String, String> execute(E entry);
 
     /**
      * 当前状态对应的日志位置

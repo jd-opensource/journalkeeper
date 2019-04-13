@@ -8,9 +8,9 @@ import java.util.Map;
  */
 public class Event {
     private final int eventType;
-    private final Map<String, Object> eventData;
+    private final Map<String, String> eventData;
 
-    public Event(int eventType, Map<String, Object> eventData) {
+    public Event(int eventType, Map<String, String> eventData) {
         this.eventType = eventType;
         this.eventData = eventData;
     }
@@ -19,7 +19,7 @@ public class Event {
         return eventType;
     }
 
-    public Map<String, Object> getEventData() {
+    public Map<String, String> getEventData() {
         return eventData;
     }
 }

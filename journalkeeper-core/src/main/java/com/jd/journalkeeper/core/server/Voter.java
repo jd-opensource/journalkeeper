@@ -1,6 +1,7 @@
 package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.base.Serializer;
+import com.jd.journalkeeper.base.event.EventType;
 import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.journal.StorageEntry;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
@@ -636,9 +637,17 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             this.leader = this.uri;
             // Leader announcement
             leaderReplicationThread.wakeup();
+            fireOnLeaderChangeEvent();
             logger.info("Convert to LEADER, {}.", voterInfo());
         }
 
+    }
+
+    private void fireOnLeaderChangeEvent() {
+        Map<String, String> eventData = new HashMap<>();
+        eventData.put("leader", this.serverUri().toString());
+        eventData.put("term", String.valueOf(currentTerm.get()));
+        fireEvent(EventType.ON_LEADER_CHANGE, eventData);
     }
 
     private void convertToFollower() {

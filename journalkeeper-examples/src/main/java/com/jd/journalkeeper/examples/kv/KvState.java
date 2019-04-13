@@ -7,9 +7,7 @@ import com.jd.journalkeeper.core.state.LocalState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.Flushable;
 import java.io.IOException;
-import java.nio.channels.ClosedByInterruptException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -52,7 +50,7 @@ public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
     }
 
     @Override
-    public Map<String, Object> execute(KvEntry entry) {
+    public Map<String, String> execute(KvEntry entry) {
         switch (entry.getCmd()) {
             case KvEntry.CMD_SET:
                 stateMap.put(entry.getKey(), entry.getValue());

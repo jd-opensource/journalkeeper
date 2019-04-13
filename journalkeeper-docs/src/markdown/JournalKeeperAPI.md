@@ -325,6 +325,6 @@ result | 变更结果，包括：<br/>**SUCCESS**: 成功。<br/>**FAILED**: 变
 
 事件 | 内容 | 说明
 -- | -- | --
-onLeaderChanged | leaderAddr：当前LEADER<br/>term：当前任期 | LEADER节点变更
+onLeaderChanged | leader：当前LEADER<br/>term：当前任期 | LEADER节点变更
 onVotersChanged | voterAddrs：变更后的所有选民节点 | 选民节点配置变更
 

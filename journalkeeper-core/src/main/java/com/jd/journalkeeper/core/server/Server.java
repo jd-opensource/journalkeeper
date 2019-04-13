@@ -1,11 +1,13 @@
 package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.base.Serializer;
+import com.jd.journalkeeper.base.event.Event;
 import com.jd.journalkeeper.base.event.EventType;
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.JournalKeeperServer;
 import com.jd.journalkeeper.core.api.State;
 import com.jd.journalkeeper.core.api.StateFactory;
+import com.jd.journalkeeper.core.event.EventBus;
 import com.jd.journalkeeper.core.journal.Journal;
 import com.jd.journalkeeper.core.journal.StorageEntry;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
@@ -162,6 +164,7 @@ public abstract class Server<E, Q, R>
     private ServerState serverState = ServerState.STOPPED;
     private ServerMetadata lastSavedServerMetadata = null;
     private AtomicBoolean flushGate = new AtomicBoolean(false);
+    protected final EventBus eventBus;
 
     public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
                   Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor,
@@ -175,7 +178,7 @@ public abstract class Server<E, Q, R>
         this.entrySerializer = entrySerializer;
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
-
+        this.eventBus = new EventBus(asyncExecutor, config.getRpcTimeoutMs());
         persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
         metadataPersistence = persistenceFactory.createMetadataPersistenceInstance();
         bufferPool = ServiceSupport.load(BufferPool.class);
@@ -272,12 +275,12 @@ public abstract class Server<E, Q, R>
         while ( state.lastApplied() < commitIndex) {
             takeASnapShotIfNeed();
             StorageEntry storageEntry = journal.readStorageEntry(state.lastApplied());
-            Map<String, Object> customizedParameters = null;
+            Map<String, String> customizedEventData = null;
             if(storageEntry.getType() > 0) {
                 E entry = entrySerializer.parse(storageEntry.getEntry());
                 long stamp = stateLock.writeLock();
                 try {
-                    customizedParameters = state.execute(entry);
+                    customizedEventData = state.execute(entry);
                 } finally {
                     stateLock.unlockWrite(stamp);
                 }
@@ -285,17 +288,17 @@ public abstract class Server<E, Q, R>
             // Ignore StorageEntry.TYPE_LEADER_ANNOUNCEMENT
             state.setLastApplied(state.lastApplied() + 1);
             asyncExecutor.submit(this::onStateChanged);
-            Map<String, Object> parameters = new HashMap<>(customizedParameters == null ? 1: customizedParameters.size() + 1);
-            if(null != customizedParameters) {
-                customizedParameters.forEach(parameters::put);
+            Map<String, String> parameters = new HashMap<>(customizedEventData == null ? 1: customizedEventData.size() + 1);
+            if(null != customizedEventData) {
+                customizedEventData.forEach(parameters::put);
             }
-            parameters.put("lastApplied", state.lastApplied());
+            parameters.put("lastApplied", String.valueOf(state.lastApplied()));
             fireEvent(EventType.ON_STATE_CHANGE, parameters);
         }
     }
 
-    protected void fireEvent(int eventType, Map<String, Object> parameters) {
-
+    protected void fireEvent(int eventType, Map<String, String> eventData) {
+        eventBus.fireEvent(new Event(eventType, eventData));
     }
 
 
@@ -640,6 +643,9 @@ public abstract class Server<E, Q, R>
     }
 
 
+    public EventBus eventBus() {
+        return this.eventBus;
+    }
     static class Config {
         final static int DEFAULT_SNAPSHOT_STEP = 128;
         final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;

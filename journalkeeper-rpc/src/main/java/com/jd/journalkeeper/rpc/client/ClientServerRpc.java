@@ -20,5 +20,6 @@ public interface ClientServerRpc extends Detectable {
     CompletableFuture<LastAppliedResponse> lastApplied();
     CompletableFuture<QueryStateResponse> querySnapshot(QueryStateRequest request);
     CompletableFuture<GetServersResponse> getServers();
+
     void stop();
 }
