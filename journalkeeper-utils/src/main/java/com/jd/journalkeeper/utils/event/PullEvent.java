@@ -1,6 +1,5 @@
-package com.jd.journalkeeper.core.event;
+package com.jd.journalkeeper.utils.event;
 
-import com.jd.journalkeeper.base.event.Event;
 
 import java.util.Map;
 
@@ -10,7 +9,7 @@ import java.util.Map;
  */
 public class PullEvent extends Event {
     private final long sequence;
-    public PullEvent(int eventType, Map<String, String> eventData, long sequence) {
+    public PullEvent(int eventType, long sequence, Map<String, String> eventData) {
         super(eventType, eventData);
         this.sequence = sequence;
     }

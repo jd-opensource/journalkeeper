@@ -1,13 +1,14 @@
 package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.base.Serializer;
-import com.jd.journalkeeper.base.event.Event;
-import com.jd.journalkeeper.base.event.EventType;
+import com.jd.journalkeeper.rpc.client.*;
+import com.jd.journalkeeper.utils.event.Event;
+import com.jd.journalkeeper.utils.event.EventType;
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.JournalKeeperServer;
 import com.jd.journalkeeper.core.api.State;
 import com.jd.journalkeeper.core.api.StateFactory;
-import com.jd.journalkeeper.core.event.EventBus;
+import com.jd.journalkeeper.utils.event.EventBus;
 import com.jd.journalkeeper.core.journal.Journal;
 import com.jd.journalkeeper.core.journal.StorageEntry;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
@@ -18,9 +19,6 @@ import com.jd.journalkeeper.persistence.MetadataPersistence;
 import com.jd.journalkeeper.persistence.PersistenceFactory;
 import com.jd.journalkeeper.persistence.ServerMetadata;
 import com.jd.journalkeeper.rpc.RpcAccessPointFactory;
-import com.jd.journalkeeper.rpc.client.GetServersResponse;
-import com.jd.journalkeeper.rpc.client.QueryStateRequest;
-import com.jd.journalkeeper.rpc.client.QueryStateResponse;
 import com.jd.journalkeeper.rpc.server.*;
 import com.jd.journalkeeper.utils.spi.ServiceSupport;
 import com.jd.journalkeeper.utils.state.StateServer;
@@ -432,6 +430,30 @@ public abstract class Server<E, Q, R>
             } catch (Throwable throwable) {
                 return new QueryStateResponse(throwable);
             }
+        }, asyncExecutor);
+    }
+
+    // TODO
+    @Override
+    public CompletableFuture<AddPullWatchResponse> addPullWatch() {
+        return CompletableFuture.supplyAsync(() ->
+                new AddPullWatchResponse(eventBus.addPullWatch(), eventBus.pullIntervalMs()), asyncExecutor);
+    }
+
+    @Override
+    public CompletableFuture<RemovePullWatchResponse> removePullWatch(RemovePullWatchRequest request) {
+        return CompletableFuture
+                .runAsync(() -> eventBus.removePullWatch(request.getPullWatchId()), asyncExecutor)
+                .thenApply(v -> new RemovePullWatchResponse());
+    }
+
+    @Override
+    public CompletableFuture<PullEventsResponse> pullEvents(PullEventsRequest request) {
+        return CompletableFuture.supplyAsync(() -> {
+            if(request.getAckSequence() >= 0 ) {
+                eventBus.ackPullEvents(request.getPullWatchId(), request.getAckSequence());
+            }
+            return new PullEventsResponse(eventBus.pullEvents(request.getPullWatchId()));
         }, asyncExecutor);
     }
 

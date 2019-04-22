@@ -1,4 +1,4 @@
-package com.jd.journalkeeper.base.event;
+package com.jd.journalkeeper.utils.event;
 
 import java.util.Map;
 

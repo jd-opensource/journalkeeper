@@ -1,7 +1,5 @@
-package com.jd.journalkeeper.core.event;
+package com.jd.journalkeeper.utils.event;
 
-import com.jd.journalkeeper.base.event.Event;
-import com.jd.journalkeeper.base.event.EventWatcher;
 import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,13 +41,13 @@ public class EventBus {
     private final Set<EventWatcher> eventWatchers = ConcurrentHashMap.newKeySet();
     private final Map<Long, PullEventWatcher> pullEventWatchers = new ConcurrentHashMap<>();
     private final long pullEventIntervalMs;
-    private final long pullEventWatcherTimout;
+    private final long pullEventWatcherTimeout;
     private final LoopThread removeTimeoutPullWatchersThread;
 
     public EventBus(ExecutorService eventWatcherExecutor, long pullEventIntervalMs) {
         this.eventWatcherExecutor = eventWatcherExecutor;
         this.pullEventIntervalMs = pullEventIntervalMs;
-        this.pullEventWatcherTimout = 5 * pullEventIntervalMs;
+        this.pullEventWatcherTimeout = 5 * pullEventIntervalMs;
         this.removeTimeoutPullWatchersThread = buildRemoveTimeoutPullWatchersThread();
         this.removeTimeoutPullWatchersThread.start();
     }
@@ -62,14 +60,14 @@ public class EventBus {
         return LoopThread.builder()
                 .name("RemoveTimeoutPullWatchersThread")
                 .doWork(this::removeTimeoutPullWatchers)
-                .sleepTime(pullEventWatcherTimout,pullEventWatcherTimout)
+                .sleepTime(pullEventWatcherTimeout, pullEventWatcherTimeout)
                 .onException(e -> logger.warn("RemoveTimeoutPullWatchersThread Exception: ", e))
                 .daemon(true)
                 .build();
     }
 
     private void removeTimeoutPullWatchers() {
-        pullEventWatchers.entrySet().removeIf(entry -> entry.getValue().lastPullTimestamp + pullEventWatcherTimout < System.currentTimeMillis());
+        pullEventWatchers.entrySet().removeIf(entry -> entry.getValue().lastPullTimestamp + pullEventWatcherTimeout < System.currentTimeMillis());
     }
 
     /**
@@ -138,15 +136,16 @@ public class EventBus {
      * 如果没有事件返回长度为0的List。
      * 如果监听ID {@code pullWatchId} 不存在，返回null。
      */
-    List<PullEvent> pullEvents(long pullWatchId) {
+    public List<PullEvent> pullEvents(long pullWatchId) {
         PullEventWatcher pullEventWatcher = pullEventWatchers.get(pullWatchId);
         if(null != pullEventWatcher) {
             List<PullEvent> pullEvents = cachedEvents.tailMap(pullEventWatcher.sequence.get())
                     .entrySet().stream()
                     .map(entry ->
                             new PullEvent(entry.getValue().getEventType(),
-                                    entry.getValue().getEventData(),
-                                    entry.getKey()))
+                                    entry.getKey(),
+                                    entry.getValue().getEventData()
+                                    ))
                     .collect(Collectors.toList());
             pullEventWatcher.touch();
             return pullEvents;

@@ -22,15 +22,23 @@ public class RpcTypes {
     public final static int UPDATE_VOTERS_RESPONSE = -7;
     public final static int UPDATE_OBSERVERS_REQUEST = 8;
     public final static int UPDATE_OBSERVERS_RESPONSE = -8;
+    public final static int ADD_PULL_WATCH_REQUEST = 9;
+    public final static int ADD_PULL_WATCH_RESPONSE = -9;
+    public final static int REMOVE_PULL_WATCH_REQUEST = 10;
+    public final static int REMOVE_PULL_WATCH_RESPONSE = -10;
+    public final static int PULL_EVENTS_REQUEST = 11;
+    public final static int PULL_EVENTS_RESPONSE = -11;
+
+
 
     // Server RPCs
-    public final static int ASYNC_APPEND_ENTRIES_REQUEST = 9;
-    public final static int ASYNC_APPEND_ENTRIES_RESPONSE = -9;
-    public final static int REQUEST_VOTE_REQUEST = 10;
-    public final static int REQUEST_VOTE_RESPONSE = -10;
-    public final static int GET_SERVER_ENTRIES_REQUEST = 11;
-    public final static int GET_SERVER_ENTRIES_RESPONSE = -11;
-    public final static int GET_SERVER_STATE_REQUEST = 12;
-    public final static int GET_SERVER_STATE_RESPONSE = -12;
+    public final static int ASYNC_APPEND_ENTRIES_REQUEST = 101;
+    public final static int ASYNC_APPEND_ENTRIES_RESPONSE = -101;
+    public final static int REQUEST_VOTE_REQUEST = 102;
+    public final static int REQUEST_VOTE_RESPONSE = -102;
+    public final static int GET_SERVER_ENTRIES_REQUEST = 103;
+    public final static int GET_SERVER_ENTRIES_RESPONSE = -103;
+    public final static int GET_SERVER_STATE_REQUEST = 104;
+    public final static int GET_SERVER_STATE_RESPONSE = -104;
 
 }

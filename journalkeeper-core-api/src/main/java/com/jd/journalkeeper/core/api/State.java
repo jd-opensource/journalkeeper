@@ -1,7 +1,7 @@
 package com.jd.journalkeeper.core.api;
 
 import com.jd.journalkeeper.base.Queryable;
-import com.jd.journalkeeper.base.event.EventType;
+import com.jd.journalkeeper.utils.event.EventType;
 
 import java.io.IOException;
 import java.nio.file.Path;

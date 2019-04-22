@@ -1,8 +1,7 @@
 package com.jd.journalkeeper.core.api;
 
 import com.jd.journalkeeper.base.Queryable;
-import com.jd.journalkeeper.base.event.EventWatcher;
-
+import com.jd.journalkeeper.utils.event.EventWatcher;
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
 

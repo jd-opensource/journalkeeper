@@ -16,6 +16,13 @@ public class PayloadCodecRegistry {
         payloadCodecFactory.register(new QueryStateResponseCodec());
         payloadCodecFactory.register(new GetServersRequestCodec());
         payloadCodecFactory.register(new GetServersResponseCodec());
+        payloadCodecFactory.register(new AddPullWatchRequestCodec());
+        payloadCodecFactory.register(new AddPullWatchResponseCodec());
+        payloadCodecFactory.register(new RemovePullWatchRequestCodec());
+        payloadCodecFactory.register(new RemovePullWatchResponseCodec());
+        payloadCodecFactory.register(new PullEventsRequestCodec());
+        payloadCodecFactory.register(new PullEventsResponseCodec());
+
 
         payloadCodecFactory.register(new AsyncAppendEntriesRequestCodec());
         payloadCodecFactory.register(new AsyncAppendEntriesResponseCodec());

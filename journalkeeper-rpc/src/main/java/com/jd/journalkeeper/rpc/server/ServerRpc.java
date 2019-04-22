@@ -1,6 +1,7 @@
 package com.jd.journalkeeper.rpc.server;
 
 import com.jd.journalkeeper.rpc.Detectable;
+import com.jd.journalkeeper.rpc.client.AddPullWatchResponse;
 import com.jd.journalkeeper.rpc.client.ClientServerRpc;
 
 import java.util.concurrent.CompletableFuture;
@@ -15,4 +16,5 @@ public interface ServerRpc extends ClientServerRpc, Detectable {
     CompletableFuture<RequestVoteResponse> requestVote(RequestVoteRequest request);
     CompletableFuture<GetServerEntriesResponse> getServerEntries(GetServerEntriesRequest request);
     CompletableFuture<GetServerStateResponse> getServerState(GetServerStateRequest request);
+
 }

@@ -61,6 +61,21 @@ public class ClientServerRpcStub implements ClientServerRpc {
     }
 
     @Override
+    public CompletableFuture<AddPullWatchResponse> addPullWatch() {
+        return CommandSupport.sendRequest(null, RpcTypes.ADD_PULL_WATCH_REQUEST, transport);
+    }
+
+    @Override
+    public CompletableFuture<RemovePullWatchResponse> removePullWatch(RemovePullWatchRequest request) {
+        return CommandSupport.sendRequest(request, RpcTypes.REMOVE_PULL_WATCH_REQUEST, transport);
+    }
+
+    @Override
+    public CompletableFuture<PullEventsResponse> pullEvents(PullEventsRequest request) {
+        return CommandSupport.sendRequest(request, RpcTypes.PULL_EVENTS_REQUEST, transport);
+    }
+
+    @Override
     public boolean isAlive() {
         return null != transport  && transport.state() == CONNECTED;
     }

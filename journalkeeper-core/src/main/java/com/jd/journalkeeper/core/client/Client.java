@@ -1,24 +1,19 @@
 package com.jd.journalkeeper.core.client;
 
 import com.jd.journalkeeper.base.Serializer;
-import com.jd.journalkeeper.base.event.EventWatcher;
+import com.jd.journalkeeper.utils.event.EventWatcher;
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.JournalKeeperClient;
 import com.jd.journalkeeper.core.exception.NoLeaderException;
-import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.rpc.BaseResponse;
 import com.jd.journalkeeper.rpc.LeaderResponse;
 import com.jd.journalkeeper.rpc.RpcException;
 import com.jd.journalkeeper.rpc.StatusCode;
 import com.jd.journalkeeper.rpc.client.*;
-import com.jd.journalkeeper.utils.state.StateServer;
 
-import java.io.IOException;
 import java.net.URI;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
 
 /**
  * 客户端实现

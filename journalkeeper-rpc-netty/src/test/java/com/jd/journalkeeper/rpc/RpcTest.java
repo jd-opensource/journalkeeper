@@ -6,6 +6,7 @@ import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.rpc.client.*;
 import com.jd.journalkeeper.rpc.server.*;
+import com.jd.journalkeeper.utils.event.PullEvent;
 import com.jd.journalkeeper.utils.net.NetworkingUtils;
 import com.jd.journalkeeper.utils.state.StateServer;
 import com.jd.journalkeeper.utils.test.ByteUtils;
@@ -20,10 +21,7 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -238,6 +236,69 @@ public class RpcTest {
         Assert.assertEquals(voters, response.getClusterConfiguration().getVoters());
         Assert.assertTrue(response.getClusterConfiguration().getObservers().isEmpty());
     }
+
+
+    @Test
+    public void testAddPullWatch() throws ExecutionException, InterruptedException {
+
+        long pullWatchId = 666L;
+        long pullIntervalMs =  10000L;
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc();
+        AddPullWatchResponse response;
+
+        when(serverRpcMock.addPullWatch())
+                .thenReturn(CompletableFuture.supplyAsync(() -> new AddPullWatchResponse(pullWatchId, pullIntervalMs)));
+        response = clientServerRpc.addPullWatch().get();
+        Assert.assertTrue(response.success());
+
+        Assert.assertEquals(pullWatchId, response.getPullWatchId());
+        Assert.assertEquals(pullIntervalMs, response.getPullIntervalMs());
+    }
+
+
+    @Test
+    public void testRemovePullWatch() throws ExecutionException, InterruptedException {
+
+        long pullWatchId = 666L;
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc();
+        RemovePullWatchResponse response;
+
+        when(serverRpcMock.removePullWatch(any(RemovePullWatchRequest.class)))
+                .thenReturn(CompletableFuture.supplyAsync(RemovePullWatchResponse::new));
+        response = clientServerRpc.removePullWatch(new RemovePullWatchRequest(pullWatchId)).get();
+        Assert.assertTrue(response.success());
+        verify(serverRpcMock).removePullWatch(argThat((RemovePullWatchRequest r) -> r.getPullWatchId() == pullWatchId));
+    }
+
+    @Test
+    public void testPullEvents() throws ExecutionException, InterruptedException {
+
+        long pullWatchId = 666L;
+        long ackSequence = 888888L;
+        Map<String, String> eventData = new HashMap<>();
+        eventData.put("key1", "value1");
+        eventData.put("key2", "value2");
+        List<PullEvent> pullEvents = Collections.singletonList(new PullEvent(23, 83999L, eventData));
+
+
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc();
+        PullEventsResponse response;
+
+        when(serverRpcMock.pullEvents(any(PullEventsRequest.class)))
+                .thenReturn(CompletableFuture.supplyAsync(() -> new PullEventsResponse(pullEvents)));
+        response = clientServerRpc.pullEvents(new PullEventsRequest(pullWatchId, ackSequence)).get();
+        Assert.assertTrue(response.success());
+
+        Assert.assertEquals(pullEvents.size(),response.getPullEvents().size());
+        Assert.assertEquals(pullEvents.get(0).getSequence(), response.getPullEvents().get(0).getSequence());
+        Assert.assertEquals(pullEvents.get(0).getEventData(), response.getPullEvents().get(0).getEventData());
+
+        verify(serverRpcMock).pullEvents(argThat((PullEventsRequest r) ->
+                r.getPullWatchId() == pullWatchId &&
+                r.getAckSequence() == ackSequence));
+    }
+
+
 
 
     @Test
