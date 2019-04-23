@@ -2,6 +2,7 @@ package com.jd.journalkeeper.journalstore;
 
 
 import com.jd.journalkeeper.core.api.StateFactory;
+import com.jd.journalkeeper.core.exception.StateRecoverException;
 import com.jd.journalkeeper.core.state.LocalState;
 import org.apache.commons.io.FileUtils;
 
@@ -31,22 +32,14 @@ public class JournalState extends LocalState<ByteBuffer, JournalStoreQuery, List
         indexMap = recoverIndexMap(path.resolve(FILENAME));
     }
 
+    // TODO: 双写双读，避免文件损坏。
     private NavigableMap<Long, Long> recoverIndexMap(Path path) {
         NavigableMap<Long,Long> recoverMap = new TreeMap<>();
 
         try {
-            byte [] bytes = FileUtils.readFileToByteArray(path.toFile());
-            ByteBuffer buffer = ByteBuffer.wrap(bytes);
-            if(bytes.length >= Integer.BYTES) {
-                int skip = buffer.getInt();
-                buffer.position(buffer.position() + skip * 2 * Long.BYTES);
-                while (buffer.hasRemaining()) {
-                    recoverMap.put(buffer.getLong(), buffer.getLong());
-                }
-            }
-
+            IndexMapPersistence.restore(recoverMap, path.toFile());
         } catch (IOException e) {
-            // TODO
+            throw new StateRecoverException(e);
         }
         return recoverMap;
     }
