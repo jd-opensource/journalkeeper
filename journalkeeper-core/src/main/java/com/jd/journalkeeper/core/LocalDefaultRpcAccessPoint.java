@@ -26,7 +26,7 @@ public class LocalDefaultRpcAccessPoint implements ClientServerRpcAccessPoint {
     }
 
     @Override
-    public ClientServerRpc getClintServerRpc() {
+    public ClientServerRpc defaultClientServerRpc() {
         return server;
     }
 

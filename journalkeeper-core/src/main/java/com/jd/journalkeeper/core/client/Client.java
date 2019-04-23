@@ -55,7 +55,7 @@ public class Client<E, Q, R> implements JournalKeeperClient<E, Q, R> {
 
     @Override
     public CompletableFuture<ClusterConfiguration> getServers() {
-        return clientServerRpcAccessPoint.getClintServerRpc()
+        return clientServerRpcAccessPoint.defaultClientServerRpc()
                 .getServers()
                 .thenApply(GetServersResponse::getClusterConfiguration);
     }
@@ -68,12 +68,12 @@ public class Client<E, Q, R> implements JournalKeeperClient<E, Q, R> {
 
     @Override
     public void watch(EventWatcher eventWatcher) {
-        // TODO 事件通知
+        clientServerRpcAccessPoint.defaultClientServerRpc().watch(eventWatcher);
     }
 
     @Override
     public void unwatch(EventWatcher eventWatcher) {
-
+        clientServerRpcAccessPoint.defaultClientServerRpc().unWatch(eventWatcher);
     }
 
     //TODO: 根据配置选择：
@@ -106,7 +106,7 @@ public class Client<E, Q, R> implements JournalKeeperClient<E, Q, R> {
 
     private CompletableFuture<ClientServerRpc> getLeaderRpc() {
         return clientServerRpcAccessPoint
-                .getClintServerRpc()
+                .defaultClientServerRpc()
                 .getServers()
                 .exceptionally(GetServersResponse::new)
                 .thenApply(resp -> {

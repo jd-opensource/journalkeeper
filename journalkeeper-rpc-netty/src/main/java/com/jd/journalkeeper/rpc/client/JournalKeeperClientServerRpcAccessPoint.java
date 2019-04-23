@@ -16,7 +16,7 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     private final Properties properties;
     private final TransportClient transportClient;
     private Map<URI, ClientServerRpcStub> serverInstances = new HashMap<>();
-    private URI currentServerUri = null;
+    private URI defaultServerUri = null;
     public JournalKeeperClientServerRpcAccessPoint(List<URI> servers, TransportClient transportClient, Properties properties) {
         this.transportClient = transportClient;
         try {
@@ -44,7 +44,7 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     }
 
     @Override
-    public ClientServerRpc getClintServerRpc() {
+    public ClientServerRpc defaultClientServerRpc() {
         return getClintServerRpc(selectServer());
     }
 
@@ -62,15 +62,15 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     }
 
     private URI selectServer() {
-        if(null == currentServerUri) {
-            currentServerUri = serverInstances.entrySet().stream()
+        if(null == defaultServerUri) {
+            defaultServerUri = serverInstances.entrySet().stream()
                     .filter(entry -> Objects.nonNull(entry.getValue()))
                     .filter(entry -> entry.getValue().isAlive())
                     .map(Map.Entry::getKey).findAny().
                             orElse(serverInstances.keySet().stream().findAny().orElse(null));
         }
 
-        return currentServerUri;
+        return defaultServerUri;
     }
 
     private ClientServerRpcStub connect(URI server) {

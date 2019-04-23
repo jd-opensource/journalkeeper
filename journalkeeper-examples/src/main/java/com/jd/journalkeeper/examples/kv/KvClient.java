@@ -2,11 +2,16 @@ package com.jd.journalkeeper.examples.kv;
 
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.JournalKeeperClient;
+import com.jd.journalkeeper.utils.event.Event;
+import com.jd.journalkeeper.utils.event.EventType;
+import com.jd.journalkeeper.utils.event.EventWatcher;
 import com.jd.journalkeeper.utils.format.Format;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author liyue25
@@ -79,6 +84,15 @@ public class KvClient {
         } catch (Throwable e) {
             return null;
         }
+    }
+
+
+    public void waitForLeader(long timeoutMs) throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(1);
+        EventWatcher watcher = event -> {if(event.getEventType() == EventType.ON_LEADER_CHANGE) latch.countDown();} ;
+        client.watch(watcher);
+        latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+        client.unwatch(watcher);
     }
 
 }

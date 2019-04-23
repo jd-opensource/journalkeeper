@@ -41,7 +41,7 @@ public class KvTest {
     }
 
     @Test
-    public void singleNodeRecoverTest() throws IOException {
+    public void singleNodeRecoverTest() throws IOException, InterruptedException {
         Path path = TestPathUtils.prepareBaseDir("singleNodeTest");
         KvServer kvServer = createServers(1, path).get(0);
         KvClient kvClient = kvServer.createClient();
@@ -52,8 +52,9 @@ public class KvTest {
         kvServer.stop();
 
         kvServer = recoverServer("server0", path);
-        kvServer.waitForLeaderReady();
+
         kvClient = kvServer.createClient();
+        kvClient.waitForLeader(10000);
         Assert.assertEquals("value", kvClient.get("key"));
         kvServer.stop();
         TestPathUtils.destroyBaseDir(path.toFile());

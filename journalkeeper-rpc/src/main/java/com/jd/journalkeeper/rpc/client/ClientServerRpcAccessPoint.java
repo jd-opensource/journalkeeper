@@ -21,7 +21,7 @@ public interface ClientServerRpcAccessPoint  {
      * 客户端使用
      * 获取一个ClientServerRpc实例，自动选择server。
      */
-    ClientServerRpc getClintServerRpc();
+    ClientServerRpc defaultClientServerRpc();
 
     /**
      * 客户端使用
