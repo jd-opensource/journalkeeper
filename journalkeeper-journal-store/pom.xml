@@ -13,12 +13,7 @@
     <dependencies>
         <dependency>
             <groupId>io.journalkeeper</groupId>
-            <artifactId>journalkeeper-core-api</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.journalkeeper</groupId>
-            <artifactId>journalkeeper-utils</artifactId>
+            <artifactId>journalkeeper-core</artifactId>
             <version>${project.version}</version>
         </dependency>
 

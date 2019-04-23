@@ -21,6 +21,7 @@ public class ClusterConfiguration {
         this.observers = observers;
     }
 
+
     public URI getLeader() {
         return leader;
     }

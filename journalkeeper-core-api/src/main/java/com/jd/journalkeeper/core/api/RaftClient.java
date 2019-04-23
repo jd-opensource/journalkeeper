@@ -2,6 +2,8 @@ package com.jd.journalkeeper.core.api;
 
 import com.jd.journalkeeper.base.Queryable;
 import com.jd.journalkeeper.utils.event.EventWatcher;
+import com.jd.journalkeeper.utils.event.Watchable;
+
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
 
@@ -16,7 +18,7 @@ import java.util.concurrent.CompletableFuture;
  * @param <E> 日志的类型
  *
  */
-public interface JournalKeeperClient<E, Q, R> extends Queryable<Q, R> {
+public interface RaftClient<E, Q, R> extends Queryable<Q, R>, Watchable {
 
 
     /**
@@ -47,16 +49,6 @@ public interface JournalKeeperClient<E, Q, R> extends Queryable<Q, R> {
      * @return true：成功，其它：失败。
      */
     CompletableFuture<Boolean> updateVoters(UpdateVoterOperation operation, URI voter);
-
-    /**
-     * 注册事件监听器
-     */
-    void watch(EventWatcher eventWatcher);
-
-    /**
-     * 注销事件监听器
-     */
-    void unwatch(EventWatcher eventWatcher);
 
     void stop();
 

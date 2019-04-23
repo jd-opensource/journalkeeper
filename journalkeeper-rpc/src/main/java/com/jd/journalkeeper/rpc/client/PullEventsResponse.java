@@ -8,6 +8,15 @@ import java.util.Collections;
 import java.util.List;
 
 /**
+ * RPC 方法
+ * {@link ClientServerRpc#pullEvents(PullEventsRequest) pullEvents{}}
+ * 返回响应。
+ *
+ * 返回从上次ack 的序号至今的所有事件，保证事件有序。
+ * 如果没有事件返回长度为0的List。
+ *
+ * StatusCode:
+ * StatusCode.PULL_WATCH_ID_NOT_EXISTS: 监听ID不存在。
  * @author liyue25
  * Date: 2019-04-22
  */
@@ -15,10 +24,18 @@ public class PullEventsResponse extends BaseResponse {
     private final List<PullEvent> pullEvents;
 
     public PullEventsResponse(List<PullEvent> pullEvents) {
-        super(StatusCode.SUCCESS);
+        if(null != pullEvents) {
+            setStatusCode(StatusCode.SUCCESS);
+        } else {
+            setStatusCode(StatusCode.PULL_WATCH_ID_NOT_EXISTS);
+        }
         this.pullEvents = pullEvents;
     }
 
+    /**
+     * 返回的事件列表
+     * @return 返回的事件列表
+     */
     public List<PullEvent> getPullEvents() {
         return pullEvents;
     }

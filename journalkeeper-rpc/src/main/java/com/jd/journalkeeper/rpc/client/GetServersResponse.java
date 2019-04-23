@@ -4,6 +4,10 @@ import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.rpc.BaseResponse;
 
 /**
+ * RPC 方法
+ * {@link ClientServerRpc#getServers() getServers()}
+ * 返回响应。
+ *
  * @author liyue25
  * Date: 2019-03-14
  */
@@ -22,6 +26,10 @@ public class GetServersResponse  extends BaseResponse {
         this.clusterConfiguration = clusterConfiguration;
     }
 
+    /**
+     * 集群当前配置信息。
+     * @return 集群当前配置信息。
+     */
     public ClusterConfiguration getClusterConfiguration() {
         return clusterConfiguration;
     }

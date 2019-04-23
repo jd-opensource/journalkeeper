@@ -1,7 +1,7 @@
 package com.jd.journalkeeper.examples.kv;
 
 import com.jd.journalkeeper.core.BootStrap;
-import com.jd.journalkeeper.core.api.JournalKeeperServer;
+import com.jd.journalkeeper.core.api.RaftServer;
 import com.jd.journalkeeper.core.exception.NoLeaderException;
 import com.jd.journalkeeper.utils.state.StateServer;
 import org.slf4j.Logger;
@@ -22,7 +22,7 @@ public class KvServer implements StateServer {
 
     public KvServer(Properties properties) {
         bootStrap =
-                new BootStrap<>(JournalKeeperServer.Roll.VOTER,
+                new BootStrap<>(RaftServer.Roll.VOTER,
                         new KvStateFactory(),
                         new JsonSerializer<>(KvEntry.class),
                         new JsonSerializer<>(KvQuery.class),
@@ -76,7 +76,7 @@ public class KvServer implements StateServer {
         return new KvClient(bootStrap.getClient());
     }
 
-    public JournalKeeperServer.Roll roll() {
+    public RaftServer.Roll roll() {
         return this.bootStrap.getServer().roll();
     }
 

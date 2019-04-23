@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
  * @author liyue25
  * Date: 2019-04-12
  */
-public class EventBus {
+public class EventBus implements Watchable {
     private static final Logger logger = LoggerFactory.getLogger(EventBus.class);
     private final NavigableMap<Long, Event> cachedEvents = new ConcurrentSkipListMap<>();
     private final ExecutorService eventWatcherExecutor;
@@ -87,6 +87,7 @@ public class EventBus {
      * 添加事件监听器，当事件发生时会调用监听器
      * @param eventWatcher 事件监听器
      */
+    @Override
     public void watch(EventWatcher eventWatcher) {
         if(eventWatcher != null) {
             eventWatchers.add(eventWatcher);
@@ -97,6 +98,7 @@ public class EventBus {
      * 删除事件监听器
      * @param eventWatcher 事件监听器
      */
+    @Override
     public void unWatch(EventWatcher eventWatcher) {
         if(eventWatcher != null) {
             eventWatchers.remove(eventWatcher);
@@ -122,7 +124,7 @@ public class EventBus {
     }
 
     /**
-     * 获取监听事件间隔。
+     * 获取拉取监听事件的时间间隔。
      * @return 监听时间间隔，单位毫秒。
      */
     public long pullIntervalMs() {

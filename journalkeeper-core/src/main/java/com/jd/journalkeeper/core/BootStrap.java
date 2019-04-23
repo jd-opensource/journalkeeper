@@ -2,8 +2,8 @@ package com.jd.journalkeeper.core;
 
 import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.ClusterAccessPoint;
-import com.jd.journalkeeper.core.api.JournalKeeperClient;
-import com.jd.journalkeeper.core.api.JournalKeeperServer;
+import com.jd.journalkeeper.core.api.RaftClient;
+import com.jd.journalkeeper.core.api.RaftServer;
 import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.client.Client;
 import com.jd.journalkeeper.core.server.Observer;
@@ -12,7 +12,6 @@ import com.jd.journalkeeper.core.server.Voter;
 import com.jd.journalkeeper.rpc.RpcAccessPointFactory;
 import com.jd.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import com.jd.journalkeeper.utils.spi.ServiceSupport;
-import com.jd.journalkeeper.utils.state.StateServer;
 import com.jd.journalkeeper.utils.threads.NamedThreadFactory;
 
 import java.net.URI;
@@ -37,7 +36,7 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
     private final Properties properties;
     private final ScheduledExecutorService scheduledExecutorService;
     private final ExecutorService asyncExecutorService;
-    private final JournalKeeperServer.Roll roll;
+    private final RaftServer.Roll roll;
     private final RpcAccessPointFactory rpcAccessPointFactory;
     private ClientServerRpcAccessPoint clientServerRpcAccessPoint = null;
     private final List<URI> servers;
@@ -58,12 +57,12 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
      * @param roll 本地Server的角色。
      * @param properties 配置属性
      */
-    public BootStrap(JournalKeeperServer.Roll roll, StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer, Properties properties) {
+    public BootStrap(RaftServer.Roll roll, StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer, Properties properties) {
         this(roll, null, stateFactory, entrySerializer, querySerializer, resultSerializer, properties);
     }
 
 
-    private BootStrap(JournalKeeperServer.Roll roll, List<URI> servers, StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer, Properties properties) {
+    private BootStrap(RaftServer.Roll roll, List<URI> servers, StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer, Properties properties) {
         this.stateFactory = stateFactory;
         this.entrySerializer = entrySerializer;
         this.querySerializer = querySerializer;
@@ -90,7 +89,7 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
     }
 
     @Override
-    public JournalKeeperClient<E, Q, R> getClient() {
+    public RaftClient<E, Q, R> getClient() {
         if(null == client) {
             if (null == this.clientServerRpcAccessPoint) {
                 this.clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.servers, this.properties);
@@ -119,7 +118,7 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
     }
 
     @Override
-    public JournalKeeperServer<E, Q, R> getServer() {
+    public RaftServer<E, Q, R> getServer() {
         return server;
     }
 

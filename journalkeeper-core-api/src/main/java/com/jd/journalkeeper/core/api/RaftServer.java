@@ -15,14 +15,14 @@ import java.util.Properties;
  * @author liyue25
  * Date: 2019-03-14
  */
-public abstract class JournalKeeperServer<E, Q, R> implements StateServer {
+public abstract class RaftServer<E, Q, R> implements StateServer {
 
     protected final StateFactory<E, Q, R> stateFactory;
     /**
      * 属性集
      */
     protected final Properties properties;
-    public JournalKeeperServer(StateFactory<E, Q, R> stateFactory, Properties properties){
+    public RaftServer(StateFactory<E, Q, R> stateFactory, Properties properties){
         this.stateFactory = stateFactory;
         this.properties = properties;
     }

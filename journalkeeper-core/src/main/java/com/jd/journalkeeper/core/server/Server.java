@@ -2,13 +2,11 @@ package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.rpc.client.*;
-import com.jd.journalkeeper.utils.event.Event;
-import com.jd.journalkeeper.utils.event.EventType;
+import com.jd.journalkeeper.utils.event.*;
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
-import com.jd.journalkeeper.core.api.JournalKeeperServer;
+import com.jd.journalkeeper.core.api.RaftServer;
 import com.jd.journalkeeper.core.api.State;
 import com.jd.journalkeeper.core.api.StateFactory;
-import com.jd.journalkeeper.utils.event.EventBus;
 import com.jd.journalkeeper.core.journal.Journal;
 import com.jd.journalkeeper.core.journal.StorageEntry;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
@@ -20,7 +18,6 @@ import com.jd.journalkeeper.persistence.PersistenceFactory;
 import com.jd.journalkeeper.persistence.ServerMetadata;
 import com.jd.journalkeeper.rpc.RpcAccessPointFactory;
 import com.jd.journalkeeper.rpc.server.*;
-import com.jd.journalkeeper.utils.event.EventWatcher;
 import com.jd.journalkeeper.utils.spi.ServiceSupport;
 import com.jd.journalkeeper.utils.state.StateServer;
 import com.jd.journalkeeper.utils.threads.LoopThread;
@@ -47,7 +44,7 @@ import java.util.stream.StreamSupport;
  * Date: 2019-03-14
  */
 public abstract class Server<E, Q, R>
-        extends JournalKeeperServer<E, Q, R>
+        extends RaftServer<E, Q, R>
         implements ServerRpc {
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
 
@@ -676,7 +673,7 @@ public abstract class Server<E, Q, R>
     }
 
 
-    public EventBus eventBus() {
+    public Watchable eventBus() {
         return this.eventBus;
     }
     static class Config {

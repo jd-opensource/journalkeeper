@@ -7,7 +7,12 @@ import com.jd.journalkeeper.rpc.LeaderResponse;
 import com.jd.journalkeeper.rpc.StatusCode;
 
 /**
- * @author liyue25
+ * RPC 方法
+ * {@link ClientServerRpc#queryServerState(QueryStateRequest) queryServerState}
+ * {@link ClientServerRpc#queryClusterState(QueryStateRequest) queryClusterState}
+ * {@link ClientServerRpc#querySnapshot(QueryStateRequest) querySnapshot}
+ * 返回结果。
+ * * @author liyue25
  * Date: 2019-03-14
  */
 public class QueryStateResponse  extends LeaderResponse {
@@ -29,10 +34,19 @@ public class QueryStateResponse  extends LeaderResponse {
         this.result = result;
         this.lastApplied = lastApplied;
     }
+
+    /**
+     * 序列化后的查询结果。
+     * @return 序列化后的查询结果。
+     */
     public byte [] getResult() {
         return result;
     }
 
+    /**
+     *
+     * @return state对应的Journal索引序号
+     */
     public long getLastApplied() {
         return lastApplied;
     }

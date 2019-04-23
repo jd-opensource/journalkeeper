@@ -3,7 +3,7 @@ package com.jd.journalkeeper.core.client;
 import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.utils.event.EventWatcher;
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
-import com.jd.journalkeeper.core.api.JournalKeeperClient;
+import com.jd.journalkeeper.core.api.RaftClient;
 import com.jd.journalkeeper.core.exception.NoLeaderException;
 import com.jd.journalkeeper.rpc.BaseResponse;
 import com.jd.journalkeeper.rpc.LeaderResponse;
@@ -20,7 +20,7 @@ import java.util.concurrent.CompletableFuture;
  * @author liyue25
  * Date: 2019-03-25
  */
-public class Client<E, Q, R> implements JournalKeeperClient<E, Q, R> {
+public class Client<E, Q, R> implements RaftClient<E, Q, R> {
 
     private final ClientServerRpcAccessPoint clientServerRpcAccessPoint;
     private final Properties properties;
@@ -72,7 +72,7 @@ public class Client<E, Q, R> implements JournalKeeperClient<E, Q, R> {
     }
 
     @Override
-    public void unwatch(EventWatcher eventWatcher) {
+    public void unWatch(EventWatcher eventWatcher) {
         clientServerRpcAccessPoint.defaultClientServerRpc().unWatch(eventWatcher);
     }
 

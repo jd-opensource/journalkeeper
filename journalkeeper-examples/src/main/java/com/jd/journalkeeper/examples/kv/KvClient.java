@@ -1,8 +1,7 @@
 package com.jd.journalkeeper.examples.kv;
 
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
-import com.jd.journalkeeper.core.api.JournalKeeperClient;
-import com.jd.journalkeeper.utils.event.Event;
+import com.jd.journalkeeper.core.api.RaftClient;
 import com.jd.journalkeeper.utils.event.EventType;
 import com.jd.journalkeeper.utils.event.EventWatcher;
 import com.jd.journalkeeper.utils.format.Format;
@@ -19,9 +18,9 @@ import java.util.concurrent.TimeUnit;
  */
 public class KvClient {
     private static final Logger logger = LoggerFactory.getLogger(KvClient.class);
-    private final JournalKeeperClient<KvEntry, KvQuery, KvResult> client;
+    private final RaftClient<KvEntry, KvQuery, KvResult> client;
 
-    public KvClient(JournalKeeperClient<KvEntry, KvQuery, KvResult> client) {
+    public KvClient(RaftClient<KvEntry, KvQuery, KvResult> client) {
         this.client = client;
     }
 
@@ -92,7 +91,7 @@ public class KvClient {
         EventWatcher watcher = event -> {if(event.getEventType() == EventType.ON_LEADER_CHANGE) latch.countDown();} ;
         client.watch(watcher);
         latch.await(timeoutMs, TimeUnit.MILLISECONDS);
-        client.unwatch(watcher);
+        client.unWatch(watcher);
     }
 
 }

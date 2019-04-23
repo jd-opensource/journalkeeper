@@ -21,6 +21,7 @@ public enum StatusCode {
     NOT_LEADER(100, "NOT_LEADER"),
 
     // 101 ~ 200 Client Server Rpc
+    PULL_WATCH_ID_NOT_EXISTS(101, "PULL_WATCH_ID_NOT_EXISTS"),
 
 
     // 201 ~ 254 Server Rpc
