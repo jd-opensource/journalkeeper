@@ -20,6 +20,7 @@ import com.jd.journalkeeper.persistence.PersistenceFactory;
 import com.jd.journalkeeper.persistence.ServerMetadata;
 import com.jd.journalkeeper.rpc.RpcAccessPointFactory;
 import com.jd.journalkeeper.rpc.server.*;
+import com.jd.journalkeeper.utils.event.EventWatcher;
 import com.jd.journalkeeper.utils.spi.ServiceSupport;
 import com.jd.journalkeeper.utils.state.StateServer;
 import com.jd.journalkeeper.utils.threads.LoopThread;
@@ -196,6 +197,7 @@ public abstract class Server<E, Q, R>
                 .doWork(this::applyEntries)
                 .sleepTime(50,100)
                 .onException(e -> logger.warn("StateMachineThread Exception: ", e))
+                .daemon(true)
                 .build();
     }
 
@@ -433,7 +435,16 @@ public abstract class Server<E, Q, R>
         }, asyncExecutor);
     }
 
-    // TODO
+    @Override
+    public void watch(EventWatcher eventWatcher) {
+        this.eventBus.watch(eventWatcher);
+    }
+
+    @Override
+    public void unWatch(EventWatcher eventWatcher) {
+        this.eventBus.unWatch(eventWatcher);
+    }
+
     @Override
     public CompletableFuture<AddPullWatchResponse> addPullWatch() {
         return CompletableFuture.supplyAsync(() ->

@@ -6,6 +6,8 @@ import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.rpc.client.*;
 import com.jd.journalkeeper.rpc.server.*;
+import com.jd.journalkeeper.utils.event.Event;
+import com.jd.journalkeeper.utils.event.EventWatcher;
 import com.jd.journalkeeper.utils.event.PullEvent;
 import com.jd.journalkeeper.utils.net.NetworkingUtils;
 import com.jd.journalkeeper.utils.state.StateServer;
@@ -298,6 +300,36 @@ public class RpcTest {
                 r.getAckSequence() == ackSequence));
     }
 
+    @Test
+    public void testWatch() throws Exception {
+        long pullWatchId = 666L;
+        long pullIntervalMs = 100L;
+        Map<String, String> eventData = new HashMap<>();
+        eventData.put("key1", "value1");
+        eventData.put("key2", "value2");
+        List<PullEvent> pullEvents = Collections.singletonList(new PullEvent(23, 83999L, eventData));
+
+
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc();
+
+        when(serverRpcMock.pullEvents(any(PullEventsRequest.class)))
+                .thenReturn(CompletableFuture.supplyAsync(() -> new PullEventsResponse(pullEvents)))
+                .thenReturn(CompletableFuture.supplyAsync(() -> new PullEventsResponse(Collections.emptyList())));
+        when(serverRpcMock.addPullWatch())
+                .thenReturn(CompletableFuture.supplyAsync(() -> new AddPullWatchResponse(pullWatchId, pullIntervalMs)));
+        when(serverRpcMock.removePullWatch(any(RemovePullWatchRequest.class)))
+                .thenReturn(CompletableFuture.supplyAsync(RemovePullWatchResponse::new));
+
+        List<Event> eventList = new ArrayList<>();
+        EventWatcher eventWatcher = eventList::add;
+
+        clientServerRpc.watch(eventWatcher);
+        Thread.sleep(3 * pullIntervalMs);
+        clientServerRpc.unWatch(eventWatcher);
+
+        Assert.assertEquals(pullEvents.size(), eventList.size());
+        Assert.assertEquals(pullEvents.get(0).getEventData(), eventList.get(0).getEventData());
+    }
 
 
 

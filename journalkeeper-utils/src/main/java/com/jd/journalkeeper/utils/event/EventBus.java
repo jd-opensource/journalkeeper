@@ -177,4 +177,12 @@ public class EventBus {
             lastPullTimestamp = System.currentTimeMillis();
         }
     }
+
+    public void shutdown() {
+        removeTimeoutPullWatchersThread.stop();
+    }
+
+    public boolean hasEventWatchers() {
+        return !eventWatchers.isEmpty();
+    }
 }

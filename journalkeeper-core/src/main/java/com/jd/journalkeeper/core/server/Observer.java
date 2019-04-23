@@ -63,6 +63,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
                 .doWork(this::pullEntries)
                 .sleepTime(50,100)
                 .onException(e -> logger.warn("ObserverReplicationThread Exception: ", e))
+                .daemon(true)
                 .build();
     }
 

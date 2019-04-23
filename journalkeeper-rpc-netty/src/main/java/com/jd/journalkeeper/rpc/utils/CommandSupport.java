@@ -44,13 +44,8 @@ public class CommandSupport {
                         future.completeExceptionally(cause);
                     }
                 });
-        return future.thenApply(response -> {
-            if(!response.success() && response.getStatusCode() == StatusCode.EXCEPTION) {
-                throw new RpcException(response);
-            } else {
-                return response;
-            }
-        });
+        return  future;
+
     }
 
     public static void sendResponse(BaseResponse response, int responseType,  Command requestCommand, Transport transport) {

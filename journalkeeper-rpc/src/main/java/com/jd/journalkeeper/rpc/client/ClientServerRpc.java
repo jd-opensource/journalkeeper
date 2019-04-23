@@ -23,5 +23,7 @@ public interface ClientServerRpc extends Detectable {
     CompletableFuture<AddPullWatchResponse> addPullWatch();
     CompletableFuture<RemovePullWatchResponse> removePullWatch(RemovePullWatchRequest request);
     CompletableFuture<PullEventsResponse> pullEvents(PullEventsRequest request);
+    void watch(EventWatcher eventWatcher);
+    void unWatch(EventWatcher eventWatcher);
     void stop();
 }

@@ -1,11 +1,18 @@
 package com.jd.journalkeeper.rpc.client;
 
+import com.jd.journalkeeper.rpc.RpcException;
 import com.jd.journalkeeper.rpc.codec.RpcTypes;
 import com.jd.journalkeeper.rpc.remoting.transport.Transport;
 import com.jd.journalkeeper.rpc.utils.CommandSupport;
+import com.jd.journalkeeper.utils.event.EventBus;
+import com.jd.journalkeeper.utils.event.EventWatcher;
+import com.jd.journalkeeper.utils.threads.LoopThread;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 import static com.jd.journalkeeper.rpc.remoting.transport.TransportState.CONNECTED;
 
@@ -15,8 +22,13 @@ import static com.jd.journalkeeper.rpc.remoting.transport.TransportState.CONNECT
  * Date: 2019-03-30
  */
 public class ClientServerRpcStub implements ClientServerRpc {
+    private static final Logger logger = LoggerFactory.getLogger(ClientServerRpcStub.class);
     protected final Transport transport;
     protected final URI uri;
+    protected EventBus eventBus = null;
+    protected LoopThread pullEventThread = null;
+    protected long pullWatchId = -1L;
+    protected long ackSequence = -1L;
     public ClientServerRpcStub(Transport transport, URI uri) {
         this.transport = transport;
         this.uri = uri;
@@ -76,6 +88,95 @@ public class ClientServerRpcStub implements ClientServerRpc {
     }
 
     @Override
+    public void watch(EventWatcher eventWatcher) {
+        if(null == eventBus) {
+            initPullEvent();
+        }
+        eventBus.watch(eventWatcher);
+    }
+
+    private void initPullEvent() {
+        try {
+            AddPullWatchResponse addPullWatchResponse = addPullWatch().get();
+            if (addPullWatchResponse.success()) {
+                this.pullWatchId = addPullWatchResponse.getPullWatchId();
+                this.ackSequence = -1L;
+                long pullInterval = addPullWatchResponse.getPullIntervalMs();
+                pullEventThread = buildPullEventsThread(pullInterval);
+                pullEventThread.start();
+                eventBus = new EventBus();
+            } else {
+                throw new RpcException(addPullWatchResponse);
+            }
+        } catch (Throwable t) {
+            throw new RpcException(t);
+        }
+
+    }
+
+    private LoopThread buildPullEventsThread(long pullInterval) {
+        return LoopThread.builder()
+                .name("PullEventsThread")
+                .doWork(this::pullRemoteEvents)
+                .sleepTime(pullInterval, pullInterval)
+                .onException(e -> logger.warn("PullEventsThread Exception: ", e))
+                .daemon(true)
+                .build();
+    }
+
+    private void pullRemoteEvents() {
+        pullEvents(new PullEventsRequest(pullWatchId, ackSequence))
+                .thenAccept(response -> {
+                    if(response.success()) {
+                        if(null != response.getPullEvents()) {
+                            response.getPullEvents().forEach(pullEvent -> {
+                                eventBus.fireEvent(pullEvent);
+                                ackSequence = pullEvent.getSequence();
+                            });
+                        }
+                    } else {
+                        logger.warn("Pull event error: {}", response.getError());
+                    }
+                });
+    }
+
+    @Override
+    public void unWatch(EventWatcher eventWatcher) {
+        if(null != eventBus) {
+            eventBus.unWatch(eventWatcher);
+            if(!eventBus.hasEventWatchers()) {
+                destroyPullEvent();
+            }
+        }
+
+    }
+
+    private void destroyPullEvent() {
+        if(null != eventBus) {
+            eventBus.shutdown();
+            eventBus = null;
+        }
+        if(null != pullEventThread) {
+            pullEventThread.stop();
+            eventBus = null;
+        }
+        if(pullWatchId >= 0) {
+            try {
+                RemovePullWatchResponse response = removePullWatch(new RemovePullWatchRequest(pullWatchId))
+                        .get();
+                if(!response.success()) {
+                    throw new RpcException(response);
+                }
+            } catch (Throwable t) {
+                logger.warn("Remove pull watch exception: ", t);
+            } finally {
+                pullWatchId = -1L;
+            }
+        }
+
+    }
+
+    @Override
     public boolean isAlive() {
         return null != transport  && transport.state() == CONNECTED;
     }
@@ -85,5 +186,6 @@ public class ClientServerRpcStub implements ClientServerRpc {
         if(null != transport) {
             transport.stop();
         }
+        destroyPullEvent();
     }
 }

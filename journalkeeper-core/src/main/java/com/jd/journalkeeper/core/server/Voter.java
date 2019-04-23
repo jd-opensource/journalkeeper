@@ -124,6 +124,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 .doWork(this::appendJournalEntry)
                 .sleepTime(0,0)
                 .onException(e -> logger.warn("LeaderAppendJournalEntry Exception, {}: ", voterInfo(), e))
+                .daemon(true)
                 .build();
     }
 
@@ -134,6 +135,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 .doWork(this::handleReplicationRequest)
                 .sleepTime(0,0)
                 .onException(e -> logger.warn("VoterReplicationHandlerThread Exception, {}: ", voterInfo(), e))
+                .daemon(true)
                 .build();
     }
 
@@ -144,6 +146,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 .doWork(this::replication)
                 .sleepTime(config.getHeartbeatIntervalMs(),config.getHeartbeatIntervalMs())
                 .onException(e -> logger.warn("LeaderReplicationThread Exception, {}: ", voterInfo(), e))
+                .daemon(true)
                 .build();
     }
     private LoopThread buildLeaderReplicationResponseThread() {
@@ -153,6 +156,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 .doWork(this::handleReplicationResponses)
                 .sleepTime(config.getHeartbeatIntervalMs(),config.getHeartbeatIntervalMs())
                 .onException(e -> logger.warn("LeaderReplicationResponseThread Exception, {}: ", voterInfo(), e))
+                .daemon(true)
                 .build();
     }
 

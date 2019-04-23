@@ -203,6 +203,7 @@ public class PositioningStoreTest {
                 .doWork(store::flush)
                 .sleepTime(0,0)
                 .onException(e -> logger.warn("Flush Exception: ", e))
+                .daemon(true)
                 .build();
         try {
             flushThread.start();
