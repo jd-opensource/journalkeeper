@@ -18,10 +18,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.*;
 
 /**
  * @author liyue25
@@ -87,7 +84,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
 
     }
 
-    private void reset() throws InterruptedException, java.util.concurrent.ExecutionException, IOException {
+    private void reset() throws InterruptedException, ExecutionException, IOException {
 //      INDEX_UNDERFLOW：Observer的提交位置已经落后目标节点太多，这时需要重置Observer，重置过程中不能提供读服务：
 //        1. 删除log中所有日志和snapshots中的所有快照；
 //        2. 将目标节点提交位置对应的状态复制到Observer上：parentServer.getServerState()，更新属性commitIndex和lastApplied值为返回值中的lastApplied。
@@ -112,7 +109,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
             }
             snapshots.clear();
 
-            // 复制远端服务器的最新装的到当前状态
+            // 复制远端服务器的最新状态到当前状态
             long lastIncludedIndex = -1;
             long offset = 0;
             boolean done;
@@ -123,10 +120,10 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
                 if(done = r.isDone()) {
 
                     state.installFinish(r.getLastIncludedIndex() + 1, r.getLastIncludedTerm());
-                    journal.shrink(state.lastApplied());
+                    journal.compact(state.lastApplied());
                     commitIndex = state.lastApplied();
 
-                    State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())));
+                    State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
                     snapshots.put(snapshot.lastApplied(), snapshot);
                 }
 

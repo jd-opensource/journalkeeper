@@ -1,5 +1,7 @@
 package com.jd.journalkeeper.core.journal;
 
+import com.jd.journalkeeper.utils.parser.EntryParser;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedList;
@@ -9,7 +11,7 @@ import java.util.List;
  * @author liyue25
  * Date: 2019-01-15
  */
-public class StorageEntryParser {
+public class StorageEntryParser extends EntryParser {
 
     public final static int VARIABLE_LENGTH = -1;
     public final static int FIXED_LENGTH_1 = 1;
@@ -32,54 +34,6 @@ public class StorageEntryParser {
     private final static Attribute [] attributes = attributeList.toArray(new Attribute[0]);
 
     public static int getHeaderLength(){return firstVarOffset;}
-
-    public static byte getByte(ByteBuffer messageBuffer, int offset){
-        return messageBuffer.get(messageBuffer.position() + offset);
-    }
-
-    public static void setByte(ByteBuffer messageBuffer, int offset, byte value){
-        messageBuffer.put(messageBuffer.position() + offset,value);
-    }
-
-    public static short getShort(ByteBuffer messageBuffer, int offset){
-        return messageBuffer.getShort(messageBuffer.position() + offset);
-    }
-
-    public static void setShort(ByteBuffer messageBuffer, int offset, short value){
-        messageBuffer.putShort(messageBuffer.position() + offset,value);
-    }
-
-    public static int getBit(ByteBuffer messageBuffer, int byteOffset, int bitOffset){
-        byte b = getByte(messageBuffer, byteOffset);
-        return (b >> bitOffset) & 1;
-    }
-
-    public static void setBit(ByteBuffer messageBuffer, int byteOffset, int bitOffset, boolean bitValue){
-
-        byte b = getByte(messageBuffer, byteOffset);
-        if(bitValue) {
-            b |= 1 << bitOffset;
-        } else {
-            b &= ~(1 << bitOffset);
-        }
-        setByte(messageBuffer, byteOffset, b);
-    }
-
-    public static int getInt(ByteBuffer messageBuffer, int offset){
-        return messageBuffer.getInt(messageBuffer.position() + offset);
-    }
-
-    public static void setInt(ByteBuffer messageBuffer, int offset, int value){
-        messageBuffer.putInt(messageBuffer.position() + offset,value);
-    }
-
-    public static long getLong(ByteBuffer messageBuffer, int offset){
-        return messageBuffer.getLong(messageBuffer.position() + offset);
-    }
-
-    public static void setLong(ByteBuffer messageBuffer, int offset, long value){
-        messageBuffer.putLong(messageBuffer.position() + offset,value);
-    }
 
     public static ByteBuffer getByteBuffer(ByteBuffer messageBuffer, int relativeOffset) {
         int offset = firstVarOffset;

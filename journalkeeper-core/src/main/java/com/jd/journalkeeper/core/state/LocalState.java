@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.core.state;
 
+import com.jd.journalkeeper.core.api.RaftJournal;
 import com.jd.journalkeeper.core.api.State;
 import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.exception.StateInstallException;
@@ -56,7 +57,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
     }
 
     @Override
-    public final void recover(Path path, Properties properties) {
+    public final void recover(Path path, RaftJournal raftJournal, Properties properties) {
         this.path = path;
         this.properties = properties;
         try (StateMetadata stateMetadata = new StateMetadata(path.resolve(metadataPath()).toFile())) {
@@ -67,7 +68,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
             Files.createDirectories(localStatePath());
             try {
                 stateFilesLock.writeLock().lock();
-                recoverLocalState(localStatePath(), properties);
+                recoverLocalState(localStatePath(), raftJournal, properties);
             } finally {
                 stateFilesLock.writeLock().unlock();
             }
@@ -84,7 +85,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
     /**
      * 从本地文件恢复状态，如果不存在则创建新的。
      */
-    protected abstract void recoverLocalState(Path path, Properties properties);
+    protected abstract void recoverLocalState(Path path, RaftJournal raftJournal, Properties properties);
 
     /**
      * 列出所有复制时需要拷贝的文件。
@@ -98,7 +99,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
     }
 
     @Override
-    public State<E, Q, R> takeASnapshot(Path destPath) throws IOException {
+    public State<E, Q, R> takeASnapshot(Path destPath, RaftJournal raftJournal) throws IOException {
         try {
             stateFilesLock.writeLock().lock();
             flushState(localStatePath());
@@ -123,7 +124,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
                 FileUtils.copyFile(srcFile.toFile(), destFile.toFile());
             }
 
-            state.recover(destPath, properties);
+            state.recover(destPath, raftJournal, properties);
             return state;
         } finally {
             stateFilesLock.readLock().unlock();
@@ -317,7 +318,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
     }
 
     @Override
-    public void flush() throws IOException {
+    public final void flush() throws IOException {
         try (StateMetadata stateMetadata = new StateMetadata(path.resolve(metadataPath()).toFile())) {
             stateMetadata.setLastApplied(lastApplied);
             stateMetadata.setLastIncludedTerm(lastIncludedTerm);
@@ -345,7 +346,11 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
     }
 
     @Override
-    public void setLastApplied(long lastApplied) {
-        this.lastApplied = lastApplied;
+    public void next() {
+        lastApplied += 1;
     }
+
+    @Override
+    public void skip() {}
+
 }

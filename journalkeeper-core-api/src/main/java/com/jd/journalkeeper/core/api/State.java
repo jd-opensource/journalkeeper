@@ -22,9 +22,10 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
      * 在状态state上执行命令entries。要求线性语义和原子性.
      * 成功返回新状态，否则抛异常。
      * @param entry 待执行的命令
+     * @param index entry在Journal中的索引序号
      * @return 提供给事件 {@link EventType#ON_STATE_CHANGE} 的参数，如果没有参数可以返回null；
      */
-    Map<String, String> execute(E entry);
+    Map<String, String> execute(E entry, long index);
 
     /**
      * 当前状态对应的日志位置
@@ -47,12 +48,12 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
      * @param path 存放state文件的路径
      * @param properties 属性
      */
-    void recover(Path path, Properties properties);
+    void recover(Path path, RaftJournal raftJournal, Properties properties);
 
     /**
      * 将状态物理复制一份，保存到path
      */
-    State<E, Q, R> takeASnapshot(Path path) throws IOException;
+    State<E, Q, R> takeASnapshot(Path path, RaftJournal raftJournal) throws IOException;
 
     /**
      * 读取序列化后的状态数据。
@@ -80,5 +81,12 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
      */
     void clear();
 
-    void setLastApplied(long lastApplied);
+    /**
+     * lastApplied += 1
+     */
+    void next();
+    /**
+     * 跳过一个Raft Entry
+     */
+    void skip();
 }

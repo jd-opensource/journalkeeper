@@ -3,6 +3,7 @@ package com.jd.journalkeeper.examples.kv;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import com.jd.journalkeeper.core.api.RaftJournal;
 import com.jd.journalkeeper.core.state.LocalState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,7 +36,7 @@ public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
     }
 
     @Override
-    protected void recoverLocalState(Path statePath, Properties properties) {
+    protected void recoverLocalState(Path statePath, RaftJournal raftJournal, Properties properties) {
         this.statePath = statePath;
         try {
             stateMap =  gson.fromJson(new String(Files.readAllBytes(statePath.resolve(FILENAME)), StandardCharsets.UTF_8),
@@ -50,7 +51,7 @@ public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
     }
 
     @Override
-    public Map<String, String> execute(KvEntry entry) {
+    public Map<String, String> execute(KvEntry entry, long index) {
         switch (entry.getCmd()) {
             case KvEntry.CMD_SET:
                 stateMap.put(entry.getKey(), entry.getValue());

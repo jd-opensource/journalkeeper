@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.core.journal;
 
+import com.jd.journalkeeper.core.api.RaftJournal;
 import com.jd.journalkeeper.core.exception.JournalException;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
@@ -24,7 +25,7 @@ import java.util.stream.Collectors;
  * @author liyue25
  * Date: 2019-03-15
  */
-public class Journal  implements Flushable, Closeable {
+public class Journal  implements RaftJournal, Flushable, Closeable {
     private static final Logger logger = LoggerFactory.getLogger(Journal.class);
     private final static int INDEX_STORAGE_SIZE = Long.BYTES;
     private final JournalPersistence indexPersistence;
@@ -40,6 +41,7 @@ public class Journal  implements Flushable, Closeable {
     /**
      * 最小索引位置
      */
+    @Override
     public long minIndex() {
         return indexPersistence.min() / INDEX_STORAGE_SIZE;
     }
@@ -47,6 +49,7 @@ public class Journal  implements Flushable, Closeable {
     /**
      * 最大索引位置
      */
+    @Override
     public long maxIndex() {
         return indexPersistence.max() / INDEX_STORAGE_SIZE;
     }
@@ -56,11 +59,11 @@ public class Journal  implements Flushable, Closeable {
      * 不保证给定位置之前的数据全都被删除。
      * 保证给定位置（含）之后的数据不会被删除。
      */
-    public CompletableFuture<Long> shrink(long givenMin) {
+    public CompletableFuture<Long> compact(long givenMin) {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                return indexPersistence.shrink(givenMin * INDEX_STORAGE_SIZE);
+                return indexPersistence.compact(givenMin * INDEX_STORAGE_SIZE);
             } catch (IOException e) {
                 throw new CompletionException(e);
             }
@@ -76,7 +79,7 @@ public class Journal  implements Flushable, Closeable {
                 .thenApply(ByteBuffer::getLong)
                 .thenApply(offset -> {
                     try {
-                        return journalPersistence.shrink(offset);
+                        return journalPersistence.compact(offset);
                     } catch (IOException e) {
                         throw  new CompletionException(e);
                     }
@@ -143,6 +146,7 @@ public class Journal  implements Flushable, Closeable {
      * @throws IndexUnderflowException 如果 index< minIndex()
      * @throws IndexOverflowException 如果index >= maxIndex()
      */
+    @Override
     public byte [] read(long index){
         checkIndex(index);
         StorageEntry storageEntry = readStorageEntry(index);
@@ -206,6 +210,7 @@ public class Journal  implements Flushable, Closeable {
      * @throws IndexUnderflowException 如果 index< minIndex()
      * @throws IndexOverflowException 如果index >= maxIndex()
      */
+    @Override
     public List<byte []> read(long index, int size) {
         checkIndex(index);
         List<byte []> list = new ArrayList<>(size);
@@ -447,4 +452,12 @@ public class Journal  implements Flushable, Closeable {
     }
 
 
+    private byte readEntryType(long index) {
+        return readHeader(readOffset(index)).getType();
+    }
+
+    @Override
+    public boolean isStateEntry(long index) {
+        return readEntryType(index) > 0;
+    }
 }

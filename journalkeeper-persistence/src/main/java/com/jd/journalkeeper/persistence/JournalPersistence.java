@@ -47,7 +47,7 @@ public interface JournalPersistence extends Closeable {
      * @param givenMin 给定删除位置，这个位置之前都可以删除。
      * @return 删除后当前最小位置。
      */
-    long shrink(long givenMin) throws IOException;
+    long compact(long givenMin) throws IOException;
 
     /**
      * 追加写入

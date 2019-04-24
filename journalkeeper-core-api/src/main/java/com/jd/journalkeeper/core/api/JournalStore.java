@@ -21,7 +21,7 @@ public interface JournalStore extends Watchable {
      * @param entries 待写入的日志列表。
      * @return 成功时返回当前日志最大索引序号，写入失败抛出异常。
      */
-    CompletableFuture<Long> append(List<ByteBuffer> entries);
+    CompletableFuture<Void> append(List<byte[]> entries);
 
     /**
      * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
@@ -30,7 +30,7 @@ public interface JournalStore extends Watchable {
      * @param responseConfig 返回响应的配置。See {@link ResponseConfig}
      * @return 成功时返回当前日志最大索引序号，写入失败抛出异常。
      */
-    CompletableFuture<Long> append(List<ByteBuffer> entries, ResponseConfig responseConfig);
+    CompletableFuture<Void> append(List<byte[]> entries, ResponseConfig responseConfig);
 
     /**
      * 查询日志
@@ -40,7 +40,7 @@ public interface JournalStore extends Watchable {
      * @throws com.jd.journalkeeper.exceptions.IndexOverflowException 参数index必须小于当前maxIndex。
      * @throws com.jd.journalkeeper.exceptions.IndexUnderflowException 参数index不能小于当前minIndex。
      */
-    List<ByteBuffer> get(long index, int size);
+    List<byte[]> get(long index, int size);
 
     /**
      * 查询当前最小已提交日志索引序号。
@@ -62,7 +62,7 @@ public interface JournalStore extends Watchable {
      * @param to 删除日志索引位置，小于这个位置的日志将被删除。
      * @return 当前最小已提交日志索引位置。
      */
-    CompletableFuture<Long> shrink(long to);
+    CompletableFuture<Long> compact(long to);
 
 
 }

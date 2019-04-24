@@ -277,13 +277,13 @@ public abstract class Server<E, Q, R>
                 E entry = entrySerializer.parse(storageEntry.getEntry());
                 long stamp = stateLock.writeLock();
                 try {
-                    customizedEventData = state.execute(entry);
+                    customizedEventData = state.execute(entry, state.lastApplied());
                 } finally {
                     stateLock.unlockWrite(stamp);
                 }
             }
             // Ignore StorageEntry.TYPE_LEADER_ANNOUNCEMENT
-            state.setLastApplied(state.lastApplied() + 1);
+            state.next();
             asyncExecutor.submit(this::onStateChanged);
             Map<String, String> parameters = new HashMap<>(customizedEventData == null ? 1: customizedEventData.size() + 1);
             if(null != customizedEventData) {
@@ -311,9 +311,9 @@ public abstract class Server<E, Q, R>
         asyncExecutor.submit(() -> {
             try {
                 synchronized (snapshots) {
-                    if (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep()) {
+                    if (config.getSnapshotStep() > 0 && (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep())) {
 
-                        State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())));
+                        State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
                         snapshots.put(snapshot.lastApplied(), snapshot);
                     }
                 }
@@ -416,9 +416,10 @@ public abstract class Server<E, Q, R>
                     if(Files.exists(tempSnapshotPath)) {
                         throw new ConcurrentModificationException(String.format("A snapshot of position %d is creating, please retry later.", request.getIndex()));
                     }
-                    requestState = state.takeASnapshot(tempSnapshotPath);
-                    for(E entry: toBeExecutedEntries) {
-                        requestState.execute(entry);
+                    requestState = state.takeASnapshot(tempSnapshotPath, journal);
+                    for (int i = 0; i < toBeExecutedEntries.size(); i++) {
+                        E entry = toBeExecutedEntries.get(i);
+                        requestState.execute(entry, nearestSnapshot.getKey() + i);
                     }
                     if(requestState instanceof Flushable) {
                         ((Flushable ) requestState).flush();
@@ -598,9 +599,9 @@ public abstract class Server<E, Q, R>
     public void recover() throws IOException {
         lastSavedServerMetadata = metadataPersistence.recover(metadataPath(), properties);
         onMetadataRecovered(lastSavedServerMetadata);
-        state.recover(statePath(), properties);
-        recoverSnapshots();
         recoverJournal();
+        state.recover(statePath(), journal, properties);
+        recoverSnapshots();
     }
 
 
@@ -622,7 +623,7 @@ public abstract class Server<E, Q, R>
                     ).spliterator(), false)
                 .map(path -> {
                     State<E, Q, R> snapshot = stateFactory.createState();
-                    snapshot.recover(path, properties);
+                    snapshot.recover(path, journal, properties);
                     if(Long.parseLong(path.getFileName().toString()) == snapshot.lastApplied()) {
                         return snapshot;
                     } else {
@@ -672,10 +673,19 @@ public abstract class Server<E, Q, R>
         return config.getRpcTimeoutMs();
     }
 
-
-    public Watchable eventBus() {
-        return this.eventBus;
+    public void compact(long indexExclusive) {
+        if(config.getSnapshotStep() > 0) {
+            Map.Entry<Long, State<E, Q, R>> nearestEntry = snapshots.floorEntry(indexExclusive);
+            SortedMap<Long, State<E, Q, R>> toBeRemoved = snapshots.headMap(nearestEntry.getKey());
+            while (!toBeRemoved.isEmpty()) {
+                toBeRemoved.remove(toBeRemoved.firstKey()).clear();
+            }
+            journal.compact(nearestEntry.getKey());
+        } else {
+            journal.compact(indexExclusive);
+        }
     }
+
     static class Config {
         final static int DEFAULT_SNAPSHOT_STEP = 128;
         final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;

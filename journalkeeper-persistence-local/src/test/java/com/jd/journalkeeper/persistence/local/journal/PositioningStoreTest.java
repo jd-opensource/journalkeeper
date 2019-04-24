@@ -2,7 +2,6 @@ package com.jd.journalkeeper.persistence.local.journal;
 
 
 import com.jd.journalkeeper.persistence.JournalPersistence;
-import com.jd.journalkeeper.utils.buffer.PreloadBufferPool;
 import com.jd.journalkeeper.utils.format.Format;
 import com.jd.journalkeeper.utils.test.ByteUtils;
 import com.jd.journalkeeper.utils.test.TestPathUtils;
@@ -243,7 +242,7 @@ public class PositioningStoreTest {
         try (JournalPersistence store = prepareStore()) {
             write(store, maxSize, ByteUtils.createRandomSizeBytes(batchSize));
 
-            store.shrink(shrinkPosition);
+            store.compact(shrinkPosition);
             Assert.assertTrue(store.min() <= shrinkPosition);
             Assert.assertTrue(shrinkPosition - store.min() < PositioningStore.Config.DEFAULT_FILE_DATA_SIZE);
         }

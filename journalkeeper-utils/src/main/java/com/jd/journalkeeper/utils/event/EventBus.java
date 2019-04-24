@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.utils.event;
 
+import com.jd.journalkeeper.utils.spi.ServiceSupport;
 import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,11 +44,13 @@ public class EventBus implements Watchable {
     private final long pullEventIntervalMs;
     private final long pullEventWatcherTimeout;
     private final LoopThread removeTimeoutPullWatchersThread;
+    private final Collection<EventInterceptor> interceptors;
 
     public EventBus(ExecutorService eventWatcherExecutor, long pullEventIntervalMs) {
         this.eventWatcherExecutor = eventWatcherExecutor;
         this.pullEventIntervalMs = pullEventIntervalMs;
         this.pullEventWatcherTimeout = 5 * pullEventIntervalMs;
+        interceptors = ServiceSupport.loadAll(EventInterceptor.class);
         this.removeTimeoutPullWatchersThread = buildRemoveTimeoutPullWatchersThread();
         this.removeTimeoutPullWatchersThread.start();
     }
@@ -75,6 +78,13 @@ public class EventBus implements Watchable {
      * @param event 事件
      */
     public synchronized void fireEvent(Event event) {
+        for(EventInterceptor interceptor : interceptors) {
+            if(!interceptor.onEvent(event, this)) {
+                logger.info("Event canceled by an interceptor, type: {}, data: {}"
+                        , event.getEventType(),event.getEventData());
+                return;
+            }
+        }
         // 回调Push eventWatchers
         eventWatchers.forEach(eventWatcher -> eventWatcherExecutor.submit(() -> eventWatcher.onEvent(event)));
 

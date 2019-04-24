@@ -10,9 +10,9 @@ import java.util.List;
  * @author liyue25
  * Date: 2019-04-23
  */
-public class JournalStateFactory implements StateFactory<ByteBuffer, JournalStoreQuery, List<ByteBuffer>> {
+public class JournalStoreStateFactory implements StateFactory<byte[], JournalStoreQuery, List<byte[]>> {
     @Override
-    public State<ByteBuffer, JournalStoreQuery, List<ByteBuffer>> createState() {
-        return new JournalState(this);
+    public State<byte[], JournalStoreQuery, List<byte[]>> createState() {
+        return new JournalStoreState(this);
     }
 }

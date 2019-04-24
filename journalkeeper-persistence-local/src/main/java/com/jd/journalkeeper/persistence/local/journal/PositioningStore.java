@@ -262,7 +262,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
     /**
      * 删除 position之前的文件
      */
-    public long shrink(long givenMin) throws IOException {
+    public long compact(long givenMin) throws IOException {
         synchronized (fileMapMutex) {
 
             if (givenMin > flushPosition.get()) givenMin = flushPosition.get();
