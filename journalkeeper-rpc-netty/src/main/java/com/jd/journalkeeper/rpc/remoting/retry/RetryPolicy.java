@@ -11,9 +11,9 @@ public class RetryPolicy implements Serializable {
     public static final int RETRY_DELAY = 1000;
     public static final int MAX_RETRY_DELAY = 1000 * 60 * 5;
     public static final double BACKOFF_MULTIPLIER = 2.0;
-    public static final int MAX_RETRYS = 0;
+    public static final int MAX_RETRIES = 0;
     // 最大指数，初始化计算一次
-    private volatile AtomicReference<Integer> maxExponential = new AtomicReference();
+    private volatile AtomicReference<Integer> maxExponential = new AtomicReference<>();
     // 最大重试次数(无限制)
     private Integer maxRetrys;
     // 最大重试间隔(默认5分钟)
@@ -58,7 +58,7 @@ public class RetryPolicy implements Serializable {
     public long getTime(final long now, final int retryTimes, final long startTime) {
         long time = 0;
         int retrys = retryTimes < 1 ? 1 : retryTimes;
-        int maxRetrys = this.maxRetrys == null ? MAX_RETRYS : this.maxRetrys;
+        int maxRetrys = this.maxRetrys == null ? MAX_RETRIES : this.maxRetrys;
         int retryDelay = this.retryDelay == null ? RETRY_DELAY : this.retryDelay;
         int maxRetryDelay = this.maxRetryDelay == null ? MAX_RETRY_DELAY : this.maxRetryDelay;
         boolean useExponentialBackOff = this.useExponentialBackOff == null ? true : this.useExponentialBackOff;

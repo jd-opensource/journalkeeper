@@ -31,6 +31,12 @@
 
         <dependency>
             <groupId>io.journalkeeper</groupId>
+            <artifactId>journalkeeper-journal-store</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.journalkeeper</groupId>
             <artifactId>journalkeeper-persistence-local</artifactId>
             <version>${project.version}</version>
             <scope>runtime</scope>
