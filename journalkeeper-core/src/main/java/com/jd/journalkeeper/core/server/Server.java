@@ -686,6 +686,10 @@ public abstract class Server<E, Q, R>
         }
     }
 
+    public State<E, Q, R> getState() {
+        return state;
+    }
+
     static class Config {
         final static int DEFAULT_SNAPSHOT_STEP = 128;
         final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;

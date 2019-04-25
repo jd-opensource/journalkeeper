@@ -1,6 +1,7 @@
 package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.base.Serializer;
+import com.jd.journalkeeper.core.api.ResponseConfig;
 import com.jd.journalkeeper.utils.event.EventType;
 import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.journal.StorageEntry;
@@ -99,7 +100,8 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
     private ScheduledFuture checkElectionTimeoutFuture;
 
-    private final CallbackPositioningBelt callbackPositioningBelt = new CallbackPositioningBelt();
+    private final CallbackPositioningBelt replicationCallbacks = new CallbackPositioningBelt();
+    private final CallbackPositioningBelt flushCallbacks = new CallbackPositioningBelt();
 
     public Voter(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
         super(stateFactory, entrySerializer, querySerializer, resultSerializer, scheduledExecutor, asyncExecutor, properties);
@@ -168,7 +170,11 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         if(voterState == VoterState.LEADER) {
 
             long index = journal.append(new StorageEntry(rr.request.getEntry(), currentTerm.get()));
-            callbackPositioningBelt.put(new Callback(index, rr.getResponseFuture()));
+            if(rr.getRequest().getResponseConfig() == ResponseConfig.PERSISTENCE) {
+                flushCallbacks.put(new Callback(index, rr.getResponseFuture()));
+            } else if (rr.getRequest().getResponseConfig() == ResponseConfig.REPLICATION){
+                replicationCallbacks.put(new Callback(index, rr.getResponseFuture()));
+            }
             logger.info("Append journal entry, {}", voterInfo());
             // 唤醒复制线程
             leaderReplicationThread.wakeup();
@@ -177,6 +183,12 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         }
     }
 
+    @Override
+    public boolean flush() {
+        boolean ret = super.flush();
+        flushCallbacks.callbackBefore(journal.maxIndex());
+        return ret;
+    }
 
     private Config toConfig(Properties properties) {
         Config config = new Config();
@@ -715,6 +727,9 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         UpdateStateRequestResponse requestResponse = new UpdateStateRequestResponse(request);
         try {
             pendingUpdateStateRequests.put(requestResponse);
+            if(request.getResponseConfig() == ResponseConfig.RECEIVE) {
+                requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse());
+            }
             return requestResponse.getResponseFuture();
         } catch (InterruptedException e) {
             logger.warn("Exception, {}: ", voterInfo(), e);
@@ -842,7 +857,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     @Override
     protected void onStateChanged() {
         super.onStateChanged();
-        callbackPositioningBelt.callbackBefore(state.lastApplied());
+        replicationCallbacks.callbackBefore(state.lastApplied());
     }
 
     @Override

@@ -2,7 +2,6 @@ package com.jd.journalkeeper.core.api;
 
 import com.jd.journalkeeper.utils.event.Watchable;
 
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -60,9 +59,8 @@ public interface JournalStore extends Watchable {
      * 在集群中复制到大多数节点都完成删除后返回。
      *
      * @param to 删除日志索引位置，小于这个位置的日志将被删除。
-     * @return 当前最小已提交日志索引位置。
      */
-    CompletableFuture<Long> compact(long to);
+    CompletableFuture<Void> compact(long to);
 
 
 }

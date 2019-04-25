@@ -1,6 +1,7 @@
 package com.jd.journalkeeper.rpc;
 
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
+import com.jd.journalkeeper.core.api.ResponseConfig;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
@@ -103,7 +104,7 @@ public class RpcTest {
         for (int i = 0; i < entrySize; i++) {
             entry[i] = (byte) i;
         }
-        UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry);
+        UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, ResponseConfig.RECEIVE);
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
         UpdateClusterStateResponse response;
         // Test success response
@@ -111,7 +112,9 @@ public class RpcTest {
                 .thenReturn(CompletableFuture.supplyAsync(UpdateClusterStateResponse::new));
         response = clientServerRpc.updateClusterState(request).get();
         Assert.assertTrue(response.success());
-        verify(serverRpcMock).updateClusterState(argThat((UpdateClusterStateRequest r) -> Arrays.equals(entry, r.getEntry())));
+        verify(serverRpcMock).updateClusterState(argThat((UpdateClusterStateRequest r) ->
+                Arrays.equals(entry, r.getEntry()) &&
+                ResponseConfig.RECEIVE == r.getResponseConfig()));
 
     }
 

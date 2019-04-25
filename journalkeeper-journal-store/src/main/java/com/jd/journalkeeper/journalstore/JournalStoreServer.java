@@ -7,9 +7,11 @@ import com.jd.journalkeeper.rpc.client.QueryStateRequest;
 import com.jd.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import com.jd.journalkeeper.utils.event.EventWatcher;
 
-import java.nio.ByteBuffer;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ForkJoinPool;
 
 /**
  * @author liyue25
@@ -20,9 +22,11 @@ public class JournalStoreServer implements JournalStore {
     private final ExecutorService asyncExecutor;
     private final JournalStoreEntrySerializer entrySerializer;
     private final JournalStoreQuery querySerializer;
+
     public JournalStoreServer(Server<byte[], JournalStoreQuery, List<byte[]>> raftServer) {
         this(raftServer, ForkJoinPool.commonPool());
     }
+
     public JournalStoreServer(Server<byte[], JournalStoreQuery, List<byte[]>> raftServer, ExecutorService asyncExecutor) {
         this.raftServer = raftServer;
         this.asyncExecutor = asyncExecutor;
@@ -32,20 +36,18 @@ public class JournalStoreServer implements JournalStore {
 
     @Override
     public CompletableFuture<Void> append(List<byte[]> entries) {
-        return raftServer
-                .updateClusterState(new UpdateClusterStateRequest(entrySerializer.serialize(entries)))
-                .thenAccept(response -> {
-                    if(!response.success()){
-                        throw new AppendEntryException(response.getError());
-                    }
-                });
+        return append(entries, ResponseConfig.REPLICATION);
     }
 
     @Override
     public CompletableFuture<Void> append(List<byte[]> entries, ResponseConfig responseConfig) {
-        //TODO: 支持不同的响应级别
-        return append(entries);
-    }
+        return raftServer
+                .updateClusterState(new UpdateClusterStateRequest(entrySerializer.serialize(entries), responseConfig))
+                .thenAccept(response -> {
+                    if(!response.success()){
+                        throw new AppendEntryException(response.getError());
+                    }
+                });    }
 
     @Override
     public List<byte[]> get(long index, int size) {
@@ -67,26 +69,35 @@ public class JournalStoreServer implements JournalStore {
 
     @Override
     public long minIndex() {
-        return 0;
+        return ((JournalStoreState) raftServer.getState()).minIndex();
     }
 
     @Override
     public long maxIndex() {
-        return 0;
+        return ((JournalStoreState) raftServer.getState()).maxIndex();
     }
 
     @Override
-    public CompletableFuture<Long> compact(long indexExclusive) {
-        return null;
+    public CompletableFuture<Void> compact(long journalIndexExclusive) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                raftServer.compact(journalIndexExclusive);
+                JournalStoreState state = (JournalStoreState) raftServer.getState();
+                state.compact(journalIndexExclusive);
+
+            } catch (Throwable throwable) {
+                throw new CompletionException(throwable);
+            }
+        }, asyncExecutor);
     }
 
     @Override
     public void watch(EventWatcher eventWatcher) {
-
+        raftServer.watch(eventWatcher);
     }
 
     @Override
     public void unWatch(EventWatcher eventWatcher) {
-
+        raftServer.unWatch(eventWatcher);
     }
 }

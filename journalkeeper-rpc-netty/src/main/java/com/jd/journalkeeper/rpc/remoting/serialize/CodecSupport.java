@@ -53,9 +53,14 @@ public class CodecSupport {
     public static void encodeInt(ByteBuf byteBuf, int i) {
         byteBuf.writeInt(i);
     }
-
     public static int decodeInt(ByteBuf byteBuf) {
         return byteBuf.readInt();
+    }
+    public static void encodeByte(ByteBuf byteBuf, byte b) {
+        byteBuf.writeByte(b);
+    }
+    public static byte decodeByte(ByteBuf byteBuf) {
+        return byteBuf.readByte();
     }
 
     public static <T> void encodeList(ByteBuf byteBuf, List<T> list, Encoder itemEncoder) {

@@ -3,7 +3,6 @@ package com.jd.journalkeeper.journalstore;
 import com.jd.journalkeeper.core.api.State;
 import com.jd.journalkeeper.core.api.StateFactory;
 
-import java.nio.ByteBuffer;
 import java.util.List;
 
 /**

@@ -6,14 +6,17 @@ import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.exception.StateExecutionException;
 import com.jd.journalkeeper.core.exception.StateRecoverException;
 import com.jd.journalkeeper.core.state.LocalState;
-import com.jd.journalkeeper.utils.event.Event;
-import com.jd.journalkeeper.utils.event.EventType;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.Properties;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -81,10 +84,9 @@ public class JournalStoreState extends LocalState<byte[], JournalStoreQuery, Lis
             lastEntryNotAJournalEntry = lastApplied() - 1 < raftJournal.minIndex() || // 没有数据
                     !raftJournal.isStateEntry(lastApplied() - 1);
             if(indexMap.isEmpty()) {
-                nextJournalIndex = lastApplied();
-            } else {
-                nextJournalIndex = lastApplied() + indexMap.lastKey() - indexMap.lastEntry().getValue();
+                indexMap.put(lastApplied(), lastApplied());
             }
+            nextJournalIndex = lastApplied() + indexMap.lastKey() - indexMap.lastEntry().getValue();
             this.raftJournal = raftJournal;
         } catch (IOException e) {
             throw new StateRecoverException(e);
@@ -98,7 +100,7 @@ public class JournalStoreState extends LocalState<byte[], JournalStoreQuery, Lis
         return recoverMap;
     }
 
-    private long getRaftIndex(long journalIndex) {
+    public long getRaftIndex(long journalIndex) {
         Map.Entry<Long, Long> floorEntry = indexMap.floorEntry(journalIndex);
         if(floorEntry != null) {
             return journalIndex + floorEntry.getKey() - floorEntry.getValue();
@@ -152,14 +154,31 @@ public class JournalStoreState extends LocalState<byte[], JournalStoreQuery, Lis
     }
 
 
-    public void compact(long indexExclusive) throws IOException {
+    void compact(long indexExclusive) throws IOException {
         SortedMap<Long, Long> compactMap = indexMap.headMap(indexExclusive);
         if(!compactMap.isEmpty()) {
+            long raftIndex = getRaftIndex(indexExclusive);
             synchronized (fileWriteMutex) {
-                IndexMapPersistence.delete(compactMap.size(), file);
-                skipped += compactMap.size();
+                int deleteSize = compactMap.size();
+                if(null == indexMap.putIfAbsent(indexExclusive, raftIndex)) {
+                    deleteSize --;
+                    IndexMapPersistence.update(indexExclusive, raftIndex, skipped + deleteSize, file);
+                }
+                IndexMapPersistence.delete(deleteSize, file);
+                skipped += deleteSize;
                 compactMap.clear();
+
+
             }
         }
+    }
+
+    long minIndex() {
+        return indexMap.firstKey();
+    }
+
+    long maxIndex() {
+        Map.Entry<Long, Long> last = indexMap.lastEntry();
+        return lastApplied() - last.getValue() + last.getKey();
     }
 }

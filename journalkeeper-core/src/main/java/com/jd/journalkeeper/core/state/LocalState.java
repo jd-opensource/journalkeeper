@@ -336,7 +336,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
     protected void flushState(Path statePath) throws IOException {};
     @Override
     public void clear() {
-        lastApplied = -1L;
+        lastApplied = 0L;
         lastIncludedTerm = 0;
         try {
             FileUtils.cleanDirectory(path.toFile());

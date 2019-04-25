@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.rpc.codec;
 
+import com.jd.journalkeeper.core.api.ResponseConfig;
 import com.jd.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import com.jd.journalkeeper.rpc.header.JournalKeeperHeader;
 import com.jd.journalkeeper.rpc.remoting.serialize.CodecSupport;
@@ -14,11 +15,14 @@ public class UpdateClusterStateRequestCodec extends GenericPayloadCodec<UpdateCl
     @Override
     protected void encodePayload(UpdateClusterStateRequest request, ByteBuf buffer) throws Exception {
         CodecSupport.encodeBytes(buffer, request.getEntry());
+        CodecSupport.encodeByte(buffer, (byte) request.getResponseConfig().value());
     }
 
     @Override
     protected UpdateClusterStateRequest decodePayload(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
-        return new UpdateClusterStateRequest(CodecSupport.decodeBytes(buffer));
+        return new UpdateClusterStateRequest(
+                CodecSupport.decodeBytes(buffer),
+                ResponseConfig.valueOf(CodecSupport.decodeByte(buffer)));
     }
 
     @Override

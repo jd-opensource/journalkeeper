@@ -1,5 +1,7 @@
 package com.jd.journalkeeper.rpc.client;
 
+import com.jd.journalkeeper.core.api.ResponseConfig;
+
 /**
  * RPC方法
  * {@link ClientServerRpc#queryServerState(com.jd.journalkeeper.rpc.client.QueryStateRequest) queryServerState}
@@ -9,8 +11,14 @@ package com.jd.journalkeeper.rpc.client;
  */
 public class UpdateClusterStateRequest {
     private final byte [] entry;
+    private final ResponseConfig responseConfig;
 
     public UpdateClusterStateRequest(byte [] entry) {
+        this(entry, ResponseConfig.REPLICATION);
+    }
+
+    public UpdateClusterStateRequest(byte [] entry, ResponseConfig responseConfig) {
+        this.responseConfig = responseConfig;
         this.entry = entry;
     }
 
@@ -22,5 +30,13 @@ public class UpdateClusterStateRequest {
      */
     public byte [] getEntry() {
         return entry;
+    }
+
+    /**
+     * 响应配置，定义返回响应的时机
+     * @return 响应配置
+     */
+    public ResponseConfig getResponseConfig() {
+        return responseConfig;
     }
 }

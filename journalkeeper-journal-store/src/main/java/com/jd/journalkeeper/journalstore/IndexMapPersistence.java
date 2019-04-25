@@ -10,7 +10,6 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.NavigableMap;
-import java.util.SortedMap;
 
 /**
  * 存放Journal 索引序号与Raft日志索引序号的对应关系。
@@ -117,7 +116,26 @@ public class IndexMapPersistence {
         }
     }
 
-
-
-
+    /**
+     * 更新Map中的Entry
+     * @param k Key
+     * @param v Value
+     * @param index Map中的Entry序号，从0开始，包含被删除的。
+     * @param file 文件
+     */
+    static void update(long k, long v, int index, File file) throws IOException{
+        try (RandomAccessFile raf = new RandomAccessFile(file, "rw");
+             FileChannel fileChannel = raf.getChannel()) {
+            byte [] bytes = new byte[Long.BYTES * 2];
+            ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
+            byteBuffer.putLong(k);
+            byteBuffer.putLong(v);
+            byteBuffer.flip();
+            int relPosition = Integer.BYTES + 2 * Long.BYTES * index;
+            fileChannel.position(relPosition);
+            while (byteBuffer.hasRemaining()) {
+                fileChannel.write(byteBuffer);
+            }
+        }
+    }
 }

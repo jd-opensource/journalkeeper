@@ -89,4 +89,5 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
      * 跳过一个Raft Entry
      */
     void skip();
+
 }
