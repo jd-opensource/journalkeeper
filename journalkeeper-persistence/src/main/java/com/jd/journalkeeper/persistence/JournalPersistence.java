@@ -71,4 +71,12 @@ public interface JournalPersistence extends Closeable {
      */
     void recover(Path path, Properties properties) throws IOException;
 
+    /**
+     * 清空所有数据
+     * @throws IOException
+     */
+    void delete() throws IOException;
+
+
+
 }

@@ -11,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
-import java.io.File;
 import java.io.Flushable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -26,10 +25,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * @author liyue25
@@ -37,12 +35,17 @@ import java.util.stream.Collectors;
  */
 public class MultiplePartitionJournal implements Flushable, Closeable {
     private static final Logger logger = LoggerFactory.getLogger(MultiplePartitionJournal.class);
+    private static final String JOURNAL_PATH = "journal";
+    private static final String INDEX_PATH = "index";
+    private static final String PARTITIONS_PATH = "partitions";
     private final static int INDEX_STORAGE_SIZE = Long.BYTES;
     private final JournalPersistence indexPersistence;
     private final JournalPersistence journalPersistence;
     private final Map<Short, JournalPersistence> partitionMap;
     private final PersistenceFactory persistenceFactory;
     private final BufferPool bufferPool;
+    private Path basePath = null;
+    private Properties indexProperties;
 
     public MultiplePartitionJournal(PersistenceFactory persistenceFactory, BufferPool bufferPool) {
         this.indexPersistence = persistenceFactory.createJournalPersistenceInstance();
@@ -66,49 +69,89 @@ public class MultiplePartitionJournal implements Flushable, Closeable {
         return indexPersistence.max() / INDEX_STORAGE_SIZE;
     }
 
+
+    public long minIndex(short partition) {
+        return getPartitionPersistence(partition).min() / INDEX_STORAGE_SIZE;
+    }
+
+    public long maxIndex(short partition) {
+        return getPartitionPersistence(partition).max() / INDEX_STORAGE_SIZE;
+    }
+
     /**
-     * TODO: 支持多个partition
      * 删除给定索引位置之前的数据。
      * 不保证给定位置之前的数据全都被删除。
      * 保证给定位置（含）之后的数据不会被删除。
      */
-    public CompletableFuture<Long> compact(long givenMinIndex) {
+    public long compact(long givenMinIndex) throws IOException{
 
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                return indexPersistence.compact(givenMinIndex * INDEX_STORAGE_SIZE);
-            } catch (IOException e) {
-                throw new CompletionException(e);
-            }
-        })
-                .thenApply(min -> {
-                    try {
-                        return indexPersistence.read(min, INDEX_STORAGE_SIZE);
-                    } catch (IOException e) {
-                        throw new CompletionException(e);
-                    }
-                })
-                .thenApply(ByteBuffer::wrap)
-                .thenApply(ByteBuffer::getLong)
-                .thenApply(offset -> {
-                    try {
-                        return journalPersistence.compact(offset);
-                    } catch (IOException e) {
-                        throw  new CompletionException(e);
-                    }
-                }).thenApply(minOffset -> CompletableFuture.allOf(
-                        partitionMap.values().stream()
-                                .map(pp -> CompletableFuture.runAsync(() -> compactPartition(pp, minOffset)))
-                                .toArray(CompletableFuture[]::new)
-                ))
-                .thenApply(aVoid -> minIndex());
+        // 首先删除全局索引
+        long minIndexOffset = indexPersistence.compact(givenMinIndex * INDEX_STORAGE_SIZE);
+        // 计算最小全局索引对应的JournalOffset
+        long compactJournalOffset = readOffset(minIndexOffset / INDEX_STORAGE_SIZE);
+        // 删除分区索引
+        for (JournalPersistence partitionPersistence : partitionMap.values()) {
+            compactPartition(partitionPersistence, compactJournalOffset);
+        }
+        // 计算所有索引（全局索引和每个分区索引）对应的JournalOffset的最小值
+        compactJournalOffset = Stream.concat(partitionMap.values().stream(), Stream.of(indexPersistence))
+                .mapToLong(p -> readOffset(p, p.min() / INDEX_STORAGE_SIZE))
+                .min().orElseThrow(() ->new JournalException("Exception on calculate compactJournalOffset"));
+
+        // 删除Journal
+        return journalPersistence.compact(compactJournalOffset);
     }
 
-    // TODO: 用二分查找找到对应的位置，执行压缩
-    private void compactPartition(JournalPersistence pp, long minOffset) {
-
+    private void compactPartition(JournalPersistence pp, long minJournalOffset) throws IOException{
+        long indexOffset = binarySearchFloorOffset(pp, minJournalOffset, pp.min(), pp.max());
+        pp.compact(indexOffset);
     }
 
+    /**
+     * 使用二分法递归查找一个索引在indexPersistence位置P：
+     *
+     * 1. P >= minIndexOffset && p < maxIndexOffset;
+     * 2. P.offset <= targetJournalOffset
+     * 3. P为所有满足条件1、2的位置中的最大值
+     * 4. 如果 targetJournalOffset <= minIndexOffset.offset 返回 minIndexOffset
+     * 5. 如果 targetJournalOffset >= maxIndexOffset.offset 返回 maxIndexOffset
+     *
+     * @param indexPersistence 索引存储
+     * @param targetJournalOffset 目标索引内的Journal offset
+     * @param minIndexOffset 最小查找索引存储位置（含）
+     * @param maxIndexOffset 最大查找索引存储位置（不含）
+     * @return 符合条件的索引位置的最大值
+     */
+    private long binarySearchFloorOffset (
+            JournalPersistence indexPersistence, long targetJournalOffset,
+            long minIndexOffset, long maxIndexOffset) throws IOException {
+        long minOffset = readOffset(indexPersistence, minIndexOffset / INDEX_STORAGE_SIZE);
+        long maxOffset = readOffset(indexPersistence , maxIndexOffset / INDEX_STORAGE_SIZE);
+
+
+        if (targetJournalOffset <= minOffset) {
+            return minIndexOffset;
+        }
+        if(targetJournalOffset >= maxOffset) {
+            return maxIndexOffset;
+        }
+        if(minIndexOffset + INDEX_STORAGE_SIZE >= maxIndexOffset) {
+            return maxIndexOffset;
+        }
+
+        // 折半并取整
+        long midIndexOffset = (maxIndexOffset - minIndexOffset) / 2;
+        midIndexOffset = midIndexOffset - midIndexOffset % INDEX_STORAGE_SIZE;
+
+        long midOffset = readOffset(indexPersistence, midIndexOffset / INDEX_STORAGE_SIZE);
+
+        if(targetJournalOffset < midOffset) {
+            return binarySearchFloorOffset(indexPersistence, targetJournalOffset, minIndexOffset, midIndexOffset);
+        } else {
+            return binarySearchFloorOffset(indexPersistence, targetJournalOffset, midIndexOffset, maxIndexOffset);
+        }
+
+    }
 
 
     /**
@@ -135,12 +178,13 @@ public class MultiplePartitionJournal implements Flushable, Closeable {
         byte[] bytes = new byte[header.getBatchSize() * INDEX_STORAGE_SIZE];
         ByteBuffer pb = ByteBuffer.wrap(bytes);
         int j = 0;
-        while (j ++ < header.getBatchSize()) {
+        while (j < header.getBatchSize()) {
             if(j == 0) {
                 pb.putLong(offset);
             } else {
                 pb.putLong( -1 * j);
             }
+            j ++;
         }
         partitionPersistence.append(bytes);
     }
@@ -215,7 +259,7 @@ public class MultiplePartitionJournal implements Flushable, Closeable {
             short relIndex;
             if(offset < 0) {
                 journalOffset = readOffset(pp , partitionIndex + offset);
-                relIndex = (short)(-1 * journalOffset);
+                relIndex = (short)(-1 * offset);
             } else {
                 journalOffset = offset;
                 relIndex = (short) 0;
@@ -441,16 +485,14 @@ public class MultiplePartitionJournal implements Flushable, Closeable {
      *
      */
     public void recover(Path path, Properties properties) throws IOException {
-        Path journalPath = path.resolve("journal");
-        Path indexPath = path.resolve("index");
-        Path partitionPath = path.resolve("partitions");
-        Files.createDirectories(journalPath);
-        Files.createDirectories(indexPath);
-        Files.createDirectories(partitionPath);
+        this.basePath = path;
+        Path journalPath = path.resolve(JOURNAL_PATH);
+        Path indexPath = path.resolve(INDEX_PATH);
+        Path partitionPath = path.resolve(PARTITIONS_PATH);
         journalPersistence.recover(journalPath, replacePropertiesNames(properties, "^persistence\\.journal\\.(.*)$", "$1"));
         // 截掉末尾半条数据
         truncateJournalTailPartialEntry();
-        Properties indexProperties = replacePropertiesNames(properties, "^persistence\\.index\\.(.*)$", "$1");
+        indexProperties = replacePropertiesNames(properties, "^persistence\\.index\\.(.*)$", "$1");
         indexPersistence.recover(indexPath, indexProperties);
         // 截掉末尾半条数据
         indexPersistence.truncate(indexPersistence.max() - indexPersistence.max() % INDEX_STORAGE_SIZE);
@@ -471,34 +513,30 @@ public class MultiplePartitionJournal implements Flushable, Closeable {
     private void recoverPartitions(Path partitionPath, Properties properties) throws IOException {
 
         Short [] partitions = readPartitionDirectories(partitionPath);
-        if(null != partitions) {
+        Map<Short, Long> lastIndexedOffsetMap = new HashMap<>(partitions.length);
+        for (short partition : partitions) {
+            JournalPersistence pp = persistenceFactory.createJournalPersistenceInstance();
+            pp.recover(partitionPath.resolve(String.valueOf(partition)), properties);
+            // 截掉末尾半条数据
+            pp.truncate(pp.max() - pp.max() % INDEX_STORAGE_SIZE);
+            partitionMap.put(partition, pp);
 
-            Map<Short, Long> lastIndexedOffsetMap = new HashMap<>(partitions.length);
+            truncateTailPartialBatchIndecies(pp);
 
-            for (short partition : partitions) {
-                JournalPersistence pp = persistenceFactory.createJournalPersistenceInstance();
-                pp.recover(partitionPath.resolve(String.valueOf(partition)), properties);
-                // 截掉末尾半条数据
-                pp.truncate(pp.max() - pp.max() % INDEX_STORAGE_SIZE);
-                partitionMap.put(partition, pp);
-
-                truncateTailPartialBatchIndecies(pp);
-
-                lastIndexedOffsetMap.put(partition, getLastIndexedOffset(pp));
-
-            }
-
-            // 重建缺失的分区索引
-            long offset = lastIndexedOffsetMap.values().stream().mapToLong(l -> l).min().orElse(journalPersistence.max());
-            while (offset < journalPersistence.max()) {
-                MultiplePartitionStorageEntry header = readHeader(offset);
-                if(offset > lastIndexedOffsetMap.get(header.getPartition())) {
-                    appendPartitionIndex(offset, header);
-                }
-                offset += header.getLength();
-            }
+            lastIndexedOffsetMap.put(partition, getLastIndexedOffset(pp));
 
         }
+
+        // 重建缺失的分区索引
+        long offset = lastIndexedOffsetMap.values().stream().mapToLong(l -> l).min().orElse(journalPersistence.max());
+        while (offset < journalPersistence.max()) {
+            MultiplePartitionStorageEntry header = readHeader(offset);
+            if(offset > lastIndexedOffsetMap.get(header.getPartition())) {
+                appendPartitionIndex(offset, header);
+            }
+            offset += header.getLength();
+        }
+
     }
 
     private long getLastIndexedOffset(JournalPersistence pp) {
@@ -536,24 +574,22 @@ public class MultiplePartitionJournal implements Flushable, Closeable {
         }
     }
 
-    private Short [] readPartitionDirectories(Path partitionPath) {
-        Short [] partitions = null;
-        File [] files = partitionPath.toFile()
-                .listFiles(file -> file.isDirectory() && file.getName().matches("^\\d+$"));
-        if (null != files) {
-            partitions = Arrays.stream(files)
-                    .map(File::getName)
-                    .map(str -> {
-                        try {
-                            return Short.parseShort(str);
-                        } catch (NumberFormatException ignored) {
-                            return (short) -1;
-                        }
-                    })
-                    .filter(s -> s >= 0)
-                    .toArray(Short[]::new);
-        }
-        return partitions;
+    private Short [] readPartitionDirectories(Path partitionPath) throws IOException {
+        return Files.isDirectory(partitionPath) ?
+                Files.list(partitionPath)
+                .filter(Files::isDirectory)
+                .map(path -> path.getFileName().toString())
+                .filter(filename -> filename.matches("^\\d+$"))
+                .map(str -> {
+                    try {
+                        return Short.parseShort(str);
+                    } catch (NumberFormatException ignored) {
+                        return (short) -1;
+                    }
+                })
+                .filter(s -> s >= 0)
+                .toArray(Short[]::new):
+                new Short[0];
     }
 
     private Properties replacePropertiesNames(Properties properties, String fromNameRegex, String toNameRegex ){
@@ -676,6 +712,44 @@ public class MultiplePartitionJournal implements Flushable, Closeable {
         }
         if(position >= indexPersistence.max()) {
             throw new IndexOverflowException();
+        }
+    }
+
+    public void rePartition(Set<Short> partitions) {
+        try {
+            synchronized (partitionMap) {
+                for (short partition : partitions) {
+                    if (!partitionMap.containsKey(partition)) {
+                        addPartition(partition);
+                    }
+                }
+
+                List<Short> toBeRemoved = new ArrayList<>();
+                for (Map.Entry<Short, JournalPersistence> entry : partitionMap.entrySet()) {
+                    if (!partitions.contains(entry.getKey())) {
+                        toBeRemoved.add(entry.getKey());
+                    }
+                }
+                for (Short partition : toBeRemoved) {
+                    removePartition(partition);
+                }
+
+            }
+        } catch (IOException e) {
+            throw new JournalException(e);
+        }
+    }
+
+    private void addPartition(short partition) throws IOException {
+        JournalPersistence partitionPersistence = persistenceFactory.createJournalPersistenceInstance();
+        partitionPersistence.recover(basePath.resolve(PARTITIONS_PATH).resolve(String.valueOf(partition)), indexProperties);
+        partitionMap.put(partition, partitionPersistence);
+    }
+
+    private void removePartition(short partition) throws IOException {
+        JournalPersistence removedPersistence;
+        if((removedPersistence = partitionMap.remove(partition)) != null ) {
+            removedPersistence.delete();
         }
     }
 

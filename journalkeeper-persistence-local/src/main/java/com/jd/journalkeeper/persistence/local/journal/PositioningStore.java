@@ -12,6 +12,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -56,7 +57,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
                     base.getAbsolutePath());
 
             if (givenMax <= leftPosition.get() || givenMax > max()) {
-                clear();
+                clearData();
                 this.leftPosition.set(givenMax);
                 this.writePosition.set(givenMax);
                 this.flushPosition.set(givenMax);
@@ -69,14 +70,21 @@ public class PositioningStore implements JournalPersistence,Closeable {
         }
     }
 
-    private void clear() {
+    private void clearData() throws IOException {
         for(StoreFile storeFile :this.storeFileMap.values()) {
             if(storeFile.hasPage()) storeFile.unload();
             File file = storeFile.file();
             if(file.exists() && !file.delete())
-                throw new TruncateException(String.format("Can not delete file: %s.", file.getAbsolutePath()));
+                throw new IOException(String.format("Can not delete file: %s.", file.getAbsolutePath()));
         }
         this.storeFileMap.clear();
+    }
+
+    public void delete() throws IOException {
+        clearData();
+        if(base.exists() && !base.delete()){
+            throw new IOException(String.format("Can not delete Directory: %s.", base.getAbsolutePath()));
+        }
     }
 
     private void rollbackFiles(long position) throws IOException {
@@ -113,7 +121,8 @@ public class PositioningStore implements JournalPersistence,Closeable {
         }
     }
 
-    public void recover(Path path, Properties properties) {
+    public void recover(Path path, Properties properties) throws IOException {
+        Files.createDirectories(path);
         this.base = path.toFile();
         this.config = toConfig(properties);
 

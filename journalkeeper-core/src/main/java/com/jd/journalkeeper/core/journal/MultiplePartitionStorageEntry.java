@@ -22,20 +22,20 @@ public class MultiplePartitionStorageEntry {
     private byte [] entry;
     private int term;
     private int length;
-    private short partition;
-    private short batchSize;
+    private short partition = 0;
+    private short batchSize = 1;
     public MultiplePartitionStorageEntry(){}
     public MultiplePartitionStorageEntry(byte [] entry, int term){
         this.entry = entry;
         this.term = term;
-        this.length = StorageEntryParser.getHeaderLength() + entry.length;
+        this.length = MultiplePartitionStorageEntryParser.getHeaderLength() + entry.length;
     }
 
     public MultiplePartitionStorageEntry(byte [] entry, int term, short partition){
         this.entry = entry;
         this.term = term;
         this.partition = partition;
-        this.length = StorageEntryParser.getHeaderLength() + entry.length;
+        this.length = MultiplePartitionStorageEntryParser.getHeaderLength() + entry.length;
     }
 
     public byte [] getEntry() {
