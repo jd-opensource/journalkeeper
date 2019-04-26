@@ -357,6 +357,8 @@ public class MultiplePartitionJournalTest {
 
     }
 
+    // TODO: compact test
+
     private static File findLastFile(Path parent) {
 
         return Arrays.stream(Objects.requireNonNull(parent.toFile()
