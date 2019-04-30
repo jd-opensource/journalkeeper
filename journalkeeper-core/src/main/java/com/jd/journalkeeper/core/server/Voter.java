@@ -255,12 +255,8 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
         lastHeartbeat = System.currentTimeMillis();
         long lastLogIndex = journal.maxIndex() - 1 ;
-        int lastLogTerm = 0;
-        if(lastLogIndex < 0) {
-            lastLogIndex = 0;
-        } else {
-            lastLogTerm = journal.getTerm(lastLogIndex);
-        }
+        int lastLogTerm = journal.getTerm(lastLogIndex);
+
         // 处理单节点的特殊情况
         synchronized (voteResponseMutex) {
             if (grantedVotes.get() >= voters.size() / 2 + 1) {
@@ -713,7 +709,12 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 if (request.getTerm() < currentTerm.get()) {
                     return new RequestVoteResponse(request.getTerm(), false);
                 }
-                if(votedFor == null || votedFor.equals(request.getCandidate())) {
+                int lastLogTerm;
+                if((votedFor == null || votedFor.equals(request.getCandidate())) // If votedFor is null or candidateId
+                        && (request.getLastLogTerm() >  (lastLogTerm = journal.getTerm(journal.maxIndex() -1))
+                            || (request.getLastLogTerm() == lastLogTerm
+                            && request.getLastLogIndex() >= journal.maxIndex() -1)) // candidate’s log is at least as up-to-date as receiver’s log
+                        ) {
                     votedFor = request.getCandidate();
                     return new RequestVoteResponse(request.getTerm(), true);
                 }
