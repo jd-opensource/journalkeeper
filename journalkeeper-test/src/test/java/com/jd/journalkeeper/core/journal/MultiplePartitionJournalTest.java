@@ -357,7 +357,61 @@ public class MultiplePartitionJournalTest {
 
     }
 
-    // TODO: compact test
+    @Test
+    public void compactTest() throws Exception {
+        int entrySize = 128;
+        int size = 15;
+        int entriesPerFile = 5;
+        int term = 8;
+
+        journal.close();
+        Properties properties = new Properties();
+        properties.setProperty("persistence.journal.file_data_size", String.valueOf((entrySize + MultiplePartitionStorageEntryParser.getHeaderLength()) * entriesPerFile));
+        properties.setProperty("persistence.index.file_data_size", String.valueOf(Long.BYTES * entriesPerFile));
+        journal = createJournal(properties);
+
+
+
+        List<byte []> entries = ByteUtils.createFixedSizeByteList(entrySize, size);
+        List<MultiplePartitionStorageEntry> storageEntries =
+                entries.stream()
+                        .map(entry -> new MultiplePartitionStorageEntry(entry, term))
+                        .collect(Collectors.toList());
+        List<Short> partitionList = new ArrayList<>(partitions);
+        for (int i = 0; i < storageEntries.size(); i++) {
+            short partition = partitionList.get(i % partitions.size());
+            MultiplePartitionStorageEntry entry = storageEntries.get(i);
+            entry.setPartition(partition);
+        }
+
+        long maxIndex = 0L;
+        for(MultiplePartitionStorageEntry storageEntry: storageEntries) {
+            maxIndex = journal.append(storageEntry);
+        }
+        Assert.assertEquals(size, maxIndex);
+        Assert.assertEquals(size, journal.maxIndex());
+        Assert.assertEquals(0, journal.minIndex());
+
+        journal.flush();
+
+
+        journal.compact(4);
+        Assert.assertEquals(0, journal.minIndex());
+
+        journal.compact(5);
+        Assert.assertEquals(5, journal.minIndex());
+
+        for (Short partition : partitions) {
+            journal.readByPartition(partition, journal.minIndex(partition));
+        }
+
+        journal.compact(12);
+        Assert.assertEquals(10, journal.minIndex());
+
+        for (Short partition : partitions) {
+            journal.readByPartition(partition, journal.minIndex(partition));
+        }
+    }
 
     private static File findLastFile(Path parent) {
 

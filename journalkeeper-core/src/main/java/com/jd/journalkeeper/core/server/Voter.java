@@ -694,7 +694,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
      * 接收者收到requestVote方法后的实现流程如下：
      *
      * 如果请求中的任期号 < 节点当前任期号，返回false；
-     * 如果votedFor为空或者与candidateId相同，并且候选人的日志和自己的日志一样新，则给该候选人投票；
+     * 如果votedFor为空或者与candidateId相同，并且候选人的日志至少和自己的日志一样新，则给该候选人投票；
      */
     @Override
     public CompletableFuture<RequestVoteResponse> requestVote(RequestVoteRequest request) {

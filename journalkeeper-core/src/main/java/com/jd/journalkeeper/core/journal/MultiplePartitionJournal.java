@@ -86,7 +86,8 @@ public class MultiplePartitionJournal implements Flushable, Closeable {
     public long compact(long givenMinIndex) throws IOException{
 
         // 首先删除全局索引
-        long minIndexOffset = indexPersistence.compact(givenMinIndex * INDEX_STORAGE_SIZE);
+        indexPersistence.compact(givenMinIndex * INDEX_STORAGE_SIZE);
+        long minIndexOffset = indexPersistence.min();
         // 计算最小全局索引对应的JournalOffset
         long compactJournalOffset = readOffset(minIndexOffset / INDEX_STORAGE_SIZE);
         // 删除分区索引
@@ -100,6 +101,7 @@ public class MultiplePartitionJournal implements Flushable, Closeable {
 
         // 删除Journal
         return journalPersistence.compact(compactJournalOffset);
+
     }
 
     private void compactPartition(JournalPersistence pp, long minJournalOffset) throws IOException{
@@ -126,7 +128,8 @@ public class MultiplePartitionJournal implements Flushable, Closeable {
             JournalPersistence indexPersistence, long targetJournalOffset,
             long minIndexOffset, long maxIndexOffset) throws IOException {
         long minOffset = readOffset(indexPersistence, minIndexOffset / INDEX_STORAGE_SIZE);
-        long maxOffset = readOffset(indexPersistence , maxIndexOffset / INDEX_STORAGE_SIZE);
+        long maxOffset = indexPersistence.max() == maxIndexOffset ? Long.MAX_VALUE :
+                readOffset(indexPersistence , maxIndexOffset / INDEX_STORAGE_SIZE);
 
 
         if (targetJournalOffset <= minOffset) {
@@ -140,7 +143,7 @@ public class MultiplePartitionJournal implements Flushable, Closeable {
         }
 
         // 折半并取整
-        long midIndexOffset = (maxIndexOffset - minIndexOffset) / 2;
+        long midIndexOffset = minIndexOffset +  (maxIndexOffset - minIndexOffset) / 2;
         midIndexOffset = midIndexOffset - midIndexOffset % INDEX_STORAGE_SIZE;
 
         long midOffset = readOffset(indexPersistence, midIndexOffset / INDEX_STORAGE_SIZE);

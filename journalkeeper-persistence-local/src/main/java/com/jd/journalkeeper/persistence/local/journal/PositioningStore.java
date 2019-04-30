@@ -61,6 +61,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
                 this.leftPosition.set(givenMax);
                 this.writePosition.set(givenMax);
                 this.flushPosition.set(givenMax);
+                resetWriteStoreFile();
             } else if (givenMax < max()) {
                 rollbackFiles(givenMax);
                 this.writePosition.set(givenMax);
