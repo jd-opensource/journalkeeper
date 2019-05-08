@@ -4,7 +4,7 @@ import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.ResponseConfig;
 import com.jd.journalkeeper.utils.event.EventType;
 import com.jd.journalkeeper.core.api.StateFactory;
-import com.jd.journalkeeper.core.journal.StorageEntry;
+import com.jd.journalkeeper.core.journal.Entry;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
@@ -169,7 +169,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         UpdateStateRequestResponse rr = pendingUpdateStateRequests.take();
         if(voterState == VoterState.LEADER) {
 
-            long index = journal.append(new StorageEntry(rr.request.getEntry(), currentTerm.get()));
+            long index = journal.append(new Entry(rr.request.getEntry(), currentTerm.get(), DEFAULT_STATE_PARTITION));
             if(rr.getRequest().getResponseConfig() == ResponseConfig.PERSISTENCE) {
                 flushCallbacks.put(new Callback(index, rr.getResponseFuture()));
             } else if (rr.getRequest().getResponseConfig() == ResponseConfig.REPLICATION){
@@ -644,7 +644,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                     .map(uri -> new Follower(uri, journal.maxIndex(), config.getReplicationParallelism()))
                     .collect(Collectors.toList());
             // 变更状态
-            journal.append(new StorageEntry(new byte[0], currentTerm.get(), StorageEntry.TYPE_LEADER_ANNOUNCEMENT));
+            journal.append(new Entry(new byte[0], currentTerm.get(), RESERVED_PARTITION));
             this.voterState = VoterState.LEADER;
             this.leader = this.uri;
             // Leader announcement

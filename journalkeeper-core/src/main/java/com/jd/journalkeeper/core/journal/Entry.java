@@ -1,6 +1,8 @@
 package com.jd.journalkeeper.core.journal;
 
 
+import com.jd.journalkeeper.core.api.RaftEntry;
+
 import java.nio.ByteBuffer;
 
 /**
@@ -16,26 +18,26 @@ import java.nio.ByteBuffer;
  * @author liyue25
  * Date: 2019-03-19
  */
-public class MultiplePartitionStorageEntry {
+public class Entry implements RaftEntry {
     public final static short MAGIC = ByteBuffer.wrap(new byte[] {(byte) 0XF4, (byte) 0X3C}).getShort();
 
     private byte [] entry;
-    private int term;
-    private int length;
-    private short partition = 0;
-    private short batchSize = 1;
-    public MultiplePartitionStorageEntry(){}
-    public MultiplePartitionStorageEntry(byte [] entry, int term){
-        this.entry = entry;
-        this.term = term;
-        this.length = MultiplePartitionStorageEntryParser.getHeaderLength() + entry.length;
+    private final EntryHeader header;
+    public Entry(){
+        this.header = new EntryHeader();
     }
 
-    public MultiplePartitionStorageEntry(byte [] entry, int term, short partition){
+    public Entry(EntryHeader header, byte [] entry) {
+        this.header = header;
         this.entry = entry;
-        this.term = term;
-        this.partition = partition;
-        this.length = MultiplePartitionStorageEntryParser.getHeaderLength() + entry.length;
+    }
+
+    public Entry(byte [] entry, int term, short partition){
+        this();
+        this.entry = entry;
+        this.header.setTerm(term);
+        this.header.setLength(EntryParser.getHeaderLength() + entry.length);
+        this.header.setPartition(partition);
     }
 
     public byte [] getEntry() {
@@ -43,7 +45,7 @@ public class MultiplePartitionStorageEntry {
     }
 
     public int getTerm() {
-        return term;
+        return header.getTerm();
     }
 
     public static long headerSize() {
@@ -51,11 +53,11 @@ public class MultiplePartitionStorageEntry {
     }
 
     public int getLength() {
-        return length;
+        return header.getLength();
     }
 
     public void setLength(int length) {
-        this.length = length;
+        this.header.setLength(length);
     }
 
     public void setEntry(byte [] entry) {
@@ -63,22 +65,27 @@ public class MultiplePartitionStorageEntry {
     }
 
     public void setTerm(int term) {
-        this.term = term;
+        this.header.setTerm(term);
     }
 
     public short getPartition() {
-        return partition;
+        return this.header.getPartition();
     }
 
     public void setPartition(short partition) {
-        this.partition = partition;
+        this.header.setPartition(partition);
     }
 
     public short getBatchSize() {
-        return batchSize;
+        return header.getBatchSize();
     }
 
     public void setBatchSize(short batchSize) {
-        this.batchSize = batchSize;
+        this.header.setBatchSize(batchSize);
+    }
+
+    @Override
+    public EntryHeader getHeader() {
+        return header;
     }
 }

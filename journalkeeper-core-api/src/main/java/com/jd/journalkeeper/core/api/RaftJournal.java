@@ -11,9 +11,9 @@ public interface RaftJournal {
 
     long maxIndex();
 
-    byte [] read(long index);
+    RaftEntry read(long index);
 
-    List<byte []> read(long index, int size);
+    List<RaftEntry> batchRead(long index, int size);
 
-    boolean isStateEntry(long index);
+    RaftEntryHeader readEntryHeader(long index);
 }

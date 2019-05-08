@@ -18,9 +18,17 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Properties;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 /**
  * @author liyue25
@@ -29,6 +37,7 @@ import java.util.stream.IntStream;
 public class JournalTest {
     private Path path = null;
     private Journal journal = null;
+    private Set<Short> partitions = Stream.of(0, 4, 5, 6).map(Integer::shortValue).collect(Collectors.toSet());
     @Before
     public void before() throws IOException {
        path = TestPathUtils.prepareBaseDir();
@@ -41,13 +50,14 @@ public class JournalTest {
         int maxLength = 1024;
         int size = 1024;
         int term = 8;
+        short partition = 6;
         List<byte []> entries = ByteUtils.createRandomSizeByteList(maxLength, size);
-        List<StorageEntry> storageEntries =
+        List<Entry> storageEntries =
                 entries.stream()
-                        .map(entry -> new StorageEntry(entry, term))
+                        .map(entry -> new Entry(entry, term, partition))
                         .collect(Collectors.toList());
         long maxIndex = 0L;
-        for(StorageEntry storageEntry: storageEntries) {
+        for(Entry storageEntry: storageEntries) {
             maxIndex = journal.append(storageEntry);
         }
         Assert.assertEquals(size, maxIndex);
@@ -56,23 +66,98 @@ public class JournalTest {
         long index = journal.minIndex();
 
         while (index < journal.maxIndex()) {
-            Assert.assertArrayEquals(entries.get((int)index), journal.read(index));
+            Assert.assertArrayEquals(entries.get((int)index), journal.read(index).getEntry());
             index++;
         }
 
         index = journal.minIndex();
 
         while (index < journal.maxIndex()) {
-            StorageEntry readStorageEntry = journal.readStorageEntry(index);
-            StorageEntry writeStorageEntry = storageEntries.get((int) index);
+            Entry readStorageEntry = journal.read(index);
+            Entry writeStorageEntry = storageEntries.get((int) index);
             Assert.assertEquals(writeStorageEntry.getLength(), readStorageEntry.getLength());
             Assert.assertEquals(writeStorageEntry.getTerm(), readStorageEntry.getTerm());
-            Assert.assertEquals(writeStorageEntry.getType(), readStorageEntry.getType());
+            Assert.assertEquals(writeStorageEntry.getPartition(), readStorageEntry.getPartition());
             Assert.assertArrayEquals(writeStorageEntry.getEntry(), readStorageEntry.getEntry());
             index++;
         }
 
     }
+
+    @Test
+    public void readByPartitionTest() throws IOException {
+        int maxLength = 1024;
+        int size = 1024;
+        int term = 8;
+        List<byte []> entries = ByteUtils.createRandomSizeByteList(maxLength, size);
+        List<Entry> storageEntries =
+                entries.stream()
+                        .map(entry -> new Entry(entry, term, (short) 0))
+                        .collect(Collectors.toList());
+
+        Map<Short, List<Entry>> partitionEntries =
+                partitions.stream().collect(Collectors.toMap(p -> p, p -> new ArrayList<>()));
+        List<Short> partitionList = new ArrayList<>(partitions);
+        for (int i = 0; i < storageEntries.size(); i++) {
+            short partition = partitionList.get(i % partitions.size());
+            Entry entry = storageEntries.get(i);
+            entry.setPartition(partition);
+            partitionEntries.get(partition).add(entry);
+        }
+
+
+        for(Entry storageEntry: storageEntries) {
+            journal.append(storageEntry);
+        }
+        journal.flush();
+        journal.close();
+
+        journal = createJournal();
+        partitionEntries.forEach((partition, pEntries) -> {
+            Assert.assertEquals(pEntries.size(), journal.maxIndex(partition));
+            Assert.assertEquals(0, journal.minIndex(partition));
+            for (int i = 0; i < pEntries.size(); i++) {
+                Entry pEntry = pEntries.get(i);
+                BatchEntries batchEntries = journal.readByPartition(partition, i);
+                Assert.assertEquals(pEntry.getBatchSize(), batchEntries.getSize());
+                Assert.assertEquals(0, batchEntries.getOffset());
+                Assert.assertArrayEquals(pEntry.getEntry(), batchEntries.getEntries());
+            }
+        });
+    }
+
+
+    @Test
+    public void batchEntriesTest() {
+        int maxLength = 1024;
+        int size = 1024;
+        int term = 8;
+        short batchSize  = 23;
+        short partition = 0;
+        List<byte []> entries = ByteUtils.createRandomSizeByteList(maxLength, size);
+        List<Entry> storageEntries =
+                entries.stream()
+                        .map(entry -> new Entry(entry, term, partition))
+                        .peek(entry -> entry.setBatchSize(batchSize))
+                        .collect(Collectors.toList());
+
+
+        for(Entry storageEntry: storageEntries) {
+            journal.append(storageEntry);
+        }
+
+        Assert.assertEquals(size * batchSize , journal.maxIndex(partition));
+
+        for (int i = 0; i < journal.maxIndex(); i++) {
+            BatchEntries batchEntries = journal.readByPartition(partition, i);
+            Assert.assertEquals(i % batchSize, batchEntries.getOffset());
+            Assert.assertArrayEquals(storageEntries.get(i / batchSize).getEntry(), batchEntries.getEntries());
+            Assert.assertEquals(batchSize, batchEntries.getSize());
+        }
+    }
+
+
+
     @Test
     public void writeReadRawTest() {
         int maxLength = 1024;
@@ -81,7 +166,7 @@ public class JournalTest {
         List<byte []> entries = ByteUtils.createRandomSizeByteList(maxLength, size);
         List<byte []> storageEntries =
                 entries.stream()
-                        .map(entry -> new StorageEntry(entry, term))
+                        .map(entry -> new Entry(entry, term, (short) 0))
                         .map(this::serialize)
                         .collect(Collectors.toList());
         long maxIndex = journal.appendRaw(storageEntries);
@@ -97,9 +182,9 @@ public class JournalTest {
 
     }
 
-    private byte[] serialize(StorageEntry storageEntry) {
+    private byte[] serialize(Entry storageEntry) {
         byte[] serialized = new byte[storageEntry.getLength()];
-        StorageEntryParser.serialize(ByteBuffer.wrap(serialized), storageEntry);
+        EntryParser.serialize(ByteBuffer.wrap(serialized), storageEntry);
         return serialized;
     }
 
@@ -111,16 +196,16 @@ public class JournalTest {
         int maxLength = 128;
         int [] terms = new int [] {8, 8, 8, 8, 9, 9, 9, 10, 10, 10};
         List<byte []> entries = ByteUtils.createRandomSizeByteList(maxLength, terms.length);
-        List<StorageEntry> storageEntries =
+        List<Entry> storageEntries =
                 entries.stream()
-                        .map(entry -> new StorageEntry(entry, 0))
+                        .map(entry -> new Entry(entry, 0, (short) 0))
                         .collect(Collectors.toList());
         for (int i = 0; i < terms.length; i++) {
             storageEntries.get(i).setTerm(terms[i]);
         }
 
         long maxIndex = 0L;
-        for(StorageEntry storageEntry: storageEntries) {
+        for(Entry storageEntry: storageEntries) {
             maxIndex = journal.append(storageEntry);
         }
         Assert.assertEquals(terms.length, maxIndex);
@@ -129,9 +214,9 @@ public class JournalTest {
 
         int [] appendTerms = new int [] {8, 8, 9, 10, 11, 11};
         List<byte []> appendEntries = ByteUtils.createRandomSizeByteList(maxLength, appendTerms.length);
-        List<StorageEntry> appendStorageEntries =
+        List<Entry> appendStorageEntries =
                 appendEntries.stream()
-                        .map(entry -> new StorageEntry(entry, 0))
+                        .map(entry ->new Entry(entry, 0, (short) 0))
                         .collect(Collectors.toList());
         for (int i = 0; i < appendTerms.length; i++) {
             appendStorageEntries.get(i).setTerm(appendTerms[i]);
@@ -147,9 +232,9 @@ public class JournalTest {
         for (int i = 0; i < 8; i++) {
             Assert.assertEquals(expectedTerms[i], journal.getTerm(i));
             if(i < 5) {
-                Assert.assertArrayEquals(storageEntries.get(i).getEntry(), journal.read(i));
+                Assert.assertArrayEquals(storageEntries.get(i).getEntry(), journal.read(i).getEntry());
             } else {
-                Assert.assertArrayEquals(appendStorageEntries.get(i - startIndex).getEntry(), journal.read(i));
+                Assert.assertArrayEquals(appendStorageEntries.get(i - startIndex).getEntry(), journal.read(i).getEntry());
             }
         }
     }
@@ -163,7 +248,7 @@ public class JournalTest {
         List<byte []> entries = ByteUtils.createRandomSizeByteList(maxLength, size);
         List<byte []> storageEntries =
                 entries.stream()
-                        .map(entry -> new StorageEntry(entry, term))
+                        .map(entry -> new Entry(entry, term, (short) 0))
                         .map(this::serialize)
                         .collect(Collectors.toList());
         long maxIndex = journal.appendRaw(storageEntries);
@@ -180,7 +265,7 @@ public class JournalTest {
         Assert.assertEquals(0, journal.minIndex());
 
         while (index < journal.maxIndex()) {
-            Assert.assertArrayEquals(entries.get((int)index), journal.read(index));
+            Assert.assertArrayEquals(entries.get((int)index), journal.read(index).getEntry());
             index++;
         }
 
@@ -198,7 +283,7 @@ public class JournalTest {
 
         journal.close();
         Properties properties = new Properties();
-        properties.setProperty("persistence.journal.file_data_size", String.valueOf((entrySize + StorageEntryParser.getHeaderLength()) * entriesPerFile));
+        properties.setProperty("persistence.journal.file_data_size", String.valueOf((entrySize + EntryParser.getHeaderLength()) * entriesPerFile));
         properties.setProperty("persistence.index.file_data_size", String.valueOf(Long.BYTES * entriesPerFile));
         journal = createJournal(properties);
 
@@ -207,7 +292,7 @@ public class JournalTest {
         List<byte []> entries = ByteUtils.createFixedSizeByteList(entrySize, size);
         List<byte []> storageEntries =
                 entries.stream()
-                        .map(entry -> new StorageEntry(entry, term))
+                        .map(entry -> new Entry(entry, term, (short) 0))
                         .map(this::serialize)
                         .collect(Collectors.toList());
         long maxIndex = journal.appendRaw(storageEntries);
@@ -228,7 +313,7 @@ public class JournalTest {
         Assert.assertEquals(0, journal.minIndex());
         long index = journal.minIndex();
         while (index < journal.maxIndex()) {
-            Assert.assertArrayEquals(entries.get((int)index), journal.read(index));
+            Assert.assertArrayEquals(entries.get((int)index), journal.read(index).getEntry());
             index++;
         }
         journal.flush();
@@ -248,7 +333,7 @@ public class JournalTest {
         Assert.assertEquals(0, journal.minIndex());
         index = journal.minIndex();
         while (index < journal.maxIndex()) {
-            Assert.assertArrayEquals(entries.get((int)index), journal.read(index));
+            Assert.assertArrayEquals(entries.get((int)index), journal.read(index).getEntry());
             index++;
         }
         journal.flush();
@@ -266,10 +351,66 @@ public class JournalTest {
         Assert.assertEquals(0, journal.minIndex());
         index = journal.minIndex();
         while (index < journal.maxIndex()) {
-            Assert.assertArrayEquals(entries.get((int)index), journal.read(index));
+            Assert.assertArrayEquals(entries.get((int)index), journal.read(index).getEntry());
             index++;
         }
 
+    }
+
+    @Test
+    public void compactTest() throws Exception {
+        int entrySize = 128;
+        int size = 15;
+        int entriesPerFile = 5;
+        int term = 8;
+
+        journal.close();
+        Properties properties = new Properties();
+        properties.setProperty("persistence.journal.file_data_size", String.valueOf((entrySize + EntryParser.getHeaderLength()) * entriesPerFile));
+        properties.setProperty("persistence.index.file_data_size", String.valueOf(Long.BYTES * entriesPerFile));
+        journal = createJournal(properties);
+
+
+
+        List<byte []> entries = ByteUtils.createFixedSizeByteList(entrySize, size);
+        List<Entry> storageEntries =
+                entries.stream()
+                        .map(entry -> new Entry(entry, term, (short) 0))
+                        .collect(Collectors.toList());
+        List<Short> partitionList = new ArrayList<>(partitions);
+        for (int i = 0; i < storageEntries.size(); i++) {
+            short partition = partitionList.get(i % partitions.size());
+            Entry entry = storageEntries.get(i);
+            entry.setPartition(partition);
+        }
+
+        long maxIndex = 0L;
+        for(Entry storageEntry: storageEntries) {
+            maxIndex = journal.append(storageEntry);
+        }
+        Assert.assertEquals(size, maxIndex);
+        Assert.assertEquals(size, journal.maxIndex());
+        Assert.assertEquals(0, journal.minIndex());
+
+        journal.flush();
+
+
+        journal.compact(4);
+        Assert.assertEquals(0, journal.minIndex());
+
+        journal.compact(5);
+        Assert.assertEquals(5, journal.minIndex());
+
+        for (Short partition : partitions) {
+            journal.readByPartition(partition, journal.minIndex(partition));
+        }
+
+        journal.compact(12);
+        Assert.assertEquals(10, journal.minIndex());
+
+        for (Short partition : partitions) {
+            journal.readByPartition(partition, journal.minIndex(partition));
+        }
     }
 
     private static File findLastFile(Path parent) {
@@ -288,10 +429,10 @@ public class JournalTest {
         PersistenceFactory persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
         BufferPool bufferPool = ServiceSupport.load(BufferPool.class);
         Journal journal = new Journal(
-                persistenceFactory.createJournalPersistenceInstance(),
-                persistenceFactory.createJournalPersistenceInstance(),
+                persistenceFactory,
                 bufferPool);
         journal.recover(path,properties);
+        journal.rePartition(partitions);
         return journal;
     }
 

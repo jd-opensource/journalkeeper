@@ -1,7 +1,5 @@
 package com.jd.journalkeeper.core.journal;
 
-import com.jd.journalkeeper.utils.parser.EntryParser;
-
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedList;
@@ -11,7 +9,7 @@ import java.util.List;
  * @author liyue25
  * Date: 2019-01-15
  */
-public class MultiplePartitionStorageEntryParser extends EntryParser {
+public class EntryParser extends com.jd.journalkeeper.utils.parser.EntryParser {
 
     public final static int VARIABLE_LENGTH = -1;
     public final static int FIXED_LENGTH_1 = 1;
@@ -202,27 +200,27 @@ public class MultiplePartitionStorageEntryParser extends EntryParser {
         }
     }
 
-    public static MultiplePartitionStorageEntry parseHeader(ByteBuffer headerBuffer) {
-        MultiplePartitionStorageEntry storageEntry = new MultiplePartitionStorageEntry();
+    public static EntryHeader parseHeader(ByteBuffer headerBuffer) {
+        EntryHeader header = new EntryHeader();
         checkMagic(headerBuffer);
-        storageEntry.setLength(getInt(headerBuffer, LENGTH));
-        storageEntry.setTerm(getInt(headerBuffer, TERM));
-        storageEntry.setPartition(getShort(headerBuffer, PARTITION));
-        storageEntry.setBatchSize(getShort(headerBuffer, BATCH_SIZE));
+        header.setLength(getInt(headerBuffer, LENGTH));
+        header.setTerm(getInt(headerBuffer, TERM));
+        header.setPartition(getShort(headerBuffer, PARTITION));
+        header.setBatchSize(getShort(headerBuffer, BATCH_SIZE));
 
-        return storageEntry;
+        return header;
     }
 
     private static void checkMagic(ByteBuffer headerBuffer) {
-        if (MultiplePartitionStorageEntry.MAGIC != getShort(headerBuffer, MultiplePartitionStorageEntryParser.MAGIC)) {
+        if (Entry.MAGIC != getShort(headerBuffer, EntryParser.MAGIC)) {
             throw new ParseJournalException("Check magic failed！");
         }
     }
 
-    public static  void serialize(ByteBuffer destBuffer, MultiplePartitionStorageEntry storageEntry) {
+    public static  void serialize(ByteBuffer destBuffer, Entry storageEntry) {
 
         destBuffer.putInt(storageEntry.getLength());
-        destBuffer.putShort(MultiplePartitionStorageEntry.MAGIC);
+        destBuffer.putShort(Entry.MAGIC);
         destBuffer.putInt(storageEntry.getTerm());
         destBuffer.putShort(storageEntry.getPartition());
         destBuffer.putShort(storageEntry.getBatchSize());

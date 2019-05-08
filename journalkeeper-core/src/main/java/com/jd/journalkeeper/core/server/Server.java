@@ -1,14 +1,15 @@
 package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.base.Serializer;
+import com.jd.journalkeeper.core.api.RaftEntry;
+import com.jd.journalkeeper.core.journal.Journal;
 import com.jd.journalkeeper.rpc.client.*;
 import com.jd.journalkeeper.utils.event.*;
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.RaftServer;
 import com.jd.journalkeeper.core.api.State;
 import com.jd.journalkeeper.core.api.StateFactory;
-import com.jd.journalkeeper.core.journal.Journal;
-import com.jd.journalkeeper.core.journal.StorageEntry;
+import com.jd.journalkeeper.core.journal.Entry;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NoSuchSnapshotException;
@@ -36,6 +37,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.StampedLock;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 /**
@@ -47,7 +49,8 @@ public abstract class Server<E, Q, R>
         extends RaftServer<E, Q, R>
         implements ServerRpc {
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
-
+    static final short RESERVED_PARTITION = Short.MAX_VALUE;
+    public static final short DEFAULT_STATE_PARTITION = 0;
     @Override
     public boolean isAlive() {
         return true;
@@ -181,8 +184,7 @@ public abstract class Server<E, Q, R>
         rpcAccessPointFactory = ServiceSupport.load(RpcAccessPointFactory.class);
         serverRpcAccessPoint = rpcAccessPointFactory.createServerRpcAccessPoint(properties);
         journal = new Journal(
-                persistenceFactory.createJournalPersistenceInstance(),
-                persistenceFactory.createJournalPersistenceInstance(),
+                persistenceFactory,
                 bufferPool);
 
     }
@@ -271,9 +273,9 @@ public abstract class Server<E, Q, R>
     private void applyEntries()  {
         while ( state.lastApplied() < commitIndex) {
             takeASnapShotIfNeed();
-            StorageEntry storageEntry = journal.readStorageEntry(state.lastApplied());
+            Entry storageEntry = journal.read(state.lastApplied());
             Map<String, String> customizedEventData = null;
-            if(storageEntry.getType() > 0) {
+            if(storageEntry.getPartition() != RESERVED_PARTITION) {
                 E entry = entrySerializer.parse(storageEntry.getEntry());
                 long stamp = stateLock.writeLock();
                 try {
@@ -282,7 +284,7 @@ public abstract class Server<E, Q, R>
                     stateLock.unlockWrite(stamp);
                 }
             }
-            // Ignore StorageEntry.TYPE_LEADER_ANNOUNCEMENT
+            // Ignore MultiplePartitionStorageEntry.TYPE_LEADER_ANNOUNCEMENT
             state.next();
             asyncExecutor.submit(this::onStateChanged);
             Map<String, String> parameters = new HashMap<>(customizedEventData == null ? 1: customizedEventData.size() + 1);
@@ -410,8 +412,10 @@ public abstract class Server<E, Q, R>
                         throw new IndexUnderflowException();
                     }
 
-                    List<E> toBeExecutedEntries = journal.read(nearestSnapshot.getKey(), (int) (request.getIndex() - nearestSnapshot.getKey()))
-                            .stream().map(entrySerializer::parse).collect(Collectors.toList());
+                    List<E> toBeExecutedEntries = journal.batchRead(nearestSnapshot.getKey(), (int) (request.getIndex() - nearestSnapshot.getKey()))
+                            .stream()
+                            .map(RaftEntry::getEntry)
+                            .map(entrySerializer::parse).collect(Collectors.toList());
                     Path tempSnapshotPath = snapshotsPath().resolve(String.valueOf(request.getIndex()));
                     if(Files.exists(tempSnapshotPath)) {
                         throw new ConcurrentModificationException(String.format("A snapshot of position %d is creating, please retry later.", request.getIndex()));
@@ -597,17 +601,23 @@ public abstract class Server<E, Q, R>
      */
     @Override
     public void recover() throws IOException {
+        Set<Short> partitions = Stream.of(DEFAULT_STATE_PARTITION, RESERVED_PARTITION).collect(Collectors.toSet());
+        recover(partitions);
+    }
+
+    public void recover(Set<Short> partitions) throws IOException {
         lastSavedServerMetadata = metadataPersistence.recover(metadataPath(), properties);
         onMetadataRecovered(lastSavedServerMetadata);
-        recoverJournal();
+        recoverJournal(partitions);
         state.recover(statePath(), journal, properties);
         recoverSnapshots();
     }
 
 
 
-    private void recoverJournal() throws IOException {
+    private void recoverJournal(Set<Short> partitions) throws IOException {
         journal.recover(journalPath(), properties);
+        journal.rePartition(partitions);
     }
 
     private Path journalPath() {
@@ -673,7 +683,7 @@ public abstract class Server<E, Q, R>
         return config.getRpcTimeoutMs();
     }
 
-    public void compact(long indexExclusive) {
+    public void compact(long indexExclusive) throws IOException {
         if(config.getSnapshotStep() > 0) {
             Map.Entry<Long, State<E, Q, R>> nearestEntry = snapshots.floorEntry(indexExclusive);
             SortedMap<Long, State<E, Q, R>> toBeRemoved = snapshots.headMap(nearestEntry.getKey());

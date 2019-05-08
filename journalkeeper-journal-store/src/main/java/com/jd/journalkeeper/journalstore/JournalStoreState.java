@@ -1,10 +1,12 @@
 package com.jd.journalkeeper.journalstore;
 
 
+import com.jd.journalkeeper.core.api.RaftEntry;
 import com.jd.journalkeeper.core.api.RaftJournal;
 import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.exception.StateExecutionException;
 import com.jd.journalkeeper.core.exception.StateRecoverException;
+import com.jd.journalkeeper.core.server.Server;
 import com.jd.journalkeeper.core.state.LocalState;
 
 import java.io.File;
@@ -18,6 +20,7 @@ import java.util.Properties;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 /**
  * State中存放Journal Index 和 Raft Index的对应关系。
@@ -82,7 +85,7 @@ public class JournalStoreState extends LocalState<byte[], JournalStoreQuery, Lis
             skipped = IndexMapPersistence.skipped(file);
             // 最后一条Entry不是Journal Entry
             lastEntryNotAJournalEntry = lastApplied() - 1 < raftJournal.minIndex() || // 没有数据
-                    !raftJournal.isStateEntry(lastApplied() - 1);
+                    !isStateEntry(raftJournal, lastApplied() - 1);
             if(indexMap.isEmpty()) {
                 indexMap.put(lastApplied(), lastApplied());
             }
@@ -91,6 +94,10 @@ public class JournalStoreState extends LocalState<byte[], JournalStoreQuery, Lis
         } catch (IOException e) {
             throw new StateRecoverException(e);
         }
+    }
+
+    private boolean isStateEntry(RaftJournal journal, long index) {
+        return journal.readEntryHeader(index).getPartition() == Server.DEFAULT_STATE_PARTITION;
     }
 
     private NavigableMap<Long, Long> recoverIndexMap(File file) throws IOException {
@@ -150,7 +157,8 @@ public class JournalStoreState extends LocalState<byte[], JournalStoreQuery, Lis
     @Override
     public CompletableFuture<List<byte[]>> query(JournalStoreQuery query) {
         return CompletableFuture
-                .supplyAsync(() -> raftJournal.read(getRaftIndex(query.getIndex()), query.getSize()));
+                .supplyAsync(() -> raftJournal.batchRead(getRaftIndex(query.getIndex()), query.getSize()))
+                .thenApply(raftEntries -> raftEntries.stream().map(RaftEntry::getEntry).collect(Collectors.toList()));
     }
 
 
