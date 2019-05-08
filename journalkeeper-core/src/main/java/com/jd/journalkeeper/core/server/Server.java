@@ -112,7 +112,7 @@ public abstract class Server<E, Q, R>
      */
     protected final LoopThread stateMachineThread;
 
-    //TODO: Log Compaction
+    //TODO: Log Compaction, install snapshot rpc
     protected ScheduledFuture flushFuture, compactionFuture;
 
     /**

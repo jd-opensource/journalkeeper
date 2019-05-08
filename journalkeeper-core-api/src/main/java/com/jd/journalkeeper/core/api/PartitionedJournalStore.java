@@ -45,19 +45,19 @@ public interface PartitionedJournalStore extends Watchable {
      * @throws com.jd.journalkeeper.exceptions.IndexOverflowException 参数index必须小于当前maxIndex。
      * @throws com.jd.journalkeeper.exceptions.IndexUnderflowException 参数index不能小于当前minIndex。
      */
-    List<ByteBuffer> get(int partition, long index, int size);
+    CompletableFuture<List<ByteBuffer>> get(int partition, long index, int size);
 
     /**
      * 查询每个分区当前最小已提交日志索引序号。
      * @return 每个分区当前最小已提交日志索引序号。
      */
-    Map<Integer, Long> minIndices();
+    CompletableFuture<Map<Integer, Long>> minIndices();
 
     /**
      * 查询每个分区当前最大已提交日志索引序号。
      * @return 每个分区当前最大已提交日志索引序号。
      */
-    Map<Integer, Long> maxIndices();
+    CompletableFuture<Map<Integer, Long>> maxIndices();
 
     /**
      * 删除旧日志，只允许删除最旧的部分日志（即增加minIndex，删除之前的日志）。
@@ -74,11 +74,11 @@ public interface PartitionedJournalStore extends Watchable {
      * 变更分区。失败抛出异常。
      * @param partitions 变更后的所有分区。
      */
-    void scalePartitions(int [] partitions);
+    CompletableFuture<Void> scalePartitions(int [] partitions);
 
     /**
      * 列出当前所有分区，由小到大排序。
      * @return 当前所有分区
      */
-    int [] listPartitions();
+    CompletableFuture<int []> listPartitions();
 }

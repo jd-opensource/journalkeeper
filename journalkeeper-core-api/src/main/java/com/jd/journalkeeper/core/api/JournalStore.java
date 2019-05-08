@@ -39,28 +39,28 @@ public interface JournalStore extends Watchable {
      * @throws com.jd.journalkeeper.exceptions.IndexOverflowException 参数index必须小于当前maxIndex。
      * @throws com.jd.journalkeeper.exceptions.IndexUnderflowException 参数index不能小于当前minIndex。
      */
-    List<byte[]> get(long index, int size);
+    CompletableFuture<List<byte[]>> get(long index, int size);
 
     /**
      * 查询当前最小已提交日志索引序号。
      * @return 当前最小已提交日志索引序号。
      */
-    long minIndex();
+    CompletableFuture<Long> minIndex();
 
     /**
      * 查询当前最大已提交日志索引序号。
      * @return 当前最大已提交日志索引序号。
      */
-    long maxIndex();
+    CompletableFuture<Long> maxIndex();
 
     /**
      * 删除旧日志，只允许删除最旧的部分日志（即增加minIndex，删除之前的日志）。
      * 保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
      * 在集群中复制到大多数节点都完成删除后返回。
      *
-     * @param to 删除日志索引位置，小于这个位置的日志将被删除。
+     * @param minIndex 删除日志索引位置，小于这个位置的日志将被删除。
      */
-    CompletableFuture<Void> compact(long to);
+    CompletableFuture<Void> compact(long minIndex);
 
 
 }

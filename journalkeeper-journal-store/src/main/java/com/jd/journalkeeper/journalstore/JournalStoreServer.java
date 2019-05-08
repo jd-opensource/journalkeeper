@@ -50,40 +50,42 @@ public class JournalStoreServer implements JournalStore {
                 });    }
 
     @Override
-    public List<byte[]> get(long index, int size) {
-        try {
-            return raftServer
-                    .queryServerState(new QueryStateRequest(querySerializer.serialize(new JournalStoreQuery(index, size))))
-                    .thenApply(response -> {
-                        if(!response.success()){
-                            throw new GetEntryException(response.getError());
-                        } else {
-                            return response.getResult();
-                        }
-                    })
-                    .thenApply(entrySerializer::parse).get();
-        } catch (Throwable throwable) {
-            throw new GetEntryException(throwable);
-        }
+    public CompletableFuture<List<byte[]>> get(long index, int size) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return raftServer
+                        .queryServerState(new QueryStateRequest(querySerializer.serialize(new JournalStoreQuery(index, size))))
+                        .thenApply(response -> {
+                            if(!response.success()){
+                                throw new GetEntryException(response.getError());
+                            } else {
+                                return response.getResult();
+                            }
+                        })
+                        .thenApply(entrySerializer::parse).get();
+            } catch (Throwable throwable) {
+                throw new GetEntryException(throwable);
+            }
+        });
     }
 
     @Override
-    public long minIndex() {
-        return ((JournalStoreState) raftServer.getState()).minIndex();
+    public CompletableFuture<Long> minIndex() {
+        return CompletableFuture.supplyAsync(() -> ((JournalStoreState) raftServer.getState()).minIndex());
     }
 
     @Override
-    public long maxIndex() {
-        return ((JournalStoreState) raftServer.getState()).maxIndex();
+    public CompletableFuture<Long> maxIndex() {
+        return CompletableFuture.supplyAsync(() -> ((JournalStoreState) raftServer.getState()).maxIndex());
     }
 
     @Override
-    public CompletableFuture<Void> compact(long journalIndexExclusive) {
+    public CompletableFuture<Void> compact(long minIndexExclusive) {
         return CompletableFuture.runAsync(() -> {
             try {
-                raftServer.compact(journalIndexExclusive);
+                raftServer.compact(minIndexExclusive);
                 JournalStoreState state = (JournalStoreState) raftServer.getState();
-                state.compact(journalIndexExclusive);
+                state.compact(minIndexExclusive);
 
             } catch (Throwable throwable) {
                 throw new CompletionException(throwable);
