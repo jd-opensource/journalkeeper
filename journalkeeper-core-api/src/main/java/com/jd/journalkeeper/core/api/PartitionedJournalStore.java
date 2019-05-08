@@ -67,7 +67,7 @@ public interface PartitionedJournalStore extends Watchable {
      * @param toIndices 所有分区删除日志索引位置，小于这个位置的日志将被删除。
      * @return 所有分区当前最小已提交日志索引位置。
      */
-    CompletableFuture<Map<Integer, Long>> shrink(Map<Integer, Long> toIndices);
+    CompletableFuture<Void> compact(Map<Integer, Long> toIndices);
 
 
     /**
