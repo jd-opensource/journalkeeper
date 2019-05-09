@@ -28,6 +28,8 @@ public interface RaftClient<E, Q, R> extends Queryable<Q, R>, Watchable {
      */
     CompletableFuture<Void> update(E entry);
 
+    CompletableFuture<Void> update(E entry, int partition, int batchSize, ResponseConfig responseConfig);
+
     /**
      * 查询集群当前的状态，即日志在状态机中执行完成后产生的数据。该服务保证强一致性，保证读到的状态总是集群的最新状态。
      * @param query 查询条件

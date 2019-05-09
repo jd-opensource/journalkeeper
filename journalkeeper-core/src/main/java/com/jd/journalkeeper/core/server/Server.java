@@ -2,6 +2,10 @@ package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.RaftEntry;
+import com.jd.journalkeeper.core.api.RaftJournal;
+import com.jd.journalkeeper.core.entry.reserved.CompactJournalEntrySerializer;
+import com.jd.journalkeeper.core.entry.reserved.ReservedEntry;
+import com.jd.journalkeeper.core.entry.reserved.ScalePartitionsEntrySerializer;
 import com.jd.journalkeeper.core.journal.Journal;
 import com.jd.journalkeeper.rpc.client.*;
 import com.jd.journalkeeper.utils.event.*;
@@ -9,7 +13,7 @@ import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.RaftServer;
 import com.jd.journalkeeper.core.api.State;
 import com.jd.journalkeeper.core.api.StateFactory;
-import com.jd.journalkeeper.core.journal.Entry;
+import com.jd.journalkeeper.core.entry.Entry;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NoSuchSnapshotException;
@@ -40,6 +44,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
+import static com.jd.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
+
 /**
  * Server就是集群中的节点，它包含了存储在Server上日志（journal），一组快照（snapshots[]）和一个状态机（stateMachine）实例。
  * @author liyue25
@@ -49,8 +55,6 @@ public abstract class Server<E, Q, R>
         extends RaftServer<E, Q, R>
         implements ServerRpc {
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
-    static final short RESERVED_PARTITION = Short.MAX_VALUE;
-    public static final short DEFAULT_STATE_PARTITION = 0;
     @Override
     public boolean isAlive() {
         return true;
@@ -164,6 +168,8 @@ public abstract class Server<E, Q, R>
     private ServerMetadata lastSavedServerMetadata = null;
     private AtomicBoolean flushGate = new AtomicBoolean(false);
     protected final EventBus eventBus;
+    private final CompactJournalEntrySerializer compactJournalEntrySerializer = new CompactJournalEntrySerializer();
+    private final ScalePartitionsEntrySerializer scalePartitionsEntrySerializer = new ScalePartitionsEntrySerializer();
 
     public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
                   Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor,
@@ -275,16 +281,17 @@ public abstract class Server<E, Q, R>
             takeASnapShotIfNeed();
             Entry storageEntry = journal.read(state.lastApplied());
             Map<String, String> customizedEventData = null;
-            if(storageEntry.getPartition() != RESERVED_PARTITION) {
+            if(storageEntry.getHeader().getPartition() != RESERVED_PARTITION) {
                 E entry = entrySerializer.parse(storageEntry.getEntry());
                 long stamp = stateLock.writeLock();
                 try {
-                    customizedEventData = state.execute(entry, state.lastApplied());
+                    customizedEventData = state.execute(entry, storageEntry.getHeader().getPartition(), state.lastApplied());
                 } finally {
                     stateLock.unlockWrite(stamp);
                 }
+            } else {
+                applyReservedEntry(storageEntry.getEntry()[0], storageEntry.getEntry());
             }
-            // Ignore MultiplePartitionStorageEntry.TYPE_LEADER_ANNOUNCEMENT
             state.next();
             asyncExecutor.submit(this::onStateChanged);
             Map<String, String> parameters = new HashMap<>(customizedEventData == null ? 1: customizedEventData.size() + 1);
@@ -294,6 +301,31 @@ public abstract class Server<E, Q, R>
             parameters.put("lastApplied", String.valueOf(state.lastApplied()));
             fireEvent(EventType.ON_STATE_CHANGE, parameters);
         }
+    }
+
+    protected void applyReservedEntry(int type, byte [] reservedEntry) {
+        switch (type) {
+            case ReservedEntry
+                    .TYPE_LEADER_ANNOUNCEMENT:
+                // Nothing to do.
+                break;
+            case ReservedEntry.TYPE_COMPACT_JOURNAL:
+                compactJournalAsync(compactJournalEntrySerializer.parse(reservedEntry).getCompactIndices());
+                break;
+            case ReservedEntry.TYPE_SCALE_PARTITIONS:
+                scalePartitionsAsync(scalePartitionsEntrySerializer.parse(reservedEntry).getPartitions());
+                break;
+            default:
+                logger.warn("Invalid reserved entry type: {}.", type);
+        }
+    }
+
+    private void scalePartitionsAsync(int[] partitions) {
+        // TODO
+    }
+
+    private void compactJournalAsync(Map<Integer, Long> compactIndices) {
+        // TODO
     }
 
     protected void fireEvent(int eventType, Map<String, String> eventData) {
@@ -412,18 +444,15 @@ public abstract class Server<E, Q, R>
                         throw new IndexUnderflowException();
                     }
 
-                    List<E> toBeExecutedEntries = journal.batchRead(nearestSnapshot.getKey(), (int) (request.getIndex() - nearestSnapshot.getKey()))
-                            .stream()
-                            .map(RaftEntry::getEntry)
-                            .map(entrySerializer::parse).collect(Collectors.toList());
+                    List<RaftEntry> toBeExecutedEntries = new ArrayList<>(journal.batchRead(nearestSnapshot.getKey(), (int) (request.getIndex() - nearestSnapshot.getKey())));
                     Path tempSnapshotPath = snapshotsPath().resolve(String.valueOf(request.getIndex()));
                     if(Files.exists(tempSnapshotPath)) {
                         throw new ConcurrentModificationException(String.format("A snapshot of position %d is creating, please retry later.", request.getIndex()));
                     }
                     requestState = state.takeASnapshot(tempSnapshotPath, journal);
                     for (int i = 0; i < toBeExecutedEntries.size(); i++) {
-                        E entry = toBeExecutedEntries.get(i);
-                        requestState.execute(entry, nearestSnapshot.getKey() + i);
+                        RaftEntry entry = toBeExecutedEntries.get(i);
+                        requestState.execute(entrySerializer.parse(entry.getEntry()), entry.getHeader().getPartition(), nearestSnapshot.getKey() + i);
                     }
                     if(requestState instanceof Flushable) {
                         ((Flushable ) requestState).flush();
@@ -601,7 +630,7 @@ public abstract class Server<E, Q, R>
      */
     @Override
     public void recover() throws IOException {
-        Set<Short> partitions = Stream.of(DEFAULT_STATE_PARTITION, RESERVED_PARTITION).collect(Collectors.toSet());
+        Set<Short> partitions = Stream.of(RaftJournal.DEFAULT_PARTITION, RESERVED_PARTITION).collect(Collectors.toSet());
         recover(partitions);
     }
 

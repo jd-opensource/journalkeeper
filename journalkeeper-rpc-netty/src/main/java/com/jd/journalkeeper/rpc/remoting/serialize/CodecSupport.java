@@ -56,6 +56,12 @@ public class CodecSupport {
     public static int decodeInt(ByteBuf byteBuf) {
         return byteBuf.readInt();
     }
+    public static void encodeShort(ByteBuf byteBuf, short s) {
+        byteBuf.writeShort(s);
+    }
+    public static short decodeShort(ByteBuf byteBuf) {
+        return byteBuf.readShort();
+    }
     public static void encodeByte(ByteBuf byteBuf, byte b) {
         byteBuf.writeByte(b);
     }

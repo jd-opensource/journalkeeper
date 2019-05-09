@@ -25,7 +25,7 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
      * @param index entry在Journal中的索引序号
      * @return 提供给事件 {@link EventType#ON_STATE_CHANGE} 的参数，如果没有参数可以返回null；
      */
-    Map<String, String> execute(E entry, long index);
+    Map<String, String> execute(E entry, short partition, long index);
 
     /**
      * 当前状态对应的日志位置

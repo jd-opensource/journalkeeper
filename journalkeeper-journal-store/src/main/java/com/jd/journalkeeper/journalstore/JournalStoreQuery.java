@@ -1,21 +1,31 @@
 package com.jd.journalkeeper.journalstore;
 
-import com.jd.journalkeeper.base.Serializer;
-
-import java.nio.ByteBuffer;
-
 /**
  * @author liyue25
- * Date: 2019-04-23
+ * Date: 2019-05-08
  */
-public class JournalStoreQuery implements Serializer<JournalStoreQuery> {
+public class JournalStoreQuery {
+
+    public static final int CMQ_QUERY_ENTRIES = 0;
+    public static final int CMQ_QUERY_PARTITIONS = 1;
+    private final int cmd;
+    private final int partition;
     private final long index;
     private final int size;
 
-    public JournalStoreQuery(){this(-1L, -1);}
-    public JournalStoreQuery(long index, int size) {
+
+    JournalStoreQuery(int cmd, int partition, long index, int size) {
+        this.cmd = cmd;
+        this.partition = partition;
         this.index = index;
         this.size = size;
+    }
+    private JournalStoreQuery(int cmd) {
+        this(cmd, 0, 0, 0);
+    }
+
+    public int getCmd() {
+        return cmd;
     }
 
     public long getIndex() {
@@ -26,28 +36,15 @@ public class JournalStoreQuery implements Serializer<JournalStoreQuery> {
         return size;
     }
 
-    @Override
-    public int sizeOf(JournalStoreQuery journalStoreQuery) {
-        return Long.BYTES + Integer.BYTES;
+    public int getPartition() {
+        return partition;
     }
 
-    @Override
-    public byte[] serialize(JournalStoreQuery query) {
-        byte [] bytes = new byte[Long.BYTES + Integer.BYTES];
-        ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
-        byteBuffer.putLong(query.index);
-        byteBuffer.putInt(query.size);
-        return bytes;
+    public static JournalStoreQuery createQueryEntries(int partition, long index, int size) {
+        return new JournalStoreQuery(CMQ_QUERY_ENTRIES, partition, index, size);
     }
 
-    @Override
-    public JournalStoreQuery parse(byte[] bytes) {
-        ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
-
-        return new JournalStoreQuery(byteBuffer.getLong(), byteBuffer.getInt());
-    }
-
-    public byte [] serialize() {
-        return serialize(this);
+    public static JournalStoreQuery createQueryPartitions() {
+        return new JournalStoreQuery(CMQ_QUERY_PARTITIONS);
     }
 }

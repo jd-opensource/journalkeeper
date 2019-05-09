@@ -1,6 +1,9 @@
 package com.jd.journalkeeper.core.client;
 
 import com.jd.journalkeeper.base.Serializer;
+import com.jd.journalkeeper.core.api.RaftJournal;
+import com.jd.journalkeeper.core.api.ResponseConfig;
+import com.jd.journalkeeper.core.server.Server;
 import com.jd.journalkeeper.utils.event.EventWatcher;
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.RaftClient;
@@ -39,8 +42,13 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
 
     @Override
     public CompletableFuture<Void> update(E entry) {
+        return update(entry, RaftJournal.DEFAULT_PARTITION, 1, ResponseConfig.REPLICATION);
+    }
+
+    @Override
+    public CompletableFuture<Void> update(E entry, int partition, int batchSize, ResponseConfig responseConfig) {
         return invokeLeaderRpc(
-                leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entrySerializer.serialize(entry))))
+                leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entrySerializer.serialize(entry), (short )partition, (short) batchSize)))
                 .thenAccept(resp -> {});
     }
 

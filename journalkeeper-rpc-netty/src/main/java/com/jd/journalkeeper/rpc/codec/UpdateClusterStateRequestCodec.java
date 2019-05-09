@@ -15,6 +15,8 @@ public class UpdateClusterStateRequestCodec extends GenericPayloadCodec<UpdateCl
     @Override
     protected void encodePayload(UpdateClusterStateRequest request, ByteBuf buffer) throws Exception {
         CodecSupport.encodeBytes(buffer, request.getEntry());
+        CodecSupport.encodeShort(buffer, request.getPartition());
+        CodecSupport.encodeShort(buffer, request.getBatchSize());
         CodecSupport.encodeByte(buffer, (byte) request.getResponseConfig().value());
     }
 
@@ -22,6 +24,8 @@ public class UpdateClusterStateRequestCodec extends GenericPayloadCodec<UpdateCl
     protected UpdateClusterStateRequest decodePayload(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
         return new UpdateClusterStateRequest(
                 CodecSupport.decodeBytes(buffer),
+                CodecSupport.decodeShort(buffer),
+                CodecSupport.decodeShort(buffer),
                 ResponseConfig.valueOf(CodecSupport.decodeByte(buffer)));
     }
 

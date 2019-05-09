@@ -2,9 +2,11 @@ package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.ResponseConfig;
+import com.jd.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
+import com.jd.journalkeeper.core.entry.reserved.LeaderAnnouncementEntrySerializer;
 import com.jd.journalkeeper.utils.event.EventType;
 import com.jd.journalkeeper.core.api.StateFactory;
-import com.jd.journalkeeper.core.journal.Entry;
+import com.jd.journalkeeper.core.entry.Entry;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
@@ -21,6 +23,8 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+
+import static com.jd.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
 
 
 /**
@@ -100,6 +104,8 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
     private ScheduledFuture checkElectionTimeoutFuture;
 
+    private final LeaderAnnouncementEntrySerializer leaderAnnouncementEntrySerializer = new LeaderAnnouncementEntrySerializer();
+
     private final CallbackPositioningBelt replicationCallbacks = new CallbackPositioningBelt();
     private final CallbackPositioningBelt flushCallbacks = new CallbackPositioningBelt();
 
@@ -169,7 +175,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         UpdateStateRequestResponse rr = pendingUpdateStateRequests.take();
         if(voterState == VoterState.LEADER) {
 
-            long index = journal.append(new Entry(rr.request.getEntry(), currentTerm.get(), DEFAULT_STATE_PARTITION));
+            long index = journal.append(new Entry(rr.getRequest().getEntry(), currentTerm.get(), rr.getRequest().getPartition()));
             if(rr.getRequest().getResponseConfig() == ResponseConfig.PERSISTENCE) {
                 flushCallbacks.put(new Callback(index, rr.getResponseFuture()));
             } else if (rr.getRequest().getResponseConfig() == ResponseConfig.REPLICATION){
@@ -644,7 +650,9 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                     .map(uri -> new Follower(uri, journal.maxIndex(), config.getReplicationParallelism()))
                     .collect(Collectors.toList());
             // 变更状态
-            journal.append(new Entry(new byte[0], currentTerm.get(), RESERVED_PARTITION));
+            journal.append(new Entry(
+                    leaderAnnouncementEntrySerializer.serialize(new LeaderAnnouncementEntry()),
+                    currentTerm.get(), RESERVED_PARTITION));
             this.voterState = VoterState.LEADER;
             this.leader = this.uri;
             // Leader announcement

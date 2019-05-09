@@ -1,5 +1,9 @@
 package com.jd.journalkeeper.core.journal;
 
+import com.jd.journalkeeper.core.api.RaftEntry;
+import com.jd.journalkeeper.core.entry.Entry;
+import com.jd.journalkeeper.core.entry.EntryHeader;
+import com.jd.journalkeeper.core.entry.EntryParser;
 import com.jd.journalkeeper.persistence.BufferPool;
 import com.jd.journalkeeper.persistence.PersistenceFactory;
 import com.jd.journalkeeper.utils.spi.ServiceSupport;
@@ -75,9 +79,9 @@ public class JournalTest {
         while (index < journal.maxIndex()) {
             Entry readStorageEntry = journal.read(index);
             Entry writeStorageEntry = storageEntries.get((int) index);
-            Assert.assertEquals(writeStorageEntry.getLength(), readStorageEntry.getLength());
-            Assert.assertEquals(writeStorageEntry.getTerm(), readStorageEntry.getTerm());
-            Assert.assertEquals(writeStorageEntry.getPartition(), readStorageEntry.getPartition());
+            Assert.assertEquals(writeStorageEntry.getHeader().getLength(), readStorageEntry.getHeader().getLength());
+            Assert.assertEquals(((EntryHeader) writeStorageEntry.getHeader()).getTerm(), ((EntryHeader) readStorageEntry.getHeader()).getTerm());
+            Assert.assertEquals(writeStorageEntry.getHeader().getPartition(), readStorageEntry.getHeader().getPartition());
             Assert.assertArrayEquals(writeStorageEntry.getEntry(), readStorageEntry.getEntry());
             index++;
         }
@@ -101,7 +105,7 @@ public class JournalTest {
         for (int i = 0; i < storageEntries.size(); i++) {
             short partition = partitionList.get(i % partitions.size());
             Entry entry = storageEntries.get(i);
-            entry.setPartition(partition);
+            entry.getHeader().setPartition(partition);
             partitionEntries.get(partition).add(entry);
         }
 
@@ -118,10 +122,10 @@ public class JournalTest {
             Assert.assertEquals(0, journal.minIndex(partition));
             for (int i = 0; i < pEntries.size(); i++) {
                 Entry pEntry = pEntries.get(i);
-                BatchEntries batchEntries = journal.readByPartition(partition, i);
-                Assert.assertEquals(pEntry.getBatchSize(), batchEntries.getSize());
-                Assert.assertEquals(0, batchEntries.getOffset());
-                Assert.assertArrayEquals(pEntry.getEntry(), batchEntries.getEntries());
+                RaftEntry batchEntries = journal.readByPartition(partition, i);
+                Assert.assertEquals(pEntry.getHeader().getBatchSize(), batchEntries.getHeader().getBatchSize());
+                Assert.assertEquals(0, batchEntries.getHeader().getOffset());
+                Assert.assertArrayEquals(pEntry.getEntry(), batchEntries.getEntry());
             }
         });
     }
@@ -138,7 +142,7 @@ public class JournalTest {
         List<Entry> storageEntries =
                 entries.stream()
                         .map(entry -> new Entry(entry, term, partition))
-                        .peek(entry -> entry.setBatchSize(batchSize))
+                        .peek(entry -> entry.getHeader().setBatchSize(batchSize))
                         .collect(Collectors.toList());
 
 
@@ -149,10 +153,10 @@ public class JournalTest {
         Assert.assertEquals(size * batchSize , journal.maxIndex(partition));
 
         for (int i = 0; i < journal.maxIndex(); i++) {
-            BatchEntries batchEntries = journal.readByPartition(partition, i);
-            Assert.assertEquals(i % batchSize, batchEntries.getOffset());
-            Assert.assertArrayEquals(storageEntries.get(i / batchSize).getEntry(), batchEntries.getEntries());
-            Assert.assertEquals(batchSize, batchEntries.getSize());
+            RaftEntry batchEntries = journal.readByPartition(partition, i);
+            Assert.assertEquals(i % batchSize, batchEntries.getHeader().getOffset());
+            Assert.assertArrayEquals(storageEntries.get(i / batchSize).getEntry(), batchEntries.getEntry());
+            Assert.assertEquals(batchSize, batchEntries.getHeader().getBatchSize());
         }
     }
 
@@ -183,7 +187,7 @@ public class JournalTest {
     }
 
     private byte[] serialize(Entry storageEntry) {
-        byte[] serialized = new byte[storageEntry.getLength()];
+        byte[] serialized = new byte[storageEntry.getHeader().getLength()];
         EntryParser.serialize(ByteBuffer.wrap(serialized), storageEntry);
         return serialized;
     }
@@ -201,7 +205,7 @@ public class JournalTest {
                         .map(entry -> new Entry(entry, 0, (short) 0))
                         .collect(Collectors.toList());
         for (int i = 0; i < terms.length; i++) {
-            storageEntries.get(i).setTerm(terms[i]);
+            ((EntryHeader) storageEntries.get(i).getHeader()).setTerm(terms[i]);
         }
 
         long maxIndex = 0L;
@@ -219,7 +223,7 @@ public class JournalTest {
                         .map(entry ->new Entry(entry, 0, (short) 0))
                         .collect(Collectors.toList());
         for (int i = 0; i < appendTerms.length; i++) {
-            appendStorageEntries.get(i).setTerm(appendTerms[i]);
+            ((EntryHeader) appendStorageEntries.get(i).getHeader()).setTerm(appendTerms[i]);
         }
 
         List<byte []> appendRawStorageEntries = appendStorageEntries.stream()
@@ -381,7 +385,7 @@ public class JournalTest {
         for (int i = 0; i < storageEntries.size(); i++) {
             short partition = partitionList.get(i % partitions.size());
             Entry entry = storageEntries.get(i);
-            entry.setPartition(partition);
+            entry.getHeader().setPartition(partition);
         }
 
         long maxIndex = 0L;

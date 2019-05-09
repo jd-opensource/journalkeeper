@@ -3,6 +3,9 @@ package com.jd.journalkeeper.core.journal;
 import com.jd.journalkeeper.core.api.RaftEntry;
 import com.jd.journalkeeper.core.api.RaftEntryHeader;
 import com.jd.journalkeeper.core.api.RaftJournal;
+import com.jd.journalkeeper.core.entry.Entry;
+import com.jd.journalkeeper.core.entry.EntryHeader;
+import com.jd.journalkeeper.core.entry.EntryParser;
 import com.jd.journalkeeper.core.exception.JournalException;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
@@ -72,10 +75,12 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     }
 
 
+    @Override
     public long minIndex(short partition) {
         return getPartitionPersistence(partition).min() / INDEX_STORAGE_SIZE;
     }
 
+    @Override
     public long maxIndex(short partition) {
         return getPartitionPersistence(partition).max() / INDEX_STORAGE_SIZE;
     }
@@ -163,7 +168,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * 追加写入StorageEntry
      */
     public long append(Entry storageEntry) {
-        ByteBuffer byteBuffer = ByteBuffer.allocate(storageEntry.getLength());
+        ByteBuffer byteBuffer = ByteBuffer.allocate(storageEntry.getHeader().getLength());
         EntryParser.serialize(byteBuffer, storageEntry);
         return appendRaw(Collections.singletonList(byteBuffer.array()));
     }
@@ -253,17 +258,18 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     /**
      * 给定分区索引位置读取Entry
      * @param partition 分区
-     * @param partitionIndex 分区索引
-     * @return See {@link BatchEntries}
+     * @param index 分区索引
+     * @return See {@link RaftEntry}
      */
-    public BatchEntries readByPartition(short partition, long partitionIndex) {
+    @Override
+    public RaftEntry readByPartition(short partition, long index) {
         try {
             JournalPersistence pp = getPartitionPersistence(partition);
-            long offset = readOffset(pp, partitionIndex);
+            long offset = readOffset(pp, index);
             long journalOffset;
             short relIndex;
             if(offset < 0) {
-                journalOffset = readOffset(pp , partitionIndex + offset);
+                journalOffset = readOffset(pp , index + offset);
                 relIndex = (short)(-1 * offset);
             } else {
                 journalOffset = offset;
@@ -278,8 +284,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                             journalOffset + EntryParser.getHeaderLength(),
                             header.getLength() - EntryParser.getHeaderLength());
 
-
-            return new BatchEntries(entryBytes, relIndex, header.getBatchSize());
+            header.setOffset(relIndex);
+            return new Entry(header, entryBytes);
         } catch (IOException e) {
             throw new JournalException(e);
         }
@@ -290,15 +296,16 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * @param partition 分区
      * @param startPartitionIndex 其实索引
      * @param maxSize 最大读取条数
-     * @return See {@link BatchEntries} 由于批量Entry不能拆包，返回的Entry数量有可能会大于maxSize。
+     * @return See {@link Entry} 由于批量Entry不能拆包，返回的Entry数量有可能会大于maxSize。
      */
-    public List<BatchEntries> readByPartition(short partition, long startPartitionIndex, int maxSize) {
-        List<BatchEntries> list = new LinkedList<>();
+    @Override
+    public List<RaftEntry> readByPartition(short partition, long startPartitionIndex, int maxSize) {
+        List<RaftEntry> list = new LinkedList<>();
         int size = 0;
         long index = startPartitionIndex;
         while (size < maxSize) {
-            BatchEntries batchEntries = readByPartition(partition, index);
-            int count = batchEntries.getSize() - batchEntries.getOffset();
+            RaftEntry batchEntries = readByPartition(partition, index);
+            int count = batchEntries.getHeader().getBatchSize() - batchEntries.getHeader().getOffset();
             size += count ;
             index += count;
             list.add(batchEntries);
@@ -741,6 +748,11 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         } catch (IOException e) {
             throw new JournalException(e);
         }
+    }
+
+    @Override
+    public Set<Short> getPartitions() {
+        return partitionMap.keySet();
     }
 
     public void addPartition(short partition) throws IOException {

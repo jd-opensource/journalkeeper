@@ -18,22 +18,20 @@ public interface PartitionedJournalStore extends Watchable {
     /**
      * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
      * 日志在集群中被复制到大多数节点后返回。
-     *
      * @param partition 分区
-     * @param entries 待写入的日志列表。
-     * @return 成功时返回当前分区日志最大索引序号，写入失败抛出异常。
+     * @param batchSize 日志数量
+     * @param entries 待写入的序列化后的日志。
      */
-    CompletableFuture<Long> append(int partition, List<ByteBuffer> entries);
+    CompletableFuture<Void> append(int partition, int batchSize, byte [] entries);
 
     /**
      * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
-     *
      * @param partition 分区
-     * @param entries 待写入的日志列表。
+     * @param batchSize 日志数量
+     * @param entries 待写入的序列化后的日志。
      * @param responseConfig 返回响应的配置。See {@link ResponseConfig}
-     * @return 成功时返回当前日志分区最大索引序号，写入失败抛出异常。
      */
-    CompletableFuture<Long> append(int partition, List<ByteBuffer> entries, ResponseConfig responseConfig);
+    CompletableFuture<Void> append(int partition, int batchSize, byte [] entries, ResponseConfig responseConfig);
 
     /**
      * 查询日志
@@ -45,7 +43,7 @@ public interface PartitionedJournalStore extends Watchable {
      * @throws com.jd.journalkeeper.exceptions.IndexOverflowException 参数index必须小于当前maxIndex。
      * @throws com.jd.journalkeeper.exceptions.IndexUnderflowException 参数index不能小于当前minIndex。
      */
-    CompletableFuture<List<ByteBuffer>> get(int partition, long index, int size);
+    CompletableFuture<List<RaftEntry>> get(int partition, long index, int size);
 
     /**
      * 查询每个分区当前最小已提交日志索引序号。

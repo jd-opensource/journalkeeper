@@ -100,11 +100,12 @@ public class RpcTest {
     @Test
     public void testUpdateClusterState() throws ExecutionException, InterruptedException {
         int entrySize = 128;
+
         byte [] entry = new byte[entrySize];
         for (int i = 0; i < entrySize; i++) {
             entry[i] = (byte) i;
         }
-        UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, ResponseConfig.RECEIVE);
+        UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, (short ) 0, (short) 1, ResponseConfig.RECEIVE);
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
         UpdateClusterStateResponse response;
         // Test success response

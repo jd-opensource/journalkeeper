@@ -1,4 +1,6 @@
-package com.jd.journalkeeper.core.journal;
+package com.jd.journalkeeper.core.entry;
+
+import com.jd.journalkeeper.core.journal.ParseJournalException;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -219,11 +221,11 @@ public class EntryParser extends com.jd.journalkeeper.utils.parser.EntryParser {
 
     public static  void serialize(ByteBuffer destBuffer, Entry storageEntry) {
 
-        destBuffer.putInt(storageEntry.getLength());
+        destBuffer.putInt(storageEntry.getHeader().getLength());
         destBuffer.putShort(Entry.MAGIC);
-        destBuffer.putInt(storageEntry.getTerm());
-        destBuffer.putShort(storageEntry.getPartition());
-        destBuffer.putShort(storageEntry.getBatchSize());
+        destBuffer.putInt(((EntryHeader) storageEntry.getHeader()).getTerm());
+        destBuffer.putShort(storageEntry.getHeader().getPartition());
+        destBuffer.putShort(storageEntry.getHeader().getBatchSize());
         destBuffer.put(storageEntry.getEntry());
     }
 }

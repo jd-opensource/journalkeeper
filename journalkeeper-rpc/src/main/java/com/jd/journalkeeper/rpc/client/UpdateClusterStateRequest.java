@@ -11,15 +11,19 @@ import com.jd.journalkeeper.core.api.ResponseConfig;
  */
 public class UpdateClusterStateRequest {
     private final byte [] entry;
+    private final short partition;
+    private final short batchSize;
     private final ResponseConfig responseConfig;
 
-    public UpdateClusterStateRequest(byte [] entry) {
-        this(entry, ResponseConfig.REPLICATION);
+    public UpdateClusterStateRequest(byte [] entry, short partition, short batchSize) {
+        this(entry, partition, batchSize, ResponseConfig.REPLICATION);
     }
 
-    public UpdateClusterStateRequest(byte [] entry, ResponseConfig responseConfig) {
+    public UpdateClusterStateRequest(byte[] entry, short partition, short batchSize, ResponseConfig responseConfig) {
+        this.batchSize = batchSize;
         this.responseConfig = responseConfig;
         this.entry = entry;
+        this.partition = partition;
     }
 
     /**
@@ -38,5 +42,13 @@ public class UpdateClusterStateRequest {
      */
     public ResponseConfig getResponseConfig() {
         return responseConfig;
+    }
+
+    public short getPartition() {
+        return partition;
+    }
+
+    public short getBatchSize() {
+        return batchSize;
     }
 }
