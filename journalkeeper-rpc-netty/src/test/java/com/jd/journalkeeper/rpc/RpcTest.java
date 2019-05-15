@@ -105,7 +105,7 @@ public class RpcTest {
         for (int i = 0; i < entrySize; i++) {
             entry[i] = (byte) i;
         }
-        UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, (short ) 0, (short) 1, ResponseConfig.RECEIVE);
+        UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, 0, 1, ResponseConfig.RECEIVE);
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
         UpdateClusterStateResponse response;
         // Test success response

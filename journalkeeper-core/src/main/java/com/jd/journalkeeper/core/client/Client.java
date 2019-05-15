@@ -48,7 +48,7 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
     @Override
     public CompletableFuture<Void> update(E entry, int partition, int batchSize, ResponseConfig responseConfig) {
         return invokeLeaderRpc(
-                leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entrySerializer.serialize(entry), (short )partition, (short) batchSize)))
+                leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entrySerializer.serialize(entry), partition, batchSize)))
                 .thenAccept(resp -> {});
     }
 

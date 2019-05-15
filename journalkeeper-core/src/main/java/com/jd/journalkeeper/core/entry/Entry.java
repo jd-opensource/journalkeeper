@@ -30,7 +30,7 @@ public class Entry extends RaftEntry {
         setEntry(entry);
     }
 
-    public Entry(byte [] entry, int term, short partition){
+    public Entry(byte [] entry, int term, int partition){
         this();
         setEntry(entry);
         ((EntryHeader) getHeader()).setTerm(term);

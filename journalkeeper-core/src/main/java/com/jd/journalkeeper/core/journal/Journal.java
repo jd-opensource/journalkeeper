@@ -46,7 +46,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     private final static int INDEX_STORAGE_SIZE = Long.BYTES;
     private final JournalPersistence indexPersistence;
     private final JournalPersistence journalPersistence;
-    private final Map<Short, JournalPersistence> partitionMap;
+    private final Map<Integer, JournalPersistence> partitionMap;
     private final PersistenceFactory persistenceFactory;
     private final BufferPool bufferPool;
     private Path basePath = null;
@@ -76,12 +76,12 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
 
     @Override
-    public long minIndex(short partition) {
+    public long minIndex(int partition) {
         return getPartitionPersistence(partition).min() / INDEX_STORAGE_SIZE;
     }
 
     @Override
-    public long maxIndex(short partition) {
+    public long maxIndex(int partition) {
         return getPartitionPersistence(partition).max() / INDEX_STORAGE_SIZE;
     }
 
@@ -200,7 +200,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     }
 
 
-    private JournalPersistence getPartitionPersistence(short partition) {
+    private JournalPersistence getPartitionPersistence(int partition) {
         JournalPersistence partitionPersistence = partitionMap.get(partition);
         if(null == partitionPersistence) {
             throw new NosuchPartitionException(partition);
@@ -262,18 +262,18 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * @return See {@link RaftEntry}
      */
     @Override
-    public RaftEntry readByPartition(short partition, long index) {
+    public RaftEntry readByPartition(int partition, long index) {
         try {
             JournalPersistence pp = getPartitionPersistence(partition);
             long offset = readOffset(pp, index);
             long journalOffset;
-            short relIndex;
+            int relIndex;
             if(offset < 0) {
                 journalOffset = readOffset(pp , index + offset);
-                relIndex = (short)(-1 * offset);
+                relIndex = (int)(-1 * offset);
             } else {
                 journalOffset = offset;
-                relIndex = (short) 0;
+                relIndex = (int) 0;
             }
 
 
@@ -299,7 +299,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * @return See {@link Entry} 由于批量Entry不能拆包，返回的Entry数量有可能会大于maxSize。
      */
     @Override
-    public List<RaftEntry> readByPartition(short partition, long startPartitionIndex, int maxSize) {
+    public List<RaftEntry> readByPartition(int partition, long startPartitionIndex, int maxSize) {
         List<RaftEntry> list = new LinkedList<>();
         int size = 0;
         long index = startPartitionIndex;
@@ -522,9 +522,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     private void recoverPartitions(Path partitionPath, Properties properties) throws IOException {
 
-        Short [] partitions = readPartitionDirectories(partitionPath);
-        Map<Short, Long> lastIndexedOffsetMap = new HashMap<>(partitions.length);
-        for (short partition : partitions) {
+        Integer [] partitions = readPartitionDirectories(partitionPath);
+        Map<Integer, Long> lastIndexedOffsetMap = new HashMap<>(partitions.length);
+        for (int partition : partitions) {
             JournalPersistence pp = persistenceFactory.createJournalPersistenceInstance();
             pp.recover(partitionPath.resolve(String.valueOf(partition)), properties);
             // 截掉末尾半条数据
@@ -584,7 +584,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         }
     }
 
-    private Short [] readPartitionDirectories(Path partitionPath) throws IOException {
+    private Integer [] readPartitionDirectories(Path partitionPath) throws IOException {
         return Files.isDirectory(partitionPath) ?
                 Files.list(partitionPath)
                 .filter(Files::isDirectory)
@@ -592,14 +592,14 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                 .filter(filename -> filename.matches("^\\d+$"))
                 .map(str -> {
                     try {
-                        return Short.parseShort(str);
+                        return Integer.parseInt(str);
                     } catch (NumberFormatException ignored) {
-                        return (short) -1;
+                        return -1;
                     }
                 })
                 .filter(s -> s >= 0)
-                .toArray(Short[]::new):
-                new Short[0];
+                .toArray(Integer[]::new):
+                new Integer[0];
     }
 
     private Properties replacePropertiesNames(Properties properties, String fromNameRegex, String toNameRegex ){
@@ -725,22 +725,22 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         }
     }
 
-    public void rePartition(Set<Short> partitions) {
+    public void rePartition(Set<Integer> partitions) {
         try {
             synchronized (partitionMap) {
-                for (short partition : partitions) {
+                for (int partition : partitions) {
                     if (!partitionMap.containsKey(partition)) {
                         addPartition(partition);
                     }
                 }
 
-                List<Short> toBeRemoved = new ArrayList<>();
-                for (Map.Entry<Short, JournalPersistence> entry : partitionMap.entrySet()) {
+                List<Integer> toBeRemoved = new ArrayList<>();
+                for (Map.Entry<Integer, JournalPersistence> entry : partitionMap.entrySet()) {
                     if (!partitions.contains(entry.getKey())) {
                         toBeRemoved.add(entry.getKey());
                     }
                 }
-                for (Short partition : toBeRemoved) {
+                for (Integer partition : toBeRemoved) {
                     removePartition(partition);
                 }
 
@@ -751,11 +751,11 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     }
 
     @Override
-    public Set<Short> getPartitions() {
+    public Set<Integer> getPartitions() {
         return partitionMap.keySet();
     }
 
-    public void addPartition(short partition) throws IOException {
+    public void addPartition(int partition) throws IOException {
         synchronized (partitionMap) {
             if (!partitionMap.containsKey(partition)) {
                 JournalPersistence partitionPersistence = persistenceFactory.createJournalPersistenceInstance();
@@ -765,7 +765,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         }
     }
 
-    public void removePartition(short partition) throws IOException {
+    public void removePartition(int partition) throws IOException {
         synchronized (partitionMap) {
             JournalPersistence removedPersistence;
             if ((removedPersistence = partitionMap.remove(partition)) != null) {

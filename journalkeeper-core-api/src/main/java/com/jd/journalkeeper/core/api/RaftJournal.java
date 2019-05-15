@@ -8,19 +8,19 @@ import java.util.Set;
  * Date: 2019-04-24
  */
 public interface RaftJournal {
-    short DEFAULT_PARTITION = 0;
-    short RESERVED_PARTITION = Short.MAX_VALUE;
+    int DEFAULT_PARTITION = 0;
+    int RESERVED_PARTITION = Short.MAX_VALUE;
     long minIndex();
 
     long maxIndex();
 
-    long minIndex(short partition);
+    long minIndex(int partition);
 
-    long maxIndex(short partition);
+    long maxIndex(int partition);
 
-    RaftEntry readByPartition(short partition, long index);
+    RaftEntry readByPartition(int partition, long index);
 
-    List<RaftEntry> readByPartition(short partition, long index, int maxSize);
+    List<RaftEntry> readByPartition(int partition, long index, int maxSize);
 
     RaftEntry read(long index);
 
@@ -28,5 +28,5 @@ public interface RaftJournal {
 
     RaftEntryHeader readEntryHeader(long index);
 
-    Set<Short> getPartitions();
+    Set<Integer> getPartitions();
 }

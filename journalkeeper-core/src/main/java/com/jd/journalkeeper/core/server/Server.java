@@ -630,11 +630,11 @@ public abstract class Server<E, Q, R>
      */
     @Override
     public void recover() throws IOException {
-        Set<Short> partitions = Stream.of(RaftJournal.DEFAULT_PARTITION, RESERVED_PARTITION).collect(Collectors.toSet());
+        Set<Integer> partitions = Stream.of(RaftJournal.DEFAULT_PARTITION, RESERVED_PARTITION).collect(Collectors.toSet());
         recover(partitions);
     }
 
-    public void recover(Set<Short> partitions) throws IOException {
+    public void recover(Set<Integer> partitions) throws IOException {
         lastSavedServerMetadata = metadataPersistence.recover(metadataPath(), properties);
         onMetadataRecovered(lastSavedServerMetadata);
         recoverJournal(partitions);
@@ -644,7 +644,7 @@ public abstract class Server<E, Q, R>
 
 
 
-    private void recoverJournal(Set<Short> partitions) throws IOException {
+    private void recoverJournal(Set<Integer> partitions) throws IOException {
         journal.recover(journalPath(), properties);
         journal.rePartition(partitions);
     }

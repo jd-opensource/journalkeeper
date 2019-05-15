@@ -224,8 +224,8 @@ public class EntryParser extends com.jd.journalkeeper.utils.parser.EntryParser {
         destBuffer.putInt(storageEntry.getHeader().getLength());
         destBuffer.putShort(Entry.MAGIC);
         destBuffer.putInt(((EntryHeader) storageEntry.getHeader()).getTerm());
-        destBuffer.putShort(storageEntry.getHeader().getPartition());
-        destBuffer.putShort(storageEntry.getHeader().getBatchSize());
+        destBuffer.putShort((short ) storageEntry.getHeader().getPartition());
+        destBuffer.putShort((short )storageEntry.getHeader().getBatchSize());
         destBuffer.put(storageEntry.getEntry());
     }
 }

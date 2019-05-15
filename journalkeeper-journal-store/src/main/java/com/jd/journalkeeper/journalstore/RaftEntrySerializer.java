@@ -39,9 +39,9 @@ public class RaftEntrySerializer implements Serializer<RaftEntry> {
         byte [] bytes = new byte[sizeOf(entry)];
         ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
         byteBuffer.putInt(entry.getHeader().getLength());
-        byteBuffer.putShort(entry.getHeader().getPartition());
-        byteBuffer.putShort(entry.getHeader().getBatchSize());
-        byteBuffer.putShort(entry.getHeader().getOffset());
+        byteBuffer.putShort((short )entry.getHeader().getPartition());
+        byteBuffer.putShort((short )entry.getHeader().getBatchSize());
+        byteBuffer.putShort((short )entry.getHeader().getOffset());
         byteBuffer.put(entry.getEntry());
         return bytes;
     }

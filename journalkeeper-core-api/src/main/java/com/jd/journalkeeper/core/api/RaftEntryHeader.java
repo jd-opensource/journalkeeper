@@ -6,10 +6,10 @@ package com.jd.journalkeeper.core.api;
  */
 public class RaftEntryHeader {
     private int length;
-    private short partition = 0;
-    private short batchSize = 1;
+    private int partition = 0;
+    private int batchSize = 1;
     //Transient
-    private short offset = 0;
+    private int offset = 0;
 
     public int getLength() {
         return length;
@@ -19,27 +19,27 @@ public class RaftEntryHeader {
         this.length = length;
     }
 
-    public short getPartition() {
+    public int getPartition() {
         return partition;
     }
 
-    public void setPartition(short partition) {
+    public void setPartition(int partition) {
         this.partition = partition;
     }
 
-    public short getBatchSize() {
+    public int getBatchSize() {
         return batchSize;
     }
 
-    public void setBatchSize(short batchSize) {
+    public void setBatchSize(int batchSize) {
         this.batchSize = batchSize;
     }
 
-    public short getOffset() {
+    public int getOffset() {
         return offset;
     }
 
-    public void setOffset(short offset) {
+    public void setOffset(int offset) {
         this.offset = offset;
     }
 }
