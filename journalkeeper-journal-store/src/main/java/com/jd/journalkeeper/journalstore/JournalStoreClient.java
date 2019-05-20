@@ -10,12 +10,15 @@ import com.jd.journalkeeper.core.entry.reserved.CompactJournalEntry;
 import com.jd.journalkeeper.core.entry.reserved.CompactJournalEntrySerializer;
 import com.jd.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import com.jd.journalkeeper.core.entry.reserved.ScalePartitionsEntrySerializer;
+import com.jd.journalkeeper.utils.event.EventType;
 import com.jd.journalkeeper.utils.event.EventWatcher;
 
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -85,6 +88,18 @@ public class JournalStoreClient implements PartitionedJournalStore {
         return raftClient.query(JournalStoreQuery.createQueryPartitions())
                 .thenApply(JournalStoreQueryResult::getBoundaries)
                 .thenApply(boundaries -> boundaries.keySet().stream().mapToInt(Integer::intValue).toArray());
+    }
+
+    public void waitForLeader(long timeoutMs) throws InterruptedException {
+
+        CountDownLatch latch = new CountDownLatch(1);
+        EventWatcher watcher = event -> {if(event.getEventType() == EventType.ON_LEADER_CHANGE) latch.countDown();} ;
+        watch(watcher);
+        try {
+            latch.await(timeoutMs, TimeUnit.MILLISECONDS);
+        } finally {
+            unWatch(watcher);
+        }
     }
 
     @Override

@@ -39,6 +39,8 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.StampedLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -170,6 +172,8 @@ public abstract class Server<E, Q, R>
     protected final EventBus eventBus;
     private final CompactJournalEntrySerializer compactJournalEntrySerializer = new CompactJournalEntrySerializer();
     private final ScalePartitionsEntrySerializer scalePartitionsEntrySerializer = new ScalePartitionsEntrySerializer();
+    protected final Lock scalePartitionLock = new ReentrantLock(true);
+    protected final Lock compactLock = new ReentrantLock(true);
 
     public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
                   Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor,
@@ -321,11 +325,29 @@ public abstract class Server<E, Q, R>
     }
 
     private void scalePartitionsAsync(int[] partitions) {
-        // TODO
+        asyncExecutor.submit(() -> {
+            try {
+                scalePartitionLock.lock();
+                journal.rePartition(Arrays.stream(partitions).boxed().collect(Collectors.toSet()));
+            } finally {
+                scalePartitionLock.unlock();
+            }
+
+        });
     }
 
     private void compactJournalAsync(Map<Integer, Long> compactIndices) {
-        // TODO
+        asyncExecutor.submit(() -> {
+            try {
+                compactLock.lock();
+                journal.compactByPartition(compactIndices);
+            } catch (IOException e) {
+                logger.warn("Compact journal exception: ", e);
+            } finally {
+                compactLock.unlock();
+            }
+
+        });
     }
 
     protected void fireEvent(int eventType, Map<String, String> eventData) {
@@ -630,18 +652,12 @@ public abstract class Server<E, Q, R>
      */
     @Override
     public void recover() throws IOException {
-        Set<Integer> partitions = Stream.of(RaftJournal.DEFAULT_PARTITION, RESERVED_PARTITION).collect(Collectors.toSet());
-        recover(partitions);
-    }
-
-    public void recover(Set<Integer> partitions) throws IOException {
         lastSavedServerMetadata = metadataPersistence.recover(metadataPath(), properties);
         onMetadataRecovered(lastSavedServerMetadata);
-        recoverJournal(partitions);
+        recoverJournal(lastSavedServerMetadata.getPartitions());
         state.recover(statePath(), journal, properties);
         recoverSnapshots();
     }
-
 
 
     private void recoverJournal(Set<Integer> partitions) throws IOException {
@@ -682,6 +698,18 @@ public abstract class Server<E, Q, R>
     protected void onMetadataRecovered(ServerMetadata metadata) {
         this.uri = metadata.getThisServer();
         this.commitIndex = metadata.getCommitIndex();
+
+        if(metadata.getPartitions() == null ) {
+            metadata.setPartitions(new HashSet<>());
+        }
+
+        if(metadata.getPartitions().isEmpty()) {
+            metadata.getPartitions().addAll(
+                    Stream.of(RaftJournal.DEFAULT_PARTITION, RESERVED_PARTITION)
+                            .collect(Collectors.toSet())
+            );
+        }
+
     }
 
     protected ServerMetadata createServerMetadata() {

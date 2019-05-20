@@ -165,6 +165,11 @@ public class PositioningStore implements JournalPersistence,Closeable {
                         Config.CACHED_FILE_MAX_COUNT_KEY,
                         String.valueOf(Config.DEFAULT_CACHED_FILE_MAX_COUNT))));
 
+        config.setMaxDirtySize(Long.parseLong(
+                properties.getProperty(
+                        Config.MAX_DIRTY_SIZE_KEY,
+                        String.valueOf(Config.DEFAULT_MAX_DIRTY_SIZE))));
+
         return config;
     }
 
@@ -193,14 +198,25 @@ public class PositioningStore implements JournalPersistence,Closeable {
 
     @Override
     public long append(byte [] bytes) throws IOException{
+
         if(bytes.length > config.fileDataSize) {
             throw new TooManyBytesException(bytes.length, config.fileDataSize, base.toPath());
         }
+
+        // Wait for flush
+        waitForFlush();
+
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         if (null == writeStoreFile) writeStoreFile = createStoreFile(writePosition.get());
         if (config.getFileDataSize() - writeStoreFile.writePosition() < buffer.remaining()) writeStoreFile = createStoreFile(writePosition.get());
         writePosition.getAndAdd(writeStoreFile.append(buffer));
         return writePosition.get();
+    }
+
+    private void waitForFlush() {
+        while (max() - flushed() > config.getMaxDirtySize()) {
+            Thread.yield();
+        }
     }
 
 
@@ -232,15 +248,22 @@ public class PositioningStore implements JournalPersistence,Closeable {
         }
     }
 
-
     private StoreFile createStoreFile(long position) {
         StoreFile storeFile = new LocalStoreFile(position, base, config.getFileHeaderSize(), bufferPool, config.getFileDataSize());
         StoreFile present;
         if((present = storeFileMap.putIfAbsent(position, storeFile)) != null){
             storeFile = present;
+        } else {
+            checkDiskFreeSpace(base, config.getFileDataSize() + config.getFileHeaderSize());
         }
 
         return storeFile;
+    }
+
+    private void checkDiskFreeSpace(File file, long fileSize) {
+        if(file.getFreeSpace() < fileSize) {
+            throw new DiskFullException(file);
+        }
     }
 
     public byte [] read(long position, int length) throws IOException{
@@ -330,10 +353,12 @@ public class PositioningStore implements JournalPersistence,Closeable {
         final static int DEFAULT_FILE_DATA_SIZE = 128 * 1024 * 1024;
         final static int DEFAULT_CACHED_FILE_CORE_COUNT = 0;
         final static int DEFAULT_CACHED_FILE_MAX_COUNT = 2;
+        final static long DEFAULT_MAX_DIRTY_SIZE = 128 * 1024 * 1024;
         final static String FILE_HEADER_SIZE_KEY = "file_header_size";
         final static String FILE_DATA_SIZE_KEY = "file_data_size";
         final static String CACHED_FILE_CORE_COUNT_KEY = "cached_file_core_count";
         final static String CACHED_FILE_MAX_COUNT_KEY = "cached_file_max_count";
+        final static String MAX_DIRTY_SIZE_KEY = "max_dirty_size";
         /**
          * 文件头长度
          */
@@ -352,6 +377,10 @@ public class PositioningStore implements JournalPersistence,Closeable {
          */
         private int cachedFileMaxCount;
 
+        /**
+         * 脏数据最大长度，超过这个长度append将阻塞
+         */
+        private long maxDirtySize;
 
         int getFileHeaderSize() {
             return fileHeaderSize;
@@ -383,6 +412,14 @@ public class PositioningStore implements JournalPersistence,Closeable {
 
         void setCachedFileMaxCount(int cachedFileMaxCount) {
             this.cachedFileMaxCount = cachedFileMaxCount;
+        }
+
+        public long getMaxDirtySize() {
+            return maxDirtySize;
+        }
+
+        public void setMaxDirtySize(long maxDirtySize) {
+            this.maxDirtySize = maxDirtySize;
         }
     }
 

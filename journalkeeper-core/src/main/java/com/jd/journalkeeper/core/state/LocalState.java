@@ -85,7 +85,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
     /**
      * 从本地文件恢复状态，如果不存在则创建新的。
      */
-    protected abstract void recoverLocalState(Path path, RaftJournal raftJournal, Properties properties);
+    protected abstract void recoverLocalState(Path path, RaftJournal raftJournal, Properties properties) throws IOException;
 
     /**
      * 列出所有复制时需要拷贝的文件。

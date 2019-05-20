@@ -214,6 +214,10 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 properties.getProperty(
                         Config.REPLICATION_PARALLELISM_KEY,
                         String.valueOf(Config.DEFAULT_REPLICATION_PARALLELISM))));
+        config.setCacheRequests(Integer.parseInt(
+                properties.getProperty(
+                        Config.CACHE_REQUESTS_KEY,
+                        String.valueOf(Config.DEFAULT_CACHE_REQUESTS))));
         return config;
     }
 
@@ -314,7 +318,6 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         }
         do {
             if (serverState() == ServerState.RUNNING && voterState == VoterState.LEADER && !Thread.currentThread().isInterrupted()) {
-                // TODO: Concurrent modification exception
                 count = followers.parallelStream()
                         .mapToInt(follower -> {
                             long maxIndex = journal.maxIndex();
@@ -417,8 +420,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                                         follower.getUri(), response.getTerm(), response.getJournalIndex(), voterInfo());
                             }
                         } else {
-                            //TODO 打开注释
-                            // logger.warn("Replication response error: {}", response.errorString());
+                            logger.warn("Replication response error: {}", response.errorString());
                             delaySendAsyncAppendEntriesRpc(follower, request);
                         }
 

@@ -21,14 +21,14 @@ import java.util.stream.Collectors;
 public class JournalStoreState extends LocalState<byte [], JournalStoreQuery, JournalStoreQueryResult> {
     private final static String STATE_FILE_NAME = "applied_indices";
     private RaftJournal journal;
-    private Map<Integer, Long> appliedIndices = new ConcurrentHashMap<>();
+    private AppliedIndicesFile appliedIndices;
 
     protected JournalStoreState(StateFactory<byte [], JournalStoreQuery, JournalStoreQueryResult> stateFactory) {
         super(stateFactory);
     }
 
     @Override
-    protected void recoverLocalState(Path path, RaftJournal raftJournal, Properties properties) {
+    protected void recoverLocalState(Path path, RaftJournal raftJournal, Properties properties) throws IOException{
         this.journal = raftJournal;
         appliedIndices = recoverAppliedIndices(path.resolve(STATE_FILE_NAME));
     }
@@ -40,15 +40,16 @@ public class JournalStoreState extends LocalState<byte [], JournalStoreQuery, Jo
     }
 
     private void flushAppliedIndices(Path path) {
-        // TODO
+        appliedIndices.flush();
     }
 
     /**
      * 从文件恢复
      */
-    private Map<Integer, Long> recoverAppliedIndices(Path path) {
-        // TODO
-        return null;
+    private AppliedIndicesFile recoverAppliedIndices(Path path) throws IOException {
+        AppliedIndicesFile appliedIndicesFile = new AppliedIndicesFile(path.toFile());
+        appliedIndicesFile.recover();
+        return appliedIndicesFile;
     }
 
 

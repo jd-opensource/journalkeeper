@@ -2,6 +2,8 @@ package com.jd.journalkeeper.persistence;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * @author liyue25
@@ -14,6 +16,7 @@ public class ServerMetadata {
     private int currentTerm = 0;
     private URI votedFor;
     private URI thisServer;
+    private Set<Integer> partitions;
 
     public long getCommitIndex() {
         return commitIndex;
@@ -63,40 +66,31 @@ public class ServerMetadata {
         this.thisServer = thisServer;
     }
 
-    @Override
-    public boolean equals(Object obj) {
-// checking if both the object references are
-        // referring to the same object.
-        if(this == obj)
-            return true;
 
-        // it checks if the argument is of the
-        // type Geek by comparing the classes
-        // of the passed argument and this object.
-        // if(!(obj instanceof Geek)) return false; ---> avoid.
-        if(obj == null || obj.getClass()!= this.getClass())
-            return false;
-
-        // type casting of the argument.
-        ServerMetadata serverMetadata = (ServerMetadata) obj;
-
-        // comparing the state of argument with
-        // the state of 'this' Object.
-        return (serverMetadata.commitIndex == this.commitIndex &&
-                serverMetadata.currentTerm == this.currentTerm &&
-                objectEquals(serverMetadata.thisServer, this.thisServer) &&
-                objectEquals(serverMetadata.votedFor, this.votedFor) &&
-                objectEquals(serverMetadata.voters, this.voters) &&
-                objectEquals(serverMetadata.parents, this.parents)
-                );
+    public Set<Integer> getPartitions() {
+        return partitions;
     }
 
-    private static boolean objectEquals(Object o1, Object o2) {
-        if(o1 == null && o2 == null) return true;
-        if(o1 != null && o2 != null) {
-            return o1.equals(o2);
-        } else {
-            return false;
-        }
+    public void setPartitions(Set<Integer> partitions) {
+        this.partitions = partitions;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(commitIndex, voters, parents, currentTerm, votedFor, thisServer, partitions);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        ServerMetadata that = (ServerMetadata) o;
+        return commitIndex == that.commitIndex &&
+                currentTerm == that.currentTerm &&
+                Objects.equals(voters, that.voters) &&
+                Objects.equals(parents, that.parents) &&
+                Objects.equals(votedFor, that.votedFor) &&
+                Objects.equals(thisServer, that.thisServer) &&
+                Objects.equals(partitions, that.partitions);
     }
 }

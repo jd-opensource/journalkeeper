@@ -20,7 +20,7 @@ append |  写入日志。
 get |  查询日志。
 minIndex |  当前已提交日志最小位置。
 maxIndex |  当前已提交日志最大位置。
-shrink | 删除旧日志。
+compact | 删除旧日志。
 
 ### append
 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。日志在集群中被复制到大多数节点后返回。
@@ -53,7 +53,7 @@ entries[] | 读到的日志，返回的数据条数为$min(maxIndex - index, siz
 -- | --
 minIndex/maxIndex | 返回的最小/最大已提交日志索引位置。
 
-### shrink
+### compact
 删除旧日志，只允许删除最旧的部分日志（即增加minIndex，删除之前的日志）。保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。在集群中复制到大多数节点都完成删除后返回。
 参数 | 描述
 -- | --
@@ -79,7 +79,7 @@ append |  写入日志。
 get |  查询日志。
 minIndices |  当前已提交日志最小位置。
 maxIndices |  当前已提交日志最大位置。
-shrink | 删除旧日志。
+compact | 删除旧日志。
 scalePartitions | 变更分区数量。
 listPartitions | 查询当前所有分区。
 
@@ -116,7 +116,7 @@ entries[] | 读到的日志，返回的数据条数为$min(maxIndex - index, siz
 -- | --
 minIndices[]/maxIndices[] | 返回每个分区的最小/最大已提交日志索引位置。
 
-### shrink
+### compact
 删除旧日志，只允许删除最旧的部分日志（即增加minIndex）。保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。在集群中复制到大多数节点都完成删除后返回。
 参数 | 描述
 -- | --

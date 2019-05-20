@@ -39,7 +39,7 @@ public class ScalePartitionsEntrySerializer implements Serializer<ScalePartition
         ByteBuffer buffer = ByteBuffer.wrap(bytes, Byte.BYTES, bytes.length - Byte.BYTES);
         List<Integer> partitionList = new LinkedList<>();
         while (buffer.hasRemaining()) {
-            partitionList.add(buffer.getInt());
+            partitionList.add(Short.valueOf(buffer.getShort()).intValue());
         }
         return new ScalePartitionsEntry(partitionList.stream().mapToInt(Integer::intValue).toArray());
     }

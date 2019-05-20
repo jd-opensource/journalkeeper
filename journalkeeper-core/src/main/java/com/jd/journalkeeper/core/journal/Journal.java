@@ -99,7 +99,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         long compactJournalOffset = readOffset(minIndexOffset / INDEX_STORAGE_SIZE);
         // 删除分区索引
         for (JournalPersistence partitionPersistence : partitionMap.values()) {
-            compactPartition(partitionPersistence, compactJournalOffset);
+            compactIndices(partitionPersistence, compactJournalOffset);
         }
         // 计算所有索引（全局索引和每个分区索引）对应的JournalOffset的最小值
         compactJournalOffset = Stream.concat(partitionMap.values().stream(), Stream.of(indexPersistence))
@@ -111,7 +111,27 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     }
 
-    private void compactPartition(JournalPersistence pp, long minJournalOffset) throws IOException{
+    public void compactByPartition(Map<Integer, Long> compactIndices) throws IOException {
+        // 如果给定的compactIndices 中的分区少于当前实际分区，需要用这些分区的minIndex补全分区。
+        Map<Integer, Long> compacted = partitionMap.keySet().stream()
+                .collect(Collectors.toMap(k -> k, k -> compactIndices.getOrDefault(k,minIndex(k))));
+        logger.info("Journal is going to compact: {}, path: {}.", compacted, basePath);
+
+        // 计算Journal的最小安全Offset
+        long compactJournalOffset = compacted.entrySet().stream().mapToLong(
+                entry -> readOffset(partitionMap.get(entry.getKey()), entry.getValue())
+        ).max().orElse(journalPersistence.min());
+        logger.info("Safe journal offset: {}. ", compactJournalOffset);
+
+        // 删除分区索引
+        for (JournalPersistence indexPersistence : partitionMap.values()) {
+            compactIndices(indexPersistence, compactJournalOffset);
+        }
+        // 删除全局索引
+        compactIndices(indexPersistence, compactJournalOffset);
+    }
+
+    private void compactIndices(JournalPersistence pp, long minJournalOffset) throws IOException{
         long indexOffset = binarySearchFloorOffset(pp, minJournalOffset, pp.min(), pp.max());
         pp.compact(indexOffset);
     }
@@ -429,6 +449,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         return readEntryHeaderByOffset(offset).getTerm();
     }
 
+
+
     /**
      * 从index位置开始：
      * 如果一条已经存在的日志与新的冲突（index 相同但是任期号 term 不同），则删除已经存在的日志和它之后所有的日志
@@ -439,6 +461,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * @throws IndexOverflowException 如果 startIndex >= maxIndex()
      */
     public void compareOrAppendRaw(List<byte []> rawEntries, long startIndex) {
+
 
         List<EntryHeader> entries = rawEntries.stream()
                 .map(ByteBuffer::wrap)
@@ -475,16 +498,16 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     }
 
     private void truncatePartitions(long journalOffset) throws IOException {
-        for (JournalPersistence partitionPerstence : partitionMap.values()) {
-            long position = partitionPerstence.max() - INDEX_STORAGE_SIZE;
-            while (position > partitionPerstence.min()) {
-                long offset = readOffset(partitionPerstence, position / INDEX_STORAGE_SIZE );
+        for (JournalPersistence partitionPersistence : partitionMap.values()) {
+            long position = partitionPersistence.max() - INDEX_STORAGE_SIZE;
+            while (position > partitionPersistence.min()) {
+                long offset = readOffset(partitionPersistence, position / INDEX_STORAGE_SIZE );
                 if(offset < journalOffset) {
                     break;
                 }
                 position -= INDEX_STORAGE_SIZE;
             }
-            partitionPerstence.truncate(position <= partitionPerstence.min()? 0L : position + INDEX_STORAGE_SIZE);
+            partitionPersistence.truncate(position <= partitionPersistence.min()? 0L : position + INDEX_STORAGE_SIZE);
         }
     }
 
@@ -531,7 +554,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             pp.truncate(pp.max() - pp.max() % INDEX_STORAGE_SIZE);
             partitionMap.put(partition, pp);
 
-            truncateTailPartialBatchIndecies(pp);
+            truncateTailPartialBatchIndices(pp);
 
             lastIndexedOffsetMap.put(partition, getLastIndexedOffset(pp));
 
@@ -567,7 +590,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         return lastIndexedOffset;
     }
 
-    private void truncateTailPartialBatchIndecies(JournalPersistence pp) throws IOException {
+    private void truncateTailPartialBatchIndices(JournalPersistence pp) throws IOException {
         if(pp.max() > pp.min()) {
             // 如果最后一条索引是批消息的索引，需要检查其完整性
             long lastIndex = pp.max() / INDEX_STORAGE_SIZE - 1;
