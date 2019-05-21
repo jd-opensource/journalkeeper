@@ -5,7 +5,7 @@ import com.jd.journalkeeper.base.Serializer;
 import java.nio.ByteBuffer;
 
 public class JournalStoreQuerySerializer implements Serializer<JournalStoreQuery> {
-    private static final int SIZE = Byte.BYTES + Integer.BYTES + Long.BYTES;
+    private static final int SIZE = Byte.BYTES + Short.BYTES + Integer.BYTES + Long.BYTES;
     @Override
     public int sizeOf(JournalStoreQuery partitionJournalStoreQuery) {
         return SIZE;

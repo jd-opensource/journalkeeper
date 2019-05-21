@@ -14,7 +14,7 @@ public class JournalStoreQueryResult {
     private final List<RaftEntry> entries;
     private final Map<Integer, Boundary> boundaries;
 
-    private JournalStoreQueryResult(List<RaftEntry> entries, Map<Integer, Boundary> boundaries, int cmd) {
+    public JournalStoreQueryResult(List<RaftEntry> entries, Map<Integer, Boundary> boundaries, int cmd) {
         this.entries = entries;
         this.boundaries = boundaries;
         this.cmd = cmd;

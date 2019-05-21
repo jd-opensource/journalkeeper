@@ -29,13 +29,17 @@ public class Entry extends RaftEntry {
         setHeader(header);
         setEntry(entry);
     }
+    public Entry(byte [] entry, int term, int partition) {
+        this(entry, term, partition, 1);
+    }
 
-    public Entry(byte [] entry, int term, int partition){
+    public Entry(byte [] entry, int term, int partition, int batchSize){
         this();
         setEntry(entry);
         ((EntryHeader) getHeader()).setTerm(term);
-        getHeader().setLength(EntryParser.getHeaderLength() + entry.length);
+        getHeader().setPayloadLength(entry.length);
         getHeader().setPartition(partition);
+        getHeader().setBatchSize(batchSize);
     }
 
 

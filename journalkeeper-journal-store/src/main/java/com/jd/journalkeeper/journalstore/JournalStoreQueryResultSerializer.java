@@ -1,24 +1,128 @@
 package com.jd.journalkeeper.journalstore;
 
 import com.jd.journalkeeper.base.Serializer;
+import com.jd.journalkeeper.core.api.RaftEntry;
+import com.jd.journalkeeper.core.api.RaftEntryHeader;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * @author liyue25
  * Date: 2019-05-09
+ *
+ * Cmd : 1 Bytes
+ *
+ * Entries: Variable
+ *  Entries size: 2 Bytes
+ *  RaftEntry: Variable
+ *      Header
+ *      -----------
+ *      Payload length: 4 Bytes
+ *      Partition: 2 Bytes
+ *      BatchSize: 2 Bytes
+ *      Offset: 2 Bytes
+ *
+ *      Data
+ *      -----------
+ *      Entry payload: Variable Bytes (Header.PayloadLength)
+ *  RaftEntry: Variable
+ *  ...
+ *
+ * Boundaries
+ *  Boundaries size: 2 Bytes
+ *  Bourdary: 18 Bytes
+ *      Partition(Key): 2 Bytes
+ *      Boundary(Value): 16 Bytes
+ *          Min: 8 Bytes
+ *          Max: 8 Bytes
+ *  Bourdary: 18 Bytes
+ *  ...
+ *
  */
 public class JournalStoreQueryResultSerializer implements Serializer<JournalStoreQueryResult> {
+    private static final int FIXED_LENGTH = Byte.BYTES + Short.BYTES + Short.BYTES;
+    private static final int ENTRY_HEADER_LENGTH = Integer.BYTES + Short.BYTES  + Short.BYTES + Short.BYTES;
+
     @Override
     public int sizeOf(JournalStoreQueryResult journalStoreQueryResult) {
-        return 0;
+        return
+
+                (journalStoreQueryResult.getBoundaries() == null ? 0 :
+                        journalStoreQueryResult.getBoundaries().size() * (Short.BYTES + Long.BYTES + Long.BYTES)) +
+                (journalStoreQueryResult.getEntries() == null ? 0 :
+                        journalStoreQueryResult.getEntries().stream().mapToInt(entry -> entry.getHeader().getPayloadLength()
+                                + ENTRY_HEADER_LENGTH)
+                        .sum()) + FIXED_LENGTH;
+
     }
 
     @Override
-    public byte[] serialize(JournalStoreQueryResult entry) {
-        return new byte[0];
+    public byte[] serialize(JournalStoreQueryResult journalStoreQueryResult) {
+        byte [] bytes = new byte[sizeOf(journalStoreQueryResult)];
+        ByteBuffer buffer = ByteBuffer.wrap(bytes);
+
+        buffer.put((byte) journalStoreQueryResult.getCmd());
+
+        List<RaftEntry> entries = journalStoreQueryResult.getEntries();
+        if(entries == null) {
+            entries = Collections.emptyList();
+        }
+        buffer.putShort((short) entries.size());
+        entries.forEach(entry -> {
+            buffer.putInt(entry.getHeader().getPayloadLength());
+            buffer.putShort((short )entry.getHeader().getPartition());
+            buffer.putShort((short )entry.getHeader().getBatchSize());
+            buffer.putShort((short )entry.getHeader().getOffset());
+            buffer.put(entry.getEntry());
+        });
+
+        Map<Integer, JournalStoreQueryResult.Boundary> boundaryMap = journalStoreQueryResult.getBoundaries();
+        if(boundaryMap == null) {
+            boundaryMap = Collections.emptyMap();
+        }
+        buffer.putShort((short) boundaryMap.size());
+        boundaryMap.forEach((partition, boundary) -> {
+            buffer.putShort(partition.shortValue());
+            buffer.putLong(boundary.getMin());
+            buffer.putLong(boundary.getMax());
+        });
+
+        return bytes;
     }
 
     @Override
     public JournalStoreQueryResult parse(byte[] bytes) {
-        return null;
+        ByteBuffer buffer = ByteBuffer.wrap(bytes);
+        int cmd = buffer.get();
+
+        int entriesSize = buffer.getShort();
+        List<RaftEntry> entries = new ArrayList<>(entriesSize);
+        for (int i = 0; i < entriesSize; i++) {
+            RaftEntry entry = new RaftEntry();
+            RaftEntryHeader header = new RaftEntryHeader();
+            entry.setHeader(header);
+            header.setPayloadLength(buffer.getInt());
+            header.setPartition(buffer.getShort());
+            header.setBatchSize(buffer.getShort());
+            header.setOffset(buffer.getShort());
+            byte [] entryBytes = new byte[header.getPayloadLength()];
+            buffer.get(entryBytes);
+            entry.setEntry(entryBytes);
+            entries.add(entry);
+        }
+
+        int boundariesSize = buffer.getShort();
+        Map<Integer, JournalStoreQueryResult.Boundary> boundaries = new HashMap<>(boundariesSize);
+        for (int i = 0; i < boundariesSize; i++) {
+            boundaries.put((int) buffer.getShort(),
+                    new JournalStoreQueryResult.Boundary(buffer.getLong(), buffer.getLong()));
+        }
+
+        return new JournalStoreQueryResult(entries, boundaries, cmd);
     }
 }

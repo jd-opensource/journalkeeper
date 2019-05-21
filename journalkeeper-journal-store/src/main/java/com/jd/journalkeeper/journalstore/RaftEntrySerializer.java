@@ -8,8 +8,6 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
 
 /**
  * Header
@@ -31,14 +29,14 @@ public class RaftEntrySerializer implements Serializer<RaftEntry> {
     private static final Logger logger = LoggerFactory.getLogger(RaftEntrySerializer.class);
     @Override
     public int sizeOf(RaftEntry entries) {
-        return entries.getHeader().getLength();
+        return entries.getHeader().getPayloadLength();
     }
 
     @Override
     public byte[] serialize(RaftEntry entry) {
         byte [] bytes = new byte[sizeOf(entry)];
         ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
-        byteBuffer.putInt(entry.getHeader().getLength());
+        byteBuffer.putInt(entry.getHeader().getPayloadLength());
         byteBuffer.putShort((short )entry.getHeader().getPartition());
         byteBuffer.putShort((short )entry.getHeader().getBatchSize());
         byteBuffer.putShort((short )entry.getHeader().getOffset());
@@ -52,7 +50,7 @@ public class RaftEntrySerializer implements Serializer<RaftEntry> {
         RaftEntry entry = new RaftEntry();
         RaftEntryHeader header = new RaftEntryHeader();
         entry.setHeader(header);
-        header.setLength(byteBuffer.getInt());
+        header.setPayloadLength(byteBuffer.getInt());
         header.setPartition(byteBuffer.getShort());
         header.setBatchSize(byteBuffer.getShort());
         header.setOffset(byteBuffer.getShort());

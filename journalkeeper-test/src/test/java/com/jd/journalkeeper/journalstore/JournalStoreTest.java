@@ -47,6 +47,11 @@ public class JournalStoreTest {
         writeReadTest(1, new int [] {2, 3, 4, 5, 6}, 1024, 1024, 1024);
     }
 
+    @Test
+    public void writeReadTripleNodes() throws Exception{
+        writeReadTest(3, new int [] {2, 3, 4, 5, 6}, 1024, 1024, 1024);
+    }
+
     /**
      * 读写测试
      * @param nodes 节点数量
@@ -60,7 +65,11 @@ public class JournalStoreTest {
         JournalStoreClient client = servers.get(0).createClient();
         client.waitForLeader(10000);
 
-        client.scalePartitions(partitions);
+        client.scalePartitions(partitions).get();
+
+        // Wait for all node to scale partitions.
+        Thread.sleep(1000L);
+
 
         byte [] rawEntries = new byte[entrySize];
         for (int i = 0; i < rawEntries.length; i++) {
@@ -72,13 +81,21 @@ public class JournalStoreTest {
         for (int partition : partitions) {
             for (int i = 0; i < batchCount; i++) {
                 client.append(partition, batchSize, rawEntries)
-                    .thenRun(latch::countDown);
+                        .whenComplete((v, e) -> {
+                            latch.countDown();
+                            if(e != null) {
+                                logger.warn("Exception:", e);
+                            }
+                        });
             }
         }
+        logger.info("Write finished, waiting for responses...");
 
         while (!latch.await(1, TimeUnit.SECONDS)){
             Thread.yield();
         }
+
+        logger.info("Replication finished.");
 
         // read
 
@@ -94,8 +111,18 @@ public class JournalStoreTest {
             }
         }
 
+        stopServers(servers);
 
+    }
 
+    private void stopServers(List<JournalStoreServer> servers) {
+        for (JournalStoreServer server : servers) {
+            try {
+                server.stop();
+            } catch (Throwable t) {
+                logger.warn("Stop server {} exception: ", server.serverUri(), t);
+            }
+        }
     }
 
     private List<JournalStoreServer> createServers(int nodes, Path path) throws IOException {

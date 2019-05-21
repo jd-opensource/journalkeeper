@@ -91,6 +91,10 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
      * Voter 处理AppendEntriesRequest线程
      */
     private final LoopThread voterReplicationRequestHandlerThread;
+    /**
+     * Voter 处理AppendEntriesRequest线程
+     */
+    private final LoopThread callbackThread;
 
     /**
      * Leader 发送AppendEntries RPC线程
@@ -109,6 +113,11 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     private final CallbackPositioningBelt replicationCallbacks = new CallbackPositioningBelt();
     private final CallbackPositioningBelt flushCallbacks = new CallbackPositioningBelt();
 
+    /**
+     * 刷盘位置
+     */
+    private final AtomicLong journalFlushIndex = new AtomicLong(0L);
+
     public Voter(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
         super(stateFactory, entrySerializer, querySerializer, resultSerializer, scheduledExecutor, asyncExecutor, properties);
         this.config = toConfig(properties);
@@ -123,6 +132,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         voterReplicationRequestHandlerThread = buildVoterReplicationHandlerThread();
         leaderReplicationThread = buildLeaderReplicationThread();
         leaderReplicationResponseHandlerThread = buildLeaderReplicationResponseThread();
+        callbackThread = buildCallbackThread();
     }
 
     private LoopThread buildLeaderAppendJournalEntryThread() {
@@ -160,12 +170,27 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     private LoopThread buildLeaderReplicationResponseThread() {
         return LoopThread.builder()
                 .name("LeaderReplicationResponseThread")
-                .condition(() ->this.serverState() == ServerState.RUNNING)
+                .condition(() ->this.serverState() == ServerState.RUNNING && this.voterState == VoterState.LEADER)
                 .doWork(this::handleReplicationResponses)
                 .sleepTime(config.getHeartbeatIntervalMs(),config.getHeartbeatIntervalMs())
                 .onException(e -> logger.warn("LeaderReplicationResponseThread Exception, {}: ", voterInfo(), e))
                 .daemon(true)
                 .build();
+    }
+    private LoopThread buildCallbackThread() {
+        return LoopThread.builder()
+                .name("CallbackThread")
+                .condition(() ->this.serverState() == ServerState.RUNNING)
+                .doWork(this::callback)
+                .sleepTime(config.getHeartbeatIntervalMs(),config.getHeartbeatIntervalMs())
+                .onException(e -> logger.warn("CallbackThread Exception, {}: ", voterInfo(), e))
+                .daemon(true)
+                .build();
+    }
+
+    private void callback() {
+        replicationCallbacks.callbackBefore(state.lastApplied());
+        flushCallbacks.callbackBefore(journalFlushIndex.get());
     }
 
     /**
@@ -173,17 +198,22 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
      */
     private void appendJournalEntry() throws InterruptedException {
         UpdateStateRequestResponse rr = pendingUpdateStateRequests.take();
-        if(voterState == VoterState.LEADER) {
 
-            long index = journal.append(new Entry(rr.getRequest().getEntry(), currentTerm.get(), rr.getRequest().getPartition()));
-            if(rr.getRequest().getResponseConfig() == ResponseConfig.PERSISTENCE) {
-                flushCallbacks.put(new Callback(index, rr.getResponseFuture()));
-            } else if (rr.getRequest().getResponseConfig() == ResponseConfig.REPLICATION){
-                replicationCallbacks.put(new Callback(index, rr.getResponseFuture()));
+        if(voterState == VoterState.LEADER) {
+            try {
+                long index = journal.append(new Entry(rr.getRequest().getEntry(), currentTerm.get(), rr.getRequest().getPartition(), rr.getRequest().getBatchSize()));
+                if (rr.getRequest().getResponseConfig() == ResponseConfig.PERSISTENCE) {
+                    flushCallbacks.put(new Callback(index, rr.getResponseFuture()));
+                } else if (rr.getRequest().getResponseConfig() == ResponseConfig.REPLICATION) {
+                    replicationCallbacks.put(new Callback(index, rr.getResponseFuture()));
+                }
+                logger.debug("Append journal entry, {}", voterInfo());
+                // 唤醒复制线程
+                leaderReplicationThread.wakeup();
+            } catch (Throwable t) {
+                rr.getResponseFuture().complete(new UpdateClusterStateResponse(t));
+                throw t;
             }
-            logger.info("Append journal entry, {}", voterInfo());
-            // 唤醒复制线程
-            leaderReplicationThread.wakeup();
         } else {
             rr.getResponseFuture().complete(new UpdateClusterStateResponse(new NotLeaderException(leader)));
         }
@@ -192,7 +222,8 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     @Override
     public boolean flush() {
         boolean ret = super.flush();
-        flushCallbacks.callbackBefore(journal.maxIndex());
+        journalFlushIndex.set(journal.maxIndex());
+        callbackThread.wakeup();
         return ret;
     }
 
@@ -369,7 +400,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             CompletableFuture.supplyAsync(() -> {
                 ServerRpc serverRpc = getServerRpc(follower.getUri());
                 if (null != request.getEntries() && !request.getEntries().isEmpty()) {
-                    logger.info("Send appendEntriesRequest, " +
+                    logger.debug("Send appendEntriesRequest, " +
                                     "follower: {}, " +
                                     "term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, " +
                                     "entries: {}, leaderCommit: {}, {}.",
@@ -387,10 +418,13 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                     .exceptionally(AsyncAppendEntriesResponse::new)
                     .thenAccept(response -> {
                         if (response.success()) {
+                            logger.debug("Update lastHeartbeatResponseTime of {}, {}.", follower.getUri(), voterInfo());
+                            follower.setLastHeartbeatResponseTime(System.currentTimeMillis());
+
                             checkTerm(response.getTerm());
                             if(response.getTerm() == currentTerm.get()) {
                                 if(response.getEntryCount() > 0) {
-                                    logger.info("Handle appendEntriesResponse, success: {}, journalIndex: {}, " +
+                                    logger.debug("Handle appendEntriesResponse, success: {}, journalIndex: {}, " +
                                                     "entryCount: {}, term: {}, follower: {}, {}.",
                                             response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
                                             follower.getUri(), voterInfo());
@@ -403,7 +437,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
                                 follower.addResponse(response);
                                 if(response.getEntryCount() > 0) {
-                                    logger.info("Handle fininsh appendEntriesResponse, success: {}, journalIndex: {}, " +
+                                    logger.debug("Handle finish appendEntriesResponse, success: {}, journalIndex: {}, " +
                                                     "entryCount: {}, term: {}, follower: {}, {}.",
                                             response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
                                             follower.getUri(), voterInfo());
@@ -466,34 +500,27 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
      *  5.3 log[N].term == currentTerm
      */
     private void handleReplicationResponses() {
-        long t0 = System.currentTimeMillis();
-        try {
-            if (followers.isEmpty()) { // 单节点情况需要单独处理
-                long N = journal.maxIndex();
+        if (followers.isEmpty()) { // 单节点情况需要单独处理
+            long N = journal.maxIndex();
+            if (voterState == VoterState.LEADER && N > commitIndex && journal.getTerm(N - 1) == currentTerm.get()) {
+                commitIndex = N;
+                // 唤醒状态机线程
+                stateMachineThread.wakeup();
+            }
+        } else {
+            long[] sortedMatchIndex = followers.parallelStream()
+                    .peek(this::handleReplicationResponse)
+                    .mapToLong(Follower::getMatchIndex)
+                    .sorted().toArray();
+            if (sortedMatchIndex.length > 0) {
+                long N = sortedMatchIndex[sortedMatchIndex.length / 2];
                 if (voterState == VoterState.LEADER && N > commitIndex && journal.getTerm(N - 1) == currentTerm.get()) {
+                    logger.debug("Set commitIndex {} to {}, {}.",
+                            commitIndex, N, voterInfo());
                     commitIndex = N;
                     // 唤醒状态机线程
                     stateMachineThread.wakeup();
                 }
-            } else {
-                long[] sortedMatchIndex = followers.parallelStream()
-                        .peek(this::handleReplicationResponse)
-                        .mapToLong(Follower::getMatchIndex)
-                        .sorted().toArray();
-                if (sortedMatchIndex.length > 0) {
-                    long N = sortedMatchIndex[sortedMatchIndex.length / 2];
-                    if (voterState == VoterState.LEADER && N > commitIndex && journal.getTerm(N - 1) == currentTerm.get()) {
-                        logger.info("Set commitIndex {} to {}, {}.",
-                                commitIndex, N, voterInfo());
-                        commitIndex = N;
-                        // 唤醒状态机线程
-                        stateMachineThread.wakeup();
-                    }
-                }
-            }
-        } finally {
-            if(System.currentTimeMillis() - t0 > 1000) {
-                logger.warn("什么情况？");
             }
         }
     }
@@ -502,7 +529,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         AsyncAppendEntriesResponse response;
         while (serverState() == ServerState.RUNNING && (response = follower.pendingResponses.poll()) != null) {
             if(response.getEntryCount() > 0) {
-                logger.info("Received appendEntriesResponse, success: {}, journalIndex: {}, " +
+                logger.debug("Received appendEntriesResponse, success: {}, journalIndex: {}, " +
                                 "entryCount: {}, term: {}, follower: {}, {}.",
                         response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
                         follower.getUri(), voterInfo());
@@ -515,17 +542,19 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             int fixTerm = currentTerm.get();
             if(fixTerm == response.getTerm()) {
                 if(response.isSuccess()) {
-                    logger.debug("Update lastHeartbeatResponseTime of {}, {}.", follower.getUri(), voterInfo());
-                    follower.setLastHeartbeatResponseTime(System.currentTimeMillis());
 
                     if (follower.getRepStartIndex() == response.getJournalIndex()) {
                         follower.setRepStartIndex(follower.getRepStartIndex() + response.getEntryCount());
                         follower.setMatchIndex(response.getJournalIndex() + response.getEntryCount());
                         if(response.getEntryCount() > 0) {
-                            logger.info("Replication success, RepStartIndex: {}, matchIndex: {}, follower: {}, {}.",
+                            logger.debug("Replication success, RepStartIndex: {}, matchIndex: {}, follower: {}, {}.",
                                     follower.getRepStartIndex(), follower.getMatchIndex(), follower.getUri(),
                                     voterInfo());
                         }
+                    } else {
+                        // 出现空洞，重新放回队列，等待后续处理
+                        follower.addResponse(response);
+                        break;
                     }
                 } else if(response.getEntryCount() > 0){
                     // 失败且不是心跳
@@ -569,7 +598,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 convertToFollower();
             }
             if(request.getEntries() != null && !request.getEntries().isEmpty()) {
-                logger.info("Received appendEntriesRequest, term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, " +
+                logger.debug("Received appendEntriesRequest, term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, " +
                                 "entries: {}, leaderCommit: {}, {}.",
                         request.getTerm(), request.getLeader(), request.getPrevLogIndex(), request.getPrevLogTerm(),
                         request.getEntries().size(), request.getLeaderCommit(), voterInfo());
@@ -584,23 +613,30 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                     if(!request.getLeader().equals(leader)) {
                         leader = request.getLeader();
                     }
-                    journal.compareOrAppendRaw(request.getEntries(), request.getPrevLogIndex() + 1);
-                    if (request.getLeaderCommit() > commitIndex) {
-                        commitIndex = Math.min(request.getLeaderCommit(), journal.maxIndex());
-                        stateMachineThread.wakeup();
-                    }
+                    try {
+                        journal.compareOrAppendRaw(request.getEntries(), request.getPrevLogIndex() + 1);
 
-                    AsyncAppendEntriesResponse response = new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
-                            currentTerm.get(), request.getEntries().size());
-                    rr.getResponseFuture()
-                            .complete(response);
-                    if(request.getEntries() != null && !request.getEntries().isEmpty()) {
-                        logger.info("Send appendEntriesResponse, success: {}, " +
-                                        "journalIndex: {}, entryCount: {}, term: {}, {}.",
-                                response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
-                                voterInfo());
+                        AsyncAppendEntriesResponse response = new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
+                                currentTerm.get(), request.getEntries().size());
+                        rr.getResponseFuture()
+                                .complete(response);
+                        if (request.getEntries() != null && !request.getEntries().isEmpty()) {
+                            logger.debug("Send appendEntriesResponse, success: {}, " +
+                                            "journalIndex: {}, entryCount: {}, term: {}, {}.",
+                                    response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
+                                    voterInfo());
+                        }
+                    } catch (Throwable t) {
+                        logger.warn("Handle replication request exception! {}", voterInfo(), t);
+                        rr.getResponseFuture().complete(new AsyncAppendEntriesResponse(t));
+                    } finally {
+                        if (request.getLeaderCommit() > commitIndex) {
+                            commitIndex = Math.min(request.getLeaderCommit(), journal.maxIndex());
+                            stateMachineThread.wakeup();
+                        }
                     }
                     return;
+
                 }
             } catch (IndexOverflowException | IndexUnderflowException ignored) {}
 
@@ -829,6 +865,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         voterReplicationRequestHandlerThread.start();
         leaderReplicationThread.start();
         leaderReplicationResponseHandlerThread.start();
+        callbackThread.start();
     }
 
     @Override
@@ -839,6 +876,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             leaderReplicationThread.stop();
             stopVoterReplicationRequestHandler();
             stopLeaderUpdateStateRequestHandler();
+            callbackThread.stop();
 
         } catch (Throwable t) {
             t.printStackTrace();
@@ -868,7 +906,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     @Override
     protected void onStateChanged() {
         super.onStateChanged();
-        replicationCallbacks.callbackBefore(state.lastApplied());
+        callbackThread.wakeup();
     }
 
     @Override
@@ -1078,6 +1116,9 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         void addLast(Callback callback) {
             queue.add(callback);
         }
+
+        private AtomicLong counter = new AtomicLong(0L);
+        private AtomicLong putCounter = new AtomicLong(0L);
         /**
          * NOT Thread-safe!!!!!!
          */
@@ -1086,19 +1127,23 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             try {
                 while (getFirst().position <= position){
                     Callback callback = removeFirst();
+                    counter.incrementAndGet();
                     callback.completableFuture.complete(new UpdateClusterStateResponse());
                 }
                 long deadline = System.currentTimeMillis() - getRpcTimeoutMs();
                 while (getFirst().timestamp < deadline) {
                     Callback callback = removeFirst();
+                    counter.incrementAndGet();
                     callback.completableFuture.complete(new UpdateClusterStateResponse(new TimeoutException()));
                 }
             } catch (NoSuchElementException ignored) {}
         }
 
         void put(Callback callback) {
+            putCounter.incrementAndGet();
             addLast(callback);
             if(callback.position <= callbackPosition.get() && remove(callback)){
+                counter.incrementAndGet();
                 callback.completableFuture.complete(new UpdateClusterStateResponse());
             }
         }

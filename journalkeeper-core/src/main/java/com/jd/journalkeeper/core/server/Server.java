@@ -317,23 +317,21 @@ public abstract class Server<E, Q, R>
                 compactJournalAsync(compactJournalEntrySerializer.parse(reservedEntry).getCompactIndices());
                 break;
             case ReservedEntry.TYPE_SCALE_PARTITIONS:
-                scalePartitionsAsync(scalePartitionsEntrySerializer.parse(reservedEntry).getPartitions());
+                scalePartitions(scalePartitionsEntrySerializer.parse(reservedEntry).getPartitions());
                 break;
             default:
                 logger.warn("Invalid reserved entry type: {}.", type);
         }
     }
 
-    private void scalePartitionsAsync(int[] partitions) {
-        asyncExecutor.submit(() -> {
-            try {
-                scalePartitionLock.lock();
-                journal.rePartition(Arrays.stream(partitions).boxed().collect(Collectors.toSet()));
-            } finally {
-                scalePartitionLock.unlock();
-            }
+    private void scalePartitions(int[] partitions) {
+        try {
+            scalePartitionLock.lock();
+            journal.rePartition(Arrays.stream(partitions).boxed().collect(Collectors.toSet()));
+        } finally {
+            scalePartitionLock.unlock();
+        }
 
-        });
     }
 
     private void compactJournalAsync(Map<Integer, Long> compactIndices) {

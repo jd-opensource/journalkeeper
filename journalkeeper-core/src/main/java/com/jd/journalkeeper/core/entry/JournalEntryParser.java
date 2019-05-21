@@ -1,6 +1,7 @@
 package com.jd.journalkeeper.core.entry;
 
 import com.jd.journalkeeper.core.journal.ParseJournalException;
+import com.jd.journalkeeper.utils.parser.EntryParser;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -11,7 +12,7 @@ import java.util.List;
  * @author liyue25
  * Date: 2019-01-15
  */
-public class EntryParser extends com.jd.journalkeeper.utils.parser.EntryParser {
+public class JournalEntryParser extends EntryParser {
 
     public final static int VARIABLE_LENGTH = -1;
     public final static int FIXED_LENGTH_1 = 1;
@@ -205,7 +206,7 @@ public class EntryParser extends com.jd.journalkeeper.utils.parser.EntryParser {
     public static EntryHeader parseHeader(ByteBuffer headerBuffer) {
         EntryHeader header = new EntryHeader();
         checkMagic(headerBuffer);
-        header.setLength(getInt(headerBuffer, LENGTH));
+        header.setPayloadLength(getInt(headerBuffer, LENGTH));
         header.setTerm(getInt(headerBuffer, TERM));
         header.setPartition(getShort(headerBuffer, PARTITION));
         header.setBatchSize(getShort(headerBuffer, BATCH_SIZE));
@@ -214,14 +215,14 @@ public class EntryParser extends com.jd.journalkeeper.utils.parser.EntryParser {
     }
 
     private static void checkMagic(ByteBuffer headerBuffer) {
-        if (Entry.MAGIC != getShort(headerBuffer, EntryParser.MAGIC)) {
+        if (Entry.MAGIC != getShort(headerBuffer, JournalEntryParser.MAGIC)) {
             throw new ParseJournalException("Check magic failed！");
         }
     }
 
     public static  void serialize(ByteBuffer destBuffer, Entry storageEntry) {
 
-        destBuffer.putInt(storageEntry.getHeader().getLength());
+        destBuffer.putInt(storageEntry.getHeader().getPayloadLength());
         destBuffer.putShort(Entry.MAGIC);
         destBuffer.putInt(((EntryHeader) storageEntry.getHeader()).getTerm());
         destBuffer.putShort((short ) storageEntry.getHeader().getPartition());

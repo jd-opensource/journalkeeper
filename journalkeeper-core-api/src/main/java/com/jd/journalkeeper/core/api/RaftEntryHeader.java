@@ -5,18 +5,18 @@ package com.jd.journalkeeper.core.api;
  * Date: 2019-05-08
  */
 public class RaftEntryHeader {
-    private int length;
+    private int payloadLength;
     private int partition = 0;
     private int batchSize = 1;
     //Transient
     private int offset = 0;
 
-    public int getLength() {
-        return length;
+    public int getPayloadLength() {
+        return payloadLength;
     }
 
-    public void setLength(int length) {
-        this.length = length;
+    public void setPayloadLength(int payloadLength) {
+        this.payloadLength = payloadLength;
     }
 
     public int getPartition() {

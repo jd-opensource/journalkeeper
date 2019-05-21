@@ -5,7 +5,7 @@ import com.jd.journalkeeper.core.api.RaftEntryHeader;
 import com.jd.journalkeeper.core.api.RaftJournal;
 import com.jd.journalkeeper.core.entry.Entry;
 import com.jd.journalkeeper.core.entry.EntryHeader;
-import com.jd.journalkeeper.core.entry.EntryParser;
+import com.jd.journalkeeper.core.entry.JournalEntryParser;
 import com.jd.journalkeeper.core.exception.JournalException;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
@@ -188,8 +188,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * 追加写入StorageEntry
      */
     public long append(Entry storageEntry) {
-        ByteBuffer byteBuffer = ByteBuffer.allocate(storageEntry.getHeader().getLength());
-        EntryParser.serialize(byteBuffer, storageEntry);
+        ByteBuffer byteBuffer = ByteBuffer.allocate(storageEntry.getHeader().getPayloadLength() + JournalEntryParser.getHeaderLength());
+        JournalEntryParser.serialize(byteBuffer, storageEntry);
         return appendRaw(Collections.singletonList(byteBuffer.array()));
     }
 
@@ -197,7 +197,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         for (int i = 0; i < storageEntries.size(); i++) {
             byte[] entryBytes = storageEntries.get(i);
             long offset = offsets[i];
-            EntryHeader header = EntryParser.parseHeader(ByteBuffer.wrap(entryBytes));
+            EntryHeader header = JournalEntryParser.parseHeader(ByteBuffer.wrap(entryBytes));
             appendPartitionIndex(offset, header);
         }
 
@@ -301,8 +301,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
             byte [] entryBytes = journalPersistence
                     .read(
-                            journalOffset + EntryParser.getHeaderLength(),
-                            header.getLength() - EntryParser.getHeaderLength());
+                            journalOffset + JournalEntryParser.getHeaderLength(),
+                            header.getPayloadLength());
 
             header.setOffset(relIndex);
             return new Entry(header, entryBytes);
@@ -330,6 +330,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             index += count;
             list.add(batchEntries);
         }
+        // TODO: 返回的数量不正确
         return list;
     }
 
@@ -349,8 +350,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
             byte [] entry = journalPersistence
                     .read(
-                            offset + EntryParser.getHeaderLength(),
-                            header.getLength() - EntryParser.getHeaderLength());
+                            offset + JournalEntryParser.getHeaderLength(),
+                            header.getPayloadLength());
 
 
             return new Entry(header, entry);
@@ -366,7 +367,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
             EntryHeader header = readEntryHeaderByOffset(offset);
 
-            return journalPersistence.read(offset , header.getLength());
+            return journalPersistence.read(offset , header.getPayloadLength() + JournalEntryParser.getHeaderLength());
         } catch (IOException e) {
             throw new JournalException(e);
         }
@@ -374,9 +375,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     private EntryHeader readEntryHeaderByOffset(long offset) {
         try {
-            byte [] headerBytes = journalPersistence.read(offset, EntryParser.getHeaderLength());
+            byte [] headerBytes = journalPersistence.read(offset, JournalEntryParser.getHeaderLength());
 
-            return EntryParser.parseHeader(ByteBuffer.wrap(headerBytes));
+            return JournalEntryParser.parseHeader(ByteBuffer.wrap(headerBytes));
         } catch (IOException e) {
             throw new JournalException(e);
         }
@@ -465,7 +466,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
         List<EntryHeader> entries = rawEntries.stream()
                 .map(ByteBuffer::wrap)
-                .map(EntryParser::parseHeader)
+                .map(JournalEntryParser::parseHeader)
                 .collect(Collectors.toList());
         try {
             long index = startIndex;
@@ -567,7 +568,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             if(offset > lastIndexedOffsetMap.get(header.getPartition())) {
                 appendPartitionIndex(offset, header);
             }
-            offset += header.getLength();
+            offset += header.getPayloadLength() + JournalEntryParser.getHeaderLength();
         }
 
     }
@@ -640,7 +641,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         if (indexPersistence.max() - INDEX_STORAGE_SIZE >= indexPersistence.min()) {
             long offset = readOffset(indexPersistence.max() / INDEX_STORAGE_SIZE - 1);
             EntryHeader header = readEntryHeaderByOffset(offset);
-            indexOffset = offset + header.getLength();
+            indexOffset = offset + header.getPayloadLength() + JournalEntryParser.getHeaderLength();
         } else {
             indexOffset = journalPersistence.min();
         }
@@ -649,7 +650,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         List<Long> indices = new LinkedList<>();
         while (indexOffset < journalPersistence.max()) {
             indices.add(indexOffset);
-            indexOffset += readEntryHeaderByOffset(indexOffset).getLength();
+            indexOffset += readEntryHeaderByOffset(indexOffset).getPayloadLength() + JournalEntryParser.getHeaderLength();
         }
 
         // 写入索引
@@ -674,7 +675,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
         // 找最后的连续2条记录
 
-        long position = journalPersistence.max() - EntryParser.getHeaderLength();
+        long position = journalPersistence.max() - JournalEntryParser.getHeaderLength();
         long lastEntryPosition = -1; // 最后连续2条记录中后面那条的位置
         EntryHeader lastEntryHeader = null;
         while (position >= journalPersistence.min()) {
@@ -692,7 +693,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                     }
                 } else {
                     // 这是倒数第二条
-                    if(position + header.getLength() == lastEntryPosition) {
+                    if(position + header.getPayloadLength() + JournalEntryParser.getHeaderLength() == lastEntryPosition) {
                         // 找到最后2条中位置较小的那条，并且较小那条的位置+长度==较大那条的位置
                         truncatePartialEntry(lastEntryPosition, lastEntryHeader);
                         return;
@@ -711,9 +712,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     private void truncatePartialEntry(long lastEntryPosition, EntryHeader lastEntryHeader) throws IOException {
         // 判断最后一条是否完整
-        if(lastEntryPosition + lastEntryHeader.getLength() <= journalPersistence.max()) {
+        if(lastEntryPosition + lastEntryHeader.getPayloadLength() + JournalEntryParser.getHeaderLength() <= journalPersistence.max()) {
             // 完整，截掉后面的部分
-            journalPersistence.truncate(lastEntryPosition + lastEntryHeader.getLength());
+            journalPersistence.truncate(lastEntryPosition + lastEntryHeader.getPayloadLength() + JournalEntryParser.getHeaderLength());
         } else {
             // 不完整，直接截掉这条数据
             journalPersistence.truncate(lastEntryPosition);

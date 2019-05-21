@@ -3,7 +3,7 @@ package com.jd.journalkeeper.core.journal;
 import com.jd.journalkeeper.core.api.RaftEntry;
 import com.jd.journalkeeper.core.entry.Entry;
 import com.jd.journalkeeper.core.entry.EntryHeader;
-import com.jd.journalkeeper.core.entry.EntryParser;
+import com.jd.journalkeeper.core.entry.JournalEntryParser;
 import com.jd.journalkeeper.persistence.BufferPool;
 import com.jd.journalkeeper.persistence.PersistenceFactory;
 import com.jd.journalkeeper.utils.spi.ServiceSupport;
@@ -79,7 +79,7 @@ public class JournalTest {
         while (index < journal.maxIndex()) {
             Entry readStorageEntry = journal.read(index);
             Entry writeStorageEntry = storageEntries.get((int) index);
-            Assert.assertEquals(writeStorageEntry.getHeader().getLength(), readStorageEntry.getHeader().getLength());
+            Assert.assertEquals(writeStorageEntry.getHeader().getPayloadLength(), readStorageEntry.getHeader().getPayloadLength());
             Assert.assertEquals(((EntryHeader) writeStorageEntry.getHeader()).getTerm(), ((EntryHeader) readStorageEntry.getHeader()).getTerm());
             Assert.assertEquals(writeStorageEntry.getHeader().getPartition(), readStorageEntry.getHeader().getPartition());
             Assert.assertArrayEquals(writeStorageEntry.getEntry(), readStorageEntry.getEntry());
@@ -187,8 +187,8 @@ public class JournalTest {
     }
 
     private byte[] serialize(Entry storageEntry) {
-        byte[] serialized = new byte[storageEntry.getHeader().getLength()];
-        EntryParser.serialize(ByteBuffer.wrap(serialized), storageEntry);
+        byte[] serialized = new byte[storageEntry.getHeader().getPayloadLength() + JournalEntryParser.getHeaderLength()];
+        JournalEntryParser.serialize(ByteBuffer.wrap(serialized), storageEntry);
         return serialized;
     }
 
@@ -287,7 +287,7 @@ public class JournalTest {
 
         journal.close();
         Properties properties = new Properties();
-        properties.setProperty("persistence.journal.file_data_size", String.valueOf((entrySize + EntryParser.getHeaderLength()) * entriesPerFile));
+        properties.setProperty("persistence.journal.file_data_size", String.valueOf((entrySize + JournalEntryParser.getHeaderLength()) * entriesPerFile));
         properties.setProperty("persistence.index.file_data_size", String.valueOf(Long.BYTES * entriesPerFile));
         journal = createJournal(properties);
 
@@ -370,7 +370,7 @@ public class JournalTest {
 
         journal.close();
         Properties properties = new Properties();
-        properties.setProperty("persistence.journal.file_data_size", String.valueOf((entrySize + EntryParser.getHeaderLength()) * entriesPerFile));
+        properties.setProperty("persistence.journal.file_data_size", String.valueOf((entrySize + JournalEntryParser.getHeaderLength()) * entriesPerFile));
         properties.setProperty("persistence.index.file_data_size", String.valueOf(Long.BYTES * entriesPerFile));
         journal = createJournal(properties);
 
