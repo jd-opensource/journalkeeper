@@ -3,6 +3,7 @@ package com.jd.journalkeeper.journalstore;
 import com.jd.journalkeeper.core.api.RaftJournal;
 import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.state.LocalState;
+import com.jd.journalkeeper.exceptions.IndexOverflowException;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -54,9 +55,9 @@ public class JournalStoreState extends LocalState<byte [], JournalStoreQuery, Jo
 
 
     @Override
-    public Map<String, String> execute(byte [] entry, int partition, long lastApplied) {
+    public Map<String, String> execute(byte [] entry, int partition, long lastApplied, int batchSize) {
 
-        appliedIndices.put(partition, appliedIndices.getOrDefault(partition, 0L) + 1);
+        appliedIndices.put(partition, appliedIndices.getOrDefault(partition, 0L) + batchSize);
 
         long minIndex = journal.minIndex(partition);
         long maxIndex = appliedIndices.get(partition);
@@ -103,7 +104,21 @@ public class JournalStoreState extends LocalState<byte [], JournalStoreQuery, Jo
 
     private CompletableFuture<JournalStoreQueryResult> queryEntries(int partition, long index, int size) {
         return CompletableFuture
-                .supplyAsync(() -> journal.readByPartition(partition, index, size))
-                .thenApply(JournalStoreQueryResult::new);
+                .supplyAsync(() ->  {
+                    long maxAppliedIndex = appliedIndices.get(partition);
+                    int safeSize;
+                    if(index >= maxAppliedIndex) {
+                        throw new IndexOverflowException();
+                    }
+
+                    if(index + size >= maxAppliedIndex) {
+                        safeSize = (int) (maxAppliedIndex - index);
+                    } else {
+                        safeSize = size;
+                    }
+                    return journal.readByPartition(partition, index, safeSize);
+                })
+                .thenApply(JournalStoreQueryResult::new)
+                .exceptionally(e -> new JournalStoreQueryResult(e.getCause(), JournalStoreQuery.CMQ_QUERY_ENTRIES));
     }
 }

@@ -62,56 +62,59 @@ public class JournalStoreTest {
      */
     private void writeReadTest(int nodes, int [] partitions, int entrySize, int batchSize, int batchCount) throws Exception {
         List<JournalStoreServer> servers = createServers(nodes, base);
-        JournalStoreClient client = servers.get(0).createClient();
-        client.waitForLeader(10000);
+        try {
+            JournalStoreClient client = servers.get(0).createClient();
+            client.waitForLeader(10000);
 
-        client.scalePartitions(partitions).get();
+            client.scalePartitions(partitions).get();
 
-        // Wait for all node to scale partitions.
-        Thread.sleep(1000L);
+            // Wait for all node to finish scale partitions.
+            Thread.sleep(1000L);
 
 
-        byte [] rawEntries = new byte[entrySize];
-        for (int i = 0; i < rawEntries.length; i++) {
-            rawEntries [i] = (byte) (i % Byte.MAX_VALUE);
-        }
-
-        CountDownLatch latch = new CountDownLatch(partitions.length * batchCount);
-        // write
-        for (int partition : partitions) {
-            for (int i = 0; i < batchCount; i++) {
-                client.append(partition, batchSize, rawEntries)
-                        .whenComplete((v, e) -> {
-                            latch.countDown();
-                            if(e != null) {
-                                logger.warn("Exception:", e);
-                            }
-                        });
+            byte[] rawEntries = new byte[entrySize];
+            for (int i = 0; i < rawEntries.length; i++) {
+                rawEntries[i] = (byte) (i % Byte.MAX_VALUE);
             }
-        }
-        logger.info("Write finished, waiting for responses...");
 
-        while (!latch.await(1, TimeUnit.SECONDS)){
-            Thread.yield();
-        }
-
-        logger.info("Replication finished.");
-
-        // read
-
-        for (int partition : partitions) {
-            for (int i = 0; i < batchCount; i++) {
-                List<RaftEntry> raftEntries = client.get(partition, i * batchSize, batchSize).get();
-                Assert.assertEquals(raftEntries.size(), 1);
-                RaftEntry entry = raftEntries.get(0);
-                Assert.assertEquals(partition, entry.getHeader().getPartition());
-                Assert.assertEquals(batchSize, entry.getHeader().getBatchSize());
-                Assert.assertEquals(0, entry.getHeader().getOffset());
-                Assert.assertArrayEquals(rawEntries, entry.getEntry());
+            CountDownLatch latch = new CountDownLatch(partitions.length * batchCount);
+            // write
+            for (int partition : partitions) {
+                for (int i = 0; i < batchCount; i++) {
+                    client.append(partition, batchSize, rawEntries)
+                            .whenComplete((v, e) -> {
+                                latch.countDown();
+                                if (e != null) {
+                                    logger.warn("Exception:", e);
+                                }
+                            });
+                }
             }
-        }
+            logger.info("Write finished, waiting for responses...");
 
-        stopServers(servers);
+            while (!latch.await(1, TimeUnit.SECONDS)) {
+                Thread.yield();
+            }
+
+            logger.info("Replication finished.");
+
+            // read
+
+            for (int partition : partitions) {
+                for (int i = 0; i < batchCount; i++) {
+                    List<RaftEntry> raftEntries = client.get(partition, i * batchSize, batchSize).get();
+                    Assert.assertEquals(raftEntries.size(), 1);
+                    RaftEntry entry = raftEntries.get(0);
+                    Assert.assertEquals(partition, entry.getHeader().getPartition());
+                    Assert.assertEquals(batchSize, entry.getHeader().getBatchSize());
+                    Assert.assertEquals(0, entry.getHeader().getOffset());
+                    Assert.assertArrayEquals(rawEntries, entry.getEntry());
+                }
+            }
+        } finally {
+            stopServers(servers);
+
+        }
 
     }
 

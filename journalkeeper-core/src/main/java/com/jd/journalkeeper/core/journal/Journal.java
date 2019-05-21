@@ -330,7 +330,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             index += count;
             list.add(batchEntries);
         }
-        // TODO: 返回的数量不正确
         return list;
     }
 

@@ -51,7 +51,7 @@ public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
     }
 
     @Override
-    public Map<String, String> execute(KvEntry entry, int partition, long index) {
+    public Map<String, String> execute(KvEntry entry, int partition, long index, int batchSize) {
         switch (entry.getCmd()) {
             case KvEntry.CMD_SET:
                 stateMap.put(entry.getKey(), entry.getValue());

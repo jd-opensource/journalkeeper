@@ -10,6 +10,8 @@ import com.jd.journalkeeper.core.entry.reserved.CompactJournalEntry;
 import com.jd.journalkeeper.core.entry.reserved.CompactJournalEntrySerializer;
 import com.jd.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import com.jd.journalkeeper.core.entry.reserved.ScalePartitionsEntrySerializer;
+import com.jd.journalkeeper.exceptions.IndexOverflowException;
+import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.utils.event.EventType;
 import com.jd.journalkeeper.utils.event.EventWatcher;
 
@@ -17,6 +19,7 @@ import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -50,6 +53,17 @@ public class JournalStoreClient implements PartitionedJournalStore {
     @Override
     public CompletableFuture<List<RaftEntry>> get(int partition, long index, int size) {
         return raftClient.query(JournalStoreQuery.createQueryEntries(partition, index, size))
+                .thenApply(result -> {
+                    if(result.getCode() == JournalStoreQueryResult.CODE_SUCCESS) {
+                        return result;
+                    } else if (result.getCode() == JournalStoreQueryResult.CODE_UNDERFLOW) {
+                        throw new CompletionException(new IndexUnderflowException());
+                    } else if (result.getCode() == JournalStoreQueryResult.CODE_OVERFLOW) {
+                        throw new CompletionException(new IndexOverflowException());
+                    } else {
+                        throw new CompletionException(new QueryJournalStoreException("Unknown exception"));
+                    }
+                })
                 .thenApply(JournalStoreQueryResult::getEntries);
     }
 

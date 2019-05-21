@@ -289,7 +289,8 @@ public abstract class Server<E, Q, R>
                 E entry = entrySerializer.parse(storageEntry.getEntry());
                 long stamp = stateLock.writeLock();
                 try {
-                    customizedEventData = state.execute(entry, storageEntry.getHeader().getPartition(), state.lastApplied());
+                    customizedEventData = state.execute(entry, storageEntry.getHeader().getPartition(),
+                            state.lastApplied(), storageEntry.getHeader().getBatchSize());
                 } finally {
                     stateLock.unlockWrite(stamp);
                 }
@@ -472,7 +473,8 @@ public abstract class Server<E, Q, R>
                     requestState = state.takeASnapshot(tempSnapshotPath, journal);
                     for (int i = 0; i < toBeExecutedEntries.size(); i++) {
                         RaftEntry entry = toBeExecutedEntries.get(i);
-                        requestState.execute(entrySerializer.parse(entry.getEntry()), entry.getHeader().getPartition(), nearestSnapshot.getKey() + i);
+                        requestState.execute(entrySerializer.parse(entry.getEntry()), entry.getHeader().getPartition(),
+                                nearestSnapshot.getKey() + i, entry.getHeader().getBatchSize());
                     }
                     if(requestState instanceof Flushable) {
                         ((Flushable ) requestState).flush();

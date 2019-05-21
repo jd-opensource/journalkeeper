@@ -15,8 +15,8 @@ import java.util.Map;
  * @author liyue25
  * Date: 2019-05-09
  *
- * Cmd : 1 Bytes
- *
+ * Cmd : 1 Byte
+ * Code: 1 Byte
  * Entries: Variable
  *  Entries size: 2 Bytes
  *  RaftEntry: Variable
@@ -45,7 +45,7 @@ import java.util.Map;
  *
  */
 public class JournalStoreQueryResultSerializer implements Serializer<JournalStoreQueryResult> {
-    private static final int FIXED_LENGTH = Byte.BYTES + Short.BYTES + Short.BYTES;
+    private static final int FIXED_LENGTH = Byte.BYTES + Byte.BYTES + Short.BYTES + Short.BYTES;
     private static final int ENTRY_HEADER_LENGTH = Integer.BYTES + Short.BYTES  + Short.BYTES + Short.BYTES;
 
     @Override
@@ -67,6 +67,7 @@ public class JournalStoreQueryResultSerializer implements Serializer<JournalStor
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
 
         buffer.put((byte) journalStoreQueryResult.getCmd());
+        buffer.put((byte) journalStoreQueryResult.getCode());
 
         List<RaftEntry> entries = journalStoreQueryResult.getEntries();
         if(entries == null) {
@@ -99,7 +100,7 @@ public class JournalStoreQueryResultSerializer implements Serializer<JournalStor
     public JournalStoreQueryResult parse(byte[] bytes) {
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         int cmd = buffer.get();
-
+        int code = buffer.get();
         int entriesSize = buffer.getShort();
         List<RaftEntry> entries = new ArrayList<>(entriesSize);
         for (int i = 0; i < entriesSize; i++) {
@@ -110,7 +111,7 @@ public class JournalStoreQueryResultSerializer implements Serializer<JournalStor
             header.setPartition(buffer.getShort());
             header.setBatchSize(buffer.getShort());
             header.setOffset(buffer.getShort());
-            byte [] entryBytes = new byte[header.getPayloadLength()];
+            byte[] entryBytes = new byte[header.getPayloadLength()];
             buffer.get(entryBytes);
             entry.setEntry(entryBytes);
             entries.add(entry);
@@ -123,6 +124,7 @@ public class JournalStoreQueryResultSerializer implements Serializer<JournalStor
                     new JournalStoreQueryResult.Boundary(buffer.getLong(), buffer.getLong()));
         }
 
-        return new JournalStoreQueryResult(entries, boundaries, cmd);
+        return new JournalStoreQueryResult(entries, boundaries, cmd, code);
+
     }
 }
