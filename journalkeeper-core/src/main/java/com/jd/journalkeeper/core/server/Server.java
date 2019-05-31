@@ -282,7 +282,7 @@ public abstract class Server<E, Q, R>
      */
     private void applyEntries()  {
         while ( state.lastApplied() < commitIndex) {
-            takeASnapShotIfNeed();
+//            takeASnapShotIfNeed();
             Entry storageEntry = journal.read(state.lastApplied());
             Map<String, String> customizedEventData = null;
             if(storageEntry.getHeader().getPartition() != RESERVED_PARTITION) {
@@ -298,7 +298,8 @@ public abstract class Server<E, Q, R>
                 applyReservedEntry(storageEntry.getEntry()[0], storageEntry.getEntry());
             }
             state.next();
-            asyncExecutor.submit(this::onStateChanged);
+            onStateChanged();
+//            asyncExecutor.submit(this::onStateChanged);
             Map<String, String> parameters = new HashMap<>(customizedEventData == null ? 1: customizedEventData.size() + 1);
             if(null != customizedEventData) {
                 customizedEventData.forEach(parameters::put);
@@ -363,9 +364,6 @@ public abstract class Server<E, Q, R>
      * 如果需要，保存一次快照
      */
     private void takeASnapShotIfNeed() {
-        if (true) {
-            return;
-        }
         asyncExecutor.submit(() -> {
             try {
                 synchronized (snapshots) {

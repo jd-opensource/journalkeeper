@@ -1,11 +1,18 @@
 package com.jd.journalkeeper.coordinating.state.store.rocksdb;
 
 import com.jd.journalkeeper.coordinating.state.store.KVStore;
+import org.rocksdb.BlockBasedTableConfig;
+import org.rocksdb.CompactionStyle;
+import org.rocksdb.CompressionType;
+import org.rocksdb.LRUCache;
 import org.rocksdb.Options;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
+import org.rocksdb.SkipListMemTableConfig;
+import org.rocksdb.util.SizeUnit;
 
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.Properties;
 
@@ -47,15 +54,46 @@ public class RocksDBKVStore implements KVStore {
         // TODO 配置转换
         Options options = new Options();
         options.setCreateIfMissing(true);
+
+        options.setCreateIfMissing(true)
+                .setWriteBufferSize(128 * SizeUnit.MB)
+                .setMinWriteBufferNumberToMerge(2)
+                .setLevel0FileNumCompactionTrigger(10)
+
+                .setTargetFileSizeBase(256 * SizeUnit.MB)
+                .setMaxBytesForLevelBase(256 * SizeUnit.MB * 10)
+                .setTargetFileSizeMultiplier(10)
+
+                .setMaxBackgroundCompactions(Runtime.getRuntime().availableProcessors())
+                .setMaxBackgroundFlushes(1)
+
+                .setAllowConcurrentMemtableWrite(false)
+                .setAllowMmapWrites(true)
+                .setSkipStatsUpdateOnDbOpen(true)
+                .setOptimizeFiltersForHits(true)
+//                .setLevelCompactionDynamicLevelBytes(true)
+                .setNewTableReaderForCompactionInputs(true)
+                .setCompressionPerLevel(Arrays.asList(CompressionType.NO_COMPRESSION, CompressionType.NO_COMPRESSION, CompressionType.LZ4_COMPRESSION, CompressionType.ZLIB_COMPRESSION))
+//                .setCompressionType(CompressionType.LZ4_COMPRESSION)
+                .setCompactionStyle(CompactionStyle.LEVEL);
+
+        LRUCache blockCache = new LRUCache(1024 * SizeUnit.MB, -1);
+        BlockBasedTableConfig tableOptions = new BlockBasedTableConfig();
+        tableOptions.setBlockCache(blockCache)
+                .setBlockSize(256 * SizeUnit.KB)
+                .setCacheIndexAndFilterBlocks(true)
+//                .setFilterPolicy(bloomFilter)
+                .setBlockCacheCompressed(blockCache);
+
+        options.setMemTableConfig(new SkipListMemTableConfig());
+        options.setTableFormatConfig(tableOptions);
         return options;
     }
 
     @Override
     public boolean put(byte[] key, byte[] value) {
         try {
-            if (key == null) {
-                rocksDB.put(key, value);
-            }
+            rocksDB.put(key, value);
             return true;
         } catch (RocksDBException e) {
             throw new RuntimeException(e);

@@ -124,7 +124,7 @@ public abstract class LoopThread implements Runnable, StateServer {
     /**
      * 唤醒任务如果任务在Sleep
      */
-    public synchronized void wakeup() {
+    public void wakeup() {
         if(wakeupLock.tryLock()) {
             try {
                 wakeupCondition.signal();

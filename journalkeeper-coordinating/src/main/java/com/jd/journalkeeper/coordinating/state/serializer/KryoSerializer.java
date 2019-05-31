@@ -3,6 +3,8 @@ package com.jd.journalkeeper.coordinating.state.serializer;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import com.esotericsoftware.kryo.pool.KryoFactory;
+import com.esotericsoftware.kryo.pool.KryoPool;
 import com.jd.journalkeeper.base.Serializer;
 
 import java.io.ByteArrayInputStream;
@@ -16,12 +18,22 @@ import java.io.ByteArrayOutputStream;
  */
 public class KryoSerializer implements Serializer {
 
-    private static final int BUFFER_SIZE = 1024 * 1024 * 2;
+    private static final int BUFFER_SIZE = 1024 * 5;
+
+    private final KryoPool kryoPool;
 
     private Class<?> type;
 
     public KryoSerializer(Class<?> type) {
         this.type = type;
+        this.kryoPool = new KryoPool.Builder(new KryoFactory() {
+            @Override
+            public Kryo create() {
+                Kryo kryo = new Kryo();
+                kryo.register(type);
+                return kryo;
+            }
+        }).build();
     }
 
     @Override
@@ -31,11 +43,12 @@ public class KryoSerializer implements Serializer {
 
     @Override
     public byte[] serialize(Object entry) {
-        Kryo kryo = new Kryo();
-        kryo.register(type);
+        Kryo kryo = kryoPool.borrow();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream(BUFFER_SIZE);
         Output output = new Output(outputStream);
+
         kryo.writeObject(output, entry);
+        kryoPool.release(kryo);
         output.flush();
         byte[] result = outputStream.toByteArray();
         output.close();
@@ -44,14 +57,13 @@ public class KryoSerializer implements Serializer {
 
     @Override
     public Object parse(byte[] bytes) {
-        Kryo kryo = new Kryo();
+        Kryo kryo = kryoPool.borrow();
         ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
         Input input = new Input(inputStream);
 
-        try {
-            return kryo.readObject(input, type);
-        } finally {
-            input.close();
-        }
+        Object result = kryo.readObject(input, type);
+        kryoPool.release(kryo);
+        input.close();
+        return result;
     }
 }
