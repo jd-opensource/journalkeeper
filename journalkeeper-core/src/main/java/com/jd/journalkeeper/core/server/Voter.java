@@ -2,24 +2,52 @@ package com.jd.journalkeeper.core.server;
 
 import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.ResponseConfig;
-import com.jd.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
-import com.jd.journalkeeper.core.entry.reserved.LeaderAnnouncementEntrySerializer;
-import com.jd.journalkeeper.utils.event.EventType;
 import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.entry.Entry;
+import com.jd.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
+import com.jd.journalkeeper.core.entry.reserved.LeaderAnnouncementEntrySerializer;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.exceptions.IndexUnderflowException;
 import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.persistence.ServerMetadata;
-import com.jd.journalkeeper.rpc.client.*;
-import com.jd.journalkeeper.rpc.server.*;
+import com.jd.journalkeeper.rpc.client.LastAppliedResponse;
+import com.jd.journalkeeper.rpc.client.QueryStateRequest;
+import com.jd.journalkeeper.rpc.client.QueryStateResponse;
+import com.jd.journalkeeper.rpc.client.UpdateClusterStateRequest;
+import com.jd.journalkeeper.rpc.client.UpdateClusterStateResponse;
+import com.jd.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
+import com.jd.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
+import com.jd.journalkeeper.rpc.server.RequestVoteRequest;
+import com.jd.journalkeeper.rpc.server.RequestVoteResponse;
+import com.jd.journalkeeper.rpc.server.ServerRpc;
+import com.jd.journalkeeper.utils.event.EventType;
 import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.Properties;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -263,10 +291,18 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
      * 否则反复重新检查（这段时间有可能会有新的心跳响应回来更新上次心跳时间），直到成功或者超时。
      */
     private boolean checkLeadership() {
+        if (true) {
+            return false;
+        }
         long now = System.currentTimeMillis();
         return followers.stream()
                 .map(Follower::getLastHeartbeatResponseTime)
-                .filter(lastHeartbeat -> now - lastHeartbeat < 2 * config.getHeartbeatIntervalMs())
+                .filter(lastHeartbeat -> {
+                    if (!(now - lastHeartbeat < 2 * config.getHeartbeatIntervalMs())) {
+                        return false;
+                    }
+                    return true;
+                })
                 .count() >= voters.size() / 2;
     }
 
@@ -791,12 +827,11 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 .thenApply(resultSerializer::serialize)
                 .thenApply(QueryStateResponse::new)
                 .exceptionally(exception -> {
-                    try {
-                        throw exception;
-                    } catch (NotLeaderException e) {
+                    Throwable cause = exception.getCause();
+                    if (cause instanceof NotLeaderException) {
                         return new QueryStateResponse(new NotLeaderException(leader));
-                    } catch (Throwable t) {
-                        return new QueryStateResponse(t);
+                    } else {
+                        return new QueryStateResponse(cause);
                     }
                 });
     }
@@ -1151,7 +1186,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
     public static class Config extends Server.Config {
         public final static long DEFAULT_HEARTBEAT_INTERVAL_MS = 50L;
-        public final static long DEFAULT_ELECTION_TIMEOUT_MS = 1000L;
+        public final static long DEFAULT_ELECTION_TIMEOUT_MS = 300L;
         public final static int DEFAULT_REPLICATION_BATCH_SIZE = 128;
         public final static int DEFAULT_REPLICATION_PARALLELISM = 16;
         public final static int DEFAULT_CACHE_REQUESTS = 1024;

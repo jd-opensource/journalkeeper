@@ -27,6 +27,7 @@
         <module>journalkeeper-journal-store</module>
         <module>journalkeeper-examples</module>
         <module>journalkeeper-test</module>
+        <module>journalkeeper-coordinating</module>
     </modules>
     <properties>
         <encoding>UTF-8</encoding>

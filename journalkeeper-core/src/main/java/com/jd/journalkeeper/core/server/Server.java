@@ -363,6 +363,9 @@ public abstract class Server<E, Q, R>
      * 如果需要，保存一次快照
      */
     private void takeASnapShotIfNeed() {
+        if (true) {
+            return;
+        }
         asyncExecutor.submit(() -> {
             try {
                 synchronized (snapshots) {
@@ -560,7 +563,7 @@ public abstract class Server<E, Q, R>
         doStart();
         stateMachineThread.start();
         flushFuture = scheduledExecutor.scheduleAtFixedRate(this::flush,
-                ThreadLocalRandom.current().nextLong(500L, 1000L),
+                ThreadLocalRandom.current().nextLong(10, 50),
                 config.getFlushIntervalMs(), TimeUnit.MILLISECONDS);
         rpcServer = rpcAccessPointFactory.bindServerService(this);
         rpcServer.start();

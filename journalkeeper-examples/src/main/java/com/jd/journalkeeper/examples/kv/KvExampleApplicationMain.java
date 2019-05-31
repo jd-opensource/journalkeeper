@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 public class KvExampleApplicationMain {
     private static final Logger logger = LoggerFactory.getLogger(KvExampleApplicationMain.class);
     public static void main(String [] args) throws IOException {
-        int nodes = 3;
+        int nodes = 1;
         logger.info("Usage: java " + KvExampleApplicationMain.class.getName() + " [nodes(default 3)]");
         if(args.length > 0) {
             nodes = Integer.parseInt(args[0]);
@@ -44,27 +44,29 @@ public class KvExampleApplicationMain {
         List<KvClient> kvClients = kvServers.stream().map(KvServer::createClient).collect(Collectors.toList());
 
 
-        int i = 0;
-        logger.info("SET {} {}", "key1", "hello!");
-        kvClients.get(i++ % serverURIs.size()).set("key1", "hello!");
+        for (int j = 0; j < 10; j++) {
+            int i = j;
+            logger.info("SET {} {}", "key1", "hello!");
+            kvClients.get(i++ % serverURIs.size()).set("key1", "hello!");
 
-        logger.info("SET {} {}", "key2", "hello!");
-        kvClients.get(i++ % serverURIs.size()).set("key2", "world!");
+            logger.info("SET {} {}", "key2", "hello!");
+            kvClients.get(i++ % serverURIs.size()).set("key2", "world!");
 
-        logger.info("GET {}", "key1");
-        logger.info("Result: {}", kvClients.get(i++ % serverURIs.size()).get("key1"));
+            logger.info("GET {}", "key1");
+            logger.info("Result: {}", kvClients.get(i++ % serverURIs.size()).get("key1"));
 
-        logger.info("KEYS");
-        logger.info("Result: {}", kvClients.get(i++ % serverURIs.size()).listKeys());
+            logger.info("KEYS");
+            logger.info("Result: {}", kvClients.get(i++ % serverURIs.size()).listKeys());
 
-        logger.info("DEL key2");
-        kvClients.get(i++ % serverURIs.size()).del("key2");
+            logger.info("DEL key2");
+            kvClients.get(i++ % serverURIs.size()).del("key2");
 
-        logger.info("GET {}", "key2");
-        logger.info("Result: {}", kvClients.get(i++ % serverURIs.size()).get("key2"));
+            logger.info("GET {}", "key2");
+            logger.info("Result: {}", kvClients.get(i++ % serverURIs.size()).get("key2"));
 
-        logger.info("KEYS");
-        logger.info("Result: {}", kvClients.get(i ++ % serverURIs.size()).listKeys());
+            logger.info("KEYS");
+            logger.info("Result: {}", kvClients.get(i ++ % serverURIs.size()).listKeys());
+        }
 
         kvServers.parallelStream().forEach(KvServer::stop);
 

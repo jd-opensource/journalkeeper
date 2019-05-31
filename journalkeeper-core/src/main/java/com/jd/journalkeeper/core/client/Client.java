@@ -1,18 +1,22 @@
 package com.jd.journalkeeper.core.client;
 
 import com.jd.journalkeeper.base.Serializer;
-import com.jd.journalkeeper.core.api.RaftJournal;
-import com.jd.journalkeeper.core.api.ResponseConfig;
-import com.jd.journalkeeper.core.server.Server;
-import com.jd.journalkeeper.utils.event.EventWatcher;
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.RaftClient;
+import com.jd.journalkeeper.core.api.RaftJournal;
+import com.jd.journalkeeper.core.api.ResponseConfig;
 import com.jd.journalkeeper.core.exception.NoLeaderException;
+import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.rpc.BaseResponse;
 import com.jd.journalkeeper.rpc.LeaderResponse;
 import com.jd.journalkeeper.rpc.RpcException;
 import com.jd.journalkeeper.rpc.StatusCode;
-import com.jd.journalkeeper.rpc.client.*;
+import com.jd.journalkeeper.rpc.client.ClientServerRpc;
+import com.jd.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
+import com.jd.journalkeeper.rpc.client.GetServersResponse;
+import com.jd.journalkeeper.rpc.client.QueryStateRequest;
+import com.jd.journalkeeper.rpc.client.UpdateClusterStateRequest;
+import com.jd.journalkeeper.utils.event.EventWatcher;
 
 import java.net.URI;
 import java.util.Properties;
@@ -57,7 +61,15 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
     public CompletableFuture<R> query(Q query) {
         return invokeLeaderRpc(
                 leaderRpc -> leaderRpc.queryClusterState(new QueryStateRequest(querySerializer.serialize(query))))
-                .thenApply(QueryStateResponse::getResult)
+                .thenApply((response) -> {
+                    if (response.getStatusCode().equals(StatusCode.NOT_LEADER)) {
+                        throw new NotLeaderException(response.getLeader());
+                    }
+                    if (!response.getStatusCode().equals(StatusCode.SUCCESS)) {
+                        throw new RuntimeException(String.valueOf(response.getStatusCode()));
+                    }
+                    return response.getResult();
+                })
                 .thenApply(resultSerializer::parse);
     }
 
