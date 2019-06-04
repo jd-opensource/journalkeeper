@@ -469,14 +469,13 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                 .collect(Collectors.toList());
         try {
             long index = startIndex;
-
             for (int i = 0; i < entries.size(); i++, index++) {
                 if (index < maxIndex() && getTerm(index) != entries.get(i).getTerm()) {
                     truncate(index);
-                }
-                if (index == maxIndex()) {
+                } else if (index == maxIndex()) {
+                    // TODO break?
                     appendRaw(rawEntries.subList(i, entries.size()));
-                    break;
+//                    break;
                 }
             }
         } catch (IOException e) {

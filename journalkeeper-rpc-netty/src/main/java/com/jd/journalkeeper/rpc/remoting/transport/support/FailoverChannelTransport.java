@@ -196,7 +196,7 @@ public class FailoverChannelTransport implements ChannelTransport {
     }
 
     protected boolean isNeedReconnect() {
-        return System.currentTimeMillis() - lastReconnect > config.getRetryPolicy().getMaxRetryDelay();
+        return System.currentTimeMillis() - lastReconnect > config.getRetryPolicy().getRetryDelay();
     }
 
     protected boolean reconnect() {

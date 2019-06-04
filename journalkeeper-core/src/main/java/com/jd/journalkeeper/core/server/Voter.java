@@ -238,6 +238,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Append journal entry, {}", voterInfo());
                 }
+
                 // 唤醒复制线程
                 leaderReplicationThread.wakeup();
             } catch (Throwable t) {
@@ -384,7 +385,9 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         }
         do {
             if (serverState() == ServerState.RUNNING && voterState == VoterState.LEADER && !Thread.currentThread().isInterrupted()) {
-                count = followers.parallelStream()
+                // TODO 有并发问题
+//                count = followers.parallelStream()
+                count = new ArrayList<Follower>(followers).parallelStream()
                         .mapToInt(follower -> {
                             long maxIndex = journal.maxIndex();
                             int rpcCount = 0;
@@ -1208,8 +1211,8 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     }
 
     public static class Config extends Server.Config {
-        public final static long DEFAULT_HEARTBEAT_INTERVAL_MS = 1000L;
-        public final static long DEFAULT_ELECTION_TIMEOUT_MS = 3000L;
+        public final static long DEFAULT_HEARTBEAT_INTERVAL_MS = 100L;
+        public final static long DEFAULT_ELECTION_TIMEOUT_MS = 500L;
         public final static int DEFAULT_REPLICATION_BATCH_SIZE = 128;
         public final static int DEFAULT_REPLICATION_PARALLELISM = 16;
         public final static int DEFAULT_CACHE_REQUESTS = 1024;
