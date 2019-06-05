@@ -8,7 +8,7 @@ import com.jd.journalkeeper.coordinating.network.CoordinatingCommands;
  * email: gaohaoxiang@jd.com
  * date: 2019/6/5
  */
-public class CompareAndSetRequest implements CoordinatingPayload {
+public class CompareAndSetRequest implements CoordinatingPayload, KeyPayload {
 
     private byte[] key;
     private byte[] expect;
@@ -24,6 +24,7 @@ public class CompareAndSetRequest implements CoordinatingPayload {
         this.update = update;
     }
 
+    @Override
     public byte[] getKey() {
         return key;
     }

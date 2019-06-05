@@ -8,7 +8,7 @@ import com.jd.journalkeeper.coordinating.network.CoordinatingCommands;
  * email: gaohaoxiang@jd.com
  * date: 2019/6/5
  */
-public class WatchRequest implements CoordinatingPayload {
+public class WatchRequest implements CoordinatingPayload, KeyPayload {
 
     private byte[] key;
     private boolean once;
@@ -26,6 +26,7 @@ public class WatchRequest implements CoordinatingPayload {
         this.key = key;
     }
 
+    @Override
     public byte[] getKey() {
         return key;
     }

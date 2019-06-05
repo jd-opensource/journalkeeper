@@ -43,7 +43,7 @@ public class PooledCommandHandler implements CommandHandler, ExecutorServiceProv
 
         if (payload instanceof KeyPayload) {
             KeyPayload keyPayload = (KeyPayload) payload;
-            hashCode = ArrayUtils.hashCode(keyPayload);
+            hashCode = ArrayUtils.hashCode(keyPayload.getKey());
         } else {
             hashCode = transport.toString().hashCode();
         }

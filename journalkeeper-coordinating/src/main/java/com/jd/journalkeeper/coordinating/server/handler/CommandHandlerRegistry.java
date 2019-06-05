@@ -46,9 +46,9 @@ public class CommandHandlerRegistry {
         int queueSize = PropertiesUtils.getProperty(context.getConfig().getProperties(), CoordinatingConfigs.SERVER_EXECUTOR_QUEUE_SIZE, CoordinatingConfigs.DEFAULT_SERVER_EXECUTOR_QUEUE_SIZE);
         List<ExecutorService> result = new ArrayList<>(threads);
         for (int i = 0; i < threads; i++) {
-            ThreadPoolExecutor executor = new ThreadPoolExecutor(threads, threads, 0L, TimeUnit.MILLISECONDS,
+            ThreadPoolExecutor executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
                     new LinkedBlockingQueue<>(queueSize),
-                    new NamedThreadFactory("coordinating-executor"));
+                    new NamedThreadFactory("coordinating-executor" + i));
             result.add(executor);
         }
         return result;

@@ -8,7 +8,7 @@ import com.jd.journalkeeper.coordinating.network.CoordinatingCommands;
  * email: gaohaoxiang@jd.com
  * date: 2019/6/5
  */
-public class ExistRequest implements CoordinatingPayload {
+public class ExistRequest implements CoordinatingPayload, KeyPayload {
 
     private byte[] key;
 
@@ -24,6 +24,7 @@ public class ExistRequest implements CoordinatingPayload {
         this.key = key;
     }
 
+    @Override
     public byte[] getKey() {
         return key;
     }
