@@ -8,11 +8,12 @@ package com.jd.journalkeeper.coordinating.network;
  */
 public enum CoordinatingCommands {
 
+    BOOLEAN_RESPONSE(0),
+
     // 公共类
     GET_CLUSTER_REQUEST(100),
     GET_CLUSTER_RESPONSE(-100),
     HEARTBEAT_REQUEST(101),
-    HEARTBEAT_RESPONSE(-101),
 
     // 操作类
     PUT_REQUEST(200),
@@ -20,7 +21,6 @@ public enum CoordinatingCommands {
     GET_REQUEST(201),
     GET_RESPONSE(-201),
     REMOVE_REQUEST(202),
-    REMOVE_RESPONSE(-202),
     EXIST_REQUEST(203),
     EXIST_RESPONSE(-203),
     COMPARE_AND_SET_REQUEST(204),
@@ -28,9 +28,7 @@ public enum CoordinatingCommands {
 
     // 监听类
     WATCH_REQUEST(300),
-    WATCH_RESPONSE(-300),
     UN_WATCH_REQUEST(301),
-    UN_WATCH_RESPONSE(-301),
 
     ;
 

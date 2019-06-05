@@ -2,6 +2,7 @@ package com.jd.journalkeeper.coordinating.network.codec;
 
 import com.jd.journalkeeper.coordinating.network.CoordinatingCommands;
 import com.jd.journalkeeper.coordinating.network.command.GetRequest;
+import com.jd.journalkeeper.rpc.remoting.serialize.CodecSupport;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -14,12 +15,16 @@ public class GetRequestCodec implements CoordinatingPayloadCodec<GetRequest> {
 
     @Override
     public GetRequest decode(CoordinatingHeader header, ByteBuf buffer) throws Exception {
-        return null;
+        byte[] key = CodecSupport.decodeBytes(buffer);
+
+        GetRequest getRequest = new GetRequest();
+        getRequest.setKey(key);
+        return getRequest;
     }
 
     @Override
     public void encode(GetRequest payload, ByteBuf buffer) throws Exception {
-
+        CodecSupport.encodeBytes(buffer, payload.getKey());
     }
 
     @Override

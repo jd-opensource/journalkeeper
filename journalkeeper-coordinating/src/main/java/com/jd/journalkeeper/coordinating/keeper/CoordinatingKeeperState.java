@@ -69,7 +69,7 @@ public class CoordinatingKeeperState {
 
     public boolean exist(byte[] key) {
         try {
-            return doQuery(new StateReadRequest(StateTypes.GET.getType(), key))
+            return doQuery(new StateReadRequest(StateTypes.EXIST.getType(), key))
                     .thenApply(StateResponse::getValue)
                     .thenApply(response -> {
                         if (response[0] == 0) {

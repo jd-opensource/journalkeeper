@@ -119,4 +119,17 @@ public class CoordinatingHeader implements Header {
         return requestIdGenerator.incrementAndGet();
     }
 
+    @Override
+    public String toString() {
+        return "CoordinatingHeader{" +
+                "oneWay=" + oneWay +
+                ", status=" + status +
+                ", error='" + error + '\'' +
+                ", requestId=" + requestId +
+                ", direction=" + direction +
+                ", version=" + version +
+                ", type=" + type +
+                ", sendTime=" + sendTime +
+                '}';
+    }
 }

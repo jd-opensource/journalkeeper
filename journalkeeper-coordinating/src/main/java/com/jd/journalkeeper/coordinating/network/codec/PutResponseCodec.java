@@ -2,6 +2,7 @@ package com.jd.journalkeeper.coordinating.network.codec;
 
 import com.jd.journalkeeper.coordinating.network.CoordinatingCommands;
 import com.jd.journalkeeper.coordinating.network.command.PutResponse;
+import com.jd.journalkeeper.rpc.remoting.serialize.CodecSupport;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -14,12 +15,19 @@ public class PutResponseCodec implements CoordinatingPayloadCodec<PutResponse> {
 
     @Override
     public PutResponse decode(CoordinatingHeader header, ByteBuf buffer) throws Exception {
-        return null;
+        long modifyTime = CodecSupport.decodeLong(buffer);
+        long createTime = CodecSupport.decodeLong(buffer);
+
+        PutResponse putResponse = new PutResponse();
+        putResponse.setModifyTime(modifyTime);
+        putResponse.setCreateTime(createTime);
+        return putResponse;
     }
 
     @Override
     public void encode(PutResponse payload, ByteBuf buffer) throws Exception {
-
+        CodecSupport.encodeLong(buffer, payload.getModifyTime());
+        CodecSupport.encodeLong(buffer, payload.getCreateTime());
     }
 
     @Override

@@ -1,6 +1,5 @@
 package com.jd.journalkeeper.coordinating.network.codec;
 
-import com.jd.journalkeeper.rpc.header.JournalKeeperHeader;
 import com.jd.journalkeeper.rpc.remoting.serialize.CodecSupport;
 import com.jd.journalkeeper.rpc.remoting.transport.codec.Codec;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Direction;
@@ -9,7 +8,7 @@ import io.netty.buffer.ByteBuf;
 
 public class CoordinatingHeaderCodec implements Codec {
 
-    private static final int HEADER_LENGTH = 4 + 1 + 1 + 4 + 1 + 8;
+    private static final int HEADER_LENGTH = 4 + 1 + 1 + 4 + 4 + 8;
 
     @Override
     public CoordinatingHeader decode(ByteBuf buffer) throws TransportException.CodecException {
@@ -25,7 +24,7 @@ public class CoordinatingHeaderCodec implements Codec {
         byte version = buffer.readByte();
         byte identity = buffer.readByte();
         int requestId = buffer.readInt();
-        byte type = buffer.readByte();
+        int type = buffer.readInt();
         long sendTime = buffer.readLong();
         short status = 0;
         String error = null;
@@ -57,7 +56,7 @@ public class CoordinatingHeaderCodec implements Codec {
         buffer.writeByte(header.getVersion());
         buffer.writeByte(identity);
         buffer.writeInt(header.getRequestId());
-        buffer.writeByte(header.getType());
+        buffer.writeInt(header.getType());
         buffer.writeLong(header.getSendTime());
         if (header.getDirection().equals(Direction.RESPONSE)) {
             buffer.writeByte(header.getStatus());

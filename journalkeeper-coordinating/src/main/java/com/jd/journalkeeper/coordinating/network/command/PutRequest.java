@@ -8,11 +8,21 @@ import com.jd.journalkeeper.coordinating.network.CoordinatingCommands;
  * email: gaohaoxiang@jd.com
  * date: 2019/6/4
  */
-public class PutRequest implements CoordinatingPayload {
+public class PutRequest implements CoordinatingPayload, KeyPayload {
 
     private byte[] key;
     private byte[] value;
 
+    public PutRequest() {
+
+    }
+
+    public PutRequest(byte[] key, byte[] value) {
+        this.key = key;
+        this.value = value;
+    }
+
+    @Override
     public byte[] getKey() {
         return key;
     }

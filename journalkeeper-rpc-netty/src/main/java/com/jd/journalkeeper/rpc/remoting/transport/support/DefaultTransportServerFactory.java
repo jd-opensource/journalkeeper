@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.rpc.remoting.transport.support;
 
+import com.jd.journalkeeper.rpc.remoting.concurrent.EventBus;
 import com.jd.journalkeeper.rpc.remoting.event.TransportEvent;
 import com.jd.journalkeeper.rpc.remoting.transport.RequestBarrier;
 import com.jd.journalkeeper.rpc.remoting.transport.TransportServer;
@@ -12,7 +13,6 @@ import com.jd.journalkeeper.rpc.remoting.transport.command.support.DefaultComman
 import com.jd.journalkeeper.rpc.remoting.transport.command.support.RequestHandler;
 import com.jd.journalkeeper.rpc.remoting.transport.command.support.ResponseHandler;
 import com.jd.journalkeeper.rpc.remoting.transport.config.ServerConfig;
-import com.jd.journalkeeper.rpc.remoting.concurrent.EventBus;
 
 /**
  * 默认通信服务工厂
@@ -58,6 +58,6 @@ public class DefaultTransportServerFactory implements TransportServerFactory {
         RequestBarrier requestBarrier = new RequestBarrier(serverConfig);
         RequestHandler requestHandler = new RequestHandler(commandHandlerFactory, commandHandlerFilterFactory, exceptionHandler);
         ResponseHandler responseHandler = new ResponseHandler(serverConfig, requestBarrier, exceptionHandler);
-        return new DefaultTransportServer(serverConfig, host, port, codec, requestBarrier, requestHandler, responseHandler, eventBus);
+        return new DefaultTransportServer(serverConfig, host, port, codec, exceptionHandler, requestBarrier, requestHandler, responseHandler, eventBus);
     }
 }

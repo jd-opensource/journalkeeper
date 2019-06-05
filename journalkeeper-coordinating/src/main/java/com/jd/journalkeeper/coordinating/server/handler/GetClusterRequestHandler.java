@@ -4,12 +4,9 @@ import com.jd.journalkeeper.coordinating.keeper.CoordinatingKeeperServer;
 import com.jd.journalkeeper.coordinating.network.CoordinatingCommands;
 import com.jd.journalkeeper.coordinating.network.command.GetClusterRequest;
 import com.jd.journalkeeper.coordinating.network.command.GetClusterResponse;
-import com.jd.journalkeeper.coordinating.server.CoordinatingContext;
 import com.jd.journalkeeper.coordinating.server.config.CoordinatingConfig;
 import com.jd.journalkeeper.rpc.remoting.transport.Transport;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Command;
-import com.jd.journalkeeper.rpc.remoting.transport.command.Type;
-import com.jd.journalkeeper.rpc.remoting.transport.command.handler.CommandHandler;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -21,14 +18,14 @@ import java.util.List;
  * email: gaohaoxiang@jd.com
  * date: 2019/6/4
  */
-public class GetClusterRequestHandler implements CommandHandler, Type {
+public class GetClusterRequestHandler implements CoordinatingCommandHandler {
 
     private CoordinatingConfig config;
     private CoordinatingKeeperServer keeperServer;
 
-    public GetClusterRequestHandler(CoordinatingContext context) {
-        this.config = context.getConfig();
-        this.keeperServer = context.getKeeperServer();
+    public GetClusterRequestHandler(CoordinatingConfig config, CoordinatingKeeperServer keeperServer) {
+        this.config = config;
+        this.keeperServer = keeperServer;
     }
 
     @Override

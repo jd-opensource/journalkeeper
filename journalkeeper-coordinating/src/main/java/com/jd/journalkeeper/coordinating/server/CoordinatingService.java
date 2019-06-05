@@ -1,6 +1,8 @@
 package com.jd.journalkeeper.coordinating.server;
 
+import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.coordinating.keeper.CoordinatingKeeperServer;
+import com.jd.journalkeeper.coordinating.keeper.serializer.KryoSerializer;
 import com.jd.journalkeeper.coordinating.server.config.CoordinatingConfig;
 import com.jd.journalkeeper.coordinating.server.config.CoordinatingConfiguration;
 import com.jd.journalkeeper.coordinating.server.network.CoordinatingServer;
@@ -22,6 +24,7 @@ public class CoordinatingService extends Service {
     private CoordinatingConfiguration configuration;
     private CoordinatingKeeperServer keeperServer;
     private CoordinatingServer server;
+    private Serializer serializer;
     private CoordinatingContext context;
 
     public CoordinatingService(String[] args) {
@@ -35,7 +38,8 @@ public class CoordinatingService extends Service {
         logger.info("service configs: {}", config);
 
         keeperServer = new CoordinatingKeeperServer(config.getKeeper().getCurrent(), config.getKeeper().getCluster(), config.getKeeper().getRole(), config.getProperties());
-        context = new CoordinatingContext(config, keeperServer);
+        serializer = new KryoSerializer();
+        context = new CoordinatingContext(config, keeperServer, serializer);
         server = new CoordinatingServer(context);
     }
 

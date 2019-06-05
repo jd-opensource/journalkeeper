@@ -24,13 +24,19 @@ public class KryoSerializer implements Serializer {
 
     private Class<?> type;
 
+    public KryoSerializer() {
+        this(null);
+    }
+
     public KryoSerializer(Class<?> type) {
         this.type = type;
         this.kryoPool = new KryoPool.Builder(new KryoFactory() {
             @Override
             public Kryo create() {
                 Kryo kryo = new Kryo();
-                kryo.register(type);
+                if (type != null) {
+                    kryo.register(type);
+                }
                 return kryo;
             }
         }).build();
@@ -47,7 +53,11 @@ public class KryoSerializer implements Serializer {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream(BUFFER_SIZE);
         Output output = new Output(outputStream);
 
-        kryo.writeObject(output, entry);
+        if (type == null) {
+            kryo.writeClassAndObject(output, entry);
+        } else {
+            kryo.writeObject(output, entry);
+        }
         kryoPool.release(kryo);
         output.flush();
         byte[] result = outputStream.toByteArray();
@@ -61,7 +71,7 @@ public class KryoSerializer implements Serializer {
         ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
         Input input = new Input(inputStream);
 
-        Object result = kryo.readObject(input, type);
+        Object result = (type == null ? kryo.readClassAndObject(input) : kryo.readObject(input, type));
         kryoPool.release(kryo);
         input.close();
         return result;
