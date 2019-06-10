@@ -5,6 +5,7 @@ import com.jd.journalkeeper.coordinating.network.CoordinatingCommands;
 import com.jd.journalkeeper.coordinating.network.command.BooleanResponse;
 import com.jd.journalkeeper.coordinating.network.command.RemoveRequest;
 import com.jd.journalkeeper.coordinating.server.CoordinatingCodes;
+import com.jd.journalkeeper.coordinating.server.watcher.WatcherHandler;
 import com.jd.journalkeeper.rpc.remoting.transport.Transport;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Command;
 
@@ -17,9 +18,11 @@ import com.jd.journalkeeper.rpc.remoting.transport.command.Command;
 public class RemoveRequestHandler implements CoordinatingCommandHandler {
 
     private CoordinatingKeeperServer keeperServer;
+    private WatcherHandler watcherHandler;
 
-    public RemoveRequestHandler(CoordinatingKeeperServer keeperServer) {
+    public RemoveRequestHandler(CoordinatingKeeperServer keeperServer, WatcherHandler watcherHandler) {
         this.keeperServer = keeperServer;
+        this.watcherHandler = watcherHandler;
     }
 
     @Override
@@ -32,6 +35,7 @@ public class RemoveRequestHandler implements CoordinatingCommandHandler {
         }
 
         keeperServer.getState().remove(removeRequest.getKey());
+        watcherHandler.notifyKeyRemoved(removeRequest.getKey());
         return BooleanResponse.build(CoordinatingCodes.SUCCESS.getType());
     }
 

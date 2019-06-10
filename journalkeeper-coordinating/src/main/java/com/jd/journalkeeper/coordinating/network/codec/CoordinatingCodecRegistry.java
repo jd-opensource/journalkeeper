@@ -25,5 +25,6 @@ public class CoordinatingCodecRegistry {
         payloadCodecFactory.register(new CompareAndSetResponseCodec());
         payloadCodecFactory.register(new WatchRequestCodec());
         payloadCodecFactory.register(new UnWatchRequestCodec());
+        payloadCodecFactory.register(new PublishWatchRequestCodec());
     }
 }

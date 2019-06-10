@@ -14,6 +14,7 @@ public class CoordinatingConfig {
 
     private ServerConfig server;
     private CoordinatingKeeperConfig state;
+    private CoordinatingWatcherConfig watcher;
     private Properties properties;
 
     public void setServer(ServerConfig server) {
@@ -30,6 +31,14 @@ public class CoordinatingConfig {
 
     public CoordinatingKeeperConfig getKeeper() {
         return state;
+    }
+
+    public void setWatcher(CoordinatingWatcherConfig watcher) {
+        this.watcher = watcher;
+    }
+
+    public CoordinatingWatcherConfig getWatcher() {
+        return watcher;
     }
 
     public void setProperties(Properties properties) {

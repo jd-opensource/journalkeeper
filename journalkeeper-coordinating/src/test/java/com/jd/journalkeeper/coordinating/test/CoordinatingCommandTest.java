@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.coordinating.test;
 
+import com.jd.journalkeeper.coordinating.client.handler.PublishWatcherRequestHandler;
 import com.jd.journalkeeper.coordinating.network.codec.CoordinatingCodec;
 import com.jd.journalkeeper.coordinating.network.command.CompareAndSetRequest;
 import com.jd.journalkeeper.coordinating.network.command.CompareAndSetResponse;
@@ -12,11 +13,13 @@ import com.jd.journalkeeper.coordinating.network.command.GetResponse;
 import com.jd.journalkeeper.coordinating.network.command.PutRequest;
 import com.jd.journalkeeper.coordinating.network.command.PutResponse;
 import com.jd.journalkeeper.coordinating.network.command.RemoveRequest;
+import com.jd.journalkeeper.coordinating.network.command.WatchRequest;
 import com.jd.journalkeeper.coordinating.server.CoordinatingCodes;
 import com.jd.journalkeeper.rpc.remoting.transport.IpUtil;
 import com.jd.journalkeeper.rpc.remoting.transport.Transport;
 import com.jd.journalkeeper.rpc.remoting.transport.TransportClient;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Command;
+import com.jd.journalkeeper.rpc.remoting.transport.command.support.DefaultCommandHandlerFactory;
 import com.jd.journalkeeper.rpc.remoting.transport.config.ClientConfig;
 import com.jd.journalkeeper.rpc.remoting.transport.support.DefaultTransportClientFactory;
 import org.junit.Test;
@@ -28,17 +31,22 @@ import java.net.InetSocketAddress;
  * email: gaohaoxiang@jd.com
  * date: 2019/6/4
  */
-public class CoordinatingServerTest {
+public class CoordinatingCommandTest {
 
     @Test
     public void test() {
-        DefaultTransportClientFactory transportClientFactory = new DefaultTransportClientFactory(new CoordinatingCodec());
+        DefaultCommandHandlerFactory commandHandlerFactory = new DefaultCommandHandlerFactory();
+        commandHandlerFactory.register(new PublishWatcherRequestHandler());
+
+        DefaultTransportClientFactory transportClientFactory = new DefaultTransportClientFactory(new CoordinatingCodec(), commandHandlerFactory);
         TransportClient transportClient = transportClientFactory.create(new ClientConfig());
         Transport transport = transportClient.createTransport(new InetSocketAddress(IpUtil.getLocalIp(), 50081));
 
         Command responseCommand = transport.sync(new CoordinatingCommand(new GetClusterRequest()));
         Object response = responseCommand.getPayload();
         System.out.println(response);
+
+        transport.sync(new CoordinatingCommand(new WatchRequest("test_key".getBytes(), false)));
 
         responseCommand = transport.sync(new CoordinatingCommand(new PutRequest("test_key".getBytes(), "test_value".getBytes())));
         response = responseCommand.getPayload();

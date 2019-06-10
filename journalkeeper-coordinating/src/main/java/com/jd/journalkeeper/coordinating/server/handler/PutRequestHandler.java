@@ -6,6 +6,7 @@ import com.jd.journalkeeper.coordinating.network.CoordinatingCommands;
 import com.jd.journalkeeper.coordinating.network.command.PutRequest;
 import com.jd.journalkeeper.coordinating.network.command.PutResponse;
 import com.jd.journalkeeper.coordinating.server.domain.CoordinatingValue;
+import com.jd.journalkeeper.coordinating.server.watcher.WatcherHandler;
 import com.jd.journalkeeper.rpc.remoting.transport.Transport;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Command;
 
@@ -18,10 +19,12 @@ import com.jd.journalkeeper.rpc.remoting.transport.command.Command;
 public class PutRequestHandler implements CoordinatingCommandHandler {
 
     private CoordinatingKeeperServer keeperServer;
+    private WatcherHandler watcherHandler;
     private Serializer serializer;
 
-    public PutRequestHandler(CoordinatingKeeperServer keeperServer, Serializer serializer) {
+    public PutRequestHandler(CoordinatingKeeperServer keeperServer, WatcherHandler watcherHandler, Serializer serializer) {
         this.keeperServer = keeperServer;
+        this.watcherHandler = watcherHandler;
         this.serializer = serializer;
     }
 
@@ -41,6 +44,7 @@ public class PutRequestHandler implements CoordinatingCommandHandler {
         value.setValue(putRequest.getValue());
         value.setModifyTime(System.currentTimeMillis());
         keeperServer.getState().put(putRequest.getKey(), serializer.serialize(value));
+        watcherHandler.notifyKeyChanged(putRequest.getKey(), value);
 
         PutResponse response = new PutResponse();
         response.setModifyTime(value.getModifyTime());

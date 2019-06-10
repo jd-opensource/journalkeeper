@@ -32,13 +32,13 @@ public class CommandHandlerRegistry {
         this.executorServices = createExecutorServices(context);
         this.register(new HeartbeatRequestHandler());
         this.register(new GetClusterRequestHandler(context.getConfig(), context.getKeeperServer()));
-        this.register(new PutRequestHandler(context.getKeeperServer(), context.getSerializer()));
+        this.register(new PutRequestHandler(context.getKeeperServer(), context.getWatcherHandler(), context.getSerializer()));
         this.register(new GetRequestHandler(context.getKeeperServer(), context.getSerializer()));
-        this.register(new RemoveRequestHandler(context.getKeeperServer()));
+        this.register(new RemoveRequestHandler(context.getKeeperServer(), context.getWatcherHandler()));
         this.register(new ExistRequestHandler(context.getKeeperServer()));
-        this.register(new CompareAndSetRequestHandler(context.getKeeperServer(), context.getSerializer()));
-        this.register(new WatchRequestHandler());
-        this.register(new UnWatchRequestHandler());
+        this.register(new CompareAndSetRequestHandler(context.getKeeperServer(), context.getWatcherHandler(), context.getSerializer()));
+        this.register(new WatchRequestHandler(context.getWatcherHandler()));
+        this.register(new UnWatchRequestHandler(context.getWatcherHandler()));
     }
 
     protected List<ExecutorService> createExecutorServices(CoordinatingContext context) {

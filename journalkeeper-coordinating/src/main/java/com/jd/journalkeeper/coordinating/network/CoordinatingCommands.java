@@ -29,6 +29,7 @@ public enum CoordinatingCommands {
     // 监听类
     WATCH_REQUEST(300),
     UN_WATCH_REQUEST(301),
+    PUBLISH_WATCH_REQUEST(302),
 
     ;
 

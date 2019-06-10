@@ -6,6 +6,7 @@ import com.jd.journalkeeper.coordinating.network.CoordinatingCommands;
 import com.jd.journalkeeper.coordinating.network.command.CompareAndSetRequest;
 import com.jd.journalkeeper.coordinating.network.command.CompareAndSetResponse;
 import com.jd.journalkeeper.coordinating.server.domain.CoordinatingValue;
+import com.jd.journalkeeper.coordinating.server.watcher.WatcherHandler;
 import com.jd.journalkeeper.rpc.remoting.transport.Transport;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Command;
 
@@ -20,10 +21,12 @@ import java.util.Objects;
 public class CompareAndSetRequestHandler implements CoordinatingCommandHandler {
 
     private CoordinatingKeeperServer keeperServer;
+    private WatcherHandler watcherHandler;
     private Serializer serializer;
 
-    public CompareAndSetRequestHandler(CoordinatingKeeperServer keeperServer, Serializer serializer) {
+    public CompareAndSetRequestHandler(CoordinatingKeeperServer keeperServer, WatcherHandler watcherHandler, Serializer serializer) {
         this.keeperServer = keeperServer;
+        this.watcherHandler = watcherHandler;
         this.serializer = serializer;
     }
 
@@ -48,6 +51,7 @@ public class CompareAndSetRequestHandler implements CoordinatingCommandHandler {
         value.setValue(compareAndSetRequest.getUpdate());
         value.setModifyTime(System.currentTimeMillis());
         keeperServer.getState().put(compareAndSetRequest.getKey(), serializer.serialize(value));
+        watcherHandler.notifyKeyChanged(compareAndSetRequest.getKey(), value);
 
         CompareAndSetResponse response = new CompareAndSetResponse(true, value.getValue());
         return new Command(response);

@@ -36,4 +36,6 @@ public class CoordinatingConfigs {
     public static final int DEFAULT_SERVER_EXECUTOR_THREADS = Runtime.getRuntime().availableProcessors() * 3;
     public static final String SERVER_EXECUTOR_QUEUE_SIZE = "coordinating.server.executor.queue.size";
     public static final int DEFAULT_SERVER_EXECUTOR_QUEUE_SIZE = 1024;
+
+    public static final String WATCHER_PUBLISH_TIMEOUT = "coordinating.watcher.publish.timeout";
 }

@@ -22,6 +22,7 @@ public class CoordinatingConfigParser {
         CoordinatingConfig config = new CoordinatingConfig();
         config.setServer(parseServerConfig(properties));
         config.setKeeper(parseKeeperConfig(properties));
+        config.setWatcher(parseWatcherConfig(properties));
         config.setProperties(properties);
         return config;
     }
@@ -75,6 +76,12 @@ public class CoordinatingConfigParser {
 
         String role = PropertiesUtils.getProperty(properties, CoordinatingKeeperConfigs.ROLE, RaftServer.Roll.VOTER);
         config.setRole(role.equals(String.valueOf(RaftServer.Roll.VOTER)) ? RaftServer.Roll.VOTER : RaftServer.Roll.OBSERVER);
+        return config;
+    }
+
+    protected CoordinatingWatcherConfig parseWatcherConfig(Properties properties) {
+        CoordinatingWatcherConfig config = new CoordinatingWatcherConfig();
+        config.setPublishTimeout(PropertiesUtils.getProperty(properties, CoordinatingConfigs.WATCHER_PUBLISH_TIMEOUT, config.getPublishTimeout()));
         return config;
     }
 }

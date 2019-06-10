@@ -14,7 +14,7 @@ public class BooleanResponseCodec implements CoordinatingPayloadCodec<BooleanRes
 
     @Override
     public BooleanResponse decode(CoordinatingHeader header, ByteBuf buffer) throws Exception {
-        return null;
+        return new BooleanResponse();
     }
 
     @Override

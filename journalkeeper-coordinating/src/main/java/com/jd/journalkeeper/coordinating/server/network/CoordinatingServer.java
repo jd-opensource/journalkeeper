@@ -41,7 +41,7 @@ public class CoordinatingServer extends Service {
 
     protected TransportServer createTransportServer(CoordinatingConfig config) {
         DefaultTransportServerFactory transportServerFactory = new DefaultTransportServerFactory(new CoordinatingCodec(),
-                new CoordinatingCommandHandlerFactory(context), new CoordinatingExceptionHandler());
+                new CoordinatingCommandHandlerFactory(context), new CoordinatingExceptionHandler(), context.getServerEventBus());
         return transportServerFactory.bind(config.getServer());
     }
 }
