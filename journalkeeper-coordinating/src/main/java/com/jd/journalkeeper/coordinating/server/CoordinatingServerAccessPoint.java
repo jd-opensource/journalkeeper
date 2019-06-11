@@ -1,11 +1,11 @@
-package com.jd.journalkeeper.coordinating.state;
+package com.jd.journalkeeper.coordinating.server;
 
 import com.jd.journalkeeper.base.Serializer;
+import com.jd.journalkeeper.coordinating.state.CoordinatorStateFactory;
 import com.jd.journalkeeper.coordinating.state.domain.StateReadRequest;
 import com.jd.journalkeeper.coordinating.state.domain.StateResponse;
 import com.jd.journalkeeper.coordinating.state.domain.StateWriteRequest;
 import com.jd.journalkeeper.coordinating.state.serializer.KryoSerializer;
-import com.jd.journalkeeper.coordinating.state.state.CoordinatorStateFactory;
 import com.jd.journalkeeper.core.api.RaftServer;
 import com.jd.journalkeeper.core.api.StateFactory;
 

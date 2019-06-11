@@ -1,6 +1,8 @@
-package com.jd.journalkeeper.coordinating.state;
+package com.jd.journalkeeper.coordinating.server;
 
 import com.jd.journalkeeper.base.Serializer;
+import com.jd.journalkeeper.coordinating.client.CoordinatingClient;
+import com.jd.journalkeeper.coordinating.exception.CoordinatingException;
 import com.jd.journalkeeper.coordinating.state.domain.StateReadRequest;
 import com.jd.journalkeeper.coordinating.state.domain.StateResponse;
 import com.jd.journalkeeper.coordinating.state.domain.StateWriteRequest;
@@ -100,7 +102,7 @@ public class CoordinatingServer implements StateServer {
             bootStrap.getServer().recover();
             bootStrap.getServer().start();
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new CoordinatingException(e);
         }
     }
 

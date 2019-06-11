@@ -1,6 +1,8 @@
 package com.jd.journalkeeper.coordinating.state.domain;
 
 import java.io.Serializable;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * StateResponse
@@ -13,6 +15,7 @@ public class StateResponse implements Serializable {
     private int code;
     private String msg;
     private byte[] value;
+    private List<byte[]> values;
 
     public StateResponse() {
 
@@ -38,6 +41,17 @@ public class StateResponse implements Serializable {
         this.value = value;
     }
 
+    public StateResponse(int code, String msg, List<byte[]> values) {
+        this.code = code;
+        this.msg = msg;
+        this.values = values;
+    }
+
+    public StateResponse(int code, List<byte[]> values) {
+        this.code = code;
+        this.values = values;
+    }
+
     public int getCode() {
         return code;
     }
@@ -60,5 +74,23 @@ public class StateResponse implements Serializable {
 
     public byte[] getValue() {
         return value;
+    }
+
+    public void setValues(List<byte[]> values) {
+        this.values = values;
+    }
+
+    public List<byte[]> getValues() {
+        return values;
+    }
+
+    @Override
+    public String toString() {
+        return "StateResponse{" +
+                "code=" + code +
+                ", msg='" + msg + '\'' +
+                ", value=" + Arrays.toString(value) +
+                ", values=" + values +
+                '}';
     }
 }

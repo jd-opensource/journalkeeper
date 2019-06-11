@@ -70,7 +70,8 @@ public class EventBus implements Watchable {
     }
 
     private void removeTimeoutPullWatchers() {
-        pullEventWatchers.entrySet().removeIf(entry -> entry.getValue().lastPullTimestamp + pullEventWatcherTimeout < System.currentTimeMillis());
+        // TODO 会引起频繁超时
+        pullEventWatchers.entrySet().removeIf(entry -> entry.getValue().lastPullTimestamp + pullEventWatcherTimeout * 3 < System.currentTimeMillis());
     }
 
     /**

@@ -386,8 +386,9 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         do {
             if (serverState() == ServerState.RUNNING && voterState == VoterState.LEADER && !Thread.currentThread().isInterrupted()) {
                 // TODO 有并发问题
+                // TODO 没必要并发
 //                count = followers.parallelStream()
-                count = new ArrayList<Follower>(followers).parallelStream()
+                count = new ArrayList<Follower>(followers).stream()
                         .mapToInt(follower -> {
                             long maxIndex = journal.maxIndex();
                             int rpcCount = 0;

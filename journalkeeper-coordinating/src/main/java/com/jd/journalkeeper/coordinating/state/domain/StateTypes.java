@@ -17,6 +17,8 @@ public enum StateTypes {
 
     COMPARE_AND_SET(4),
 
+    LIST(5),
+
     ;
 
     private int type;
@@ -41,6 +43,8 @@ public enum StateTypes {
                 return EXIST;
             case 4:
                 return COMPARE_AND_SET;
+            case 5:
+                return LIST;
             default:
                 throw new UnsupportedOperationException(String.valueOf(type));
         }

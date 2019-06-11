@@ -1,12 +1,14 @@
 package com.jd.journalkeeper.coordinating.state.domain;
 
+import java.util.Arrays;
+
 /**
  * StateWriteRequest
  * author: gaohaoxiang
  * email: gaohaoxiang@jd.com
  * date: 2019/5/30
  */
-public class StateWriteRequest extends StateHeader {
+public class StateWriteRequest extends StateRequest {
 
     private byte[] key;
     private byte[] expect;
@@ -56,5 +58,15 @@ public class StateWriteRequest extends StateHeader {
 
     public void setValue(byte[] value) {
         this.value = value;
+    }
+
+    @Override
+    public String toString() {
+        return "StateWriteRequest{" +
+                "type=" + getType() +
+                "key=" + Arrays.toString(key) +
+                ", expect=" + Arrays.toString(expect) +
+                ", value=" + Arrays.toString(value) +
+                '}';
     }
 }

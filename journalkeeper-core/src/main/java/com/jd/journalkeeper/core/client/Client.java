@@ -66,7 +66,7 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
                         throw new NotLeaderException(response.getLeader());
                     }
                     if (!response.getStatusCode().equals(StatusCode.SUCCESS)) {
-                        throw new RuntimeException(String.valueOf(response.getStatusCode()));
+                        throw new RpcException(String.valueOf(response.getStatusCode()));
                     }
                     return response.getResult();
                 })

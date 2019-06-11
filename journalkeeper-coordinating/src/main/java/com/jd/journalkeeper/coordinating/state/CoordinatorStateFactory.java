@@ -1,4 +1,4 @@
-package com.jd.journalkeeper.coordinating.state.state;
+package com.jd.journalkeeper.coordinating.state;
 
 import com.jd.journalkeeper.core.api.State;
 import com.jd.journalkeeper.core.api.StateFactory;

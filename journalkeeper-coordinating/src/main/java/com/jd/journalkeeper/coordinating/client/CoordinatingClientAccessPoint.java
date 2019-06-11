@@ -1,4 +1,4 @@
-package com.jd.journalkeeper.coordinating.state;
+package com.jd.journalkeeper.coordinating.client;
 
 import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.coordinating.state.domain.StateReadRequest;

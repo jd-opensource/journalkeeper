@@ -1,7 +1,7 @@
 package com.jd.journalkeeper.coordinating.test.cluster;
 
-import com.jd.journalkeeper.coordinating.state.CoordinatingServer;
-import com.jd.journalkeeper.coordinating.state.CoordinatingServerAccessPoint;
+import com.jd.journalkeeper.coordinating.server.CoordinatingServer;
+import com.jd.journalkeeper.coordinating.server.CoordinatingServerAccessPoint;
 import com.jd.journalkeeper.coordinating.state.config.KeeperConfigs;
 import com.jd.journalkeeper.core.api.RaftServer;
 import org.junit.Before;
@@ -20,7 +20,7 @@ import java.util.Properties;
  */
 public abstract class AbstractStateServerTest {
 
-    private static final int NODES = 4;
+    private static final int NODES = 5;
     private static final int BASE_PORT = 50088;
     private CoordinatingServer server;
 
@@ -45,8 +45,6 @@ public abstract class AbstractStateServerTest {
         properties.setProperty("rocksdb.options.targetFileSizeMultiplier", "10");
         properties.setProperty("rocksdb.options.maxBackgroundCompactions", "8");
         properties.setProperty("rocksdb.options.maxBackgroundFlushes", "1");
-        properties.setProperty("rocksdb.options.allowConcurrentMemtableWrite", "false");
-        properties.setProperty("rocksdb.options.allowMmapWrites", "true");
         properties.setProperty("rocksdb.options.skipStatsUpdateOnDbOpen", "true");
         properties.setProperty("rocksdb.options.optimizeFiltersForHits", "true");
         properties.setProperty("rocksdb.options.newTableReaderForCompactionInputs", "true");

@@ -1,5 +1,7 @@
 package com.jd.journalkeeper.coordinating.state.store;
 
+import java.util.List;
+
 /**
  * KVStore
  * author: gaohaoxiang
@@ -8,9 +10,11 @@ package com.jd.journalkeeper.coordinating.state.store;
  */
 public interface KVStore {
 
-    boolean put(byte[] key, byte[] value);
+    boolean set(byte[] key, byte[] value);
 
     byte[] get(byte[] key);
+
+    List<byte[]> multiGet(List<byte[]> keys);
 
     boolean exist(byte[] key);
 

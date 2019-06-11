@@ -3,20 +3,20 @@ package com.jd.journalkeeper.coordinating.state.domain;
 import java.io.Serializable;
 
 /**
- * StateHeader
+ * StateRequest
  * author: gaohaoxiang
  * email: gaohaoxiang@jd.com
  * date: 2019/5/30
  */
-public class StateHeader implements Serializable {
+public abstract class StateRequest implements Serializable {
 
     private int type;
 
-    public StateHeader() {
+    public StateRequest() {
 
     }
 
-    public StateHeader(int type) {
+    public StateRequest(int type) {
         this.type = type;
     }
 

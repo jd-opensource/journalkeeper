@@ -1,5 +1,6 @@
-package com.jd.journalkeeper.coordinating.state;
+package com.jd.journalkeeper.coordinating.client;
 
+import com.jd.journalkeeper.coordinating.client.exception.CoordinatingClientException;
 import com.jd.journalkeeper.coordinating.state.domain.StateCodes;
 import com.jd.journalkeeper.coordinating.state.domain.StateReadRequest;
 import com.jd.journalkeeper.coordinating.state.domain.StateResponse;
@@ -11,9 +12,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 /**
  * CoordinatingClient
@@ -21,7 +24,6 @@ import java.util.concurrent.CompletableFuture;
  * email: gaohaoxiang@jd.com
  * date: 2019/6/4
  */
-// TODO 异常处理
 public class CoordinatingClient {
 
     protected static final Logger logger = LoggerFactory.getLogger(CoordinatingClient.class);
@@ -38,23 +40,11 @@ public class CoordinatingClient {
         this.client = client;
     }
 
-    public boolean set(byte[] key, byte[] value) {
+    public void set(byte[] key, byte[] value) {
         try {
             doUpdate(new StateWriteRequest(StateTypes.SET.getType(), key, value)).get();
-            return true;
         } catch (Exception e) {
-            logger.error("set exception, key: {}, value: {}", key, value, e);
-            throw new RuntimeException(e);
-        }
-    }
-
-    public boolean compareAndSet(byte[] key, byte[] expect, byte[] value) {
-        try {
-            doUpdate(new StateWriteRequest(StateTypes.COMPARE_AND_SET.getType(), key, expect, value)).get();
-            return true;
-        } catch (Exception e) {
-            logger.error("compareAndSet exception, key: {}, expect: {}, value: {}", key, expect, value, e);
-            throw new RuntimeException(e);
+            throw convertException(e);
         }
     }
 
@@ -64,18 +54,33 @@ public class CoordinatingClient {
                     .thenApply(StateResponse::getValue)
                     .get();
         } catch (Exception e) {
-            logger.error("get exception, key: {}", key, e);
-            throw new RuntimeException(e);
+            throw convertException(e);
         }
     }
 
-    public boolean remove(byte[] key) {
+    public List<byte[]> list(List<byte[]> keys) {
+        try {
+            return doQuery(new StateReadRequest(StateTypes.LIST.getType(), new ArrayList<>(keys)))
+                    .thenApply(StateResponse::getValues)
+                    .get();
+        } catch (Exception e) {
+            throw convertException(e);
+        }
+    }
+
+    public void compareAndSet(byte[] key, byte[] expect, byte[] value) {
+        try {
+            doUpdate(new StateWriteRequest(StateTypes.COMPARE_AND_SET.getType(), key, expect, value)).get();
+        } catch (Exception e) {
+            throw convertException(e);
+        }
+    }
+
+    public void remove(byte[] key) {
         try {
             doUpdate(new StateWriteRequest(StateTypes.REMOVE.getType(), key)).get();
-            return true;
         } catch (Exception e) {
-            logger.error("remove exception. key: {}", key, e);
-            throw new RuntimeException(e);
+            throw convertException(e);
         }
     }
 
@@ -83,31 +88,49 @@ public class CoordinatingClient {
         try {
             return doQuery(new StateReadRequest(StateTypes.EXIST.getType(), key))
                     .thenApply(StateResponse::getValue)
-                    .thenApply(response -> {
-                        if (response[0] == 0) {
-                            return false;
-                        } else {
-                            return true;
-                        }
-                    })
+                    .thenApply(response -> response[0] == 1)
                     .get();
         } catch (Exception e) {
-            logger.error("exist exception, key: {}", key, e);
-            throw new RuntimeException(e);
+            throw convertException(e);
         }
+    }
+
+    public void watch(CoordinatingEventListener listener) {
+        client.watch(new EventWatcherAdapter(listener));
+    }
+
+    public void unwatch(CoordinatingEventListener listener) {
+        client.unWatch(new EventWatcherAdapter(listener));
+    }
+
+    public void watch(byte[] key, CoordinatingEventListener listener) {
+        client.watch(new EventWatcherAdapter(key, listener));
+    }
+
+    public void unwatch(byte[] key, CoordinatingEventListener listener) {
+        client.unWatch(new EventWatcherAdapter(key, listener));
     }
 
     public URI getLeader() {
         try {
             return client.getServers().get().getLeader();
         } catch (Exception e) {
-            logger.error("getLeader exception", e);
-            return null;
+            throw new CoordinatingClientException(e);
         }
     }
 
     public void stop() {
         client.stop();
+    }
+
+    protected CoordinatingClientException convertException(Exception cause) {
+        if (cause instanceof CoordinatingClientException) {
+            return (CoordinatingClientException) cause;
+        } else if (cause instanceof ExecutionException) {
+            return new CoordinatingClientException(cause.getCause());
+        } else {
+            throw new CoordinatingClientException(cause);
+        }
     }
 
     protected CompletableFuture<Void> doUpdate(StateWriteRequest request) {
@@ -117,10 +140,10 @@ public class CoordinatingClient {
     protected CompletableFuture<StateResponse> doQuery(StateReadRequest request) {
         return client.query(request)
                 .exceptionally(t -> {
-                    throw new RuntimeException(t.getCause());
+                    throw new CoordinatingClientException(t.getCause());
                 }).thenApply(response -> {
                     if (response.getCode() != StateCodes.SUCCESS.getCode()) {
-                        throw new RuntimeException(String.valueOf(StateCodes.valueOf(response.getCode())));
+                        throw new CoordinatingClientException(String.valueOf(StateCodes.valueOf(response.getCode())));
                     }
                     return response;
                 });

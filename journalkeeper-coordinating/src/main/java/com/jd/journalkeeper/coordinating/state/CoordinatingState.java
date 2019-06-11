@@ -1,7 +1,6 @@
-package com.jd.journalkeeper.coordinating.state.state;
+package com.jd.journalkeeper.coordinating.state;
 
 import com.jd.journalkeeper.coordinating.state.config.KeeperConfigs;
-import com.jd.journalkeeper.coordinating.state.domain.StateCodes;
 import com.jd.journalkeeper.coordinating.state.domain.StateReadRequest;
 import com.jd.journalkeeper.coordinating.state.domain.StateResponse;
 import com.jd.journalkeeper.coordinating.state.domain.StateTypes;
@@ -13,6 +12,7 @@ import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.state.LocalState;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
@@ -25,11 +25,11 @@ import java.util.concurrent.CompletableFuture;
  * email: gaohaoxiang@jd.com
  * date: 2019/5/30
  */
-// TODO 操作拆分
 public class CoordinatingState extends LocalState<StateWriteRequest, StateReadRequest, StateResponse> {
 
     private Properties properties;
     private KVStore kvStore;
+    private CoordinatingStateHandler handler;
 
     protected CoordinatingState(StateFactory<StateWriteRequest, StateReadRequest, StateResponse> stateFactory) {
         super(stateFactory);
@@ -39,32 +39,21 @@ public class CoordinatingState extends LocalState<StateWriteRequest, StateReadRe
     protected void recoverLocalState(Path path, RaftJournal raftJournal, Properties properties) throws IOException {
         this.properties = properties;
         this.kvStore = KVStoreManager.getFactory(properties.getProperty(KeeperConfigs.STATE_STORE)).create(path, properties);
+        this.handler = new CoordinatingStateHandler(properties, kvStore);
     }
 
     @Override
     public Map<String, String> execute(StateWriteRequest entry, int partition, long index, int batchSize) {
-        StateTypes type = StateTypes.valueOf(entry.getType());
-        switch (type) {
-            case SET: {
-                kvStore.put(entry.getKey(), entry.getValue());
-                break;
-            }
-            case REMOVE: {
-                kvStore.remove(entry.getKey());
-                break;
-            }
-            case COMPARE_AND_SET: {
-                kvStore.put(entry.getKey(), entry.getValue());
-                break;
-            }
+        boolean isSuccess = handler.handle(entry);
+        if (!isSuccess) {
+            return null;
         }
 
         Map<String, String> parameters = new HashMap<>();
-        parameters.put("operation", String.valueOf(entry.getType()));
-        parameters.put("key", String.valueOf(entry.getKey()));
-
+        parameters.put("type", String.valueOf(entry.getType()));
+        parameters.put("key", new String(entry.getKey(), Charset.forName("UTF-8")));
         if (entry.getValue() != null) {
-            parameters.put("value", String.valueOf(entry.getValue()));
+            parameters.put("value", new String(entry.getValue(), Charset.forName("UTF-8")));
         }
         return parameters;
     }
@@ -72,20 +61,8 @@ public class CoordinatingState extends LocalState<StateWriteRequest, StateReadRe
     @Override
     public CompletableFuture<StateResponse> query(StateReadRequest query) {
         StateTypes type = StateTypes.valueOf(query.getType());
-        switch (type) {
-            case GET: {
-                return CompletableFuture.supplyAsync(() -> {
-                    byte[] value = kvStore.get(query.getKey());
-                    return new StateResponse(StateCodes.SUCCESS.getCode(), value);
-                });
-            }
-            case EXIST: {
-                return CompletableFuture.supplyAsync(() -> {
-                    boolean isExist = kvStore.exist(query.getKey());
-                    return new StateResponse(StateCodes.SUCCESS.getCode(), (isExist ? new byte[] {1} : new byte[] {0}));
-                });
-            }
-        }
-        return null;
+        return CompletableFuture.supplyAsync(() -> {
+            return handler.handle(query);
+        });
     }
 }

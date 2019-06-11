@@ -1,5 +1,6 @@
 package com.jd.journalkeeper.coordinating.state.store.rocksdb;
 
+import com.jd.journalkeeper.coordinating.state.exception.CoordinatingStateException;
 import com.jd.journalkeeper.coordinating.state.store.KVStore;
 import org.rocksdb.Options;
 import org.rocksdb.RocksDB;
@@ -8,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
 
@@ -17,7 +19,6 @@ import java.util.Properties;
  * email: gaohaoxiang@jd.com
  * date: 2019/5/30
  */
-// TODO 异常处理
 public class RocksDBKVStore implements KVStore {
 
     private static final StringBuilder STRING_BUILDER_CACHE = new StringBuilder();
@@ -43,7 +44,7 @@ public class RocksDBKVStore implements KVStore {
             Options options = parseOptions(properties);
             return RocksDB.open(options, path.toString());
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new CoordinatingStateException(e);
         }
     }
 
@@ -52,12 +53,12 @@ public class RocksDBKVStore implements KVStore {
     }
 
     @Override
-    public boolean put(byte[] key, byte[] value) {
+    public boolean set(byte[] key, byte[] value) {
         try {
             rocksDB.put(key, value);
             return true;
         } catch (RocksDBException e) {
-            throw new RuntimeException(e);
+            throw new CoordinatingStateException(e);
         }
     }
 
@@ -66,7 +67,16 @@ public class RocksDBKVStore implements KVStore {
         try {
             return rocksDB.get(key);
         } catch (RocksDBException e) {
-            throw new RuntimeException(e);
+            throw new CoordinatingStateException(e);
+        }
+    }
+
+    @Override
+    public List<byte[]> multiGet(List<byte[]> keys) {
+        try {
+            return rocksDB.multiGetAsList(keys);
+        } catch (RocksDBException e) {
+            throw new CoordinatingStateException(e);
         }
     }
 
@@ -84,7 +94,7 @@ public class RocksDBKVStore implements KVStore {
             rocksDB.delete(key);
             return true;
         } catch (RocksDBException e) {
-            throw new RuntimeException(e);
+            throw new CoordinatingStateException(e);
         }
     }
 
@@ -98,7 +108,7 @@ public class RocksDBKVStore implements KVStore {
             rocksDB.put(key, update);
             return true;
         } catch (RocksDBException e) {
-            throw new RuntimeException(e);
+            throw new CoordinatingStateException(e);
         }
     }
 }

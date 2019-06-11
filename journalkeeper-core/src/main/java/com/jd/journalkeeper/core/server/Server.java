@@ -282,7 +282,7 @@ public abstract class Server<E, Q, R>
      */
     private void applyEntries()  {
         while ( state.lastApplied() < commitIndex) {
-//            takeASnapShotIfNeed();
+            takeASnapShotIfNeed();
             Entry storageEntry = journal.read(state.lastApplied());
             Map<String, String> customizedEventData = null;
             if(storageEntry.getHeader().getPartition() != RESERVED_PARTITION) {
@@ -299,6 +299,7 @@ public abstract class Server<E, Q, R>
             }
             state.next();
             onStateChanged();
+            // TODO 没必要异步
 //            asyncExecutor.submit(this::onStateChanged);
             Map<String, String> parameters = new HashMap<>(customizedEventData == null ? 1: customizedEventData.size() + 1);
             if(null != customizedEventData) {
@@ -759,7 +760,9 @@ public abstract class Server<E, Q, R>
     }
 
     static class Config {
-        final static int DEFAULT_SNAPSHOT_STEP = 128;
+        // TODO 快照问题
+        final static int DEFAULT_SNAPSHOT_STEP = 0;
+//        final static int DEFAULT_SNAPSHOT_STEP = 128;
         final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;
         final static long DEFAULT_FLUSH_INTERVAL_MS = 50L;
         final static int DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;
