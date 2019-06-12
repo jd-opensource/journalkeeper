@@ -21,21 +21,21 @@ public class CoordinatingStateHandler {
 
     private Properties properties;
     private KVStore kvStore;
-    private CoordinatingStateReadHandler readHandler;
     private CoordinatingStateWriteHandler writeHandler;
+    private CoordinatingStateReadHandler readHandler;
 
     public CoordinatingStateHandler(Properties properties, KVStore kvStore) {
         this.properties = properties;
         this.kvStore = kvStore;
-        this.readHandler = new CoordinatingStateReadHandler(properties, kvStore);
         this.writeHandler = new CoordinatingStateWriteHandler(properties, kvStore);
+        this.readHandler = new CoordinatingStateReadHandler(properties, kvStore);
     }
 
     public boolean handle(StateWriteRequest request) {
-        return readHandler.handle(request);
+        return writeHandler.handle(request);
     }
 
     public StateResponse handle(StateReadRequest request) {
-        return writeHandler.handle(request);
+        return readHandler.handle(request);
     }
 }

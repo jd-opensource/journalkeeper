@@ -308,6 +308,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
     private void checkElectionTimeout() {
         try {
+            // TODO 心跳超时次数，大于一定次数才开启选举
             if (voterState != VoterState.LEADER && System.currentTimeMillis() - lastHeartbeat > electionTimeoutMs) {
                 startElection();
             }
@@ -556,7 +557,9 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 stateMachineThread.wakeup();
             }
         } else {
-            long[] sortedMatchIndex = followers.parallelStream()
+            // TODO 并发问题
+            long[] sortedMatchIndex = new ArrayList<>(followers).stream()
+//            long[] sortedMatchIndex = followers.parallelStream()
                     .peek(this::handleReplicationResponse)
                     .mapToLong(Follower::getMatchIndex)
                     .sorted().toArray();
@@ -653,10 +656,12 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 convertToFollower();
             }
             if(request.getEntries() != null && !request.getEntries().isEmpty()) {
-                logger.debug("Received appendEntriesRequest, term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, " +
-                                "entries: {}, leaderCommit: {}, {}.",
-                        request.getTerm(), request.getLeader(), request.getPrevLogIndex(), request.getPrevLogTerm(),
-                        request.getEntries().size(), request.getLeaderCommit(), voterInfo());
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Received appendEntriesRequest, term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, " +
+                                    "entries: {}, leaderCommit: {}, {}.",
+                            request.getTerm(), request.getLeader(), request.getPrevLogIndex(), request.getPrevLogTerm(),
+                            request.getEntries().size(), request.getLeaderCommit(), voterInfo());
+                }
             }
 
             try {
@@ -989,6 +994,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
     }
 
+    // TODO 优化使用voterInfo的debug日志
     private String voterInfo() {
         return String.format("voterState: %s, currentTerm: %d, minIndex: %d, " +
                 "maxIndex: %d, commitIndex: %d, lastApplied: %d, uri: %s",

@@ -9,7 +9,6 @@ import com.jd.journalkeeper.core.api.RaftServer;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -17,7 +16,6 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -185,15 +183,15 @@ public class CoordinatingServerTest {
 
                 long now = System.currentTimeMillis();
 
-                clients.get((int) System.currentTimeMillis() % clients.size()).set(key, value);
+                clients.get((int) System.currentTimeMillis() % clients.size()).set(key, value).get();
 
 //                servers.get((int) System.currentTimeMillis() % servers.size()).getClient().set(key, value);
 
-                Assert.assertArrayEquals(value, clients.get(0).get(key));
-                clients.get(0).remove(key);
-                Assert.assertEquals(clients.get(0).get(key), null);
-
-                clients.get(0).list(Arrays.asList(key));
+//                Assert.assertArrayEquals(value, clients.get(0).get(key));
+//                clients.get(0).remove(key);
+//                Assert.assertEquals(clients.get(0).get(key), null);
+//
+//                clients.get(0).list(Arrays.asList(key));
 
                 metrics.mark(System.currentTimeMillis() - now, 1);
             } catch (Exception e) {

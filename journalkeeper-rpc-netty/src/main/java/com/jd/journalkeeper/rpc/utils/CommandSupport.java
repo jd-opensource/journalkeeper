@@ -26,6 +26,7 @@ public class CommandSupport {
         return new Command(header, new VoidPayload());
     }
 
+    // TODO 因为异步里还有其他RPC操作，临时改同步
     public static <Q, R extends BaseResponse> CompletableFuture<R> sendRequest(Q request, int requestType, Transport transport) {
         CompletableFuture<R> future = new CompletableFuture<>();
         try {

@@ -40,59 +40,50 @@ public class CoordinatingClient {
         this.client = client;
     }
 
-    public void set(byte[] key, byte[] value) {
-        try {
-            doUpdate(new StateWriteRequest(StateTypes.SET.getType(), key, value)).get();
-        } catch (Exception e) {
-            throw convertException(e);
-        }
+    public CompletableFuture<Void> set(byte[] key, byte[] value) {
+        return doUpdate(new StateWriteRequest(StateTypes.SET.getType(), key, value))
+                .exceptionally(cause -> {
+                    throw convertException(cause);
+                });
     }
 
-    public byte[] get(byte[] key) {
-        try {
-            return doQuery(new StateReadRequest(StateTypes.GET.getType(), key))
-                    .thenApply(StateResponse::getValue)
-                    .get();
-        } catch (Exception e) {
-            throw convertException(e);
-        }
+    public CompletableFuture<byte[]> get(byte[] key) {
+        return doQuery(new StateReadRequest(StateTypes.GET.getType(), key))
+                .exceptionally(cause -> {
+                    throw convertException(cause);
+                })
+                .thenApply(StateResponse::getValue);
     }
 
-    public List<byte[]> list(List<byte[]> keys) {
-        try {
-            return doQuery(new StateReadRequest(StateTypes.LIST.getType(), new ArrayList<>(keys)))
-                    .thenApply(StateResponse::getValues)
-                    .get();
-        } catch (Exception e) {
-            throw convertException(e);
-        }
+    public CompletableFuture<List<byte[]>> list(List<byte[]> keys) {
+        return doQuery(new StateReadRequest(StateTypes.LIST.getType(), new ArrayList<>(keys)))
+                .thenApply(StateResponse::getValues)
+                .exceptionally(cause -> {
+                    throw convertException(cause);
+                });
     }
 
-    public void compareAndSet(byte[] key, byte[] expect, byte[] value) {
-        try {
-            doUpdate(new StateWriteRequest(StateTypes.COMPARE_AND_SET.getType(), key, expect, value)).get();
-        } catch (Exception e) {
-            throw convertException(e);
-        }
+    public CompletableFuture<Void> compareAndSet(byte[] key, byte[] expect, byte[] value) {
+        return doUpdate(new StateWriteRequest(StateTypes.COMPARE_AND_SET.getType(), key, expect, value))
+                .exceptionally(cause -> {
+                    throw convertException(cause);
+                });
     }
 
-    public void remove(byte[] key) {
-        try {
-            doUpdate(new StateWriteRequest(StateTypes.REMOVE.getType(), key)).get();
-        } catch (Exception e) {
-            throw convertException(e);
-        }
+    public CompletableFuture<Void> remove(byte[] key) {
+        return doUpdate(new StateWriteRequest(StateTypes.REMOVE.getType(), key))
+                .exceptionally(cause -> {
+                    throw convertException(cause);
+                });
     }
 
-    public boolean exist(byte[] key) {
-        try {
-            return doQuery(new StateReadRequest(StateTypes.EXIST.getType(), key))
-                    .thenApply(StateResponse::getValue)
-                    .thenApply(response -> response[0] == 1)
-                    .get();
-        } catch (Exception e) {
-            throw convertException(e);
-        }
+    public CompletableFuture<Boolean> exist(byte[] key) {
+        return doQuery(new StateReadRequest(StateTypes.EXIST.getType(), key))
+                .exceptionally(cause -> {
+                    throw convertException(cause);
+                })
+                .thenApply(StateResponse::getValue)
+                .thenApply(response -> response[0] == 1);
     }
 
     public void watch(CoordinatingEventListener listener) {
@@ -123,7 +114,7 @@ public class CoordinatingClient {
         client.stop();
     }
 
-    protected CoordinatingClientException convertException(Exception cause) {
+    protected CoordinatingClientException convertException(Throwable cause) {
         if (cause instanceof CoordinatingClientException) {
             return (CoordinatingClientException) cause;
         } else if (cause instanceof ExecutionException) {
@@ -143,7 +134,7 @@ public class CoordinatingClient {
                     throw new CoordinatingClientException(t.getCause());
                 }).thenApply(response -> {
                     if (response.getCode() != StateCodes.SUCCESS.getCode()) {
-                        throw new CoordinatingClientException(String.valueOf(StateCodes.valueOf(response.getCode())));
+                        throw new CoordinatingClientException(String.format("code: %s, msg: %s", String.valueOf(StateCodes.valueOf(response.getCode())), response.getMsg()));
                     }
                     return response;
                 });

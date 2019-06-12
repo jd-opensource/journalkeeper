@@ -3,7 +3,6 @@ package com.jd.journalkeeper.coordinating.state;
 import com.jd.journalkeeper.coordinating.state.config.KeeperConfigs;
 import com.jd.journalkeeper.coordinating.state.domain.StateReadRequest;
 import com.jd.journalkeeper.coordinating.state.domain.StateResponse;
-import com.jd.journalkeeper.coordinating.state.domain.StateTypes;
 import com.jd.journalkeeper.coordinating.state.domain.StateWriteRequest;
 import com.jd.journalkeeper.coordinating.state.store.KVStore;
 import com.jd.journalkeeper.coordinating.state.store.KVStoreManager;
@@ -60,7 +59,6 @@ public class CoordinatingState extends LocalState<StateWriteRequest, StateReadRe
 
     @Override
     public CompletableFuture<StateResponse> query(StateReadRequest query) {
-        StateTypes type = StateTypes.valueOf(query.getType());
         return CompletableFuture.supplyAsync(() -> {
             return handler.handle(query);
         });

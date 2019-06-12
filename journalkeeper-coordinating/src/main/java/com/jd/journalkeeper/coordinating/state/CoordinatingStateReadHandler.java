@@ -1,11 +1,15 @@
 package com.jd.journalkeeper.coordinating.state;
 
+import com.jd.journalkeeper.coordinating.state.domain.StateCodes;
+import com.jd.journalkeeper.coordinating.state.domain.StateReadRequest;
+import com.jd.journalkeeper.coordinating.state.domain.StateResponse;
 import com.jd.journalkeeper.coordinating.state.domain.StateTypes;
-import com.jd.journalkeeper.coordinating.state.domain.StateWriteRequest;
 import com.jd.journalkeeper.coordinating.state.store.KVStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -26,39 +30,42 @@ public class CoordinatingStateReadHandler {
         this.kvStore = kvStore;
     }
 
-    public boolean handle(StateWriteRequest request) {
+    public StateResponse handle(StateReadRequest request) {
         try {
             StateTypes type = StateTypes.valueOf(request.getType());
             switch (type) {
-                case SET: {
-                    return doSet(request.getKey(), request.getValue());
+                case GET: {
+                    return doGet(request.getKey());
                 }
-                case REMOVE: {
-                    return doRemove(request.getKey());
+                case EXIST: {
+                    return doExist(request.getKey());
                 }
-                case COMPARE_AND_SET: {
-                    return doCompareAndSet(request.getKey(), request.getExpect(), request.getValue());
+                case LIST: {
+                    return doList(request.getKeys());
                 }
                 default: {
                     logger.warn("unsupported type, type: {}, request: {}", type, request);
-                    return false;
+                    return null;
                 }
             }
         } catch (Exception e) {
-            logger.error("handle write request exception, request: {}", request, e);
-            return false;
+            logger.error("handle read request exception, request: {}", request, e);
+            return new StateResponse(StateCodes.ERROR.getCode(), e.toString());
         }
     }
 
-    protected boolean doSet(byte[] key, byte[] value) {
-        return kvStore.set(key, value);
+    protected StateResponse doGet(byte[] key) {
+        byte[] value = kvStore.get(key);
+        return new StateResponse(StateCodes.SUCCESS.getCode(), value);
     }
 
-    protected boolean doRemove(byte[] key) {
-        return kvStore.remove(key);
+    protected StateResponse doExist(byte[] key) {
+        boolean isExist = kvStore.exist(key);
+        return new StateResponse(StateCodes.SUCCESS.getCode(), (isExist ? new byte[] {1} : new byte[] {0}));
     }
 
-    protected boolean doCompareAndSet(byte[] key, byte[] expect, byte[] update) {
-        return kvStore.compareAndSet(key, expect, update);
+    protected StateResponse doList(List<byte[]> keys) {
+        List<byte[]> values = kvStore.multiGet(keys);
+        return new StateResponse(StateCodes.SUCCESS.getCode(), new ArrayList<>(values));
     }
 }
