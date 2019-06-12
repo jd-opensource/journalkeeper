@@ -4,7 +4,7 @@ import com.jd.journalkeeper.coordinating.client.CoordinatingClient;
 import com.jd.journalkeeper.coordinating.client.CoordinatingClientAccessPoint;
 import com.jd.journalkeeper.coordinating.server.CoordinatingServer;
 import com.jd.journalkeeper.coordinating.server.CoordinatingServerAccessPoint;
-import com.jd.journalkeeper.coordinating.state.config.KeeperConfigs;
+import com.jd.journalkeeper.coordinating.state.config.CoordinatingConfigs;
 import com.jd.journalkeeper.core.api.RaftServer;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -88,7 +88,7 @@ public class CoordinatingServerTest {
 
         for (int i = 0; i < NODES; i++) {
             Properties properties = new Properties();
-            properties.setProperty(KeeperConfigs.STATE_STORE, "rocksdb");
+            properties.setProperty(CoordinatingConfigs.STATE_STORE, "rocksdb");
             properties.setProperty("working_dir", String.format("%s/export/rocksdb/%s", System.getProperty("user.dir"), i));
 
             properties.setProperty("rocksdb.options.createIfMissing", "true");

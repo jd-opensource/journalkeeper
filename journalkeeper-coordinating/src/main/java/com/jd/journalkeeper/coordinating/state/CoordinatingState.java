@@ -1,6 +1,6 @@
 package com.jd.journalkeeper.coordinating.state;
 
-import com.jd.journalkeeper.coordinating.state.config.KeeperConfigs;
+import com.jd.journalkeeper.coordinating.state.config.CoordinatingConfigs;
 import com.jd.journalkeeper.coordinating.state.domain.StateReadRequest;
 import com.jd.journalkeeper.coordinating.state.domain.StateResponse;
 import com.jd.journalkeeper.coordinating.state.domain.StateWriteRequest;
@@ -37,7 +37,7 @@ public class CoordinatingState extends LocalState<StateWriteRequest, StateReadRe
     @Override
     protected void recoverLocalState(Path path, RaftJournal raftJournal, Properties properties) throws IOException {
         this.properties = properties;
-        this.kvStore = KVStoreManager.getFactory(properties.getProperty(KeeperConfigs.STATE_STORE)).create(path, properties);
+        this.kvStore = KVStoreManager.getFactory(properties.getProperty(CoordinatingConfigs.STATE_STORE)).create(path, properties);
         this.handler = new CoordinatingStateHandler(properties, kvStore);
     }
 

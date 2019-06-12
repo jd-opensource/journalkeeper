@@ -2,7 +2,7 @@ package com.jd.journalkeeper.coordinating.test.cluster;
 
 import com.jd.journalkeeper.coordinating.server.CoordinatingServer;
 import com.jd.journalkeeper.coordinating.server.CoordinatingServerAccessPoint;
-import com.jd.journalkeeper.coordinating.state.config.KeeperConfigs;
+import com.jd.journalkeeper.coordinating.state.config.CoordinatingConfigs;
 import com.jd.journalkeeper.core.api.RaftServer;
 import org.junit.Before;
 import org.junit.Test;
@@ -33,7 +33,7 @@ public abstract class AbstractStateServerTest {
         }
 
         Properties properties = new Properties();
-        properties.setProperty(KeeperConfigs.STATE_STORE, "rocksdb");
+        properties.setProperty(CoordinatingConfigs.STATE_STORE, "rocksdb");
         properties.setProperty("working_dir", String.format("/Users/gaohaoxiang/export/rocksdb/%s", getIndex()));
 
         properties.setProperty("rocksdb.options.createIfMissing", "true");
