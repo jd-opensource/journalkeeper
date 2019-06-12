@@ -8,5 +8,5 @@ package com.jd.journalkeeper.coordinating.state.config;
  */
 public class KeeperConfigs {
 
-    public static final String STATE_STORE = "coordinating.state.state.store";
+    public static final String STATE_STORE = "coordinating.state.store";
 }
