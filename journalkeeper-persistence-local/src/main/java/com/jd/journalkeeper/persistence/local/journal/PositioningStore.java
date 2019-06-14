@@ -79,6 +79,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
                 throw new IOException(String.format("Can not delete file: %s.", file.getAbsolutePath()));
         }
         this.storeFileMap.clear();
+        this.writeStoreFile = null;
     }
 
     public void delete() throws IOException {
