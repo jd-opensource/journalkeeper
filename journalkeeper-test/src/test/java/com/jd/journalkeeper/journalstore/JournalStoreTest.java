@@ -2,6 +2,7 @@ package com.jd.journalkeeper.journalstore;
 
 import com.jd.journalkeeper.core.api.RaftEntry;
 import com.jd.journalkeeper.core.api.ResponseConfig;
+import com.jd.journalkeeper.exceptions.IndexOverflowException;
 import com.jd.journalkeeper.utils.format.Format;
 import com.jd.journalkeeper.utils.net.NetworkingUtils;
 import com.jd.journalkeeper.utils.test.TestPathUtils;
@@ -21,6 +22,7 @@ import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @author liyue25
@@ -44,7 +46,7 @@ public class JournalStoreTest {
 
     @Test
     public void writeReadOneNode() throws Exception{
-        writeReadTest(1, new int [] {2, 3, 4, 5, 6}, 1024, 1024, 1024, false);
+        writeReadTest(1, new int [] {2, 3, 4, 5, 6}, 1024, 1024, 1024, true);
     }
 
     @Test
@@ -87,6 +89,7 @@ public class JournalStoreTest {
                      (t1 - t0) / 1000000,
                     Format.formatSize( 1000000000L * entrySize * batchCount  / (t1 - t0)));
 
+
             // read
 
             t0 = System.nanoTime();
@@ -116,15 +119,18 @@ public class JournalStoreTest {
 
     private void asyncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(partitions.length * batchCount);
+        AtomicInteger ac = new AtomicInteger(0);
         // write
         for (int partition : partitions) {
             for (int i = 0; i < batchCount; i++) {
                 client.append(partition, batchSize, rawEntries)
                         .whenComplete((v, e) -> {
                             latch.countDown();
-//                                if (e != null) {
-//                                    logger.warn("Exception:", e);
-//                                }
+                            if (e != null) {
+                                logger.warn("Exception:", e);
+                            }
+                            Assert.assertNull(e);
+                            ac.incrementAndGet();
                         });
             }
         }
@@ -135,13 +141,17 @@ public class JournalStoreTest {
         while (!latch.await(1, TimeUnit.SECONDS)) {
             Thread.yield();
         }
+
+        Thread.sleep(5000L);
+
+        logger.info("ac: {}.", ac.get());
     }
 
     private void syncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException, ExecutionException {
         // write
         for (int partition : partitions) {
             for (int i = 0; i < batchCount; i++) {
-                client.append(partition, batchSize, rawEntries, ResponseConfig.RECEIVE).get();
+                client.append(partition, batchSize, rawEntries).get();
             }
         }
     }
