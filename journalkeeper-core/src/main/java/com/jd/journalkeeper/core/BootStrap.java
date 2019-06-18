@@ -34,8 +34,8 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
     private final Serializer<Q> querySerializer;
     private final Serializer<R> resultSerializer;
     private final Properties properties;
-    private final ScheduledExecutorService scheduledExecutorService;
-    private final ExecutorService asyncExecutorService;
+    private ScheduledExecutorService scheduledExecutorService;
+    private ExecutorService asyncExecutorService;
     private final RaftServer.Roll roll;
     private final RpcAccessPointFactory rpcAccessPointFactory;
     private ClientServerRpcAccessPoint clientServerRpcAccessPoint = null;
@@ -68,8 +68,6 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
         this.properties = properties;
-        this.scheduledExecutorService = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_THREADS, new NamedThreadFactory("JournalKeeper-Scheduled-Executor"));
-        this.asyncExecutorService = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors() * 2, new NamedThreadFactory("JournalKeeper-Async-Executor"));
         this.roll = roll;
         this.server = createServer();
         this.rpcAccessPointFactory = ServiceSupport.load(RpcAccessPointFactory.class);
@@ -77,6 +75,13 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
     }
 
     private Server<E, Q, R> createServer() {
+        if(null == scheduledExecutorService) {
+            this.scheduledExecutorService = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_THREADS, new NamedThreadFactory("JournalKeeper-Scheduled-Executor"));
+        }
+        if(null == asyncExecutorService) {
+            this.asyncExecutorService = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors() * 2, new NamedThreadFactory("JournalKeeper-Async-Executor"));
+        }
+
         if(null != roll) {
             switch (roll) {
                 case VOTER:
@@ -113,8 +118,12 @@ public class BootStrap<E, Q, R> implements ClusterAccessPoint<E, Q, R> {
         if(null != clientServerRpcAccessPoint ) {
             clientServerRpcAccessPoint.stop();
         }
-        this.scheduledExecutorService.shutdown();
-        this.asyncExecutorService.shutdown();
+        if (null != scheduledExecutorService) {
+            this.scheduledExecutorService.shutdown();
+        }
+        if (null != asyncExecutorService) {
+            this.asyncExecutorService.shutdown();
+        }
     }
 
     @Override

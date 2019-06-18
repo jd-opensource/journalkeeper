@@ -2,7 +2,7 @@ package com.jd.journalkeeper.journalstore;
 
 import com.jd.journalkeeper.core.api.RaftEntry;
 import com.jd.journalkeeper.core.api.ResponseConfig;
-import com.jd.journalkeeper.core.server.Server;
+import com.jd.journalkeeper.utils.format.Format;
 import com.jd.journalkeeper.utils.net.NetworkingUtils;
 import com.jd.journalkeeper.utils.test.TestPathUtils;
 import org.junit.After;
@@ -44,12 +44,12 @@ public class JournalStoreTest {
 
     @Test
     public void writeReadOneNode() throws Exception{
-        writeReadTest(1, new int [] {2, 3, 4, 5, 6}, 1024, 1024, 1024);
+        writeReadTest(1, new int [] {2, 3, 4, 5, 6}, 1024, 1024, 1024, false);
     }
 
     @Test
     public void writeReadTripleNodes() throws Exception{
-        writeReadTest(3, new int [] {2, 3, 4, 5, 6}, 1024, 1024, 1024);
+        writeReadTest(3, new int [] {2, 3, 4, 5, 6}, 1024, 1024, 1024 , false);
     }
 
     /**
@@ -60,7 +60,7 @@ public class JournalStoreTest {
      * @param batchSize 每批数据条数
      * @param batchCount 批数
      */
-    private void writeReadTest(int nodes, int [] partitions, int entrySize, int batchSize, int batchCount) throws Exception {
+    private void writeReadTest(int nodes, int [] partitions, int entrySize, int batchSize, int batchCount, boolean async) throws Exception {
         List<JournalStoreServer> servers = createServers(nodes, base);
         try {
             JournalStoreClient client = servers.get(0).createClient();
@@ -71,35 +71,25 @@ public class JournalStoreTest {
             // Wait for all node to finish scale partitions.
             Thread.sleep(1000L);
 
-
+            long t0 = System.nanoTime();
             byte[] rawEntries = new byte[entrySize];
             for (int i = 0; i < rawEntries.length; i++) {
                 rawEntries[i] = (byte) (i % Byte.MAX_VALUE);
             }
-
-            CountDownLatch latch = new CountDownLatch(partitions.length * batchCount);
-            // write
-            for (int partition : partitions) {
-                for (int i = 0; i < batchCount; i++) {
-                    client.append(partition, batchSize, rawEntries)
-                            .whenComplete((v, e) -> {
-                                latch.countDown();
-                                if (e != null) {
-                                    logger.warn("Exception:", e);
-                                }
-                            });
-                }
+            if(async) {
+                asyncWrite(partitions, batchSize, batchCount, client, rawEntries);
+            } else {
+                syncWrite(partitions, batchSize, batchCount, client, rawEntries);
             }
-            logger.info("Write finished, waiting for responses...");
-
-            while (!latch.await(1, TimeUnit.SECONDS)) {
-                Thread.yield();
-            }
-
-            logger.info("Replication finished.");
+            long t1 = System.nanoTime();
+            logger.info("Replication finished. " +
+                    "Write takes: {}ms {}ps",
+                     (t1 - t0) / 1000000,
+                    Format.formatSize( 1000000000L * entrySize * batchCount  / (t1 - t0)));
 
             // read
 
+            t0 = System.nanoTime();
             for (int partition : partitions) {
                 for (int i = 0; i < batchCount; i++) {
                     List<RaftEntry> raftEntries = client.get(partition, i * batchSize, batchSize).get();
@@ -111,11 +101,49 @@ public class JournalStoreTest {
                     Assert.assertArrayEquals(rawEntries, entry.getEntry());
                 }
             }
+            t1 = System.nanoTime();
+            logger.info("Read finished. " +
+                            "Takes: {}ms {}ps.",
+                    (t1 - t0) / 1000000,
+                    Format.formatSize( 1000000000L * entrySize * batchCount  / (t1 - t0)));
+
         } finally {
             stopServers(servers);
 
         }
 
+    }
+
+    private void asyncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(partitions.length * batchCount);
+        // write
+        for (int partition : partitions) {
+            for (int i = 0; i < batchCount; i++) {
+                client.append(partition, batchSize, rawEntries)
+                        .whenComplete((v, e) -> {
+                            latch.countDown();
+//                                if (e != null) {
+//                                    logger.warn("Exception:", e);
+//                                }
+                        });
+            }
+        }
+
+
+        logger.info("Write finished, waiting for responses...");
+
+        while (!latch.await(1, TimeUnit.SECONDS)) {
+            Thread.yield();
+        }
+    }
+
+    private void syncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException, ExecutionException {
+        // write
+        for (int partition : partitions) {
+            for (int i = 0; i < batchCount; i++) {
+                client.append(partition, batchSize, rawEntries, ResponseConfig.RECEIVE).get();
+            }
+        }
     }
 
     private void stopServers(List<JournalStoreServer> servers) {

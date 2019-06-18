@@ -117,7 +117,7 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
                 .defaultClientServerRpc()
                 .getServers()
                 .exceptionally(GetServersResponse::new)
-                .thenApply(resp -> {
+                .thenApplyAsync(resp -> {
                     if(resp.success()) {
                         if(resp.getClusterConfiguration() != null && resp.getClusterConfiguration().getLeader() != null) {
                             return clientServerRpcAccessPoint.getClintServerRpc(
