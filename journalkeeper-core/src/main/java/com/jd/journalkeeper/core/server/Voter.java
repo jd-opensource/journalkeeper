@@ -196,7 +196,6 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         flushCallbacks.callbackBefore(journalFlushIndex.get());
     }
 
-    private final AtomicInteger appendJournalCounter = new AtomicInteger(0);
     /**
      * 串行写入日志
      */
@@ -206,7 +205,6 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             UpdateStateRequestResponse rr = pendingUpdateStateRequests.take();
             if (voterState == VoterState.LEADER) {
                 try {
-                    appendJournalCounter.incrementAndGet();
                     long index = journal.append(new Entry(rr.getRequest().getEntry(), currentTerm.get(), rr.getRequest().getPartition(), rr.getRequest().getBatchSize()));
                     if (rr.getRequest().getResponseConfig() == ResponseConfig.PERSISTENCE) {
                         flushCallbacks.put(new Callback(index, rr.getResponseFuture()));
@@ -797,14 +795,12 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         }, asyncExecutor);
     }
 
-    private final AtomicInteger updateCounter = new AtomicInteger(0);
     @Override
     public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
         UpdateStateRequestResponse requestResponse = new UpdateStateRequestResponse(request);
 
         try {
             pendingUpdateStateRequests.add(requestResponse);
-            updateCounter.incrementAndGet();
 
             leaderAppendJournalEntryThread.wakeup();
             if (request.getResponseConfig() == ResponseConfig.RECEIVE) {
@@ -968,9 +964,8 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     }
 
     private String voterInfo() {
-        return String.format("updateCounter: %d, appendJournalCounter: %d, voterState: %s, currentTerm: %d, minIndex: %d, " +
+        return String.format("voterState: %s, currentTerm: %d, minIndex: %d, " +
                 "maxIndex: %d, commitIndex: %d, lastApplied: %d, uri: %s",
-                updateCounter.get(), appendJournalCounter.get(),
                 voterState.toString(), currentTerm.get(), journal.minIndex(),
                 journal.maxIndex(), commitIndex, state.lastApplied(), uri.toString());
     }
