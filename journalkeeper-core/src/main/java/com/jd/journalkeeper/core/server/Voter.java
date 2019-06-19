@@ -4,6 +4,7 @@ import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.ResponseConfig;
 import com.jd.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
 import com.jd.journalkeeper.core.entry.reserved.LeaderAnnouncementEntrySerializer;
+import com.jd.journalkeeper.exceptions.ServerBusyException;
 import com.jd.journalkeeper.utils.event.EventType;
 import com.jd.journalkeeper.core.api.StateFactory;
 import com.jd.journalkeeper.core.entry.Entry;
@@ -800,15 +801,19 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     @Override
     public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
         UpdateStateRequestResponse requestResponse = new UpdateStateRequestResponse(request);
-        pendingUpdateStateRequests.add(requestResponse);
-        updateCounter.incrementAndGet();
 
-        leaderAppendJournalEntryThread.wakeup();
-        if(request.getResponseConfig() == ResponseConfig.RECEIVE) {
-            requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse());
+        try {
+            pendingUpdateStateRequests.add(requestResponse);
+            updateCounter.incrementAndGet();
+
+            leaderAppendJournalEntryThread.wakeup();
+            if (request.getResponseConfig() == ResponseConfig.RECEIVE) {
+                requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse());
+            }
+        } catch (IllegalStateException ie) {
+            requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse(new ServerBusyException()));
         }
         return requestResponse.getResponseFuture();
-
     }
 
     @Override

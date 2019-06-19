@@ -3,6 +3,7 @@ package com.jd.journalkeeper.journalstore;
 import com.jd.journalkeeper.core.api.RaftEntry;
 import com.jd.journalkeeper.core.api.ResponseConfig;
 import com.jd.journalkeeper.exceptions.IndexOverflowException;
+import com.jd.journalkeeper.exceptions.ServerBusyException;
 import com.jd.journalkeeper.utils.format.Format;
 import com.jd.journalkeeper.utils.net.NetworkingUtils;
 import com.jd.journalkeeper.utils.test.TestPathUtils;
@@ -19,6 +20,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -119,19 +121,11 @@ public class JournalStoreTest {
 
     private void asyncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(partitions.length * batchCount);
-        AtomicInteger ac = new AtomicInteger(0);
         // write
         for (int partition : partitions) {
             for (int i = 0; i < batchCount; i++) {
-                client.append(partition, batchSize, rawEntries)
-                        .whenComplete((v, e) -> {
-                            latch.countDown();
-                            if (e != null) {
-                                logger.warn("Exception:", e);
-                            }
-                            Assert.assertNull(e);
-                            ac.incrementAndGet();
-                        });
+
+                asyncAppend(client, rawEntries, partition, batchSize, latch);
             }
         }
 
@@ -142,9 +136,21 @@ public class JournalStoreTest {
             Thread.yield();
         }
 
-        Thread.sleep(5000L);
+    }
 
-        logger.info("ac: {}.", ac.get());
+    private void asyncAppend(JournalStoreClient client, byte[] rawEntries, int partition, int batchSize, CountDownLatch latch) {
+        client.append(partition, batchSize, rawEntries)
+                .whenComplete((v, e) -> {
+
+                    if(e instanceof CompletionException && e.getCause() instanceof ServerBusyException) {
+                        Thread.yield();
+                        asyncAppend(client, rawEntries, partition, batchSize, latch);
+
+                    } else {
+                        Assert.assertNull(e);
+                        latch.countDown();
+                    }
+                });
     }
 
     private void syncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException, ExecutionException {

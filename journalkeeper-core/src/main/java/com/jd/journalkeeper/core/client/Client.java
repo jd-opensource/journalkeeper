@@ -4,6 +4,7 @@ import com.jd.journalkeeper.base.Serializer;
 import com.jd.journalkeeper.core.api.RaftJournal;
 import com.jd.journalkeeper.core.api.ResponseConfig;
 import com.jd.journalkeeper.core.server.Server;
+import com.jd.journalkeeper.exceptions.ServerBusyException;
 import com.jd.journalkeeper.utils.event.EventType;
 import com.jd.journalkeeper.utils.event.EventWatcher;
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
@@ -61,7 +62,12 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
                 leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entrySerializer.serialize(entry), partition, batchSize, responseConfig)))
                 .thenAccept(resp -> {
                     if(!resp.success()) {
-                        throw new CompletionException(new RpcException(resp));
+
+                        if(resp.getStatusCode() == StatusCode.SERVER_BUSY) {
+                            throw new CompletionException(new ServerBusyException());
+                        } else {
+                            throw new CompletionException(new RpcException(resp));
+                        }
                     }
                 });
     }

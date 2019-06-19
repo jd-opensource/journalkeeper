@@ -1,4 +1,4 @@
-package com.jd.journalkeeper.core.exception;
+package com.jd.journalkeeper.exceptions;
 
 /**
  *
@@ -6,7 +6,9 @@ package com.jd.journalkeeper.core.exception;
  * Date: 2019-03-25
  */
 public class ServerBusyException extends RuntimeException {
-    // TODO: LEADER队列满时抛出此异常
+    public ServerBusyException(){
+        super();
+    }
     public ServerBusyException(String msg) {
         super(msg);
     }

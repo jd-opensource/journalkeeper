@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -28,7 +29,9 @@ public class KvClient {
         long t0 = System.nanoTime();
         try {
             client.update(new KvEntry(KvEntry.CMD_SET, key, value)).get();
-        } catch (Exception e) {
+        } catch (CompletionException e) {
+            throw new RuntimeException(e.getCause());
+        }catch (Exception e) {
             throw new RuntimeException(e);
         } finally {
             logger.info("SET {} {}, {} ns.", key, value, Format.formatWithComma(System.nanoTime() - t0));
