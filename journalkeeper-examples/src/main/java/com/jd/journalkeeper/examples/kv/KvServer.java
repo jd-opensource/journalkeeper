@@ -57,10 +57,6 @@ public class KvServer implements StateServer {
         }
     }
 
-    public boolean flush() {
-        return bootStrap.getServer().flush();
-    }
-
     @Override
     public void stop() {
         bootStrap.shutdown();

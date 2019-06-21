@@ -6,7 +6,8 @@ import com.jd.journalkeeper.rpc.remoting.transport.Transport;
 import com.jd.journalkeeper.rpc.utils.CommandSupport;
 import com.jd.journalkeeper.utils.event.EventBus;
 import com.jd.journalkeeper.utils.event.EventWatcher;
-import com.jd.journalkeeper.utils.threads.LoopThread;
+import com.jd.journalkeeper.utils.threads.AsyncLoopThread;
+import com.jd.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,7 +27,7 @@ public class ClientServerRpcStub implements ClientServerRpc {
     protected final Transport transport;
     protected final URI uri;
     protected EventBus eventBus = null;
-    protected LoopThread pullEventThread = null;
+    protected AsyncLoopThread pullEventThread = null;
     protected long pullWatchId = -1L;
     protected long ackSequence = -1L;
     public ClientServerRpcStub(Transport transport, URI uri) {
@@ -114,8 +115,8 @@ public class ClientServerRpcStub implements ClientServerRpc {
 
     }
 
-    private LoopThread buildPullEventsThread(long pullInterval) {
-        return LoopThread.builder()
+    private AsyncLoopThread buildPullEventsThread(long pullInterval) {
+        return ThreadBuilder.builder()
                 .name("PullEventsThread")
                 .doWork(this::pullRemoteEvents)
                 .sleepTime(pullInterval, pullInterval)

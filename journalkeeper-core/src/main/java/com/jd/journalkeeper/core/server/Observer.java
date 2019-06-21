@@ -9,7 +9,8 @@ import com.jd.journalkeeper.persistence.ServerMetadata;
 import com.jd.journalkeeper.rpc.StatusCode;
 import com.jd.journalkeeper.rpc.client.*;
 import com.jd.journalkeeper.rpc.server.*;
-import com.jd.journalkeeper.utils.threads.LoopThread;
+import com.jd.journalkeeper.utils.threads.AsyncLoopThread;
+import com.jd.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,23 +27,20 @@ import java.util.concurrent.*;
  */
 public class Observer<E, Q, R> extends Server<E, Q, R> {
     private static final Logger logger = LoggerFactory.getLogger(Observer.class);
+    private static final String OBSERVER_REPLICATION_THREAD = "ObserverReplicationThread";
     /**
      * 父节点
      */
     private List<URI> parents;
 
     private ServerRpc currentServer = null;
-    /**
-     * 复制线程
-     */
-    private final LoopThread replicationThread;
 
     private final Config config;
 
     public Observer(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
         super(stateFactory, entrySerializer, querySerializer, resultSerializer, scheduledExecutor, asyncExecutor, properties);
         this.config = toConfig(properties);
-        replicationThread = buildReplicationThread();
+        threads.createThread(buildReplicationThread());
     }
 
     private Config toConfig(Properties properties) {
@@ -53,13 +51,13 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
                         String.valueOf(Config.DEFAULT_PULL_BATCH_SIZE))));
         return config;
     }
-    private LoopThread buildReplicationThread() {
-        return LoopThread.builder()
-                .name(String.format("ObserverReplicationThread-%s", uri.toString()))
-                .condition(() ->this.serverState() == ServerState.RUNNING)
+    private AsyncLoopThread buildReplicationThread() {
+        return ThreadBuilder.builder()
+                .name(OBSERVER_REPLICATION_THREAD)
+                .condition(() -> this.serverState() == ServerState.RUNNING)
                 .doWork(this::pullEntries)
                 .sleepTime(50,100)
-                .onException(e -> logger.warn("ObserverReplicationThread Exception: ", e))
+                .onException(e -> logger.warn("{} Exception: ", OBSERVER_REPLICATION_THREAD, e))
                 .daemon(true)
                 .build();
     }
@@ -74,7 +72,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
             journal.appendRaw(response.getEntries());
             commitIndex += response.getEntries().size();
             // 唤醒状态机线程
-            stateMachineThread.wakeup();
+            threads.wakeupThread(STATE_MACHINE_THREAD);
         } else if( response.getStatusCode() == StatusCode.INDEX_UNDERFLOW){
             reset();
         } else {
@@ -169,12 +167,10 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
 
     @Override
     public void doStart() {
-        replicationThread.start();
     }
 
     @Override
     public void doStop() {
-        replicationThread.stop();
         if(null != currentServer) {
             currentServer.stop();
         }
@@ -212,17 +208,17 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
         return serverMetadata;
     }
 
-    public static class Config {
-        public final static int DEFAULT_PULL_BATCH_SIZE = 4 * 1024 * 1024;
-        public final static String PULL_BATCH_SIZE_KEY = "observer.pull_batch_size";
+    private static class Config {
+        private final static int DEFAULT_PULL_BATCH_SIZE = 4 * 1024 * 1024;
+        private final static String PULL_BATCH_SIZE_KEY = "observer.pull_batch_size";
 
         private int pullBatchSize = DEFAULT_PULL_BATCH_SIZE;
 
-        public int getPullBatchSize() {
+        private int getPullBatchSize() {
             return pullBatchSize;
         }
 
-        public void setPullBatchSize(int pullBatchSize) {
+        private void setPullBatchSize(int pullBatchSize) {
             this.pullBatchSize = pullBatchSize;
         }
     }

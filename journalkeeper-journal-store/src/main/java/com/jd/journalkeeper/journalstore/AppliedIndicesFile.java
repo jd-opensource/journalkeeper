@@ -1,6 +1,8 @@
 package com.jd.journalkeeper.journalstore;
 
 import com.jd.journalkeeper.utils.files.DoubleCopy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -17,9 +19,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * Date: 2019-05-20
  */
 public class AppliedIndicesFile extends DoubleCopy implements Map<Integer, Long>{
+    private static final Logger logger = LoggerFactory.getLogger(AppliedIndicesFile.class);
     private Map<Integer, Long> appliedIndices = new ConcurrentHashMap<>();
-    private final AtomicLong version = new AtomicLong(0L);
-    private long flushVersion = 0L;
     /**
      * 构造函数
      *
@@ -45,7 +46,6 @@ public class AppliedIndicesFile extends DoubleCopy implements Map<Integer, Long>
             buffer.putInt(k);
             buffer.putLong(v);
         });
-
         return bytes;
     }
 
@@ -62,16 +62,6 @@ public class AppliedIndicesFile extends DoubleCopy implements Map<Integer, Long>
 
         appliedIndices.clear();
         appliedIndices.putAll(clone);
-        flushVersion = version.get();
-    }
-
-    @Override
-    public synchronized void flush() {
-        long currentVersion = version.get();
-        if(flushVersion < currentVersion) {
-            super.flush();
-            flushVersion = currentVersion;
-        }
     }
 
     @Override
@@ -101,25 +91,25 @@ public class AppliedIndicesFile extends DoubleCopy implements Map<Integer, Long>
 
     @Override
     public Long put(Integer key, Long value) {
-        version.incrementAndGet();
+        increaseVersion();
         return appliedIndices.put(key, value);
     }
 
     @Override
     public Long remove(Object key) {
-        version.incrementAndGet();
+        increaseVersion();
         return appliedIndices.remove(key);
     }
 
     @Override
     public void putAll(Map<? extends Integer, ? extends Long> m) {
-        version.incrementAndGet();
+        increaseVersion();
         appliedIndices.putAll(m);
     }
 
     @Override
     public void clear() {
-        version.incrementAndGet();
+        increaseVersion();
         appliedIndices.clear();
     }
 

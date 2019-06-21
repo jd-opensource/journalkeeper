@@ -46,9 +46,6 @@ public class KvTest {
         KvServer kvServer = createServers(1, path).get(0);
         KvClient kvClient = kvServer.createClient();
         kvClient.set("key", "value");
-        while (!kvServer.flush()) {
-            Thread.yield();
-        }
         kvServer.stop();
 
         kvServer = recoverServer("server0", path);
@@ -100,9 +97,6 @@ public class KvTest {
 
             KvServer toBeRemoved = kvServers.get(0);
 
-            while (!toBeRemoved.flush()) {
-                Thread.yield();
-            }
             logger.info("Shutting down server: {}.", toBeRemoved.serverUri());
             toBeRemoved.stop();
             kvServers.remove(toBeRemoved);

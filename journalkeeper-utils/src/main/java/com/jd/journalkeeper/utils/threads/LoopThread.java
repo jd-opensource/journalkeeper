@@ -1,8 +1,6 @@
 package com.jd.journalkeeper.utils.threads;
 
 
-import com.jd.journalkeeper.utils.state.StateServer;
-
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
@@ -15,7 +13,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * }
  * 的线程。
  */
-public abstract class LoopThread implements Runnable, StateServer {
+abstract class LoopThread implements AsyncLoopThread {
     private Thread thread = null;
     private String name;
     protected long minSleep = 50L,maxSleep = 500L;
@@ -28,6 +26,7 @@ public abstract class LoopThread implements Runnable, StateServer {
      */
     abstract void doWork() throws Throwable;
 
+    @Override
     public String getName() {
         return name;
     }
@@ -36,6 +35,7 @@ public abstract class LoopThread implements Runnable, StateServer {
         this.name = name;
     }
 
+    @Override
     public boolean isDaemon() {
         return daemon;
     }
@@ -124,6 +124,7 @@ public abstract class LoopThread implements Runnable, StateServer {
     /**
      * 唤醒任务如果任务在Sleep
      */
+    @Override
     public synchronized void wakeup() {
         if(wakeupLock.tryLock()) {
             try {
@@ -142,104 +143,4 @@ public abstract class LoopThread implements Runnable, StateServer {
         return true;
     }
 
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    public interface  Worker {
-        void doWork() throws Throwable;
-    }
-
-    public interface ExceptionHandler {
-        boolean handleException(Throwable t);
-    }
-    public interface ExceptionListener {
-        void onException(Throwable t);
-    }
-    public interface Condition{
-        boolean condition();
-    }
-
-    public static class Builder {
-        private String name;
-        private long minSleep = -1L,maxSleep = -1L;
-        private Boolean daemon;
-        private Worker worker;
-        private ExceptionHandler exceptionHandler;
-        private ExceptionListener exceptionListener;
-        private Condition condition;
-
-        public Builder doWork(Worker worker){
-            this.worker = worker;
-            return this;
-        }
-
-        public Builder handleException(ExceptionHandler exceptionHandler){
-            this.exceptionHandler = exceptionHandler;
-            return this;
-        }
-
-        public Builder onException(ExceptionListener exceptionListener){
-            this.exceptionListener = exceptionListener;
-            return this;
-        }
-
-
-
-        public Builder name(String name){
-            this.name = name;
-            return this;
-        }
-
-        public Builder sleepTime(long minSleep, long maxSleep){
-            this.minSleep = minSleep;
-            this.maxSleep = maxSleep;
-            return this;
-        }
-
-        public Builder daemon(boolean daemon) {
-            this.daemon = daemon;
-            return this;
-        }
-
-        public Builder condition(Condition condition){
-            this.condition = condition;
-            return this;
-        }
-
-        public LoopThread build(){
-            LoopThread loopThread = new LoopThread() {
-                @Override
-                void doWork() throws Throwable{
-                    worker.doWork();
-                }
-
-                @Override
-                protected boolean handleException(Throwable t) {
-                    if(null != exceptionListener) exceptionListener.onException(t);
-                    if(null != exceptionHandler) {
-                        return exceptionHandler.handleException(t);
-                    }else {
-                        return super.handleException(t);
-                    }
-                }
-
-                @Override
-                protected boolean condition() {
-                    if(null != condition) {
-                        return condition.condition();
-                    }else {
-                        return super.condition();
-                    }
-                }
-            };
-            if(null != name) loopThread.setName(name);
-            if(null != daemon) loopThread.setDaemon(daemon);
-            if(this.minSleep >= 0) loopThread.minSleep = this.minSleep;
-            if(this.maxSleep >= 0) loopThread.maxSleep = this.maxSleep;
-            return loopThread;
-        }
-
-
-    }
 }

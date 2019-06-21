@@ -32,7 +32,7 @@ public class LocalDefaultRpcAccessPoint implements ClientServerRpcAccessPoint {
 
     @Override
     public ClientServerRpc getClintServerRpc(URI uri) {
-        return clientServerRpcAccessPoint.getClintServerRpc(uri);
+        return uri.equals(server.serverUri()) ?  server: clientServerRpcAccessPoint.getClintServerRpc(uri);
     }
 
     @Override

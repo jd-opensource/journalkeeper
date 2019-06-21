@@ -1,7 +1,10 @@
 package com.jd.journalkeeper.utils.buffer;
 
 import com.jd.journalkeeper.utils.format.Format;
-import com.jd.journalkeeper.utils.threads.LoopThread;
+import com.jd.journalkeeper.utils.threads.AsyncLoopThread;
+import com.jd.journalkeeper.utils.threads.ThreadBuilder;
+import com.jd.journalkeeper.utils.threads.Threads;
+import com.jd.journalkeeper.utils.threads.ThreadsFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sun.misc.Cleaner;
@@ -24,9 +27,10 @@ import java.util.stream.Collectors;
 public class PreloadBufferPool {
     private static final Logger logger = LoggerFactory.getLogger(PreloadBufferPool.class);
     private Map<Integer,PreLoadCache> bufferCache = new ConcurrentHashMap<>();
-    private final LoopThread preloadThread;
-    private final LoopThread metricThread;
-    private final LoopThread evictThread;
+    private final Threads threads = ThreadsFactory.create();
+    private static final String PRELOAD_THREAD = "PreloadThread";
+    private static final String METRIC_THREAD = "MetricThread";
+    private static final String EVICT_THREAD = "EvictThread";
     private final long cacheLifetimeMs;
     private final long maxMemorySize;
     // 缓存比率：如果非堆内存使用率超过这个比率，就不再申请内存，抛出OOM。
@@ -39,9 +43,9 @@ public class PreloadBufferPool {
     private final static long DEFAULT_CACHE_LIFE_TIME_MS = 60000L;
     private final static long INTERVAL_MS = 50L;
 
-    public final static String CACHE_LIFE_TIME_MS_KEY = "PreloadBufferPool.CacheLifeTimeMs";
-    public final static String PRINT_METRIC_INTERVAL_MS_KEY = "PreloadBufferPool.PrintMetricIntervalMs";
-    public final static String MAX_MEMORY_KEY = "PreloadBufferPool.MaxMemory";
+    private final static String CACHE_LIFE_TIME_MS_KEY = "PreloadBufferPool.CacheLifeTimeMs";
+    private final static String PRINT_METRIC_INTERVAL_MS_KEY = "PreloadBufferPool.PrintMetricIntervalMs";
+    private final static String MAX_MEMORY_KEY = "PreloadBufferPool.MaxMemory";
 
     private final AtomicLong usedSize = new AtomicLong(0L);
     private final Set<BufferHolder> directBufferHolders = ConcurrentHashMap.newKeySet();
@@ -61,25 +65,20 @@ public class PreloadBufferPool {
         this.cacheLifetimeMs = Long.parseLong(System.getProperty(CACHE_LIFE_TIME_MS_KEY,String.valueOf(DEFAULT_CACHE_LIFE_TIME_MS)));
         long maxMemorySize = Format.parseSize(System.getProperty(MAX_MEMORY_KEY), Math.round(VM.maxDirectMemory() * CACHE_RATIO));
 
-        preloadThread = buildPreloadThread();
-        preloadThread.start();
+        threads.createThread(buildPreloadThread());
 
         if(printMetricInterval > 0) {
-            metricThread = buildMetricThread(printMetricInterval);
-            metricThread.start();
-        } else {
-            metricThread = null;
+            threads.createThread(buildMetricThread(printMetricInterval));
         }
-
-        evictThread = buildEvictThread();
-        evictThread.start();
+        threads.createThread(buildEvictThread());
+        threads.start();
         this.maxMemorySize = maxMemorySize;
         logger.info("Max direct memory size : {}.", Format.formatSize(maxMemorySize));
     }
 
-    private LoopThread buildMetricThread(long printMetricInterval) {
-        return LoopThread.builder()
-                .name("DirectBufferPrintThread")
+    private AsyncLoopThread buildMetricThread(long printMetricInterval) {
+        return ThreadBuilder.builder()
+                .name(METRIC_THREAD)
                 .sleepTime(printMetricInterval, printMetricInterval)
                 .doWork(() -> {
                     long used = usedSize.get();
@@ -103,23 +102,23 @@ public class PreloadBufferPool {
                 .build();
     }
 
-    private LoopThread buildPreloadThread() {
-        return LoopThread.builder()
-                .name("PreloadBufferPoolThread")
+    private AsyncLoopThread buildPreloadThread() {
+        return ThreadBuilder.builder()
+                .name(PRELOAD_THREAD)
                 .sleepTime(INTERVAL_MS, INTERVAL_MS)
                 .doWork(this::preLoadBuffer)
-                .onException(e -> logger.warn("PreloadBufferPoolThread exception:", e))
+                .onException(e -> logger.warn("{} exception:", PRELOAD_THREAD, e))
                 .daemon(true)
                 .build();
     }
 
-    private LoopThread buildEvictThread() {
-        return LoopThread.builder()
-                .name("EvictThread")
+    private AsyncLoopThread buildEvictThread() {
+        return ThreadBuilder.builder()
+                .name(EVICT_THREAD)
                 .sleepTime(INTERVAL_MS, INTERVAL_MS)
                 .condition(() -> usedSize.get() > maxMemorySize * EVICT_RATIO)
                 .doWork(this::evict)
-                .onException(e -> logger.warn("EvictThread exception:", e))
+                .onException(e -> logger.warn("{} exception:", EVICT_THREAD, e))
                 .daemon(true)
                 .build();
     }
@@ -192,11 +191,7 @@ public class PreloadBufferPool {
 
     public static void close() {
         if(null != instance) {
-            instance.preloadThread.stop();
-            instance.evictThread.stop();
-            if (instance.metricThread != null) {
-                instance.metricThread.stop();
-            }
+            instance.threads.stop();
             instance.bufferCache.values().forEach(p -> {
                 while (!p.cache.isEmpty()) {
                     instance.destroyOne(p.cache.remove());
@@ -239,7 +234,7 @@ public class PreloadBufferPool {
 
         if(usedSize.get() + size > maxMemorySize) {
             // 如果内存不足，唤醒清理线程立即执行清理
-            evictThread.wakeup();
+            threads.wakeupThread(EVICT_THREAD);
             // 等待5x10ms，如果还不足抛出异常
             for (int i = 0; i < 5 && usedSize.get() + size > maxMemorySize; i++) {
                 try {
@@ -259,7 +254,7 @@ public class PreloadBufferPool {
         }
 
         if(usedSize.get() > maxMemorySize * EVICT_RATIO) {
-            evictThread.wakeup();
+            threads.wakeupThread(EVICT_THREAD);
         }
 //        logger.info("Allocate : {}", size);
         return byteBuffer;

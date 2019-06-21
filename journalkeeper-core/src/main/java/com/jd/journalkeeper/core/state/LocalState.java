@@ -32,8 +32,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
     private static final Logger logger = LoggerFactory.getLogger(LocalState.class);
     public final static short CRLF = ByteBuffer.wrap(new byte[] {0x0D, 0x0A}).getShort();
 
-    protected long lastApplied = 0;
-    protected int lastIncludedTerm = 0;
+    protected StateMetadata stateMetadata = null;
     protected Path path;
     protected Properties properties;
     protected final StateFactory<E, Q, R> factory;
@@ -48,22 +47,21 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
 
     @Override
     public long lastApplied() {
-        return lastApplied;
+        return null == stateMetadata ? 0 : stateMetadata.getLastApplied();
     }
 
     @Override
     public int lastIncludedTerm() {
-        return lastIncludedTerm;
+        return null == stateMetadata ? 0 : stateMetadata.getLastIncludedTerm();
     }
 
     @Override
     public final void recover(Path path, RaftJournal raftJournal, Properties properties) {
         this.path = path;
         this.properties = properties;
-        try (StateMetadata stateMetadata = new StateMetadata(path.resolve(metadataPath()).toFile())) {
+        try {
+            stateMetadata = new StateMetadata(path.resolve(metadataPath()).toFile());
             stateMetadata.recover();
-            lastApplied = stateMetadata.getLastApplied();
-            lastIncludedTerm = stateMetadata.getLastIncludedTerm();
 
             Files.createDirectories(localStatePath());
             try {
@@ -319,11 +317,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
 
     @Override
     public final void flush() throws IOException {
-        try (StateMetadata stateMetadata = new StateMetadata(path.resolve(metadataPath()).toFile())) {
-            stateMetadata.setLastApplied(lastApplied);
-            stateMetadata.setLastIncludedTerm(lastIncludedTerm);
-            stateMetadata.flush();
-        }
+        stateMetadata.flush();
 
         try {
             stateFilesLock.writeLock().lock();
@@ -336,8 +330,8 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
     protected void flushState(Path statePath) throws IOException {};
     @Override
     public void clear() {
-        lastApplied = 0L;
-        lastIncludedTerm = 0;
+        stateMetadata.setLastApplied(0L);
+        stateMetadata.setLastIncludedTerm(0);
         try {
             FileUtils.cleanDirectory(path.toFile());
         } catch (IOException e) {
@@ -347,7 +341,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
 
     @Override
     public void next() {
-        lastApplied += 1;
+        stateMetadata.setLastApplied(stateMetadata.getLastApplied() + 1);
     }
 
     @Override

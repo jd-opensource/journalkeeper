@@ -11,8 +11,8 @@ import java.nio.ByteBuffer;
  * Date: 2019-03-25
  */
 public class StateMetadata extends DoubleCopy {
-    private long lastApplied;
-    private int lastIncludedTerm;
+    private long lastApplied = 0;
+    private int lastIncludedTerm = 0;
     public StateMetadata(File file) throws IOException {
         super(file, 128);
     }
@@ -43,6 +43,7 @@ public class StateMetadata extends DoubleCopy {
     }
 
     public void setLastApplied(long lastApplied) {
+        increaseVersion();
         this.lastApplied = lastApplied;
     }
 
@@ -51,6 +52,7 @@ public class StateMetadata extends DoubleCopy {
     }
 
     public void setLastIncludedTerm(int lastIncludedTerm) {
+        increaseVersion();
         this.lastIncludedTerm = lastIncludedTerm;
     }
 }

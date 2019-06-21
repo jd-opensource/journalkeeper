@@ -147,7 +147,6 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
             fileChannel.position(0);
             fileChannel.write(timeBuffer);
-            fileChannel.force(true);
         } catch (Exception e) {
             logger.warn("Exception:", e);
         } finally {

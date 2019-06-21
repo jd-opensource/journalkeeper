@@ -7,6 +7,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 
@@ -38,6 +39,10 @@ public abstract class DoubleCopy implements Closeable {
         return NEXT;
     }
 
+
+    private final AtomicLong dataVersion = new AtomicLong(0L);
+    private final AtomicLong flushVersion = new AtomicLong(0L);
+
     /**
      * 构造函数
      *
@@ -48,6 +53,10 @@ public abstract class DoubleCopy implements Closeable {
         this.file = file;
         NEXT = maxDataSize;
         validate();
+    }
+
+    protected void increaseVersion() {
+        dataVersion.incrementAndGet();
     }
 
     protected void validate() throws IOException {
@@ -73,7 +82,7 @@ public abstract class DoubleCopy implements Closeable {
     @Override
     public void close() {
         try {
-            doFlush();
+            flush();
             raf.close();
             raf = null;
         } catch (IOException e) {
@@ -113,6 +122,7 @@ public abstract class DoubleCopy implements Closeable {
                 throw new IOException(String.format("Recover file %s failed!", getName()));
             }
         }
+        flushVersion.set(dataVersion.get());
         logger.info(getName() + " recover success, file: {}.", file.getAbsolutePath());
     }
 
@@ -174,7 +184,11 @@ public abstract class DoubleCopy implements Closeable {
      * 刷盘
      */
     public synchronized void flush() {
-            doFlush();
+            long version = dataVersion.get();
+            if(version != flushVersion.get()) {
+                doFlush();
+                flushVersion.set(dataVersion.get());
+            }
     }
 
     public long getTimestamp() {

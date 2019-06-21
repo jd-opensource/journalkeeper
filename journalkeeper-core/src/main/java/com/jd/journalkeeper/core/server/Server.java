@@ -25,7 +25,10 @@ import com.jd.journalkeeper.rpc.RpcAccessPointFactory;
 import com.jd.journalkeeper.rpc.server.*;
 import com.jd.journalkeeper.utils.spi.ServiceSupport;
 import com.jd.journalkeeper.utils.state.StateServer;
-import com.jd.journalkeeper.utils.threads.LoopThread;
+import com.jd.journalkeeper.utils.threads.AsyncLoopThread;
+import com.jd.journalkeeper.utils.threads.ThreadBuilder;
+import com.jd.journalkeeper.utils.threads.Threads;
+import com.jd.journalkeeper.utils.threads.ThreadsFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +41,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.StampedLock;
@@ -57,6 +59,14 @@ public abstract class Server<E, Q, R>
         extends RaftServer<E, Q, R>
         implements ServerRpc {
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
+    /**
+     * 每个Server模块中需要运行一个用于执行日志更新状态，保存Snapshot的状态机线程，
+     */
+    protected final static String STATE_MACHINE_THREAD = "StateMachineThread";
+    /**
+     * 刷盘Journal线程
+     */
+    protected final static String FLUSH_JOURNAL_THREAD = "FlushJournalThread";
     @Override
     public boolean isAlive() {
         return true;
@@ -113,10 +123,7 @@ public abstract class Server<E, Q, R>
      */
     protected List<URI> observers;
 
-    /**
-     * 每个Server模块中需要运行一个用于执行日志更新状态，保存Snapshot的状态机线程，
-     */
-    protected final LoopThread stateMachineThread;
+
 
     //TODO: Log Compaction, install snapshot rpc
     protected ScheduledFuture flushFuture, compactionFuture;
@@ -168,12 +175,13 @@ public abstract class Server<E, Q, R>
 
     private ServerState serverState = ServerState.STOPPED;
     private ServerMetadata lastSavedServerMetadata = null;
-    private AtomicBoolean flushGate = new AtomicBoolean(false);
     protected final EventBus eventBus;
     private final CompactJournalEntrySerializer compactJournalEntrySerializer = new CompactJournalEntrySerializer();
     private final ScalePartitionsEntrySerializer scalePartitionsEntrySerializer = new ScalePartitionsEntrySerializer();
     protected final Lock scalePartitionLock = new ReentrantLock(true);
     protected final Lock compactLock = new ReentrantLock(true);
+
+    protected final Threads threads = ThreadsFactory.create();
 
     public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
                   Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor,
@@ -182,7 +190,8 @@ public abstract class Server<E, Q, R>
         this.scheduledExecutor = scheduledExecutor;
         this.asyncExecutor = asyncExecutor;
         this.config = toConfig(properties);
-        this.stateMachineThread = buildStateMachineThread();
+        this.threads.createThread(buildStateMachineThread());
+        this.threads.createThread(buildFlushJournalThread());
         this.state = stateFactory.createState();
         this.entrySerializer = entrySerializer;
         this.querySerializer = querySerializer;
@@ -199,13 +208,25 @@ public abstract class Server<E, Q, R>
 
     }
 
-    private LoopThread buildStateMachineThread() {
-        return LoopThread.builder()
-                .name("StateMachineThread")
+    private AsyncLoopThread buildStateMachineThread() {
+        return ThreadBuilder.builder()
+                .name(STATE_MACHINE_THREAD)
                 .condition(() ->this.serverState() == ServerState.RUNNING)
                 .doWork(this::applyEntries)
                 .sleepTime(50,100)
-                .onException(e -> logger.warn("StateMachineThread Exception: ", e))
+                .onException(e -> logger.warn("{} Exception: ", STATE_MACHINE_THREAD, e))
+                .daemon(true)
+                .build();
+    }
+
+
+    private AsyncLoopThread buildFlushJournalThread() {
+        return ThreadBuilder.builder()
+                .name(FLUSH_JOURNAL_THREAD)
+                .condition(() ->this.serverState() == ServerState.RUNNING)
+                .doWork(this::flushJournal)
+                .sleepTime(config.getFlushIntervalMs(), config.getFlushIntervalMs())
+                .onException(e -> logger.warn("{} Exception: ", FLUSH_JOURNAL_THREAD, e))
                 .daemon(true)
                 .build();
     }
@@ -558,9 +579,9 @@ public abstract class Server<E, Q, R>
     public final void start() {
         this.serverState = ServerState.STARTING;
         doStart();
-        stateMachineThread.start();
-        flushFuture = scheduledExecutor.scheduleAtFixedRate(this::flush,
-                ThreadLocalRandom.current().nextLong(500L, 1000L),
+        threads.start();
+        flushFuture = scheduledExecutor.scheduleAtFixedRate(this::flushState,
+                ThreadLocalRandom.current().nextLong(10L, 100L),
                 config.getFlushIntervalMs(), TimeUnit.MILLISECONDS);
         rpcServer = rpcAccessPointFactory.bindServerService(this);
         rpcServer.start();
@@ -574,30 +595,31 @@ public abstract class Server<E, Q, R>
      * 2. 状态
      * 3. 元数据
      */
-    @Override
-    public boolean flush() {
-        //FIXME: 如果刷盘异常，如何保证日志、状态和元数据三者一致？
-        if (flushGate.compareAndSet(false, true)) {
-            try {
+    private void flushAll() {
+        journal.flush();
+        flushState();
+    }
 
-                journal.flush();
-                if (state instanceof Flushable) {
-                    ((Flushable) state).flush();
-                }
-                ServerMetadata serverMetadata = createServerMetadata();
-                if (!serverMetadata.equals(lastSavedServerMetadata)) {
-                    metadataPersistence.save(serverMetadata);
-                    lastSavedServerMetadata = serverMetadata;
-                }
-            } catch(IOException e){
-                logger.warn("Flush exception, commitIndex: {}, lastApplied: {}, server: {}: ",
-                       commitIndex, state.lastApplied(), uri ,e);
-            } finally {
-                flushGate.set(false);
+    private void flushJournal() {
+        this.journal.flush();
+        onJournalFlushed();
+    }
+
+    protected void onJournalFlushed() {}
+
+    private void flushState() {
+        try {
+            if (state instanceof Flushable) {
+                ((Flushable) state).flush();
             }
-            return true;
-        } else {
-            return false;
+            ServerMetadata serverMetadata = createServerMetadata();
+            if (!serverMetadata.equals(lastSavedServerMetadata)) {
+                metadataPersistence.save(serverMetadata);
+                lastSavedServerMetadata = serverMetadata;
+            }
+        } catch(Throwable e) {
+            logger.warn("Flush exception, commitIndex: {}, lastApplied: {}, server: {}: ",
+                    commitIndex, state.lastApplied(), uri, e);
         }
     }
 
@@ -615,11 +637,12 @@ public abstract class Server<E, Q, R>
                 rpcServer.stop();
             }
             serverRpcAccessPoint.stop();
-            stateMachineThread.stop();
+            threads.stop();
             stopAndWaitScheduledFeature(flushFuture, 1000L);
             if(persistenceFactory instanceof Closeable) {
                 ((Closeable) persistenceFactory).close();
             }
+            flushAll();
             this.serverState = ServerState.STOPPED;
         } catch (Throwable t) {
             t.printStackTrace();

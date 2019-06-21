@@ -1,7 +1,8 @@
 package com.jd.journalkeeper.utils.event;
 
 import com.jd.journalkeeper.utils.spi.ServiceSupport;
-import com.jd.journalkeeper.utils.threads.LoopThread;
+import com.jd.journalkeeper.utils.threads.AsyncLoopThread;
+import com.jd.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,7 +44,7 @@ public class EventBus implements Watchable {
     private final Map<Long, PullEventWatcher> pullEventWatchers = new ConcurrentHashMap<>();
     private final long pullEventIntervalMs;
     private final long pullEventWatcherTimeout;
-    private final LoopThread removeTimeoutPullWatchersThread;
+    private final AsyncLoopThread removeTimeoutPullWatchersThread;
     private final Collection<EventInterceptor> interceptors;
 
     public EventBus(ExecutorService eventWatcherExecutor, long pullEventIntervalMs) {
@@ -59,8 +60,8 @@ public class EventBus implements Watchable {
         this(Executors.newSingleThreadExecutor(), 1000L);
     }
 
-    private LoopThread buildRemoveTimeoutPullWatchersThread() {
-        return LoopThread.builder()
+    private AsyncLoopThread buildRemoveTimeoutPullWatchersThread() {
+        return ThreadBuilder.builder()
                 .name("RemoveTimeoutPullWatchersThread")
                 .doWork(this::removeTimeoutPullWatchers)
                 .sleepTime(pullEventWatcherTimeout, pullEventWatcherTimeout)

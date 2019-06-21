@@ -5,7 +5,8 @@ import com.jd.journalkeeper.persistence.JournalPersistence;
 import com.jd.journalkeeper.utils.format.Format;
 import com.jd.journalkeeper.utils.test.ByteUtils;
 import com.jd.journalkeeper.utils.test.TestPathUtils;
-import com.jd.journalkeeper.utils.threads.LoopThread;
+import com.jd.journalkeeper.utils.threads.AsyncLoopThread;
+import com.jd.journalkeeper.utils.threads.ThreadBuilder;
 import org.junit.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -198,7 +199,7 @@ public class PositioningStoreTest {
 
     private void write(JournalPersistence store, long maxSize, byte [] journal) throws IOException {
         long currentMax = 0;
-        LoopThread flushThread = LoopThread.builder()
+        AsyncLoopThread flushThread = ThreadBuilder.builder()
                 .doWork(store::flush)
                 .sleepTime(0,0)
                 .onException(e -> logger.warn("Flush Exception: ", e))

@@ -14,7 +14,8 @@ import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.persistence.ServerMetadata;
 import com.jd.journalkeeper.rpc.client.*;
 import com.jd.journalkeeper.rpc.server.*;
-import com.jd.journalkeeper.utils.threads.LoopThread;
+import com.jd.journalkeeper.utils.threads.AsyncLoopThread;
+import com.jd.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -84,28 +85,30 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     private BlockingQueue<ReplicationRequestResponse> pendingAppendEntriesRequests;
 
     private final Config config;
+
     /**
      * Leader接收客户端请求串行写入entries线程
      */
-    private final LoopThread leaderAppendJournalEntryThread;
+    private static final String LEADER_APPEND_ENTRY_THREAD = "LeaderAppendEntryThread";
     /**
      * Voter 处理AppendEntriesRequest线程
      */
-    private final LoopThread voterReplicationRequestHandlerThread;
+    private static final String VOTER_REPLICATION_REQUESTS_HANDLER_THREAD = "VoterReplicationRequestHandlerThread";
+
     /**
-     * Voter 处理AppendEntriesRequest线程
+     * Voter 处理回调线程
      */
-    private final LoopThread callbackThread;
+    private static final String LEADER_CALLBACK_THREAD = "LeaderCallbackThread";
 
     /**
      * Leader 发送AppendEntries RPC线程
      */
-    private final LoopThread leaderReplicationThread;
+    private static final String LEADER_REPLICATION_THREAD = "LeaderReplicationThread";
 
     /**
      * Leader 处理AppendEntries RPC Response 线程
      */
-    private final LoopThread leaderReplicationResponseHandlerThread;
+    private static final String LEADER_REPLICATION_RESPONSES_HANDLER_THREAD = "LeaderReplicationResponsesHandlerThread";
 
     private ScheduledFuture checkElectionTimeoutFuture;
 
@@ -129,64 +132,76 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 Comparator.comparing(ReplicationRequestResponse::getPrevLogTerm)
                         .thenComparing(ReplicationRequestResponse::getPrevLogIndex));
 
-        leaderAppendJournalEntryThread = buildLeaderAppendJournalEntryThread();
-        voterReplicationRequestHandlerThread = buildVoterReplicationHandlerThread();
-        leaderReplicationThread = buildLeaderReplicationThread();
-        leaderReplicationResponseHandlerThread = buildLeaderReplicationResponseThread();
-        callbackThread = buildCallbackThread();
+
+
+        threads.createThread(buildLeaderAppendJournalEntryThread());
+        threads.createThread(buildVoterReplicationHandlerThread());
+        threads.createThread(buildLeaderReplicationThread());
+        threads.createThread(buildLeaderReplicationResponseThread());
+        threads.createThread(buildCallbackThread());
+        threads.createThread(buildMonitorThread());
     }
 
-    private LoopThread buildLeaderAppendJournalEntryThread() {
-        return LoopThread.builder()
-                .name("LeaderAppendJournalEntryThread")
+    private AsyncLoopThread buildLeaderAppendJournalEntryThread() {
+        return ThreadBuilder.builder()
+                .name(LEADER_APPEND_ENTRY_THREAD)
                 .condition(() ->this.serverState() == ServerState.RUNNING
-                        && journal.maxIndex() - journalFlushIndex.get() < config.getOnFlyEntries()
                         && journal.maxIndex() - commitIndex < config.getOnFlyEntries())
                 .doWork(this::appendJournalEntry)
                 .sleepTime(0,0)
-                .onException(e -> logger.warn("LeaderAppendJournalEntry Exception, {}: ", voterInfo(), e))
+                .onException(e -> logger.warn("{} Exception, {}: ", LEADER_APPEND_ENTRY_THREAD, voterInfo(), e))
                 .daemon(true)
                 .build();
     }
 
-    private LoopThread buildVoterReplicationHandlerThread() {
-        return LoopThread.builder()
-                .name("VoterReplicationRequestHandlerThread")
+    private AsyncLoopThread buildVoterReplicationHandlerThread() {
+        return ThreadBuilder.builder()
+                .name(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD)
                 .condition(() ->this.serverState() == ServerState.RUNNING)
                 .doWork(this::handleReplicationRequest)
                 .sleepTime(config.getHeartbeatIntervalMs(),config.getHeartbeatIntervalMs())
-                .onException(e -> logger.warn("VoterReplicationHandlerThread Exception, {}: ", voterInfo(), e))
+                .onException(e -> logger.warn("{} Exception, {}: ", VOTER_REPLICATION_REQUESTS_HANDLER_THREAD, voterInfo(), e))
                 .daemon(true)
                 .build();
     }
 
-    private LoopThread buildLeaderReplicationThread() {
-        return LoopThread.builder()
-                .name("LeaderReplicationThread")
+    private AsyncLoopThread buildLeaderReplicationThread() {
+        return ThreadBuilder.builder()
+                .name(LEADER_REPLICATION_THREAD)
                 .condition(() ->this.serverState() == ServerState.RUNNING)
                 .doWork(this::replication)
                 .sleepTime(config.getHeartbeatIntervalMs(),config.getHeartbeatIntervalMs())
-                .onException(e -> logger.warn("LeaderReplicationThread Exception, {}: ", voterInfo(), e))
+                .onException(e -> logger.warn("{} Exception, {}: ", LEADER_REPLICATION_THREAD, voterInfo(), e))
                 .daemon(true)
                 .build();
     }
-    private LoopThread buildLeaderReplicationResponseThread() {
-        return LoopThread.builder()
-                .name("LeaderReplicationResponseThread")
+    private AsyncLoopThread buildLeaderReplicationResponseThread() {
+        return ThreadBuilder.builder()
+                .name(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD)
                 .condition(() ->this.serverState() == ServerState.RUNNING && this.voterState == VoterState.LEADER)
                 .doWork(this::handleReplicationResponses)
                 .sleepTime(config.getHeartbeatIntervalMs(),config.getHeartbeatIntervalMs())
-                .onException(e -> logger.warn("LeaderReplicationResponseThread Exception, {}: ", voterInfo(), e))
+                .onException(e -> logger.warn("{} Exception, {}: ", LEADER_REPLICATION_RESPONSES_HANDLER_THREAD, voterInfo(), e))
                 .daemon(true)
                 .build();
     }
-    private LoopThread buildCallbackThread() {
-        return LoopThread.builder()
-                .name("CallbackThread")
+    private AsyncLoopThread buildCallbackThread() {
+        return ThreadBuilder.builder()
+                .name(LEADER_CALLBACK_THREAD)
                 .condition(() ->this.serverState() == ServerState.RUNNING)
                 .doWork(this::callback)
                 .sleepTime(config.getHeartbeatIntervalMs(),config.getHeartbeatIntervalMs())
-                .onException(e -> logger.warn("CallbackThread Exception, {}: ", voterInfo(), e))
+                .onException(e -> logger.warn("{} Exception, {}: ", LEADER_CALLBACK_THREAD, voterInfo(), e))
+                .daemon(true)
+                .build();
+    }
+
+    private AsyncLoopThread buildMonitorThread() {
+        return ThreadBuilder.builder()
+                .name("MonitorThread")
+                .condition(() ->this.voterState == VoterState.LEADER)
+                .doWork(() -> logger.info("PendingUpdateRequests: {}, {}.", pendingUpdateStateRequests.size(), voterInfo()))
+                .sleepTime(1000,1000)
                 .daemon(true)
                 .build();
     }
@@ -213,7 +228,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                     }
                     logger.debug("Append journal entry, {}", voterInfo());
                     // 唤醒复制线程
-                    leaderReplicationThread.wakeup();
+                    threads.wakeupThread(LEADER_REPLICATION_THREAD);
                 } catch (Throwable t) {
                     rr.getResponseFuture().complete(new UpdateClusterStateResponse(t));
                     throw t;
@@ -226,12 +241,15 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     }
 
     @Override
-    public boolean flush() {
-        boolean ret = super.flush();
+    protected void onJournalFlushed() {
+
         journalFlushIndex.set(journal.maxIndex());
-        leaderAppendJournalEntryThread.wakeup();
-        callbackThread.wakeup();
-        return ret;
+        if(threads.getTreadState(LEADER_APPEND_ENTRY_THREAD) == ServerState.RUNNING) {
+            threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
+        }
+        if(threads.getTreadState(LEADER_CALLBACK_THREAD) == ServerState.RUNNING) {
+            threads.wakeupThread(LEADER_CALLBACK_THREAD);
+        }
     }
 
     private Config toConfig(Properties properties) {
@@ -357,7 +375,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         int count;
         // 如果是单节点，直接唤醒leaderReplicationResponseHandlerThread，减少响应时延。
         if(serverState() == ServerState.RUNNING && voterState == VoterState.LEADER && followers.isEmpty()) {
-            leaderReplicationResponseHandlerThread.wakeup();
+            threads.wakeupThread(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD);
         }
         do {
             if (serverState() == ServerState.RUNNING && voterState == VoterState.LEADER && !Thread.currentThread().isInterrupted()) {
@@ -446,7 +464,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                                             response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
                                             follower.getUri(), voterInfo());
                                     follower.addResponse(response);
-                                    leaderReplicationResponseHandlerThread.wakeup();
+                                    threads.wakeupThread(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD);
                                 } else {
                                     logger.debug("Ignore heartbeat response, success: {}, journalIndex: {}, " +
                                                     "entryCount: {}, term: {}, follower: {}, {}.",
@@ -531,9 +549,9 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
     private void onCommitted() {
         // 唤醒状态机线程
-        stateMachineThread.wakeup();
-        leaderAppendJournalEntryThread.wakeup();
-        leaderReplicationThread.wakeup();
+        threads.wakeupThread(STATE_MACHINE_THREAD);
+        threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
+        threads.wakeupThread(LEADER_REPLICATION_THREAD);
     }
 
     private void handleReplicationResponse(Follower follower) {
@@ -627,9 +645,8 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                     } finally {
                         if (request.getLeaderCommit() > commitIndex) {
                             commitIndex = Math.min(request.getLeaderCommit(), journal.maxIndex());
-                            stateMachineThread.wakeup();
-                            leaderAppendJournalEntryThread.wakeup();
-
+                            threads.wakeupThread(STATE_MACHINE_THREAD);
+                            threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
                         }
                     }
                     return;
@@ -691,7 +708,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             this.voterState = VoterState.LEADER;
             this.leader = this.uri;
             // Leader announcement
-            leaderReplicationThread.wakeup();
+            threads.wakeupThread(LEADER_REPLICATION_THREAD);
             fireOnLeaderChangeEvent();
             logger.info("Convert to LEADER, {}.", voterInfo());
         }
@@ -802,7 +819,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         try {
             pendingUpdateStateRequests.add(requestResponse);
 
-            leaderAppendJournalEntryThread.wakeup();
+            threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
             if (request.getResponseConfig() == ResponseConfig.RECEIVE) {
                 requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse());
             }
@@ -889,30 +906,18 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         this.checkElectionTimeoutFuture = scheduledExecutor.scheduleAtFixedRate(this::checkElectionTimeout,
                 ThreadLocalRandom.current().nextLong(500L, 1000L),
                 config.getHeartbeatIntervalMs(), TimeUnit.MILLISECONDS);
-        leaderAppendJournalEntryThread.start();
-        voterReplicationRequestHandlerThread.start();
-        leaderReplicationThread.start();
-        leaderReplicationResponseHandlerThread.start();
-        callbackThread.start();
 
-        LoopThread.builder()
-                .name("MonitorThread")
-                .condition(() ->this.voterState == VoterState.LEADER)
-                .doWork(() -> logger.info(voterInfo()))
-                .sleepTime(1000,1000)
-                .daemon(true)
-                .build().start();
     }
 
     @Override
     public void doStop() {
         try {
             stopAndWaitScheduledFeature(checkElectionTimeoutFuture, 1000L);
-            stopLeaderReplicationResponseHandler();
-            leaderReplicationThread.stop();
-            stopVoterReplicationRequestHandler();
-            stopLeaderUpdateStateRequestHandler();
-            callbackThread.stop();
+            if(followers!= null) {
+                followers.forEach(follower -> follower.pendingResponses.clear());
+            }
+            pendingAppendEntriesRequests.clear();
+            pendingUpdateStateRequests.clear();
 
         } catch (Throwable t) {
             t.printStackTrace();
@@ -921,28 +926,10 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
 
     }
 
-    private void stopLeaderUpdateStateRequestHandler() {
-        leaderAppendJournalEntryThread.stop();
-        pendingUpdateStateRequests.clear();
-    }
-
-    private void stopVoterReplicationRequestHandler() {
-        voterReplicationRequestHandlerThread.stop();
-        pendingAppendEntriesRequests.clear();
-    }
-
-    private void stopLeaderReplicationResponseHandler() {
-        logger.info("StopLeaderReplicationResponseHandler, {}.", voterInfo());
-        leaderReplicationResponseHandlerThread.stop();
-        if(followers!= null) {
-            followers.forEach(follower -> follower.pendingResponses.clear());
-        }
-    }
-
     @Override
     protected void onStateChanged() {
         super.onStateChanged();
-        callbackThread.wakeup();
+        threads.wakeupThread(LEADER_CALLBACK_THREAD);
     }
 
     @Override
