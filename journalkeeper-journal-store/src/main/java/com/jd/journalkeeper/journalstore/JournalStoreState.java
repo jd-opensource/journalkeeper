@@ -15,6 +15,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -56,12 +57,10 @@ public class JournalStoreState extends LocalState<byte [], JournalStoreQuery, Jo
         return appliedIndicesFile;
     }
 
-
     @Override
     public Map<String, String> execute(byte [] entry, int partition, long lastApplied, int batchSize) {
 
         appliedIndices.put(partition, appliedIndices.getOrDefault(partition, 0L) + batchSize);
-
         long minIndex = journal.minIndex(partition);
         long maxIndex = appliedIndices.get(partition);
 //        logger.info("partition: {}, maxIndex: {}, lastApplied: {}.", partition, maxIndex, lastApplied);

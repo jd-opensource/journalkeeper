@@ -196,7 +196,7 @@ public abstract class Server<E, Q, R>
         this.entrySerializer = entrySerializer;
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
-        this.eventBus = new EventBus(asyncExecutor, config.getRpcTimeoutMs());
+        this.eventBus = new EventBus(config.getRpcTimeoutMs());
         persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
         metadataPersistence = persistenceFactory.createMetadataPersistenceInstance();
         bufferPool = ServiceSupport.load(BufferPool.class);
@@ -319,7 +319,7 @@ public abstract class Server<E, Q, R>
                 applyReservedEntry(storageEntry.getEntry()[0], storageEntry.getEntry());
             }
             state.next();
-            asyncExecutor.submit(this::onStateChanged);
+            onStateChanged();
             Map<String, String> parameters = new HashMap<>(customizedEventData == null ? 1: customizedEventData.size() + 1);
             if(null != customizedEventData) {
                 customizedEventData.forEach(parameters::put);
@@ -384,19 +384,21 @@ public abstract class Server<E, Q, R>
      * 如果需要，保存一次快照
      */
     private void takeASnapShotIfNeed() {
-        asyncExecutor.submit(() -> {
-            try {
-                synchronized (snapshots) {
-                    if (config.getSnapshotStep() > 0 && (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep())) {
+        if(config.getSnapshotStep() > 0) {
+            asyncExecutor.submit(() -> {
+                try {
+                    synchronized (snapshots) {
+                        if (config.getSnapshotStep() > 0 && (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep())) {
 
-                        State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
-                        snapshots.put(snapshot.lastApplied(), snapshot);
+                            State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
+                            snapshots.put(snapshot.lastApplied(), snapshot);
+                        }
                     }
+                } catch (IOException e) {
+                    logger.warn("Take snapshot exception: ", e);
                 }
-            } catch (IOException e) {
-                logger.warn("Take snapshot exception: ", e);
-            }
-        });
+            });
+        }
     }
 
     @Override
@@ -781,7 +783,7 @@ public abstract class Server<E, Q, R>
     }
 
     static class Config {
-        final static int DEFAULT_SNAPSHOT_STEP = 128;
+        final static int DEFAULT_SNAPSHOT_STEP = 0;
         final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;
         final static long DEFAULT_FLUSH_INTERVAL_MS = 50L;
         final static int DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;

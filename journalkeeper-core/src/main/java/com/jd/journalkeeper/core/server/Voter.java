@@ -215,29 +215,30 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
      * 串行写入日志
      */
     private void appendJournalEntry() throws InterruptedException {
-        if(journal.maxIndex() - journalFlushIndex.get() < config.getOnFlyEntries()
-            && journal.maxIndex() - commitIndex < config.getOnFlyEntries()) {
-            UpdateStateRequestResponse rr = pendingUpdateStateRequests.take();
-            if (voterState == VoterState.LEADER) {
-                try {
-                    long index = journal.append(new Entry(rr.getRequest().getEntry(), currentTerm.get(), rr.getRequest().getPartition(), rr.getRequest().getBatchSize()));
-                    if (rr.getRequest().getResponseConfig() == ResponseConfig.PERSISTENCE) {
-                        flushCallbacks.put(new Callback(index, rr.getResponseFuture()));
-                    } else if (rr.getRequest().getResponseConfig() == ResponseConfig.REPLICATION) {
-                        replicationCallbacks.put(new Callback(index, rr.getResponseFuture()));
-                    }
-                    logger.debug("Append journal entry, {}", voterInfo());
-                    // 唤醒复制线程
-                    threads.wakeupThread(LEADER_REPLICATION_THREAD);
-                } catch (Throwable t) {
-                    rr.getResponseFuture().complete(new UpdateClusterStateResponse(t));
-                    throw t;
+
+        UpdateStateRequestResponse rr = pendingUpdateStateRequests.take();
+        if (voterState == VoterState.LEADER) {
+            try {
+                long index = journal.append(new Entry(rr.getRequest().getEntry(), currentTerm.get(), rr.getRequest().getPartition(), rr.getRequest().getBatchSize()));
+                if (rr.getRequest().getResponseConfig() == ResponseConfig.PERSISTENCE) {
+                    flushCallbacks.put(new Callback(index, rr.getResponseFuture()));
+                } else if (rr.getRequest().getResponseConfig() == ResponseConfig.REPLICATION) {
+                    replicationCallbacks.put(new Callback(index, rr.getResponseFuture()));
                 }
-            } else {
-                logger.warn("NOT_LEADER!");
-                rr.getResponseFuture().complete(new UpdateClusterStateResponse(new NotLeaderException(leader)));
+                if(logger.isDebugEnabled()) {
+                    logger.debug("Append journal entry, {}", voterInfo());
+                }
+                // 唤醒复制线程
+                threads.wakeupThread(LEADER_REPLICATION_THREAD);
+            } catch (Throwable t) {
+                rr.getResponseFuture().complete(new UpdateClusterStateResponse(t));
+                throw t;
             }
+        } else {
+            logger.warn("NOT_LEADER!");
+            rr.getResponseFuture().complete(new UpdateClusterStateResponse(new NotLeaderException(leader)));
         }
+
     }
 
     @Override
@@ -1150,6 +1151,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 while (getFirst().position <= position){
                     Callback callback = removeFirst();
                     counter.incrementAndGet();
+
                     callback.completableFuture.complete(new UpdateClusterStateResponse());
                 }
                 long deadline = System.currentTimeMillis() - getRpcTimeoutMs();

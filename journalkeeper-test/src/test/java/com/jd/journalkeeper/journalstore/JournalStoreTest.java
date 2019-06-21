@@ -7,6 +7,7 @@ import com.jd.journalkeeper.exceptions.ServerBusyException;
 import com.jd.journalkeeper.utils.format.Format;
 import com.jd.journalkeeper.utils.net.NetworkingUtils;
 import com.jd.journalkeeper.utils.test.TestPathUtils;
+import com.jd.journalkeeper.utils.threads.NamedThreadFactory;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -14,15 +15,21 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.naming.Name;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -48,7 +55,7 @@ public class JournalStoreTest {
 
     @Test
     public void writeReadOneNode() throws Exception{
-        writeReadTest(1, new int [] {2, 3, 4, 5, 6}, 1024, 20, 1024 * 10, true);
+        writeReadTest(1, new int [] {2, 3, 4, 5, 6}, 1024, 20, 1024 * 100, false);
     }
 
     @Test
@@ -120,12 +127,14 @@ public class JournalStoreTest {
     }
 
     private void asyncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException {
+        ExecutorService executors = Executors.newFixedThreadPool(100, new NamedThreadFactory("ClientRetryThreads"));
         CountDownLatch latch = new CountDownLatch(partitions.length * batchCount);
+        final List<Throwable> exceptions = Collections.synchronizedList(new LinkedList<>());
         long t0 = System.nanoTime();
         // write
         for (int partition : partitions) {
             for (int i = 0; i < batchCount; i++) {
-                asyncAppend(client, rawEntries, partition, batchSize, latch);
+                asyncAppend(client, rawEntries, partition, batchSize, latch, executors, exceptions);
             }
         }
         long t1 = System.nanoTime();
@@ -137,31 +146,34 @@ public class JournalStoreTest {
         while (!latch.await(1, TimeUnit.SECONDS)) {
             Thread.yield();
         }
+        logger.warn("Async write exceptions: {}.", exceptions.size());
+        exceptions.stream().limit(10).forEach(e -> logger.warn("Exception: ", e));
+        Assert.assertEquals(0, exceptions.size());
 
     }
 
-    private void asyncAppend(JournalStoreClient client, byte[] rawEntries, int partition, int batchSize, CountDownLatch latch) {
+    private void asyncAppend(JournalStoreClient client, byte[] rawEntries, int partition, int batchSize, CountDownLatch latch, ExecutorService executorService, List<Throwable> exceptions) {
         client.append(partition, batchSize, rawEntries)
-                .whenComplete((v, e) -> {
+                .whenCompleteAsync((v, e) -> {
 
                     if(e instanceof CompletionException && e.getCause() instanceof ServerBusyException) {
                         Thread.yield();
-                        asyncAppend(client, rawEntries, partition, batchSize, latch);
+                        asyncAppend(client, rawEntries, partition, batchSize, latch, executorService, exceptions);
 
                     } else {
-//                        Assert.assertNull(e);
+                        if(null != e) {
+                            exceptions.add(e);
+                        }
                         latch.countDown();
                     }
-                });
+                }, executorService);
     }
 
     private void syncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException, ExecutionException {
         // write
         for (int partition : partitions) {
             for (int i = 0; i < batchCount; i++) {
-                long t0 = System.nanoTime();
                 client.append(partition, batchSize, rawEntries).get();
-                long t1 = System.nanoTime();
             }
         }
     }

@@ -9,8 +9,6 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -37,7 +35,6 @@ import java.util.stream.Collectors;
 public class EventBus implements Watchable {
     private static final Logger logger = LoggerFactory.getLogger(EventBus.class);
     private final NavigableMap<Long, Event> cachedEvents = new ConcurrentSkipListMap<>();
-    private final ExecutorService eventWatcherExecutor;
     private final AtomicLong watchIdGenerator = new AtomicLong(0L);
     private final AtomicLong nextSequence = new AtomicLong(0L);
     private final Set<EventWatcher> eventWatchers = ConcurrentHashMap.newKeySet();
@@ -47,8 +44,7 @@ public class EventBus implements Watchable {
     private final AsyncLoopThread removeTimeoutPullWatchersThread;
     private final Collection<EventInterceptor> interceptors;
 
-    public EventBus(ExecutorService eventWatcherExecutor, long pullEventIntervalMs) {
-        this.eventWatcherExecutor = eventWatcherExecutor;
+    public EventBus(long pullEventIntervalMs) {
         this.pullEventIntervalMs = pullEventIntervalMs;
         this.pullEventWatcherTimeout = 5 * pullEventIntervalMs;
         interceptors = ServiceSupport.loadAll(EventInterceptor.class);
@@ -57,7 +53,7 @@ public class EventBus implements Watchable {
     }
 
     public EventBus() {
-        this(Executors.newSingleThreadExecutor(), 1000L);
+        this( 1000L);
     }
 
     private AsyncLoopThread buildRemoveTimeoutPullWatchersThread() {
@@ -87,7 +83,7 @@ public class EventBus implements Watchable {
             }
         }
         // 回调Push eventWatchers
-        eventWatchers.forEach(eventWatcher -> eventWatcherExecutor.submit(() -> eventWatcher.onEvent(event)));
+        eventWatchers.forEach(eventWatcher -> eventWatcher.onEvent(event));
 
         if(!pullEventWatchers.isEmpty()) {
             cachedEvents.put(nextSequence.getAndIncrement(), event);
