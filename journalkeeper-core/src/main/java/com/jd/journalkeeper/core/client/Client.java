@@ -1,3 +1,16 @@
+/**
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.jd.journalkeeper.core.client;
 
 import com.jd.journalkeeper.base.Serializer;
@@ -5,18 +18,27 @@ import com.jd.journalkeeper.core.api.RaftJournal;
 import com.jd.journalkeeper.core.api.ResponseConfig;
 import com.jd.journalkeeper.core.server.Server;
 import com.jd.journalkeeper.exceptions.ServerBusyException;
+import com.jd.journalkeeper.rpc.client.QueryStateResponse;
 import com.jd.journalkeeper.utils.event.EventType;
 import com.jd.journalkeeper.utils.event.EventWatcher;
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.RaftClient;
+import com.jd.journalkeeper.core.api.RaftJournal;
+import com.jd.journalkeeper.core.api.ResponseConfig;
 import com.jd.journalkeeper.core.exception.NoLeaderException;
+import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.rpc.BaseResponse;
 import com.jd.journalkeeper.rpc.LeaderResponse;
 import com.jd.journalkeeper.rpc.RpcException;
 import com.jd.journalkeeper.rpc.StatusCode;
-import com.jd.journalkeeper.rpc.client.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.jd.journalkeeper.rpc.client.ClientServerRpc;
+import com.jd.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
+import com.jd.journalkeeper.rpc.client.GetServersResponse;
+import com.jd.journalkeeper.rpc.client.QueryStateRequest;
+import com.jd.journalkeeper.rpc.client.UpdateClusterStateRequest;
+import com.jd.journalkeeper.utils.event.EventWatcher;
 
 import java.net.URI;
 import java.util.Properties;

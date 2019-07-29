@@ -1,3 +1,16 @@
+/**
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.jd.journalkeeper.rpc.remoting.serialize;
 
 import com.jd.journalkeeper.rpc.remoting.transport.codec.Decoder;
@@ -79,12 +92,12 @@ public class CodecSupport {
     public static <K,V> void encodeMap(ByteBuf byteBuf, Map<K,V> map, Encoder keyEncoder, Encoder valueEncoder) {
         if(null == map) map = Collections.emptyMap();
         byteBuf.writeInt(map.size());
-        map.entrySet().forEach(kvEntry -> {
-            keyEncoder.encode(kvEntry.getKey(), byteBuf);
-            valueEncoder.encode(kvEntry.getValue(), byteBuf);
+        map.forEach((key, value) -> {
+            keyEncoder.encode(key, byteBuf);
+            valueEncoder.encode(value, byteBuf);
         });
     }
-
+    @SuppressWarnings("unchecked")
     public static <T> List<T> decodeList(ByteBuf byteBuf, Decoder itemDecoder) {
         int size = byteBuf.readInt();
         List<T> list = new ArrayList<>(size);
@@ -94,6 +107,7 @@ public class CodecSupport {
         return list;
     }
 
+    @SuppressWarnings("unchecked")
     public static <K,V> Map<K, V> decodeMap(ByteBuf byteBuf, Decoder keyDecoder, Decoder valueDecoder) {
         int size = byteBuf.readInt();
         Map<K, V> map = new HashMap<>(size);

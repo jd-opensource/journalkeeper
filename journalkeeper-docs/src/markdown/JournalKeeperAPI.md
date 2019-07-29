@@ -206,9 +206,10 @@ outputState | 更新后的状态。
 set | 设置指定的key的为给定的值，如果key不存在则自动创建，如果key已存在则覆盖。
 get | 获取指定key的值。
 list | 根据模式返回匹配的key数组。
+exist | 判断给定的key是否存在
+remove | 删除指定的key
 compareAndSet | 如果指定的key值与提供的值相等，则执行set操作。
 watch | 监控一组key，当符合条件的任一一个key对应值变化时给出通知并结束watch。
-watchAndSet | 监控一个key，当对应值变化并且等于指定值时，执行set操作，给出通知并结束watch。
 unWatch | 取消监控
 
 ### set
@@ -243,6 +244,26 @@ regex | 查询条件正则表达式。
 -- | --
 keys[] | 符合条件的key数组。
 
+### exist
+判断给定的key是否存在
+参数 | 描述
+-- | --
+key | 键。
+
+返回 | 描述
+-- | --
+result | 结果，包括：<br/>**TRUE**: 存在。<br/> **FALSE**: 不存在。
+
+### remove
+根据模式返回匹配的key数组。
+参数 | 描述
+-- | --
+key | 键。
+
+返回 | 描述
+-- | --
+result | 结果，包括：<br/>**TRUE**: 删除成功<br/> **FALSE**: key不存在。
+
 ### compareAndSet
 如果指定的key值与提供的值相等，则执行set操作。
 
@@ -262,20 +283,6 @@ success | 结果，包括：<br/>**SUCCESS**: 成功。<br/> **FAILED**: 写入�
 参数 | 描述
 -- | --
 regex | watch条件正则表达式。
-
-返回 | 描述
--- | --
-watchId | 本次watch的唯一ID。
-
-### watchAndSet
-监控一个key，当对应值变化并且等于指定值时，执行set操作，给出通知并结束watch。
-
-参数 | 描述
--- | --
-watchKey | 比较的key。
-watchValue | 期望的值。
-setKey | 要更新的key。
-setValue | 要更新的值。
 
 返回 | 描述
 -- | --

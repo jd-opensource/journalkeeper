@@ -1,9 +1,8 @@
-JournalKeeper日志一致性算法
-==
+# JournalKeeper日志一致性算法
 
-JournalKeeper是京东高性能，高可靠，强一致性分布式流数据存储集群。JournalKeeper用来管理超大规模分布式系统一致性算法JournalKeeper衍生于RAFT一致性算法并做了扩展和改进，更加适用于超大规模集群，并且具有更好的性能。它将系统清晰分割成一致性日志、状态机和存储三个部分，使得每一部分都能符合单一职责原则。JournalKeeper明确定义了系统边界，使用更加系统化和结构化的描述方法来定义这个算法，使之易于完整正确的实现并应用到工程实践中。
+JournalKeeper是一个高性能，高可靠，强一致性分布式流数据存储集群。JournalKeeper日志一致性算法衍生于RAFT一致性算法并做了扩展和改进，更加适用于超大规模集群，并且具有更好的性能。它将系统清晰分割成一致性日志、状态机和存储三个部分，使得每一部分都能符合单一职责原则。JournalKeeper明确定义了系统边界，使用更加系统化和结构化的描述方法来定义这个算法，使之易于完整正确的实现并应用到工程实践中。
 
-# 简介
+## 简介
 
 JournalKeeper和大多数一致性算法类似，通过维护一个可靠的、严格顺序的分布式日志来实现一致性。所有对系统变更的操作按照自然时间顺序写入一个日志中，一致性算法保证日志被安全的复制到集群的各个节点上，每个节点都依次将操作日志应用到一个状态机得到确定的状态。 
 
@@ -19,7 +18,7 @@ JournalKeeper将系统从逻辑上清晰分割成一致性日志、状态机和�
 
 JournalKeeper继承了RAFT简单、易于理解的特性，相比RAFT更加易于实现。它扩展了一致性算法的适用场景，使之更贴近工程实践的实际需求。JournalKeeper在一致语义下，相比RAFT性能有显著的提升，更加符合大规模集群需要超高吞吐量场景的性能需求。
 
-# 顺序一致性
+## 顺序一致性
 
 严格一致是一个非常理想的一致性语义，Paxos、RAFT等一致性算法通过单节点读写的实现严格一致性。集群的所有节点被分为如下2种角色：
 
@@ -29,8 +28,8 @@ JournalKeeper继承了RAFT简单、易于理解的特性，相比RAFT更加易�
 读取的过程比较简单，直接将LEADER存储的状态返回给客户端即可。写入的过程是：
 1. 在LEADER节点上写入操作日志；
 2. 将日志发送给所有FOLLOWER节点；
-1. 所有FOLLOWER节点收到LEADER的命令后，各自写入日志，然后给LEADER发送写入成功响应；
-1. LEADER收到超过半数节点的写入成功的响应后，将操作应用到状态机上，确认操作生效；
+3. 所有FOLLOWER节点收到LEADER的命令后，各自写入日志，然后给LEADER发送写入成功响应；
+4. LEADER收到超过半数节点的写入成功的响应后，将操作应用到状态机上，确认操作生效；
 
 在将RAFT应用到大规模集群过程中，我们遇到了如下一些问题：
 
@@ -58,14 +57,11 @@ JournalKeeper在支持强一致的同时，提供另外一种比更宽松的高�
 
 例如，在一个典型的交易系统中，交易相关的流程需要确保严格一致性，所有的读写请求都由LEADER提供服务；而为用户提供查询账户余额、流水等读请求不需要严格一致，可以分布到各个FOLLOWER中读取。
 
-# 读请求分流
+## 读请求分流
 
 如果不放宽强一致的语义限制，是否能让FOLLOWER分担一部分请求呢？JournalKeeper提供了一种二步读取的方法在保证强一致的前提下来分流LEADER上的读请求。
 
 复制状态机（Replicated State Machine）是一致性算法的的基础。集群的所有节点上维护一个顺序一致、尾部写入、不可变的日志，如果能保证所有节点上的日志完全相同，在任何一个节点上将日志依次在相同的状态机里面执行，执行结果（也就是节点上的状态）必然是一样的。这样，就实现了所有节点状态一致性。
-
-![复制状态机](images/replicated_state_machine.jpg)
-图一：复制状态机
 
 一致性算法的需要解决的核心问题就是如何在所有节点上维护一组相同的一致性日志，确保在恰当的时刻执行状态机。
 
@@ -77,7 +73,7 @@ JournalKeeper在支持强一致的同时，提供另外一种比更宽松的高�
 * 对于确定的一个索引序号，在集群任何节点上，如果存在该索引序号对应的快照，那么从快照读到的状态都是相同的。
 
 ![索引与快照对应](images/snapshots.png)
-图二：快照
+图一：快照
 
 基于这个推断，使得在保证强一致性的前提下，将读请求分流至集群的FOLLOWER节点成为可能，方法如下：
 * 所有的写请求由LEADER节点处理，这一点和RAFT一致；
@@ -97,11 +93,11 @@ JournalKeeper在支持强一致的同时，提供另外一种比更宽松的高�
 以这个最近快照日志对应的快照为输入，从最近快照日志开始（不含）直到请求位置（含）依次在状态机中执行这些日志，执行完毕后得到的快照就是请求位置的对应快照，读取这个快照的状态返回给客户端即可。
 
 ![稀疏快照](images/sparse_snapshots.png)
-图三：稀疏快照
+图二：稀疏快照
 
 如图三所示，客户端的读请求中的请求位置为3（RequestIndex = 3），先找到最近快照位置0（NearestSnapshotIndex = 0），然后以最近快照位置对应的快照作为输入，在状态机中依次应用范围(0, 3]的日志，得到的位置3对应的快照。
 
-# 观察者
+## 观察者
 
 JournalKeeper实现了读请求分流到LEADER上，可以通过水平扩展集群的节点数量来线性的提升集群整体的读吞吐量。RAFT在选举和复制时都要遵循大多数原则：
 * 选举时，要求收到超过半数选票的CANDIDATE才能成为LEADER。
@@ -122,11 +118,11 @@ JournalKeeper提出了一种新的角色 **观察者(OBSERVER)** 来解决这一
 观察者对于选民来说是透明的，选民无需感知观察者，这样确保RAFT中定义的选举和复制的算法无需做任何变更，不破坏原有的安全性。观察者可以提供和所有选民一样的读服务，因此可以通过增加观察者的数量来提升集群的吞吐量。观察者不参与选举和复制的过程，增加观察者的数量不会拖慢选举和复制的性能。
 
 ![加入观察者角色后的集群拓扑](images/observer.png)
-图四：带观察者的多级复制集群拓扑，图中的连续表示日志复制，箭头表示日志复制的方向，实线为RAFT主从复制，虚线为OBSERVER从父节点上拉取复制。
+图三：带观察者的多级复制集群拓扑，图中的连续表示日志复制，箭头表示日志复制的方向，实线为RAFT主从复制，虚线为OBSERVER从父节点上拉取复制。
 
 集群节点超过一定数量时，大量的观察者节都从少量的选民节点拉取数据，可能会导致网络拥塞。这种情况下，如图四所示，可以使用多级复制的结构来分散日志复制的流量。需要注意的是，复制的层级越多，处于边缘的节点更新到最新状态的所需的时间越长。
 
-# 并行复制
+## 并行复制
 RAFT的论文中提到，在LEADER可以**并行**向所有FOLLOWER复制日志。对于同一FOLLOWER不同的日志能否并行复制呢？RAFT的论文中并没有给出说明。大部分RAFT的实现都采用了简单且安全串行复制的实现：在LEADER上对于每个FOLLOWER，需要等到上一个AppendRequest RPC的响应后再发送下一个AppendRequest RPC请求。
 
 JournalKeeper在保证一致性的前提下，给出了一种并行复制的算法，能显著降低日志复制的平均时延，提升总体吞吐量。
@@ -179,7 +175,7 @@ RAFT的复制算法中，接收者通过比较当前复制位置前一条日志�
 1. 添加任何在已有的日志中不存在的条目
 1. 如果leaderCommit > commitIndex，将commitIndex设置为leaderCommit和最新日志条目索引号中较小的一个
 
-# 迁移LEADER
+## 迁移LEADER
 
 在实际生产中为了便于运维和管理，我们希望在集群一切正常的情况下LEADER能固定在某个节点上，而不是随机选举产生。例如：
 * 集群的节点服务器配置不同时，我们希望配置较高的节点作为LEADER。
@@ -193,7 +189,7 @@ RAFT的复制算法中，接收者通过比较当前复制位置前一条日志�
 
 在极少数情况下（例如，迁移过程中出现网络异常等）有可能会出现集群新选举出来的LEADER不是节点$S_{new}$，因此迁移协调者需要检查选举结果，必要的时候进行重试迁移过程。
 
-# JournalKeeper一致性算法
+## JournalKeeper一致性算法
 
 JournalKeeper一致性算法衍生自RAFT，它完整的实现了RAFT算法，并在此基础上扩展了若干功能，提升了性能。在实现层面，针对RAFT描述不太明确的地方，给出了明确的实现建议。
 
@@ -201,10 +197,10 @@ JournalKeeper一致性算法衍生自RAFT，它完整的实现了RAFT算法，�
 
 在算法的定义和描述层面，JournalKeeper倾向于使用更加系统化和结构化的方法进行定义，使之更易于实现。在以下算法定义的章节中，所有和RAFT相同概念，我们都采用相同的名词描述。
 
-## 服务
+### 服务
 
 JournalKeeper以接口和事件方式对外提供服务，服务的形式可以为进程内调用。服务包括变更状态（写入操作日志）服务、读取状态服务和集群配置服务。所有服务简述如下表：
-### 接口
+#### 接口
 方法 | 节点 | 说明
 -- | -- | --
 updateClusterState | LEADER | 客户端调用LEADER节点写入操作日志变更状态。
@@ -216,9 +212,9 @@ getServers | ALL | 客户端查询任意节点获取集群配置。
 updateVoters | LEADER | 客户端调用LEADER节点变更选民节点配置。 
 updateObservers | LEADER | 客户端调用LEADER节点变更观察者节点配置。
 
-### 变更状态服务
+#### 变更状态服务
 
-#### updateClusterState
+##### updateClusterState
 客户端调用LEADER节点写入操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。日志在集群中复制到大多数节点，并在状态机执行后返回。
 参数 | 描述
 -- | --
@@ -229,9 +225,9 @@ entry | 待写入的日志。
 result | 写入结果，包括：<br/>**SUCCESS**: 成功。<br/>**NOT_LEADER**: 当前节点不是LEADER，不可写。<br/> **FAILED**: 写入失败，写入过程中发生其他错误。
 leader | 当result = NOT_LEADER时，返回LEADER的地址。
 
-### 查询状态服务
+#### 查询状态服务
 
-#### queryClusterState
+##### queryClusterState
 客户端调用LEADER节点查询集群当前的状态，即日志在状态机中执行完成后产生的数据。该服务保证强一致性，保证读到的状态总是集群的最新状态。
 参数 | 描述
 -- | --
@@ -241,7 +237,7 @@ query | 查询条件。
 -- | --
 result | 按照查询条件获得的集群最新状态。
 
-#### queryServerState
+##### queryServerState
 客户端调用任意节点查询节点当前的状态，即日志在状态机中执行完成后产生的数据。该服务不保证强一致性，只保证顺序一致，由于复制存在时延，集群中各节点的当前状态可能比集群的当前状态更旧。
 参数 | 描述
 -- | --
@@ -253,7 +249,7 @@ result | 按照查询条件获得的节点最新状态。
 lastApplied | state对应的日志位置
 
 
-#### lastApplied
+##### lastApplied
 客户端调用LEADER节点查询集群最新提交位置，用于二步读取。
 
 返回 | 描述
@@ -262,7 +258,7 @@ result | 查询结果，包括：<br/>**SUCCESS**: 成功。<br/>**NOT_LEADER**:
 appliedIndex | 当查询成功时返回集群当前状态对应的日志位置。
 leaderAddr | 当result = NOT_LEADER时，返回LEADER的地址。
 
-#### querySnapshot
+##### querySnapshot
 客户端查询任意节点上指定日志位置对应快照的状态，用于二步读取中，在非LEADER节点获取状态数据。
 参数 | 描述
 -- | --
@@ -274,9 +270,9 @@ query | 查询条件。
 success | 查询结果，包括：<br/>**SUCCESS**: 成功。<br/>**INDEX_OVERFLOW**: 请求位置对应的快照尚未生成。<br/>**INDEX_UNDERFLOW**：请求位置对应的快照已删除。
 state | 查询成功时返回按照查询条件获得的快照状态。
 
-### 集群配置服务
+#### 集群配置服务
 
-#### getServers
+##### getServers
 客户端查询任意节点获取集群配置，返回集群所有节点和当前的LEADER节点。需要注意的是，只有LEADER节点上的配置是最新且准确的，在其它节点上查询到的集群配置有可能是已过期的旧配置。
 
 返回 | 描述
@@ -285,7 +281,7 @@ voterAddrs[] | 所有选民节点的地址（含LEADER）。
 leaderAddr | LEADER节点地址
 observerAddrs[] | 所有观察者节点地址。
 
-#### updateVoters
+##### updateVoters
 客户端调用LEADER节点变更选民节点配置。集群保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。集群成功变更返回。
 参数 | 描述
 -- | --
@@ -298,7 +294,7 @@ result | 变更结果，包括：<br/>**SUCCESS**: 成功。<br/>**NOT_LEADER**:
 leaderAddr | 当result = NOT_LEADER时，返回LEADER的地址。
 
 
-#### updateObservers
+##### updateObservers
 客户端调用LEADER节点变更观察者节点配置。集群保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。集群成功变更返回。
 参数 | 描述
 -- | --
@@ -310,7 +306,7 @@ toBeRemoved[] | 需要删除的节点地址。
 result | 变更结果，包括：<br/>**SUCCESS**: 成功。<br/>**NOT_LEADER**: 当前节点不是LEADER。<br/> **CLUSTER_NOT_AVAILABLE**: 集群不可用，可能正在选举。<br/> **FAILED**: 变更失败，变更过程中发生其他错误。集群配置仍为变更之前。
 leaderAddr | 当result = NOT_LEADER时，返回LEADER的地址。
 
-### 事件
+#### 事件
 
 事件 | 内容 | 说明
 -- | -- | --
@@ -318,7 +314,7 @@ onLeaderChanged | leaderAddr：当前LEADER<br/>term：当前任期 | LEADER节�
 onStateChanged | logIndex：集群状态对应的日志索引序号| 集群状态变更
 onVotersChanged | voterAddrs：变更后的所有选民节点 | 选民节点配置变更
 
-## 领域模型
+### 领域模型
 
 JournalKeeper的领域模型如图五所示：
 
@@ -330,9 +326,9 @@ JournalKeeper的领域模型如图五所示：
 * **Voter**: Voter继承自Server，是角色为选民的Server抽象。Voter等同于RAFT中的Server。包含一个voterState属性，在**LEADER**、**FOLLOWER**和**CANDIDATE**之间转换。
 * **StateMachine**: Statemachine代表状态机，用于执行日志，获取状态。
 
-## Server模块
+### Server模块
 Server就是集群中的节点，它包含了存储在Server上日志（logs[]），一组快照（snapshots[]）和一个状态机（stateMachine）实例。
-### 方法
+#### 方法
 Server提供[服务](#服务)一章中定义的所有方法供客户端调用，还包含如下几个内部使用的方法：
 方法 | 节点 | 描述
 -- | -- | --
@@ -341,7 +337,7 @@ getServerState | ALL | 观察者复制任意节点上的当前最新状态。
 asyncAppendEntries | VOTER | LEADER调用FOLLOWER并行复制日志。
 requestVote | VOTER | 同RAFT中RequestVote RPC，CANDIDATE调用其它VOTER发起投票的请求。
 
-#### getServerEntries
+##### getServerEntries
 
 客户端查询任意节点上指定位置的日志，用于观察者复制日志。
 参数 | 描述
@@ -355,7 +351,7 @@ success | 查询结果，包括：<br/>**SUCCESS**: 成功。<br/>**INDEX_OVERFL
 entries[] | 查询成功时返回的日志数组。
 minIndex | 当前节点日志的最小位置（含）。
 
-#### getServerState
+##### getServerState
 
 观察者复制任意节点上的当前最新状态。如果状态数据比较大，可以分多次请求。
 参数 | 描述
@@ -371,7 +367,7 @@ offset | 本次请求状态数据的偏移量。
 data[] | 状态数据
 done | 如果是最后一块数据则为真
 
-#### asyncAppendEntries
+##### asyncAppendEntries
 
 LEADER可以同时给同一个接收者发送多个asyncAppendEntries请求并行复制。
 asyncAppendEntries请求的参数和返回值如下：
@@ -391,7 +387,7 @@ success | 如果其它服务器包含能够匹配上 prevLogIndex 和 prevLogTer
 logIndex | 请求中第一条日志的位置
 entryCount | 请求中日志的数量
 
-#### requestVote
+##### requestVote
 
 同RAFT中RequestVote RPC，CANDIDATE调用其它VOTER发起投票的请求。
 参数 | 描述
@@ -406,7 +402,7 @@ lastLogTerm | CANDIDATE最新日志条目对应的任期号
 term | 目前的任期号，用于CANDIDATE更新自己
 voteGranted | 如果当前节点决定投票给CANDIDATE，返回值为true，否则返回false
 
-### 属性
+#### 属性
 Server需要维护如下属性
 属性 | 持久化 | 描述
 -- | -- | --
@@ -419,19 +415,19 @@ lastApplied | 可选 | 被状态机执行的最大日志条目的索引值（从
 leaderAddr | N | 当前LEADER节点地址
 voterAddrs[] | Y | 所有选民节点地址，包含LEADER
 
-### 实现
+#### 实现
 Server模型中，只定义如下通用方法的实现，其它方法在其子模块Observer和Voter中分别给出。
 
-#### 状态机线程
+##### 状态机线程
 每个Server模块中需要运行一个用于执行日志更新状态，保存Snapshot的状态机线程，这个线程监听属性commitIndex的变化，当commitIndex变更时如果commitIndex > lastApplied，反复执行如下流程直到lastApplied == commitIndex：
 
 1. 如果需要，复制当前状态为新的快照保存到属性snapshots, 索引值为lastApplied。
 1. lastApplied自增，将log[lastApplied]应用到状态机，更新当前状态state；
 
-#### queryServerState 方法
+##### queryServerState 方法
 用query参数查询属性state，返回查询结果。
 
-#### querySnapshot 方法
+##### querySnapshot 方法
 如果请求位置存在对应的快照，直接从快照中读取状态返回；如果请求位置不存在对应的快照，那么需要找到最近快照日志，以这个最近快照日志对应的快照为输入，从最近快照日志开始（不含）直到请求位置（含）依次在状态机中执行这些日志，执行完毕后得到的快照就是请求位置的对应快照，读取这个快照的状态返回给客户端即可。
 实现流程：
 1. 对比logIndex与在属性snapshots数组的上下界，检查请求位置是否越界，如果越界返回INDEX_OVERFLOW/INDEX_UNDERFLOW错误。
@@ -440,26 +436,26 @@ Server模型中，只定义如下通用方法的实现，其它方法在其子�
 1. 从log中的索引位置`nearestLogIndex + 1`开始，读取N条日志，`N = logIndex - nearestLogIndex`获取待执行的日志数组execLogs[]；
 1. 调用以nearestSnapshot为输入，依次在状态机stateMachine中执行execLogs，得到logIndex位置对应的快照，从快照中读取状态返回。
 
-#### getServers 方法
+##### getServers 方法
 直接返回属性leaderAddr，voterAddrs和observerAddrs。
 
-#### getServerState 方法
+##### getServerState 方法
 返回服务器上最新的快照数据。
 
-## Observer模块
+### Observer模块
 Observer模块继承自Server模块，是角色为观察者的Server抽象。观察者从其它节点拉取日志和集群配置，生成Snapshot，提供和选民一样读服务。
 Observer模块在拉取日志时遵循如下原则：
 * Observer只复制已提交的日志；
 * Observer只追加写入（Append Only），从不删除自己的日志；
-### 属性
+#### 属性
 Observer模块需要配置一个父节点的列表，用于拉取日志。
 属性 | 持久化 | 描述
 -- | -- | --
 parentsAddrs | Y | 父节点列表
 
-### 实现
+#### 实现
 Observer模块的实现的方法中，除了在父模块中已实现的方法，其它方法都是需要在Voter模块中实现的，对于这些方法，Observer中的实现就是直接返回每个方法对应的错误信息即可。
-#### 日志复制线程
+##### 日志复制线程
 Observer模块需要启动一个日志复制线程，定期去其它节点拉取日志：
 1. 从parentsAddrs中随机选择一个节点作为本次拉取日志的目标节点；
 1. 反复调用目标节点的getServerEntries方法，直到返回值success不等于SUCCESS。对于不同的返回值处理如下：
@@ -468,10 +464,10 @@ Observer模块需要启动一个日志复制线程，定期去其它节点拉取
     * INDEX_UNDERFLOW：Observer的提交位置已经落后目标节点太多，这时需要重置Observer，重置过程中不能提供读服务：
         1. 删除log中所有日志和snapshots中的所有快照；
         1. 将目标节点提交位置对应的状态复制到Observer上：`parentServer.getServerState()`，更新属性commitIndex和lastApplied值为返回值中的lastApplied。
-## Voter模块
+### Voter模块
 Voter继承自Server，是角色为选民的Server抽象。**Voter等同于RAFT中的Server**。包含一个voterState属性，在**LEADER**、**FOLLOWER**和**CANDIDATE**之间转换。
 
-### 属性
+#### 属性
 
 Voter上需要维护的属性包括：
 名称 | 持久化| 描述
@@ -486,15 +482,15 @@ lastHeartBeat | N | 仅FOLLOWER使用，上次从LEADER收到心跳（asyncAppen
 lastHeartBeats[] | N | 仅LEADER使用，上次从FOLLOWER收到心跳（asyncAppendEntries）成功响应的时间戳
 pendingAppendResponses[] | N | 仅LEADER使用，待处理的asyncAppendEntries Response，按照Response中的logIndex排序。
 pendingAppendRequests[] | N | 待处理的asyncAppendEntries Request，按照request中的preLogTerm和prevLogIndex排序。
-### 实现
+#### 实现
 
-#### LEADER有效性检查
+##### LEADER有效性检查
 只读的操作可以直接处理而不需要记录日志。但是，在不增加任何限制的情况下，这么做可能会冒着返回过期数据的风险，因为LEADER响应客户端请求时可能已经被新的LEADER废除了，但是它还不知道。LEADER在处理只读的请求之前必须检查自己是否已经被废除了。RAFT中通过让领导人在响应只读请求之前，先和集群中的大多数节点交换一次心跳信息来处理这个问题。考虑到和每次只读都进行一轮心跳交换时延较高，JournalKeeper采用一种近似的有效性检查。LEADER记录每个FOLLOWER最近返回的心跳成功响应时间戳，每次处理只读请求之前，检查这些时间戳，如果半数以上的时间戳距离当前时间的差值不大于二次平均心跳间隔，则认为LEADER当前有效，否则反复重新检查（这段时间有可能会有新的心跳响应回来更新上次心跳时间），直到成功或者超时。
 
-#### LEADER心跳定时器
+##### LEADER心跳定时器
 当voterState是LEADER时，Voter需要启动一个心跳定时器，在空闲的时候（没有数据复制到FOLLOWER上），发送数据为空的asyncAppendEntries的心跳到每个FOLLOWER上。
 
-#### 选举定时器
+##### 选举定时器
 当voterState不是LEADER时，RequestVote定时器定期检查lastHeartBeat，如果与当前时间的差值超过选举超时（election timeout），然后它就会假定没有可用的LEADER并且开始一次选举来选出一个新的LEADER：
 1. 自增当前任期号：`term = term + 1`；
 1. 给自己投票；
@@ -504,32 +500,32 @@ pendingAppendRequests[] | N | 待处理的asyncAppendEntries Request，按照req
     * 如果收到了来自新领导人的asyncAppendEntries请求（heartbeat）：转换状态为FOLLOWER
     * 如果选举超时：开始新一轮的选举
 
-#### LEADER复制发送线程
+##### LEADER复制发送线程
 当voterState是LEADER时，Voter需要维护一组复制线程，将新的日志复制给每个FOLLOWER。
 反复检查每个FOLLOWER的下一条复制位置nextIndex和本地日志log[]的最大位置，如果存在差异，发送asyncAppendEntries请求，同时更新对应FOLLOWER的nextIndex。复制发送线程只负责发送asyncAppendEntries请求，不处理响应。
 
-#### LEADER复制响应线程
+##### LEADER复制响应线程
 当voterState是LEADER时，Voter需要维护一个复制响应线程，处理所有asyncAppendEntries的响应。处理的流程参见：[并行复制-LEADER](#async-replication-leader)。对于成功的响应，还要更新对应FOLLOWER的心跳时间(`lastHeartBeats[n] = now`)。
 
-#### 复制接收线程
+##### 复制接收线程
 复制接收线程用于处理收到的asyncAppendEntries请求。所有请求存放在一个按照请求中的日志位置排序的有序列表中，复制接收线程每次从列表中取出并移出第一个请求顺序处理。处理的流程参见[并行复制-接收者](#async-replication-reveiver)
 
-#### updateClusterState 方法
+##### updateClusterState 方法
 客户端调用LEADER节点写入操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。日志在集群中复制到大多数节点，并在状态机执行后返回。
 
 1. 检查当前voterState，如果不是LEADER，返回NOT_LEADER，同时返回leaderAddr，否则继续。
 1. 将entries写入log[]中，同时记录log[]的最大位置，记为L；
 1. 等待直到lastApplied >= L，返回SUCCESS；
 
-#### queryClusterState 方法
+##### queryClusterState 方法
 1. 检查LEADER有效性，成功则继续，否则返回NOT_LEADER;
 1. 用query参数查询属性state，返回查询结果。
 
-#### getClusterApplied 方法
+##### getClusterApplied 方法
 1. 检查LEADER有效性，成功则继续，否则返回NOT_LEADER;
 1. 返回lastApplied。
 
-#### updateVoters和updateObservers方法
+##### updateVoters和updateObservers方法
 updateVoters和updateObservers方法的实现类似，在此以updateVoters为例说明。
 在处理变更集群配置时，JournalKeeper采用每次只变更一个节点的方式避免集群分裂。变更过程和RAFT一致，集群的配置作为集群当前状态的一部分，通过执行内置特殊的配置变更命令，完成配置状态变更。当客户端调用updateVoters方法时:
 1. 读取集群当前的配置$C_{old} = voterAddrs[]$；
@@ -538,18 +534,18 @@ updateVoters和updateObservers方法的实现类似，在此以updateVoters为�
 
 当命令被每个节点的状态机执行后，对应节点的集群配置变更为新的配置。
 
-#### asyncAppendEntries 方法
+##### asyncAppendEntries 方法
 Voter节点在收到asyncAppendEntries请求后，将请求放入pendingAppendRequests[]列表，交由[复制接收线程](#复制接收线程)继续处理。
 
-#### requestVote 方法
+##### requestVote 方法
 
 接收者收到requestVote方法后的实现流程如下：
 1. 如果请求中的任期号 < 节点当前任期号，返回false；
 1. 如果votedFor为空或者与candidateId相同，并且候选人的日志和自己的日志一样新，则给该候选人投票；
 
-# 实现与评价（TODO）
-## 顺序一致 VS 二步读取强一致 VS RAFT强一致 的读写性能对比
+## 实现与评价（TODO）
+### 顺序一致 VS 二步读取强一致 VS RAFT强一致 的读写性能对比
 
-## 大规模集群情况下 带观察者 VS 原版RAFT 读写性能对比
+### 大规模集群情况下 带观察者 VS 原版RAFT 读写性能对比
 
-## 并行复制 VS 串行复制性能对比
+### 并行复制 VS 串行复制性能对比

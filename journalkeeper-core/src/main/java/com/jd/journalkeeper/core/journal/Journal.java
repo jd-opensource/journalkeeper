@@ -1,3 +1,16 @@
+/**
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.jd.journalkeeper.core.journal;
 
 import com.jd.journalkeeper.core.api.RaftEntry;
@@ -31,6 +44,8 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -51,6 +66,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     private final BufferPool bufferPool;
     private Path basePath = null;
     private Properties indexProperties;
+
+    private ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
     public Journal(PersistenceFactory persistenceFactory, BufferPool bufferPool) {
         this.indexPersistence = persistenceFactory.createJournalPersistenceInstance();
@@ -341,6 +358,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * @throws IndexOverflowException 如果index >= maxIndex()
      */
     public Entry read(long index){
+        readWriteLock.readLock().lock();
         checkIndex(index);
         try {
             long offset = readOffset(index);
@@ -356,6 +374,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             return new Entry(header, entry);
         } catch (IOException e) {
             throw new JournalException(e);
+        } finally {
+            readWriteLock.readLock().unlock();
         }
     }
 
@@ -443,10 +463,15 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * @throws IndexOverflowException 如果index >= maxIndex()
      */
     public int getTerm(long index) {
-        if(index == -1) return -1;
-        checkIndex(index);
-        long offset = readOffset(index);
-        return readEntryHeaderByOffset(offset).getTerm();
+        readWriteLock.readLock().lock();
+        try {
+            if(index == -1) return -1;
+            checkIndex(index);
+            long offset = readOffset(index);
+            return readEntryHeaderByOffset(offset).getTerm();
+        } finally {
+            readWriteLock.readLock().unlock();
+        }
     }
 
 
@@ -469,10 +494,14 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                 .collect(Collectors.toList());
         try {
             long index = startIndex;
-
             for (int i = 0; i < entries.size(); i++, index++) {
                 if (index < maxIndex() && getTerm(index) != entries.get(i).getTerm()) {
-                    truncate(index);
+                    readWriteLock.writeLock().lock();
+                    try {
+                        truncate(index);
+                    } finally {
+                        readWriteLock.writeLock().unlock();
+                    }
                 }
                 if (index == maxIndex()) {
                     appendRaw(rawEntries.subList(i, entries.size()));
