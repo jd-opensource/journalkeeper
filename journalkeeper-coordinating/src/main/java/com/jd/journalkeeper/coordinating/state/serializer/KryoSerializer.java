@@ -1,9 +1,21 @@
+/**
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.jd.journalkeeper.coordinating.state.serializer;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
-import com.esotericsoftware.kryo.pool.KryoFactory;
 import com.esotericsoftware.kryo.pool.KryoPool;
 import com.jd.journalkeeper.base.Serializer;
 
@@ -16,29 +28,23 @@ import java.io.ByteArrayOutputStream;
  * email: gaohaoxiang@jd.com
  * date: 2019/5/30
  */
-public class KryoSerializer implements Serializer {
+public class KryoSerializer<T> implements Serializer<T> {
 
     private static final int BUFFER_SIZE = 1024 * 5;
 
     private final KryoPool kryoPool;
 
-    private Class<?> type;
+    private Class<T> type;
 
-    public KryoSerializer() {
-        this(null);
-    }
 
-    public KryoSerializer(Class<?> type) {
+    public KryoSerializer(Class<T> type) {
         this.type = type;
-        this.kryoPool = new KryoPool.Builder(new KryoFactory() {
-            @Override
-            public Kryo create() {
-                Kryo kryo = new Kryo();
-                if (type != null) {
-                    kryo.register(type);
-                }
-                return kryo;
+        this.kryoPool = new KryoPool.Builder(() -> {
+            Kryo kryo = new Kryo();
+            if (type != null) {
+                kryo.register(type);
             }
+            return kryo;
         }).build();
     }
 
@@ -66,12 +72,12 @@ public class KryoSerializer implements Serializer {
     }
 
     @Override
-    public Object parse(byte[] bytes) {
+    public T parse(byte[] bytes) {
         Kryo kryo = kryoPool.borrow();
         ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
         Input input = new Input(inputStream);
 
-        Object result = (type == null ? kryo.readClassAndObject(input) : kryo.readObject(input, type));
+        T result = kryo.readObject(input, type);
         kryoPool.release(kryo);
         input.close();
         return result;

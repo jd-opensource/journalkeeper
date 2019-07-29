@@ -1,3 +1,16 @@
+/**
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.jd.journalkeeper.core.journal;
 
 import com.jd.journalkeeper.core.api.RaftEntry;
@@ -483,17 +496,16 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             long index = startIndex;
             for (int i = 0; i < entries.size(); i++, index++) {
                 if (index < maxIndex() && getTerm(index) != entries.get(i).getTerm()) {
-                    // TODO 和读有并发问题
                     readWriteLock.writeLock().lock();
                     try {
                         truncate(index);
                     } finally {
                         readWriteLock.writeLock().unlock();
                     }
-                } else if (index == maxIndex()) {
-                    // TODO break?
+                }
+                if (index == maxIndex()) {
                     appendRaw(rawEntries.subList(i, entries.size()));
-//                    break;
+                    break;
                 }
             }
         } catch (IOException e) {

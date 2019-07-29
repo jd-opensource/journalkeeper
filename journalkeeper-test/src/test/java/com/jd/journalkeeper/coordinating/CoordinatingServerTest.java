@@ -1,4 +1,17 @@
-package com.jd.journalkeeper.coordinating.test;
+/**
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.jd.journalkeeper.coordinating;
 
 import com.jd.journalkeeper.coordinating.client.CoordinatingClient;
 import com.jd.journalkeeper.coordinating.client.CoordinatingClientAccessPoint;
@@ -6,6 +19,7 @@ import com.jd.journalkeeper.coordinating.server.CoordinatingServer;
 import com.jd.journalkeeper.coordinating.server.CoordinatingServerAccessPoint;
 import com.jd.journalkeeper.coordinating.state.config.CoordinatingConfigs;
 import com.jd.journalkeeper.core.api.RaftServer;
+import com.jd.journalkeeper.utils.test.TestPathUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.After;
@@ -15,6 +29,7 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -71,15 +86,12 @@ public class CoordinatingServerTest {
     private static final int VALUE_LENGTH = 1024;
     private List<CoordinatingServer> servers = new ArrayList<>();
     private List<CoordinatingClient> clients = new ArrayList<>();
-
+    private static final String WORKING_DIR = "CoordinatingServerTest";
+    private Path base = null;
     @Before
-    public void before() {
-        try {
-            FileUtils.deleteDirectory(new File(String.format("%s/export", System.getProperty("user.dir"))));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    public void before() throws IOException {
 
+        base = TestPathUtils.prepareBaseDir(WORKING_DIR );
         List<URI> voters = new ArrayList<>();
 
         for (int i = 0; i < NODES; i++) {
@@ -89,7 +101,7 @@ public class CoordinatingServerTest {
         for (int i = 0; i < NODES; i++) {
             Properties properties = new Properties();
             properties.setProperty(CoordinatingConfigs.STATE_STORE, "rocksdb");
-            properties.setProperty("working_dir", String.format("%s/export/rocksdb/%s", System.getProperty("user.dir"), i));
+            properties.setProperty("working_dir", base.resolve("rocksdb" + i).toString());
 
             properties.setProperty("rocksdb.options.createIfMissing", "true");
             properties.setProperty("rocksdb.options.writeBufferSize", "134217728");
@@ -214,5 +226,7 @@ public class CoordinatingServerTest {
         for (CoordinatingServer server : servers) {
             server.stop();
         }
+
+        TestPathUtils.destroyBaseDir(base.toFile());
     }
 }

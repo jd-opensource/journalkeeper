@@ -1,7 +1,18 @@
+/**
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.jd.journalkeeper.utils.threads;
 
-
-import com.jd.journalkeeper.utils.state.StateServer;
 
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -15,7 +26,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * }
  * 的线程。
  */
-public abstract class LoopThread implements Runnable, StateServer {
+abstract class LoopThread implements AsyncLoopThread {
     private Thread thread = null;
     private String name;
     protected long minSleep = 50L,maxSleep = 500L;
@@ -28,6 +39,7 @@ public abstract class LoopThread implements Runnable, StateServer {
      */
     abstract void doWork() throws Throwable;
 
+    @Override
     public String getName() {
         return name;
     }
@@ -36,6 +48,7 @@ public abstract class LoopThread implements Runnable, StateServer {
         this.name = name;
     }
 
+    @Override
     public boolean isDaemon() {
         return daemon;
     }
@@ -95,16 +108,16 @@ public abstract class LoopThread implements Runnable, StateServer {
         }
         while (serverState == ServerState.RUNNING) {
 
-            long t0 = System.currentTimeMillis();
+            long t0 = System.nanoTime();
             try {
                 wakeupLock.lock();
                 if(condition()) {
                     doWork();
                 }
-                long t1 = System.currentTimeMillis();
+                long t1 = System.nanoTime();
 
                 // 为了避免空转CPU高，如果执行时间过短，等一会儿再进行下一次循环
-                if (t1 - t0 < minSleep) {
+                if (t1 - t0 < minSleep * 100000L) {
                     wakeupCondition.await(minSleep < maxSleep ? ThreadLocalRandom.current().nextLong(minSleep, maxSleep): minSleep, TimeUnit.MILLISECONDS);
                 }
 
@@ -124,8 +137,8 @@ public abstract class LoopThread implements Runnable, StateServer {
     /**
      * 唤醒任务如果任务在Sleep
      */
-    // TODO 不需要同步
-    public void wakeup() {
+    @Override
+    public synchronized void wakeup() {
         if(wakeupLock.tryLock()) {
             try {
                 wakeupCondition.signal();
@@ -143,104 +156,4 @@ public abstract class LoopThread implements Runnable, StateServer {
         return true;
     }
 
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    public interface  Worker {
-        void doWork() throws Throwable;
-    }
-
-    public interface ExceptionHandler {
-        boolean handleException(Throwable t);
-    }
-    public interface ExceptionListener {
-        void onException(Throwable t);
-    }
-    public interface Condition{
-        boolean condition();
-    }
-
-    public static class Builder {
-        private String name;
-        private long minSleep = -1L,maxSleep = -1L;
-        private Boolean daemon;
-        private Worker worker;
-        private ExceptionHandler exceptionHandler;
-        private ExceptionListener exceptionListener;
-        private Condition condition;
-
-        public Builder doWork(Worker worker){
-            this.worker = worker;
-            return this;
-        }
-
-        public Builder handleException(ExceptionHandler exceptionHandler){
-            this.exceptionHandler = exceptionHandler;
-            return this;
-        }
-
-        public Builder onException(ExceptionListener exceptionListener){
-            this.exceptionListener = exceptionListener;
-            return this;
-        }
-
-
-
-        public Builder name(String name){
-            this.name = name;
-            return this;
-        }
-
-        public Builder sleepTime(long minSleep, long maxSleep){
-            this.minSleep = minSleep;
-            this.maxSleep = maxSleep;
-            return this;
-        }
-
-        public Builder daemon(boolean daemon) {
-            this.daemon = daemon;
-            return this;
-        }
-
-        public Builder condition(Condition condition){
-            this.condition = condition;
-            return this;
-        }
-
-        public LoopThread build(){
-            LoopThread loopThread = new LoopThread() {
-                @Override
-                void doWork() throws Throwable{
-                    worker.doWork();
-                }
-
-                @Override
-                protected boolean handleException(Throwable t) {
-                    if(null != exceptionListener) exceptionListener.onException(t);
-                    if(null != exceptionHandler) {
-                        return exceptionHandler.handleException(t);
-                    }else {
-                        return super.handleException(t);
-                    }
-                }
-
-                @Override
-                protected boolean condition() {
-                    if(null != condition) {
-                        return condition.condition();
-                    }else {
-                        return super.condition();
-                    }
-                }
-            };
-            if(null != name) loopThread.setName(name);
-            if(null != daemon) loopThread.setDaemon(daemon);
-            if(this.minSleep >= 0) loopThread.minSleep = this.minSleep;
-            if(this.maxSleep >= 0) loopThread.maxSleep = this.maxSleep;
-            return loopThread;
-        }
-
-
-    }
 }
