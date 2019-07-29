@@ -271,7 +271,14 @@ public class PositioningStore implements JournalPersistence,Closeable {
         if(length == 0) return new byte [0];
         checkReadPosition(position);
         try {
-            StoreFile storeFile = storeFileMap.floorEntry(position).getValue();
+
+            // TODO 空指针
+            Map.Entry<Long, StoreFile> storeFileEntry = storeFileMap.floorEntry(position);
+            if (storeFileEntry == null) {
+                return null;
+            }
+
+            StoreFile storeFile = storeFileEntry.getValue();
             int relPosition = (int )(position - storeFile.position());
             return storeFile.read(relPosition, length).array();
         } catch (Throwable t) {

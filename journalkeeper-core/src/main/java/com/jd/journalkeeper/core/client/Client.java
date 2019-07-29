@@ -1,27 +1,26 @@
 package com.jd.journalkeeper.core.client;
 
 import com.jd.journalkeeper.base.Serializer;
-import com.jd.journalkeeper.core.api.RaftJournal;
-import com.jd.journalkeeper.core.api.ResponseConfig;
-import com.jd.journalkeeper.core.server.Server;
-import com.jd.journalkeeper.exceptions.ServerBusyException;
-import com.jd.journalkeeper.utils.event.EventType;
-import com.jd.journalkeeper.utils.event.EventWatcher;
 import com.jd.journalkeeper.core.api.ClusterConfiguration;
 import com.jd.journalkeeper.core.api.RaftClient;
+import com.jd.journalkeeper.core.api.RaftJournal;
+import com.jd.journalkeeper.core.api.ResponseConfig;
 import com.jd.journalkeeper.core.exception.NoLeaderException;
+import com.jd.journalkeeper.exceptions.NotLeaderException;
 import com.jd.journalkeeper.rpc.BaseResponse;
 import com.jd.journalkeeper.rpc.LeaderResponse;
 import com.jd.journalkeeper.rpc.RpcException;
 import com.jd.journalkeeper.rpc.StatusCode;
-import com.jd.journalkeeper.rpc.client.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.jd.journalkeeper.rpc.client.ClientServerRpc;
+import com.jd.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
+import com.jd.journalkeeper.rpc.client.GetServersResponse;
+import com.jd.journalkeeper.rpc.client.QueryStateRequest;
+import com.jd.journalkeeper.rpc.client.UpdateClusterStateRequest;
+import com.jd.journalkeeper.utils.event.EventWatcher;
 
 import java.net.URI;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 
 /**
  * 客户端实现
@@ -29,13 +28,12 @@ import java.util.concurrent.CompletionException;
  * Date: 2019-03-25
  */
 public class Client<E, Q, R> implements RaftClient<E, Q, R> {
-    private static final Logger logger = LoggerFactory.getLogger(Client.class);
+
     private final ClientServerRpcAccessPoint clientServerRpcAccessPoint;
     private final Properties properties;
     private final Serializer<E> entrySerializer;
     private final Serializer<Q> querySerializer;
     private final Serializer<R> resultSerializer;
-    private URI leaderUri = null;
 
     public Client(ClientServerRpcAccessPoint clientServerRpcAccessPoint, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
                   Serializer<R> resultSerializer, Properties properties) {
@@ -44,11 +42,6 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
         this.properties = properties;
-        this.clientServerRpcAccessPoint.defaultClientServerRpc().watch(event -> {
-            if(event.getEventType() == EventType.ON_LEADER_CHANGE) {
-                this.leaderUri = URI.create(event.getEventData().get("leader"));
-            }
-        });
     }
 
     @Override
@@ -59,17 +52,8 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
     @Override
     public CompletableFuture<Void> update(E entry, int partition, int batchSize, ResponseConfig responseConfig) {
         return invokeLeaderRpc(
-                leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entrySerializer.serialize(entry), partition, batchSize, responseConfig)))
-                .thenAccept(resp -> {
-                    if(!resp.success()) {
-
-                        if(resp.getStatusCode() == StatusCode.SERVER_BUSY) {
-                            throw new CompletionException(new ServerBusyException());
-                        } else {
-                            throw new CompletionException(new RpcException(resp));
-                        }
-                    }
-                });
+                leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entrySerializer.serialize(entry), partition, batchSize)))
+                .thenAccept(resp -> {});
     }
 
 
@@ -77,7 +61,15 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
     public CompletableFuture<R> query(Q query) {
         return invokeLeaderRpc(
                 leaderRpc -> leaderRpc.queryClusterState(new QueryStateRequest(querySerializer.serialize(query))))
-                .thenApply(QueryStateResponse::getResult)
+                .thenApply((response) -> {
+                    if (response.getStatusCode().equals(StatusCode.NOT_LEADER)) {
+                        throw new NotLeaderException(response.getLeader());
+                    }
+                    if (!response.getStatusCode().equals(StatusCode.SUCCESS)) {
+                        throw new RpcException(String.valueOf(response.getStatusCode()));
+                    }
+                    return response.getResult();
+                })
                 .thenApply(resultSerializer::parse);
     }
 
@@ -121,7 +113,6 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
                 .thenCompose(invoke::invokeLeader)
                 .thenCompose(resp -> {
                     if (resp.getStatusCode() == StatusCode.NOT_LEADER) {
-                        this.leaderUri = resp.getLeader();
                         return invoke.invokeLeader(clientServerRpcAccessPoint.getClintServerRpc(resp.getLeader()));
                     } else {
                         return CompletableFuture.supplyAsync(() -> resp);
@@ -134,28 +125,22 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
     }
 
     private CompletableFuture<ClientServerRpc> getLeaderRpc() {
-        return this.leaderUri == null ? queryLeaderRpc() :
-                CompletableFuture.supplyAsync(() ->
-                        this.clientServerRpcAccessPoint.getClintServerRpc(this.leaderUri));
-    }
-
-    private CompletableFuture<ClientServerRpc> queryLeaderRpc() {
         return clientServerRpcAccessPoint
-        .defaultClientServerRpc()
-        .getServers()
-        .exceptionally(GetServersResponse::new)
-        .thenApplyAsync(resp -> {
-            if(resp.success()) {
-                if(resp.getClusterConfiguration() != null && resp.getClusterConfiguration().getLeader() != null) {
-                    return clientServerRpcAccessPoint.getClintServerRpc(
-                            resp.getClusterConfiguration().getLeader());
-                } else {
-                    throw new NoLeaderException();
-                }
-            } else {
-                 throw new RpcException(resp);
-            }
-        });
+                .defaultClientServerRpc()
+                .getServers()
+                .exceptionally(GetServersResponse::new)
+                .thenApply(resp -> {
+                    if(resp.success()) {
+                        if(resp.getClusterConfiguration() != null && resp.getClusterConfiguration().getLeader() != null) {
+                            return clientServerRpcAccessPoint.getClintServerRpc(
+                                    resp.getClusterConfiguration().getLeader());
+                        } else {
+                            throw new NoLeaderException();
+                        }
+                    } else {
+                         throw new RpcException(resp);
+                    }
+                });
     }
 
 

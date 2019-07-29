@@ -25,10 +25,7 @@ import com.jd.journalkeeper.rpc.RpcAccessPointFactory;
 import com.jd.journalkeeper.rpc.server.*;
 import com.jd.journalkeeper.utils.spi.ServiceSupport;
 import com.jd.journalkeeper.utils.state.StateServer;
-import com.jd.journalkeeper.utils.threads.AsyncLoopThread;
-import com.jd.journalkeeper.utils.threads.ThreadBuilder;
-import com.jd.journalkeeper.utils.threads.Threads;
-import com.jd.journalkeeper.utils.threads.ThreadsFactory;
+import com.jd.journalkeeper.utils.threads.LoopThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,6 +38,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.StampedLock;
@@ -59,14 +57,6 @@ public abstract class Server<E, Q, R>
         extends RaftServer<E, Q, R>
         implements ServerRpc {
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
-    /**
-     * 每个Server模块中需要运行一个用于执行日志更新状态，保存Snapshot的状态机线程，
-     */
-    protected final static String STATE_MACHINE_THREAD = "StateMachineThread";
-    /**
-     * 刷盘Journal线程
-     */
-    protected final static String FLUSH_JOURNAL_THREAD = "FlushJournalThread";
     @Override
     public boolean isAlive() {
         return true;
@@ -123,7 +113,10 @@ public abstract class Server<E, Q, R>
      */
     protected List<URI> observers;
 
-
+    /**
+     * 每个Server模块中需要运行一个用于执行日志更新状态，保存Snapshot的状态机线程，
+     */
+    protected final LoopThread stateMachineThread;
 
     //TODO: Log Compaction, install snapshot rpc
     protected ScheduledFuture flushFuture, compactionFuture;
@@ -175,13 +168,12 @@ public abstract class Server<E, Q, R>
 
     private ServerState serverState = ServerState.STOPPED;
     private ServerMetadata lastSavedServerMetadata = null;
+    private AtomicBoolean flushGate = new AtomicBoolean(false);
     protected final EventBus eventBus;
     private final CompactJournalEntrySerializer compactJournalEntrySerializer = new CompactJournalEntrySerializer();
     private final ScalePartitionsEntrySerializer scalePartitionsEntrySerializer = new ScalePartitionsEntrySerializer();
     protected final Lock scalePartitionLock = new ReentrantLock(true);
     protected final Lock compactLock = new ReentrantLock(true);
-
-    protected final Threads threads = ThreadsFactory.create();
 
     public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
                   Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor,
@@ -190,13 +182,12 @@ public abstract class Server<E, Q, R>
         this.scheduledExecutor = scheduledExecutor;
         this.asyncExecutor = asyncExecutor;
         this.config = toConfig(properties);
-        this.threads.createThread(buildStateMachineThread());
-        this.threads.createThread(buildFlushJournalThread());
+        this.stateMachineThread = buildStateMachineThread();
         this.state = stateFactory.createState();
         this.entrySerializer = entrySerializer;
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
-        this.eventBus = new EventBus(config.getRpcTimeoutMs());
+        this.eventBus = new EventBus(asyncExecutor, config.getRpcTimeoutMs());
         persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
         metadataPersistence = persistenceFactory.createMetadataPersistenceInstance();
         bufferPool = ServiceSupport.load(BufferPool.class);
@@ -208,25 +199,13 @@ public abstract class Server<E, Q, R>
 
     }
 
-    private AsyncLoopThread buildStateMachineThread() {
-        return ThreadBuilder.builder()
-                .name(STATE_MACHINE_THREAD)
+    private LoopThread buildStateMachineThread() {
+        return LoopThread.builder()
+                .name("StateMachineThread")
                 .condition(() ->this.serverState() == ServerState.RUNNING)
                 .doWork(this::applyEntries)
                 .sleepTime(50,100)
-                .onException(e -> logger.warn("{} Exception: ", STATE_MACHINE_THREAD, e))
-                .daemon(true)
-                .build();
-    }
-
-
-    private AsyncLoopThread buildFlushJournalThread() {
-        return ThreadBuilder.builder()
-                .name(FLUSH_JOURNAL_THREAD)
-                .condition(() ->this.serverState() == ServerState.RUNNING)
-                .doWork(this::flushJournal)
-                .sleepTime(config.getFlushIntervalMs(), config.getFlushIntervalMs())
-                .onException(e -> logger.warn("{} Exception: ", FLUSH_JOURNAL_THREAD, e))
+                .onException(e -> logger.warn("StateMachineThread Exception: ", e))
                 .daemon(true)
                 .build();
     }
@@ -320,6 +299,8 @@ public abstract class Server<E, Q, R>
             }
             state.next();
             onStateChanged();
+            // TODO 没必要异步
+//            asyncExecutor.submit(this::onStateChanged);
             Map<String, String> parameters = new HashMap<>(customizedEventData == null ? 1: customizedEventData.size() + 1);
             if(null != customizedEventData) {
                 customizedEventData.forEach(parameters::put);
@@ -384,21 +365,19 @@ public abstract class Server<E, Q, R>
      * 如果需要，保存一次快照
      */
     private void takeASnapShotIfNeed() {
-        if(config.getSnapshotStep() > 0) {
-            asyncExecutor.submit(() -> {
-                try {
-                    synchronized (snapshots) {
-                        if (config.getSnapshotStep() > 0 && (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep())) {
+        asyncExecutor.submit(() -> {
+            try {
+                synchronized (snapshots) {
+                    if (config.getSnapshotStep() > 0 && (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep())) {
 
-                            State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
-                            snapshots.put(snapshot.lastApplied(), snapshot);
-                        }
+                        State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
+                        snapshots.put(snapshot.lastApplied(), snapshot);
                     }
-                } catch (IOException e) {
-                    logger.warn("Take snapshot exception: ", e);
                 }
-            });
-        }
+            } catch (IOException e) {
+                logger.warn("Take snapshot exception: ", e);
+            }
+        });
     }
 
     @Override
@@ -581,9 +560,9 @@ public abstract class Server<E, Q, R>
     public final void start() {
         this.serverState = ServerState.STARTING;
         doStart();
-        threads.start();
-        flushFuture = scheduledExecutor.scheduleAtFixedRate(this::flushState,
-                ThreadLocalRandom.current().nextLong(10L, 100L),
+        stateMachineThread.start();
+        flushFuture = scheduledExecutor.scheduleAtFixedRate(this::flush,
+                ThreadLocalRandom.current().nextLong(10, 50),
                 config.getFlushIntervalMs(), TimeUnit.MILLISECONDS);
         rpcServer = rpcAccessPointFactory.bindServerService(this);
         rpcServer.start();
@@ -597,31 +576,30 @@ public abstract class Server<E, Q, R>
      * 2. 状态
      * 3. 元数据
      */
-    private void flushAll() {
-        journal.flush();
-        flushState();
-    }
+    @Override
+    public boolean flush() {
+        //FIXME: 如果刷盘异常，如何保证日志、状态和元数据三者一致？
+        if (flushGate.compareAndSet(false, true)) {
+            try {
 
-    private void flushJournal() {
-        this.journal.flush();
-        onJournalFlushed();
-    }
-
-    protected void onJournalFlushed() {}
-
-    private void flushState() {
-        try {
-            if (state instanceof Flushable) {
-                ((Flushable) state).flush();
+                journal.flush();
+                if (state instanceof Flushable) {
+                    ((Flushable) state).flush();
+                }
+                ServerMetadata serverMetadata = createServerMetadata();
+                if (!serverMetadata.equals(lastSavedServerMetadata)) {
+                    metadataPersistence.save(serverMetadata);
+                    lastSavedServerMetadata = serverMetadata;
+                }
+            } catch(IOException e){
+                logger.warn("Flush exception, commitIndex: {}, lastApplied: {}, server: {}: ",
+                       commitIndex, state.lastApplied(), uri ,e);
+            } finally {
+                flushGate.set(false);
             }
-            ServerMetadata serverMetadata = createServerMetadata();
-            if (!serverMetadata.equals(lastSavedServerMetadata)) {
-                metadataPersistence.save(serverMetadata);
-                lastSavedServerMetadata = serverMetadata;
-            }
-        } catch(Throwable e) {
-            logger.warn("Flush exception, commitIndex: {}, lastApplied: {}, server: {}: ",
-                    commitIndex, state.lastApplied(), uri, e);
+            return true;
+        } else {
+            return false;
         }
     }
 
@@ -639,12 +617,11 @@ public abstract class Server<E, Q, R>
                 rpcServer.stop();
             }
             serverRpcAccessPoint.stop();
-            threads.stop();
+            stateMachineThread.stop();
             stopAndWaitScheduledFeature(flushFuture, 1000L);
             if(persistenceFactory instanceof Closeable) {
                 ((Closeable) persistenceFactory).close();
             }
-            flushAll();
             this.serverState = ServerState.STOPPED;
         } catch (Throwable t) {
             t.printStackTrace();
@@ -783,7 +760,9 @@ public abstract class Server<E, Q, R>
     }
 
     static class Config {
+        // TODO 快照问题
         final static int DEFAULT_SNAPSHOT_STEP = 0;
+//        final static int DEFAULT_SNAPSHOT_STEP = 128;
         final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;
         final static long DEFAULT_FLUSH_INTERVAL_MS = 50L;
         final static int DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;

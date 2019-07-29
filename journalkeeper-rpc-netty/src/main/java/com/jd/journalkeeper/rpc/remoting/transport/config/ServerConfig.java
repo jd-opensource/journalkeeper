@@ -43,4 +43,31 @@ public class ServerConfig extends TransportConfig {
     public void setIoThread(int ioThread) {
         super.setIoThread(ioThread);
     }
+
+    @Override
+    public String toString() {
+        return "TransportConfig{" +
+                "host='" + getHost() + '\'' +
+                ", port=" + port +
+                ", acceptThread=" + getAcceptThread() +
+                ", ioThread=" + getIoThread() +
+                ", maxIdleTime=" + getMaxAsync() +
+                ", reuseAddress=" + isReuseAddress() +
+                ", soLinger=" + getSoLinger() +
+                ", tcpNoDelay=" + isTcpNoDelay() +
+                ", keepAlive=" + isKeepAlive() +
+                ", soTimeout=" + getSoTimeout() +
+                ", socketBufferSize=" + getSocketBufferSize() +
+                ", frameMaxSize=" + getFrameMaxSize() +
+                ", backlog=" + getBacklog() +
+                ", maxOneway=" + getMaxOneway() +
+                ", nonBlockOneway=" + isNonBlockOneway() +
+                ", maxAsync=" + getMaxAsync() +
+                ", callbackThreads=" + getCallbackThreads() +
+                ", sendTimeout=" + getSendTimeout() +
+                ", maxRetrys=" + getMaxRetrys() +
+                ", maxRetryDelay=" + getMaxRetryDelay() +
+                ", retryDelay=" + getRetryDelay() +
+                '}';
+    }
 }

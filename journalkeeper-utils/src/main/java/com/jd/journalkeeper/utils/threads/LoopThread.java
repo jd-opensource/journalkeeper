@@ -1,6 +1,8 @@
 package com.jd.journalkeeper.utils.threads;
 
 
+import com.jd.journalkeeper.utils.state.StateServer;
+
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
@@ -13,7 +15,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * }
  * 的线程。
  */
-abstract class LoopThread implements AsyncLoopThread {
+public abstract class LoopThread implements Runnable, StateServer {
     private Thread thread = null;
     private String name;
     protected long minSleep = 50L,maxSleep = 500L;
@@ -26,7 +28,6 @@ abstract class LoopThread implements AsyncLoopThread {
      */
     abstract void doWork() throws Throwable;
 
-    @Override
     public String getName() {
         return name;
     }
@@ -35,7 +36,6 @@ abstract class LoopThread implements AsyncLoopThread {
         this.name = name;
     }
 
-    @Override
     public boolean isDaemon() {
         return daemon;
     }
@@ -95,16 +95,16 @@ abstract class LoopThread implements AsyncLoopThread {
         }
         while (serverState == ServerState.RUNNING) {
 
-            long t0 = System.nanoTime();
+            long t0 = System.currentTimeMillis();
             try {
                 wakeupLock.lock();
                 if(condition()) {
                     doWork();
                 }
-                long t1 = System.nanoTime();
+                long t1 = System.currentTimeMillis();
 
                 // 为了避免空转CPU高，如果执行时间过短，等一会儿再进行下一次循环
-                if (t1 - t0 < minSleep * 100000L) {
+                if (t1 - t0 < minSleep) {
                     wakeupCondition.await(minSleep < maxSleep ? ThreadLocalRandom.current().nextLong(minSleep, maxSleep): minSleep, TimeUnit.MILLISECONDS);
                 }
 
@@ -124,8 +124,8 @@ abstract class LoopThread implements AsyncLoopThread {
     /**
      * 唤醒任务如果任务在Sleep
      */
-    @Override
-    public synchronized void wakeup() {
+    // TODO 不需要同步
+    public void wakeup() {
         if(wakeupLock.tryLock()) {
             try {
                 wakeupCondition.signal();
@@ -143,4 +143,104 @@ abstract class LoopThread implements AsyncLoopThread {
         return true;
     }
 
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public interface  Worker {
+        void doWork() throws Throwable;
+    }
+
+    public interface ExceptionHandler {
+        boolean handleException(Throwable t);
+    }
+    public interface ExceptionListener {
+        void onException(Throwable t);
+    }
+    public interface Condition{
+        boolean condition();
+    }
+
+    public static class Builder {
+        private String name;
+        private long minSleep = -1L,maxSleep = -1L;
+        private Boolean daemon;
+        private Worker worker;
+        private ExceptionHandler exceptionHandler;
+        private ExceptionListener exceptionListener;
+        private Condition condition;
+
+        public Builder doWork(Worker worker){
+            this.worker = worker;
+            return this;
+        }
+
+        public Builder handleException(ExceptionHandler exceptionHandler){
+            this.exceptionHandler = exceptionHandler;
+            return this;
+        }
+
+        public Builder onException(ExceptionListener exceptionListener){
+            this.exceptionListener = exceptionListener;
+            return this;
+        }
+
+
+
+        public Builder name(String name){
+            this.name = name;
+            return this;
+        }
+
+        public Builder sleepTime(long minSleep, long maxSleep){
+            this.minSleep = minSleep;
+            this.maxSleep = maxSleep;
+            return this;
+        }
+
+        public Builder daemon(boolean daemon) {
+            this.daemon = daemon;
+            return this;
+        }
+
+        public Builder condition(Condition condition){
+            this.condition = condition;
+            return this;
+        }
+
+        public LoopThread build(){
+            LoopThread loopThread = new LoopThread() {
+                @Override
+                void doWork() throws Throwable{
+                    worker.doWork();
+                }
+
+                @Override
+                protected boolean handleException(Throwable t) {
+                    if(null != exceptionListener) exceptionListener.onException(t);
+                    if(null != exceptionHandler) {
+                        return exceptionHandler.handleException(t);
+                    }else {
+                        return super.handleException(t);
+                    }
+                }
+
+                @Override
+                protected boolean condition() {
+                    if(null != condition) {
+                        return condition.condition();
+                    }else {
+                        return super.condition();
+                    }
+                }
+            };
+            if(null != name) loopThread.setName(name);
+            if(null != daemon) loopThread.setDaemon(daemon);
+            if(this.minSleep >= 0) loopThread.minSleep = this.minSleep;
+            if(this.maxSleep >= 0) loopThread.maxSleep = this.maxSleep;
+            return loopThread;
+        }
+
+
+    }
 }

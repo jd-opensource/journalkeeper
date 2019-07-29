@@ -67,7 +67,9 @@ public class EventBus implements Watchable {
     }
 
     private void removeTimeoutPullWatchers() {
-        pullEventWatchers.entrySet().removeIf(entry -> entry.getValue().lastPullTimestamp + pullEventWatcherTimeout < System.currentTimeMillis());
+        // TODO 多次超时才移除
+//        pullEventWatchers.entrySet().removeIf(entry -> entry.getValue().lastPullTimestamp + pullEventWatcherTimeout < System.currentTimeMillis());
+        pullEventWatchers.entrySet().removeIf(entry -> entry.getValue().lastPullTimestamp + pullEventWatcherTimeout * 3 < System.currentTimeMillis());
     }
 
     /**

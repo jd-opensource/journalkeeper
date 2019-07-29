@@ -1,14 +1,11 @@
 package com.jd.journalkeeper.rpc.utils;
 
 import com.jd.journalkeeper.rpc.BaseResponse;
-import com.jd.journalkeeper.rpc.RpcException;
-import com.jd.journalkeeper.rpc.StatusCode;
 import com.jd.journalkeeper.rpc.header.JournalKeeperHeader;
 import com.jd.journalkeeper.rpc.payload.GenericPayload;
 import com.jd.journalkeeper.rpc.payload.VoidPayload;
 import com.jd.journalkeeper.rpc.remoting.transport.Transport;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Command;
-import com.jd.journalkeeper.rpc.remoting.transport.command.CommandCallback;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Direction;
 import com.jd.journalkeeper.rpc.remoting.transport.command.Header;
 
@@ -29,21 +26,28 @@ public class CommandSupport {
         return new Command(header, new VoidPayload());
     }
 
+    // TODO 因为异步里还有其他RPC操作，临时改同步
     public static <Q, R extends BaseResponse> CompletableFuture<R> sendRequest(Q request, int requestType, Transport transport) {
         CompletableFuture<R> future = new CompletableFuture<>();
-        transport.async(
-                null == request ? newRequestCommand(requestType): newRequestCommand(requestType, request),
-                new CommandCallback() {
-                    @Override
-                    public void onSuccess(Command request, Command response) {
-                        future.complete(GenericPayload.get(response.getPayload()));
-                    }
-
-                    @Override
-                    public void onException(Command request, Throwable cause) {
-                        future.completeExceptionally(cause);
-                    }
-                });
+        try {
+            Command response = transport.sync(null == request ? newRequestCommand(requestType): newRequestCommand(requestType, request));
+            future.complete(GenericPayload.get(response.getPayload()));
+        } catch (Exception e) {
+            future.completeExceptionally(e);
+        }
+//        transport.async(
+//                null == request ? newRequestCommand(requestType): newRequestCommand(requestType, request),
+//                new CommandCallback() {
+//                    @Override
+//                    public void onSuccess(Command request, Command response) {
+//                        future.complete(GenericPayload.get(response.getPayload()));
+//                    }
+//
+//                    @Override
+//                    public void onException(Command request, Throwable cause) {
+//                        future.completeExceptionally(cause);
+//                    }
+//                });
         return  future;
 
     }
