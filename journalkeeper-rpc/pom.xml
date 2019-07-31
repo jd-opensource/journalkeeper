@@ -19,7 +19,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
         <artifactId>journalkeeper</artifactId>
-        <groupId>com.jd.journalkeeper</groupId>
+        <groupId>io.journalkeeper</groupId>
         <version>0.1-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -27,7 +27,7 @@
     <artifactId>journalkeeper-rpc</artifactId>
     <dependencies>
         <dependency>
-            <groupId>com.jd.journalkeeper</groupId>
+            <groupId>io.journalkeeper</groupId>
             <artifactId>journalkeeper-core-api</artifactId>
             <version>${project.version}</version>
             <scope>compile</scope>
