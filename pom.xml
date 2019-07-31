@@ -19,15 +19,15 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.jd.journalkeeper</groupId>
+    <groupId>io.journalkeeper</groupId>
     <artifactId>journalkeeper</artifactId>
     <packaging>pom</packaging>
     <version>0.1-SNAPSHOT</version>
-    <name>Journalkeeper</name>
+    <name>JournalKeeper</name>
 
     <organization>
-        <name>JD.com, Inc.</name>
-        <url>http://www.jd.com</url>
+        <name>JournalKeeper Community</name>
+        <url>http://www.journalkeeper.io</url>
     </organization>
 
     <modules>
