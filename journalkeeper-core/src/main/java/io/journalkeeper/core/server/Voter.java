@@ -880,14 +880,20 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         UpdateStateRequestResponse requestResponse = new UpdateStateRequestResponse(request);
 
         try {
-            pendingUpdateStateRequests.add(requestResponse);
+//            pendingUpdateStateRequests.add(requestResponse);
+            if(pendingUpdateStateRequests.offer(requestResponse, 1000, TimeUnit.MILLISECONDS)) {
 
-            threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
-            if (request.getResponseConfig() == ResponseConfig.RECEIVE) {
-                requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse());
+                threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
+                if (request.getResponseConfig() == ResponseConfig.RECEIVE) {
+                    requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse());
+                }
+            } else {
+                requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse(new ServerBusyException()));
             }
         } catch (IllegalStateException ie) {
             requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse(new ServerBusyException()));
+        } catch (Throwable e) {
+            requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse(e));
         }
         return requestResponse.getResponseFuture();
     }
