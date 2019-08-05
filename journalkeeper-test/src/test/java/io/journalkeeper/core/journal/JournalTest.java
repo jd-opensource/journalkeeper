@@ -19,14 +19,22 @@ import io.journalkeeper.core.entry.EntryHeader;
 import io.journalkeeper.core.entry.JournalEntryParser;
 import io.journalkeeper.persistence.BufferPool;
 import io.journalkeeper.persistence.PersistenceFactory;
+import io.journalkeeper.utils.ThreadSafeFormat;
+import io.journalkeeper.utils.format.Format;
 import io.journalkeeper.utils.spi.ServiceSupport;
+import io.journalkeeper.utils.state.StateServer;
 import io.journalkeeper.utils.test.ByteUtils;
 import io.journalkeeper.utils.test.TestPathUtils;
+import io.journalkeeper.utils.threads.AsyncLoopThread;
+import io.journalkeeper.utils.threads.ThreadBuilder;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -52,6 +60,7 @@ import java.util.stream.Stream;
  * Date: 2019-04-03
  */
 public class JournalTest {
+    private static final Logger logger = LoggerFactory.getLogger(JournalTest.class);
     private Path path = null;
     private Journal journal = null;
     private Set<Integer> partitions = Stream.of(0, 4, 5, 6).collect(Collectors.toSet());
@@ -62,6 +71,66 @@ public class JournalTest {
        journal = createJournal();
     }
 
+
+
+    @Ignore
+    @Test
+    public void writePerformanceTest() {
+        // 每条entry大小
+        int entrySize = 1024;
+        // 每批多少条
+        int batchCount = 1024;
+        int term = 8;
+        int partition = 6;
+        // 循环写入多少批
+        int loopCount = 10 * 1024;
+        List<byte []> entries = ByteUtils.createFixedSizeByteList(entrySize, batchCount);
+        // 构建测试的entry
+        List<Entry> storageEntries =
+                entries.stream()
+                        .map(entry -> new Entry(entry, term, partition))
+                        .collect(Collectors.toList());
+
+        // 启动刷盘线程
+        AsyncLoopThread flushJournalThread = ThreadBuilder.builder()
+                .name("FlushJournalThread")
+                .doWork(journal::flush)
+                .sleepTime(50L, 50L)
+                .onException(e -> logger.warn("FlushJournalThread Exception: ", e))
+                .daemon(true)
+                .build();
+
+        flushJournalThread.start();
+        try {
+            long t0 = System.nanoTime();
+            for (int i = 0; i < loopCount; i++) {
+                for (Entry storageEntry : storageEntries) {
+                    journal.append(storageEntry);
+                }
+            }
+            long t1 = System.nanoTime();
+
+            long takeMs = (t1 - t0) / 1000000;
+            long totalSize = (long) loopCount * batchCount * entrySize;
+
+            logger.info("Write {} take {} ms, {}/s.",
+                    Format.formatSize(totalSize),
+                    takeMs,
+                    Format.formatSize(totalSize * 1000 / takeMs));
+            while (journal.isDirty()) {
+                Thread.yield();
+            }
+            long t2 = System.nanoTime();
+            takeMs = (t2 - t0) / 1000000;
+
+            logger.info("Flush {} take {} ms, {}/s.",
+                    Format.formatSize(totalSize),
+                    takeMs,
+                    Format.formatSize(totalSize * 1000 / takeMs));
+        } finally {
+            flushJournalThread.stop();
+        }
+    }
     @Test
     public void writeReadEntryTest() {
         int maxLength = 1024;
@@ -100,6 +169,7 @@ public class JournalTest {
         }
 
     }
+
 
     @Test
     public void readByPartitionTest() throws IOException {
