@@ -16,6 +16,10 @@ package io.journalkeeper.core.client;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
+import io.journalkeeper.core.entry.reserved.CompactJournalEntrySerializer;
+import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
+import io.journalkeeper.core.entry.reserved.ScalePartitionsEntrySerializer;
 import io.journalkeeper.exceptions.ServerBusyException;
 import io.journalkeeper.rpc.client.QueryStateResponse;
 import io.journalkeeper.utils.event.EventType;
@@ -37,6 +41,7 @@ import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 
 import java.net.URI;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -58,6 +63,9 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
     private final Config config;
     private final Executor executor;
     private URI leaderUri = null;
+    private final CompactJournalEntrySerializer compactJournalEntrySerializer = new CompactJournalEntrySerializer();
+    private final ScalePartitionsEntrySerializer scalePartitionsEntrySerializer = new ScalePartitionsEntrySerializer();
+
 
     public Client(ClientServerRpcAccessPoint clientServerRpcAccessPoint, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
                   Serializer<R> resultSerializer, Properties properties) {
@@ -83,8 +91,12 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
 
     @Override
     public CompletableFuture<Void> update(E entry, int partition, int batchSize, ResponseConfig responseConfig) {
+        return update(entrySerializer.serialize(entry), partition, batchSize, responseConfig);
+    }
+
+    private CompletableFuture<Void> update(byte [] entry, int partition, int batchSize, ResponseConfig responseConfig) {
         return invokeLeaderRpc(
-                leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entrySerializer.serialize(entry), partition, batchSize, responseConfig)))
+                leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entry, partition, batchSize, responseConfig)))
                 .thenAccept(resp -> {
                     if(!resp.success()) {
 //                        logger.warn("Respose failed: {}", resp.errorString());
@@ -182,6 +194,16 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
                  throw new RpcException(resp);
             }
         });
+    }
+    @Override
+    public CompletableFuture<Void> compact(Map<Integer, Long> toIndices) {
+        return this.update(compactJournalEntrySerializer.serialize(new CompactJournalEntry(toIndices)),
+                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION);
+    }
+    @Override
+    public CompletableFuture<Void> scalePartitions(int[] partitions) {
+        return this.update(scalePartitionsEntrySerializer.serialize(new ScalePartitionsEntry(partitions)),
+                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION);
     }
 
 

@@ -57,6 +57,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -168,7 +169,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         this.config = toConfig(properties);
         electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
 
-        pendingUpdateStateRequests = new ArrayBlockingQueue<>(config.getCacheRequests());
+        pendingUpdateStateRequests = new LinkedBlockingQueue<>(config.getCacheRequests());
         pendingAppendEntriesRequests = new PriorityBlockingQueue<>(config.getCacheRequests(),
                 Comparator.comparing(ReplicationRequestResponse::getPrevLogTerm)
                         .thenComparing(ReplicationRequestResponse::getPrevLogIndex));
@@ -180,14 +181,14 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         threads.createThread(buildLeaderReplicationThread());
         threads.createThread(buildLeaderReplicationResponseThread());
         threads.createThread(buildCallbackThread());
-        threads.createThread(buildMonitorThread());
+//        threads.createThread(buildMonitorThread());
     }
 
     private AsyncLoopThread buildLeaderAppendJournalEntryThread() {
         return ThreadBuilder.builder()
                 .name(LEADER_APPEND_ENTRY_THREAD)
-                .condition(() ->this.serverState() == ServerState.RUNNING
-                        && journal.maxIndex() - commitIndex < config.getOnFlyEntries())
+//                .condition(() ->this.serverState() == ServerState.RUNNING
+//                        && journal.maxIndex() - commitIndex < config.getOnFlyEntries())
                 .doWork(this::appendJournalEntry)
                 .sleepTime(0,0)
                 .onException(e -> logger.warn("{} Exception, {}: ", LEADER_APPEND_ENTRY_THREAD, voterInfo(), e))
@@ -266,11 +267,8 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 } else if (rr.getRequest().getResponseConfig() == ResponseConfig.REPLICATION) {
                     replicationCallbacks.put(new Callback(index, rr.getResponseFuture()));
                 }
-                if(logger.isDebugEnabled()) {
-                    logger.debug("Append journal entry, {}", voterInfo());
-                }
                 // 唤醒复制线程
-                threads.wakeupThread(LEADER_REPLICATION_THREAD);
+//                threads.wakeupThread(LEADER_REPLICATION_THREAD);
             } catch (Throwable t) {
                 rr.getResponseFuture().complete(new UpdateClusterStateResponse(t));
                 throw t;
@@ -880,18 +878,10 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
         UpdateStateRequestResponse requestResponse = new UpdateStateRequestResponse(request);
 
         try {
-//            pendingUpdateStateRequests.add(requestResponse);
-            if(pendingUpdateStateRequests.offer(requestResponse, 1000, TimeUnit.MILLISECONDS)) {
-
-                threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
-                if (request.getResponseConfig() == ResponseConfig.RECEIVE) {
-                    requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse());
-                }
-            } else {
-                requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse(new ServerBusyException()));
+            pendingUpdateStateRequests.put(requestResponse);
+            if (request.getResponseConfig() == ResponseConfig.RECEIVE) {
+                requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse());
             }
-        } catch (IllegalStateException ie) {
-            requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse(new ServerBusyException()));
         } catch (Throwable e) {
             requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse(e));
         }
@@ -969,6 +959,10 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 });
     }
 
+    public VoterState voterState() {
+        return voterState;
+    }
+
     @Override
     public void doStart() {
         convertToFollower();
@@ -1026,7 +1020,7 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
                 journal.maxIndex(), commitIndex, state.lastApplied(), uri.toString());
     }
 
-    enum VoterState {LEADER, FOLLOWER, CANDIDATE}
+    public enum VoterState {LEADER, FOLLOWER, CANDIDATE}
 
 
     private static class ReplicationRequestResponse {

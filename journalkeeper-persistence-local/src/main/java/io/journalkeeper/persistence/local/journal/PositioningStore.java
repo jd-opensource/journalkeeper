@@ -222,7 +222,10 @@ public class PositioningStore implements JournalPersistence,Closeable {
 
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         if (null == writeStoreFile) writeStoreFile = createStoreFile(writePosition.get());
-        if (config.getFileDataSize() - writeStoreFile.writePosition() < buffer.remaining()) writeStoreFile = createStoreFile(writePosition.get());
+        if (config.getFileDataSize() - writeStoreFile.writePosition() < buffer.remaining()) {
+            writeStoreFile = createStoreFile(writePosition.get());
+        }
+
         writePosition.getAndAdd(writeStoreFile.append(buffer));
         return writePosition.get();
     }

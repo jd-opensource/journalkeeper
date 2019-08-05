@@ -156,6 +156,19 @@ public class RequestBarrier {
         }
     }
 
+    /**
+     * 释放信号量
+     *
+     * @param type
+     */
+    public void release(SemaphoreType type) {
+        if (type == null) {
+            return;
+        }
+        Semaphore semaphore = type == SemaphoreType.ASYNC ? asyncSemaphore : onewaySemaphore;
+        semaphore.release();
+    }
+
     public TransportConfig getConfig() {
         return config;
     }

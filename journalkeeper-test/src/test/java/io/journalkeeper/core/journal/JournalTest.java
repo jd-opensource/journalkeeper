@@ -105,7 +105,7 @@ public class JournalTest {
             long t0 = System.nanoTime();
             for (int i = 0; i < loopCount; i++) {
                 for (Entry storageEntry : storageEntries) {
-                    journal.append(storageEntry);
+                    journal.append(new Entry(storageEntry.getEntry(), term, partition, 1));
                 }
             }
             long t1 = System.nanoTime();

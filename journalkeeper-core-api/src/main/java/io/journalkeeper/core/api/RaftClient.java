@@ -17,6 +17,7 @@ import io.journalkeeper.base.Queryable;
 import io.journalkeeper.utils.event.Watchable;
 
 import java.net.URI;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -63,6 +64,10 @@ public interface RaftClient<E, Q, R> extends Queryable<Q, R>, Watchable {
      * @return true：成功，其它：失败。
      */
     CompletableFuture<Boolean> updateVoters(UpdateVoterOperation operation, URI voter);
+
+    CompletableFuture<Void> compact(Map<Integer, Long> toIndices);
+
+    CompletableFuture<Void> scalePartitions(int[] partitions);
 
     void stop();
 
