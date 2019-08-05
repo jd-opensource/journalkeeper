@@ -360,6 +360,10 @@ public class PositioningStore implements JournalPersistence,Closeable {
         }
     }
 
+    @Override
+    public Path getBasePath() {
+        return base.toPath();
+    }
 
     @Override
     public void close() {

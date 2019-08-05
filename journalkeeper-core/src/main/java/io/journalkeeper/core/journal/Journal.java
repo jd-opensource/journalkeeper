@@ -91,7 +91,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         return indexPersistence.max() / INDEX_STORAGE_SIZE;
     }
 
-
     @Override
     public long minIndex(int partition) {
         return getPartitionPersistence(partition).min() / INDEX_STORAGE_SIZE;
@@ -754,18 +753,23 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      */
     @Override
     public void flush() {
-        while (journalPersistence.flushed() < journalPersistence.max() ||
-            indexPersistence.flushed() < indexPersistence.max())
-        try {
-            journalPersistence.flush();
-            indexPersistence.flush();
-            for (JournalPersistence partitionPersistence : partitionMap.values()) {
-                partitionPersistence.flush();
-            }
-        } catch (IOException e) {
-            throw new JournalException(e);
-        }
+        long flushed;
+        do {
+            flushed = Stream.concat(Stream.of(journalPersistence, indexPersistence), partitionMap.values().stream())
+                    .filter(p -> p.flushed() < p.max())
+                    .peek(p -> {
+                        try {
+                            p.flush();
+                        } catch (IOException e) {
+                            logger.warn("Flush {} exception: ", p.getBasePath(), e);
+                        }
+                    }).count();
+        } while (flushed > 0);
     }
+
+    public boolean isDirty() {
+        return Stream.concat(Stream.of(journalPersistence, indexPersistence), partitionMap.values().stream())
+            .anyMatch(p -> p.flushed() < p.max());}
 
     private void checkIndex(long index) {
         long position = index * INDEX_STORAGE_SIZE;
@@ -835,5 +839,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         journalPersistence.close();
 
     }
+
 
 }

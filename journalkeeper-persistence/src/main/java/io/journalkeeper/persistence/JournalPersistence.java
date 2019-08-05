@@ -14,6 +14,7 @@
 package io.journalkeeper.persistence;
 
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -88,5 +89,5 @@ public interface JournalPersistence extends Closeable {
     void delete() throws IOException;
 
 
-
+    Path getBasePath();
 }
