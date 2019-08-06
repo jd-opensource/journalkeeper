@@ -779,6 +779,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                             p.flush();
                         } catch (IOException e) {
                             logger.warn("Flush {} exception: ", p.getBasePath(), e);
+                            throw new JournalException(e);
                         }
                     }).count();
         } while (flushed > 0);
