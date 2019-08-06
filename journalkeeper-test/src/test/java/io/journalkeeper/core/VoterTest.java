@@ -90,8 +90,6 @@ public class VoterTest {
                     RaftJournal.RESERVED_PARTITION, 1)).get();
 
 
-            Thread.sleep(60000L);
-
             byte[] entry = ByteUtils.createFixedSizeBytes(entrySize);
             long t0 = System.nanoTime();
 
@@ -103,9 +101,6 @@ public class VoterTest {
                 }
             }
 
-//            for (CompletableFuture<UpdateClusterStateResponse> completableFuture : completableFutures) {
-//                completableFuture.get();
-//            }
 
             long t1 = System.nanoTime();
             long takesMs = (t1 - t0) / 1000000;

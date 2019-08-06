@@ -58,7 +58,21 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     private static final String JOURNAL_PATH = "journal";
     private static final String INDEX_PATH = "index";
     private static final String PARTITIONS_PATH = "partitions";
-    private final static int INDEX_STORAGE_SIZE = Long.BYTES;
+    private static final int INDEX_STORAGE_SIZE = Long.BYTES;
+    private static final String JOURNAL_PROPERTIES_PATTERN = "^persistence\\.journal\\.(.*)$";
+    private static final String INDEX_PROPERTIES_PATTERN = "^persistence\\.index\\.(.*)$";
+    private static final Properties DEFAULT_JOURNAL_PROPERTIES = new Properties();
+    private static final Properties DEFAULT_INDEX_PROPERTIES = new Properties();
+
+    static {
+        DEFAULT_JOURNAL_PROPERTIES.put("file_data_size", String.valueOf(128 * 1024 * 1024));
+        DEFAULT_JOURNAL_PROPERTIES.put("cached_file_core_count", String.valueOf(3));
+        DEFAULT_JOURNAL_PROPERTIES.put("cached_file_max_count", String.valueOf(10));
+        DEFAULT_INDEX_PROPERTIES.put("file_data_size", String.valueOf(512 * 1024));
+        DEFAULT_INDEX_PROPERTIES.put("cached_file_core_count", String.valueOf(10));
+        DEFAULT_INDEX_PROPERTIES.put("cached_file_max_count", String.valueOf(20));
+    }
+
     private final JournalPersistence indexPersistence;
     private final JournalPersistence journalPersistence;
     private final Map<Integer, JournalPersistence> partitionMap;
@@ -66,7 +80,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     private final BufferPool bufferPool;
     private Path basePath = null;
     private Properties indexProperties;
-
     private ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
     public Journal(PersistenceFactory persistenceFactory, BufferPool bufferPool) {
@@ -550,10 +563,14 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         Path journalPath = path.resolve(JOURNAL_PATH);
         Path indexPath = path.resolve(INDEX_PATH);
         Path partitionPath = path.resolve(PARTITIONS_PATH);
-        journalPersistence.recover(journalPath, replacePropertiesNames(properties, "^persistence\\.journal\\.(.*)$", "$1"));
+        Properties journalProperties = replacePropertiesNames(properties,
+                JOURNAL_PROPERTIES_PATTERN, "$1", DEFAULT_JOURNAL_PROPERTIES);
+
+        journalPersistence.recover(journalPath, journalProperties);
         // 截掉末尾半条数据
         truncateJournalTailPartialEntry();
-        indexProperties = replacePropertiesNames(properties, "^persistence\\.index\\.(.*)$", "$1");
+        indexProperties = replacePropertiesNames(properties,
+                INDEX_PROPERTIES_PATTERN, "$1", DEFAULT_INDEX_PROPERTIES);
         indexPersistence.recover(indexPath, indexProperties);
         // 截掉末尾半条数据
         indexPersistence.truncate(indexPersistence.max() - indexPersistence.max() % INDEX_STORAGE_SIZE);
@@ -653,8 +670,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                 new Integer[0];
     }
 
-    private Properties replacePropertiesNames(Properties properties, String fromNameRegex, String toNameRegex ){
-        Properties jp = new Properties();
+    private Properties replacePropertiesNames(Properties properties, String fromNameRegex, String toNameRegex, Properties defaultProperties){
+        Properties jp = new Properties(defaultProperties);
         properties.stringPropertyNames().forEach(k -> {
             String name = k.replaceAll(fromNameRegex, toNameRegex);
             jp.setProperty(name, properties.getProperty(k));

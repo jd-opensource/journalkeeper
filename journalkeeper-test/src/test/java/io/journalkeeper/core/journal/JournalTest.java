@@ -17,9 +17,14 @@ import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.entry.Entry;
 import io.journalkeeper.core.entry.EntryHeader;
 import io.journalkeeper.core.entry.JournalEntryParser;
+import io.journalkeeper.metric.JMetric;
+import io.journalkeeper.metric.JMetricFactory;
+import io.journalkeeper.metric.JMetricReport;
+import io.journalkeeper.metric.JMetricSupport;
 import io.journalkeeper.persistence.BufferPool;
 import io.journalkeeper.persistence.PersistenceFactory;
 import io.journalkeeper.utils.ThreadSafeFormat;
+import io.journalkeeper.utils.buffer.PreloadBufferPool;
 import io.journalkeeper.utils.format.Format;
 import io.journalkeeper.utils.spi.ServiceSupport;
 import io.journalkeeper.utils.state.StateServer;
@@ -51,6 +56,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -75,7 +82,7 @@ public class JournalTest {
 
     @Ignore
     @Test
-    public void writePerformanceTest() {
+    public void writePerformanceTest() throws InterruptedException {
         // 每条entry大小
         int entrySize = 1024;
         // 每批多少条
@@ -84,6 +91,9 @@ public class JournalTest {
         int partition = 6;
         // 循环写入多少批
         int loopCount = 10 * 1024;
+
+        JMetricFactory metricFactory = ServiceSupport.load(JMetricFactory.class);
+
         List<byte []> entries = ByteUtils.createFixedSizeByteList(entrySize, batchCount);
         // 构建测试的entry
         List<Entry> storageEntries =
@@ -100,13 +110,85 @@ public class JournalTest {
                 .daemon(true)
                 .build();
 
+
         flushJournalThread.start();
+
+        try {
+            JMetric metric = metricFactory.create("WriteJournalMetric");
+
+            for (int i = 0; i < loopCount; i++) {
+                for (Entry storageEntry : storageEntries) {
+                    metric.start();
+                    journal.append(storageEntry);
+                    metric.end(storageEntry.getEntry().length);
+                }
+            }
+            JMetricReport reportWrite = metric.get();
+            while (journal.isDirty()) {
+                Thread.yield();
+            }
+            JMetricReport reportFlush = metric.get();
+
+            logger.info("Write {}.", JMetricSupport.formatNs(reportWrite));
+            logger.info("Flush {}.", JMetricSupport.formatNs(reportFlush));
+        } finally {
+            flushJournalThread.stop();
+        }
+    }
+    @Ignore
+    @Test
+    public void queuedWritePerformanceTest() throws InterruptedException {
+        // 每条entry大小
+        int entrySize = 1024;
+        // 每批多少条
+        int batchCount = 1024;
+        int term = 8;
+        int partition = 6;
+        // 循环写入多少批
+        int loopCount = 10 * 1024;
+        List<byte []> entries = ByteUtils.createFixedSizeByteList(entrySize, batchCount);
+        // 构建测试的entry
+        List<Entry> storageEntries =
+                entries.stream()
+                        .map(entry -> new Entry(entry, term, partition))
+                        .collect(Collectors.toList());
+
+        BlockingQueue<Entry> entryQueue = new LinkedBlockingQueue<>(1024);
+        // 启动刷盘线程
+        AsyncLoopThread flushJournalThread = ThreadBuilder.builder()
+                .name("FlushJournalThread")
+                .doWork(journal::flush)
+                .sleepTime(50L, 50L)
+                .onException(e -> logger.warn("FlushJournalThread Exception: ", e))
+                .daemon(true)
+                .build();
+
+        AsyncLoopThread appendJournalThread = ThreadBuilder.builder()
+                .name("AppendJournalThread")
+                .doWork(() -> {
+                    Entry storageEntry = entryQueue.take();
+                    journal.append(new Entry(storageEntry.getEntry(), term, partition, 1));
+                })
+                .sleepTime(0L, 0L)
+                .onException(e -> logger.warn("AppendJournalThread Exception: ", e))
+                .daemon(true)
+                .build();
+
+        flushJournalThread.start();
+        appendJournalThread.start();
+
+
+
         try {
             long t0 = System.nanoTime();
             for (int i = 0; i < loopCount; i++) {
                 for (Entry storageEntry : storageEntries) {
-                    journal.append(new Entry(storageEntry.getEntry(), term, partition, 1));
+                    entryQueue.put(storageEntry);
                 }
+            }
+
+            while (!entryQueue.isEmpty()) {
+                Thread.yield();
             }
             long t1 = System.nanoTime();
 
@@ -128,6 +210,7 @@ public class JournalTest {
                     takeMs,
                     Format.formatSize(totalSize * 1000 / takeMs));
         } finally {
+            appendJournalThread.stop();
             flushJournalThread.stop();
         }
     }
@@ -510,7 +593,9 @@ public class JournalTest {
     }
 
     private Journal createJournal() throws IOException {
-       return createJournal(new Properties());
+//        System.setProperty("PreloadBufferPool.PrintMetricIntervalMs", "1000");
+        Properties properties = new Properties();
+        return createJournal(properties);
     }
     private Journal createJournal(Properties properties) throws IOException {
         PersistenceFactory persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
