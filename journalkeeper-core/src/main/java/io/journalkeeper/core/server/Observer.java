@@ -94,7 +94,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
 
         if(response.success()){
 
-            journal.appendRaw(response.getEntries());
+            journal.appendBatchRaw(response.getEntries());
             commitIndex += response.getEntries().size();
             // 唤醒状态机线程
             threads.wakeupThread(STATE_MACHINE_THREAD);

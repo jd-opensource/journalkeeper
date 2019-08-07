@@ -23,11 +23,8 @@ import io.journalkeeper.metric.JMetricReport;
 import io.journalkeeper.metric.JMetricSupport;
 import io.journalkeeper.persistence.BufferPool;
 import io.journalkeeper.persistence.PersistenceFactory;
-import io.journalkeeper.utils.ThreadSafeFormat;
-import io.journalkeeper.utils.buffer.PreloadBufferPool;
 import io.journalkeeper.utils.format.Format;
 import io.journalkeeper.utils.spi.ServiceSupport;
-import io.journalkeeper.utils.state.StateServer;
 import io.journalkeeper.utils.test.ByteUtils;
 import io.journalkeeper.utils.test.TestPathUtils;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
@@ -123,7 +120,7 @@ public class JournalTest {
             long t0 = System.currentTimeMillis();
             for (int i = 0; i < loopCount; i++) {
                 for (byte [] rawEntry : rawEntries) {
-                    journal.appendRaw(Collections.singletonList(rawEntry));
+                    journal.appendBatchRaw(Collections.singletonList(rawEntry));
                 }
             }
             long t1 = System.currentTimeMillis();
@@ -181,23 +178,29 @@ public class JournalTest {
         flushJournalThread.start();
 
         try {
-            JMetric metric = metricFactory.create("WriteJournalMetric");
+            long t0 = System.currentTimeMillis();
 
             for (int i = 0; i < loopCount; i++) {
                 for (Entry storageEntry : storageEntries) {
-                    metric.start();
                     journal.append(storageEntry);
-                    metric.end(storageEntry.getEntry().length);
                 }
             }
-            JMetricReport reportWrite = metric.get();
+            long t1 = System.currentTimeMillis();
             while (journal.isDirty()) {
                 Thread.yield();
             }
-            JMetricReport reportFlush = metric.get();
+            long t2 = System.currentTimeMillis();
+            long writeTakes = t1 - t0;
+            long flushTakes = t2 - t0;
+            long totalTraffic = (long) loopCount * batchCount * entrySize;
+            long totalCount = loopCount * batchCount;
 
-            logger.info("Write {}.", JMetricSupport.formatNs(reportWrite));
-            logger.info("Flush {}.", JMetricSupport.formatNs(reportFlush));
+            logger.info("Total {}, write tps: {}/s, traffic: {}/s, flush tps: {}/s, traffic: {}/s.",
+                    Format.formatSize(totalTraffic),
+                    Format.formatWithComma(totalCount * 1000L / writeTakes),
+                    Format.formatSize(totalTraffic * 1000L / writeTakes),
+                    Format.formatWithComma(totalCount * 1000L / flushTakes),
+                    Format.formatSize(totalTraffic * 1000L / flushTakes));
         } finally {
             flushJournalThread.stop();
         }
@@ -406,7 +409,7 @@ public class JournalTest {
                         .map(entry -> new Entry(entry, term, (int) 0))
                         .map(this::serialize)
                         .collect(Collectors.toList());
-        long maxIndex = journal.appendRaw(storageEntries);
+        long maxIndex = journal.appendBatchRaw(storageEntries);
         Assert.assertEquals(size, maxIndex);
         Assert.assertEquals(size, journal.maxIndex());
         Assert.assertEquals(0, journal.minIndex());
@@ -488,7 +491,7 @@ public class JournalTest {
                         .map(entry -> new Entry(entry, term, (int) 0))
                         .map(this::serialize)
                         .collect(Collectors.toList());
-        long maxIndex = journal.appendRaw(storageEntries);
+        long maxIndex = journal.appendBatchRaw(storageEntries);
         Assert.assertEquals(size, maxIndex);
         Assert.assertEquals(size, journal.maxIndex());
         Assert.assertEquals(0, journal.minIndex());
@@ -532,7 +535,7 @@ public class JournalTest {
                         .map(entry -> new Entry(entry, term, (int) 0))
                         .map(this::serialize)
                         .collect(Collectors.toList());
-        long maxIndex = journal.appendRaw(storageEntries);
+        long maxIndex = journal.appendBatchRaw(storageEntries);
         Assert.assertEquals(size, maxIndex);
         Assert.assertEquals(size, journal.maxIndex());
         Assert.assertEquals(0, journal.minIndex());
