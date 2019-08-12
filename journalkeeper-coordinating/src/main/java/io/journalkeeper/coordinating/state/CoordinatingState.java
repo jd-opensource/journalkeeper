@@ -37,13 +37,13 @@ import java.util.concurrent.CompletableFuture;
  *
  * date: 2019/5/30
  */
-public class CoordinatingState extends LocalState<StateWriteRequest, StateReadRequest, StateResponse> {
+public class CoordinatingState extends LocalState<StateWriteRequest, Void, StateReadRequest, StateResponse> {
 
     private Properties properties;
     private KVStore kvStore;
     private CoordinatingStateHandler handler;
 
-    protected CoordinatingState(StateFactory<StateWriteRequest, StateReadRequest, StateResponse> stateFactory) {
+    protected CoordinatingState(StateFactory<StateWriteRequest, Void, StateReadRequest, StateResponse> stateFactory) {
         super(stateFactory);
     }
 
@@ -55,19 +55,18 @@ public class CoordinatingState extends LocalState<StateWriteRequest, StateReadRe
     }
 
     @Override
-    public Map<String, String> execute(StateWriteRequest entry, int partition, long index, int batchSize) {
+    public Void execute(StateWriteRequest entry, int partition, long index, int batchSize, Map<String, String> parameters) {
         boolean isSuccess = handler.handle(entry);
         if (!isSuccess) {
             return null;
         }
 
-        Map<String, String> parameters = new HashMap<>();
         parameters.put("type", String.valueOf(entry.getType()));
         parameters.put("key", new String(entry.getKey(), Charset.forName("UTF-8")));
         if (entry.getValue() != null) {
             parameters.put("value", new String(entry.getValue(), Charset.forName("UTF-8")));
         }
-        return parameters;
+        return null;
     }
 
     @Override

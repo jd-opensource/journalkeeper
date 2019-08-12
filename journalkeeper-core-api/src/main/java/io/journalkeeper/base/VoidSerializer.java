@@ -11,23 +11,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.journalstore;
-
-import io.journalkeeper.base.Serializer;
+package io.journalkeeper.base;
 
 /**
  * @author LiYue
- * Date: 2019-05-09
+ * Date: 2019-08-12
  */
-public class ByteArraySerializer implements Serializer<byte[]> {
-
+public class VoidSerializer implements Serializer<Void> {
+    private  static VoidSerializer instance = null;
     @Override
-    public byte[] serialize(byte[] entry) {
-        return entry;
+    public byte[] serialize(Void entry) {
+        return new byte[0];
     }
 
     @Override
-    public byte[] parse(byte[] bytes) {
-        return bytes;
+    public Void parse(byte[] bytes) {
+        return null;
+    }
+
+    public static VoidSerializer getInstance() {
+
+        return instance == null ? (instance = new VoidSerializer()) : instance;
     }
 }

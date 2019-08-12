@@ -14,6 +14,7 @@
 package io.journalkeeper.coordinating.server;
 
 import io.journalkeeper.base.Serializer;
+import io.journalkeeper.base.VoidSerializer;
 import io.journalkeeper.coordinating.state.CoordinatorStateFactory;
 import io.journalkeeper.coordinating.state.domain.StateReadRequest;
 import io.journalkeeper.coordinating.state.domain.StateResponse;
@@ -35,8 +36,9 @@ import java.util.Properties;
 public class CoordinatingServerAccessPoint {
 
     private Properties config;
-    private StateFactory<StateWriteRequest, StateReadRequest, StateResponse> stateFactory;
+    private StateFactory<StateWriteRequest, Void, StateReadRequest, StateResponse> stateFactory;
     private Serializer<StateWriteRequest> entrySerializer;
+    private Serializer<Void> entryResultSerializer;
     private Serializer<StateReadRequest> querySerializer;
     private Serializer<StateResponse> resultSerializer;
 
@@ -44,32 +46,37 @@ public class CoordinatingServerAccessPoint {
         this(config,
                 new CoordinatorStateFactory(),
                 new KryoSerializer<>(StateWriteRequest.class),
+                new VoidSerializer(),
                 new KryoSerializer<>(StateReadRequest.class),
                 new KryoSerializer<>(StateResponse.class));
     }
 
     public CoordinatingServerAccessPoint(Properties config,
-                                         StateFactory<StateWriteRequest, StateReadRequest, StateResponse> stateFactory) {
+                                         StateFactory<StateWriteRequest, Void, StateReadRequest, StateResponse> stateFactory) {
         this(config,
                 stateFactory,
                 new KryoSerializer<>(StateWriteRequest.class),
+                new VoidSerializer(),
                 new KryoSerializer<>(StateReadRequest.class),
                 new KryoSerializer<>(StateResponse.class));
     }
 
     public CoordinatingServerAccessPoint(Properties config,
-                                         StateFactory<StateWriteRequest, StateReadRequest, StateResponse> stateFactory,
+                                         StateFactory<StateWriteRequest, Void, StateReadRequest, StateResponse> stateFactory,
+
                                          Serializer<StateWriteRequest> entrySerializer,
+                                         Serializer<Void> entryResultSerializer,
                                          Serializer<StateReadRequest> querySerializer,
                                          Serializer<StateResponse> resultSerializer) {
         this.config = config;
         this.stateFactory = stateFactory;
         this.entrySerializer = entrySerializer;
+        this.entryResultSerializer = entryResultSerializer;
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
     }
 
     public CoordinatingServer createServer(URI current, List<URI> servers, RaftServer.Roll role) {
-        return new CoordinatingServer(current, servers, config, role, stateFactory, entrySerializer, querySerializer, resultSerializer);
+        return new CoordinatingServer(current, servers, config, role, stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer);
     }
 }

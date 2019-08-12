@@ -14,6 +14,7 @@
 package io.journalkeeper.core.client;
 
 import io.journalkeeper.base.Serializer;
+import io.journalkeeper.base.VoidSerializer;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
@@ -22,6 +23,7 @@ import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntrySerializer;
 import io.journalkeeper.exceptions.ServerBusyException;
 import io.journalkeeper.rpc.client.QueryStateResponse;
+import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import io.journalkeeper.utils.event.EventType;
 import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.core.api.ClusterConfiguration;
@@ -54,12 +56,13 @@ import java.util.concurrent.Executors;
  * @author LiYue
  * Date: 2019-03-25
  */
-public class Client<E, Q, R> implements RaftClient<E, Q, R> {
+public class Client<E, ER, Q, QR> implements RaftClient<E, ER, Q, QR> {
     private static final Logger logger = LoggerFactory.getLogger(Client.class);
     private final ClientServerRpcAccessPoint clientServerRpcAccessPoint;
     private final Serializer<E> entrySerializer;
+    private final Serializer<ER> entryResultSerializer;
     private final Serializer<Q> querySerializer;
-    private final Serializer<R> resultSerializer;
+    private final Serializer<QR> resultSerializer;
     private final Config config;
     private final Executor executor;
     private URI leaderUri = null;
@@ -67,12 +70,17 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
     private final ScalePartitionsEntrySerializer scalePartitionsEntrySerializer = new ScalePartitionsEntrySerializer();
 
 
-    public Client(ClientServerRpcAccessPoint clientServerRpcAccessPoint, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
-                  Serializer<R> resultSerializer, Properties properties) {
+    public Client(ClientServerRpcAccessPoint clientServerRpcAccessPoint,
+                  Serializer<E> entrySerializer,
+                  Serializer<ER> entryResultSerializer,
+                  Serializer<Q> querySerializer,
+                  Serializer<QR> queryResultSerializer,
+                  Properties properties) {
         this.clientServerRpcAccessPoint = clientServerRpcAccessPoint;
         this.entrySerializer = entrySerializer;
+        this.entryResultSerializer = entryResultSerializer;
         this.querySerializer = querySerializer;
-        this.resultSerializer = resultSerializer;
+        this.resultSerializer = queryResultSerializer;
         this.config = toConfig(properties);
         this.clientServerRpcAccessPoint.defaultClientServerRpc().watch(event -> {
             if(event.getEventType() == EventType.ON_LEADER_CHANGE) {
@@ -85,19 +93,19 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
     }
 
     @Override
-    public CompletableFuture<Void> update(E entry) {
+    public CompletableFuture<ER> update(E entry) {
         return update(entry, RaftJournal.DEFAULT_PARTITION, 1, ResponseConfig.REPLICATION);
     }
 
     @Override
-    public CompletableFuture<Void> update(E entry, int partition, int batchSize, ResponseConfig responseConfig) {
-        return update(entrySerializer.serialize(entry), partition, batchSize, responseConfig);
+    public CompletableFuture<ER> update(E entry, int partition, int batchSize, ResponseConfig responseConfig) {
+        return update(entrySerializer.serialize(entry), partition, batchSize, responseConfig, entryResultSerializer);
     }
 
-    private CompletableFuture<Void> update(byte [] entry, int partition, int batchSize, ResponseConfig responseConfig) {
+    private <R> CompletableFuture<R> update(byte [] entry, int partition, int batchSize, ResponseConfig responseConfig, Serializer<R> serializer) {
         return invokeLeaderRpc(
                 leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entry, partition, batchSize, responseConfig)))
-                .thenAccept(resp -> {
+                .thenApply(resp -> {
                     if(!resp.success()) {
 //                        logger.warn("Respose failed: {}", resp.errorString());
                         if(resp.getStatusCode() == StatusCode.SERVER_BUSY) {
@@ -106,13 +114,17 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
                             throw new CompletionException(new RpcException(resp));
                         }
 
+                    } else {
+                        return resp.getResult();
                     }
-                });
+
+                })
+                .thenApply(serializer::parse);
     }
 
 
     @Override
-    public CompletableFuture<R> query(Q query) {
+    public CompletableFuture<QR> query(Q query) {
         return invokeLeaderRpc(
                 leaderRpc -> leaderRpc.queryClusterState(new QueryStateRequest(querySerializer.serialize(query))))
                 .thenApply(QueryStateResponse::getResult)
@@ -154,7 +166,7 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
      * @param invoke 真正去Leader要调用的方法
      * @param <T> 返回的Response
      */
-    private <T extends LeaderResponse> CompletableFuture<T> invokeLeaderRpc(LeaderRpc<T, E, Q, R> invoke) {
+    private <T extends LeaderResponse> CompletableFuture<T> invokeLeaderRpc(LeaderRpc<T> invoke) {
         return getLeaderRpc()
                 .thenCompose(invoke::invokeLeader)
                 .thenCompose(resp -> {
@@ -167,7 +179,7 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
                 });
     }
 
-    private interface LeaderRpc<T extends BaseResponse, E, Q, R> {
+    private interface LeaderRpc<T extends BaseResponse> {
         CompletableFuture<T> invokeLeader(ClientServerRpc leaderRpc);
     }
 
@@ -198,12 +210,12 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
     @Override
     public CompletableFuture<Void> compact(Map<Integer, Long> toIndices) {
         return this.update(compactJournalEntrySerializer.serialize(new CompactJournalEntry(toIndices)),
-                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION);
+                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
     }
     @Override
     public CompletableFuture<Void> scalePartitions(int[] partitions) {
         return this.update(scalePartitionsEntrySerializer.serialize(new ScalePartitionsEntry(partitions)),
-                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION);
+                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
     }
 
 

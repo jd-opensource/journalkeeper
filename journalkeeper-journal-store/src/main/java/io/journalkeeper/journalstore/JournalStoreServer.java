@@ -30,13 +30,14 @@ import java.util.Properties;
  */
 public class JournalStoreServer implements StateServer {
     private static final Logger logger = LoggerFactory.getLogger(JournalStoreServer.class);
-    private final BootStrap<byte [], JournalStoreQuery, JournalStoreQueryResult> bootStrap;
+    private final BootStrap<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> bootStrap;
 
     public JournalStoreServer(Properties properties) {
         bootStrap = new BootStrap<>(
                 RaftServer.Roll.VOTER,
                 new JournalStoreStateFactory(),
                 new ByteArraySerializer(),
+                new LongSerializer(),
                 new JournalStoreQuerySerializer(),
                 new JournalStoreQueryResultSerializer(),
                 properties

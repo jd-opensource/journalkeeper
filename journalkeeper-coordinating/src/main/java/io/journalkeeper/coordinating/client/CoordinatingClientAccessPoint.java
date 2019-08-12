@@ -14,6 +14,7 @@
 package io.journalkeeper.coordinating.client;
 
 import io.journalkeeper.base.Serializer;
+import io.journalkeeper.base.VoidSerializer;
 import io.journalkeeper.coordinating.state.domain.StateReadRequest;
 import io.journalkeeper.coordinating.state.domain.StateResponse;
 import io.journalkeeper.coordinating.state.domain.StateWriteRequest;
@@ -37,22 +38,26 @@ public class CoordinatingClientAccessPoint {
 
     private Properties config;
     private Serializer<StateWriteRequest> entrySerializer;
+    private Serializer<Void> entryResultSerializer;
     private Serializer<StateReadRequest> querySerializer;
     private Serializer<StateResponse> resultSerializer;
 
     public CoordinatingClientAccessPoint(Properties config) {
         this(config,
                 new KryoSerializer<>(StateWriteRequest.class),
+                new VoidSerializer(),
                 new KryoSerializer<>(StateReadRequest.class),
                 new KryoSerializer<>(StateResponse.class));
     }
 
     public CoordinatingClientAccessPoint(Properties config,
                                          Serializer<StateWriteRequest> entrySerializer,
+                                         Serializer<Void> entryResultSerializer,
                                          Serializer<StateReadRequest> querySerializer,
                                          Serializer<StateResponse> resultSerializer) {
         this.config = config;
         this.entrySerializer = entrySerializer;
+        this.entryResultSerializer = entryResultSerializer;
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
     }
@@ -60,7 +65,7 @@ public class CoordinatingClientAccessPoint {
     public CoordinatingClient createClient(List<URI> servers) {
         RpcAccessPointFactory rpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class);
         ClientServerRpcAccessPoint clientServerRpcAccessPoint = rpcAccessPoint.createClientServerRpcAccessPoint(servers, config);
-        Client<StateWriteRequest, StateReadRequest, StateResponse> client = new Client<>(clientServerRpcAccessPoint, entrySerializer, querySerializer, resultSerializer, config);
+        Client<StateWriteRequest, Void, StateReadRequest, StateResponse> client = new Client<>(clientServerRpcAccessPoint, entrySerializer, entryResultSerializer, querySerializer, resultSerializer, config);
         return new CoordinatingClient(servers, config, client);
     }
 }

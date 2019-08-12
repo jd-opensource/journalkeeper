@@ -22,20 +22,17 @@ import java.util.Properties;
 
 /**
  * Raft节点
- * @param <E> 日志类型
- * @param <Q> 状态查询条件类型
- * @param <R> 状态查询结果类型
  * @author LiYue
  * Date: 2019-03-14
  */
-public abstract class RaftServer<E, Q, R> implements StateServer {
+public abstract class RaftServer<E, ER, Q, QR> implements StateServer {
 
-    protected final StateFactory<E, Q, R> stateFactory;
+    protected final StateFactory<E, ER, Q, QR> stateFactory;
     /**
      * 属性集
      */
     protected final Properties properties;
-    public RaftServer(StateFactory<E, Q, R> stateFactory, Properties properties){
+    public RaftServer(StateFactory<E, ER, Q, QR> stateFactory, Properties properties){
         this.stateFactory = stateFactory;
         this.properties = properties;
     }

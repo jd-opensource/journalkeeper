@@ -18,14 +18,14 @@ package io.journalkeeper.core.api;
  * @author LiYue
  * Date: 2019-03-14
  */
-public interface ClusterAccessPoint<E, Q, R> {
+public interface ClusterAccessPoint<E, ER, Q, QR> {
     /**
      * 获取客户端实例
      */
-    RaftClient<E, Q, R> getClient();
+    RaftClient<E, ER, Q, QR> getClient();
 
     /**
      * 获取Server实例，如果本地存在Server返回Server实例，否则返回null
      */
-    RaftServer<E, Q, R> getServer();
+    RaftServer<E, ER, Q, QR> getServer();
 }

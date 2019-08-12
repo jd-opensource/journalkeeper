@@ -34,8 +34,7 @@ import java.util.Map;
  *
  */
 public class CompactJournalEntrySerializer implements Serializer<CompactJournalEntry> {
-    @Override
-    public int sizeOf(CompactJournalEntry compactJournalEntry) {
+    private int sizeOf(CompactJournalEntry compactJournalEntry) {
         return Byte.BYTES +  (Short.BYTES + Long.BYTES) * compactJournalEntry.getCompactIndices().size();    }
 
     @Override

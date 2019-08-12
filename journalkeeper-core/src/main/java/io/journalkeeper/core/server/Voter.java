@@ -19,7 +19,6 @@ import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.Entry;
 import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
 import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntrySerializer;
-import io.journalkeeper.exceptions.ServerBusyException;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
@@ -47,15 +46,19 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
+import java.util.NavigableSet;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Queue;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -75,7 +78,7 @@ import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
  * @author LiYue
  * Date: 2019-03-18
  */
-public class Voter<E, Q, R> extends Server<E, Q, R> {
+public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     private static final Logger logger = LoggerFactory.getLogger(Voter.class);
     /**
      * 选民状态，在LEADER、FOLLOWER和CANDIDATE之间转换。初始值为FOLLOWER。
@@ -164,8 +167,10 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
      */
     private final AtomicLong journalFlushIndex = new AtomicLong(0L);
 
-    public Voter(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
-        super(stateFactory, entrySerializer, querySerializer, resultSerializer, scheduledExecutor, asyncExecutor, properties);
+    public Voter(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
+                 Serializer<Q> querySerializer, Serializer<QR> resultSerializer,
+                 ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
+        super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer, scheduledExecutor, asyncExecutor, properties);
         this.config = toConfig(properties);
         electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
 
@@ -262,9 +267,9 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             try {
                 long index = journal.append(new Entry(rr.getRequest().getEntry(), currentTerm.get(), rr.getRequest().getPartition(), rr.getRequest().getBatchSize()));
                 if (rr.getRequest().getResponseConfig() == ResponseConfig.PERSISTENCE) {
-                    flushCallbacks.put(new Callback(index, rr.getResponseFuture()));
+                    flushCallbacks.put(new Callback<>(index, rr.getResponseFuture()));
                 } else if (rr.getRequest().getResponseConfig() == ResponseConfig.REPLICATION) {
-                    replicationCallbacks.put(new Callback(index, rr.getResponseFuture()));
+                    replicationCallbacks.put(new Callback<>(index, rr.getResponseFuture()));
                 }
                 // 唤醒复制线程
 //                threads.wakeupThread(LEADER_REPLICATION_THREAD);
@@ -984,8 +989,17 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
     }
 
     @Override
-    protected void onStateChanged() {
-        super.onStateChanged();
+    protected void beforeStateChanged(ER updateResult) {
+        super.beforeStateChanged(updateResult);
+        Callback<ER> callback = replicationCallbacks.get(state.lastApplied());
+        if(null != callback) {
+            callback.setResult(updateResult);
+        }
+    }
+
+    @Override
+    protected void afterStateChanged(ER result) {
+        super.afterStateChanged(result);
         threads.wakeupThread(LEADER_CALLBACK_THREAD);
     }
 
@@ -1162,9 +1176,10 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             this.lastHeartbeatRequestTime = lastHeartbeatRequestTime;
         }
     }
-    private static class Callback {
+    private static class Callback<R> {
         final long position;
         final long timestamp;
+        R result;
         final CompletableFuture<UpdateClusterStateResponse> completableFuture;
 
         public Callback(long position, CompletableFuture<UpdateClusterStateResponse> completableFuture) {
@@ -1172,28 +1187,44 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             this.timestamp = System.currentTimeMillis();
             this.completableFuture = completableFuture;
         }
+
+        private long getPosition() {
+            return position;
+        }
+
+        public R getResult() {
+            return result;
+        }
+
+        public void setResult(R result) {
+            this.result = result;
+        }
     }
 
     private class CallbackPositioningBelt {
 
-        private final ConcurrentLinkedQueue<Callback> queue = new ConcurrentLinkedQueue<>();
+        private final NavigableMap<Long, Callback<ER>> queue = new ConcurrentSkipListMap<>();
         private AtomicLong callbackPosition = new AtomicLong(0L);
-        Callback getFirst() {
-            final Callback f = queue.peek();
-            if (f == null)
+
+
+        Callback<ER> getFirst() {
+            final Map.Entry<Long, Callback<ER>> entry = queue.firstEntry();
+            if(null == entry) {
                 throw new NoSuchElementException();
-            return f;
+            } else {
+                return entry.getValue();
+            }
         }
-        Callback removeFirst() {
-            final Callback f = queue.poll();
+        Callback<ER> removeFirst() {
+            final Callback f = queue.pollFirstEntry().getValue();
             if (f == null)
                 throw new NoSuchElementException();
             return f;
         }
 
-        boolean remove(Callback callback) { return queue.remove(callback);}
-        void addLast(Callback callback) {
-            queue.add(callback);
+        boolean remove(Callback<ER> callback) { return queue.remove(callback.getPosition()) != null;}
+        void addLast(Callback<ER> callback) {
+            queue.put(callback.getPosition(), callback);
         }
 
         private AtomicLong counter = new AtomicLong(0L);
@@ -1205,27 +1236,31 @@ public class Voter<E, Q, R> extends Server<E, Q, R> {
             callbackPosition.set(position);
             try {
                 while (getFirst().position <= position){
-                    Callback callback = removeFirst();
+                    Callback<ER> callback = removeFirst();
                     counter.incrementAndGet();
 
-                    callback.completableFuture.complete(new UpdateClusterStateResponse());
+                    callback.completableFuture.complete(new UpdateClusterStateResponse(entryResultSerializer.serialize(callback.getResult())));
                 }
                 long deadline = System.currentTimeMillis() - getRpcTimeoutMs();
                 while (getFirst().timestamp < deadline) {
-                    Callback callback = removeFirst();
+                    Callback<ER> callback = removeFirst();
                     counter.incrementAndGet();
                     callback.completableFuture.complete(new UpdateClusterStateResponse(new TimeoutException()));
                 }
             } catch (NoSuchElementException ignored) {}
         }
 
-        void put(Callback callback) {
+        void put(Callback<ER> callback) {
             putCounter.incrementAndGet();
             addLast(callback);
             if(callback.position <= callbackPosition.get() && remove(callback)){
                 counter.incrementAndGet();
                 callback.completableFuture.complete(new UpdateClusterStateResponse());
             }
+        }
+
+        Callback<ER> get(long position) {
+            return queue.get(position);
         }
     }
 
