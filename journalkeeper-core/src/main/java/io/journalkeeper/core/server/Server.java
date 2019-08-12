@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.core.server;
 
+import com.sun.istack.internal.NotNull;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.api.RaftJournal;
@@ -25,9 +26,13 @@ import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.Entry;
+import io.journalkeeper.core.metric.DummyMetric;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.exceptions.NoSuchSnapshotException;
+import io.journalkeeper.metric.JMetric;
+import io.journalkeeper.metric.JMetricFactory;
+import io.journalkeeper.metric.JMetricSupport;
 import io.journalkeeper.persistence.BufferPool;
 import io.journalkeeper.persistence.MetadataPersistence;
 import io.journalkeeper.persistence.PersistenceFactory;
@@ -96,6 +101,11 @@ public abstract class Server<E, Q, R>
      * 刷盘Journal线程
      */
     protected final static String FLUSH_JOURNAL_THREAD = "FlushJournalThread";
+    /**
+     * 打印Metric线程
+     */
+    protected final static String PRINT_METRIC_THREAD = "PrintMetricThread";
+
     @Override
     public boolean isAlive() {
         return true;
@@ -212,6 +222,10 @@ public abstract class Server<E, Q, R>
 
     protected final Threads threads = ThreadsFactory.create();
 
+    private final JMetricFactory metricFactory;
+    private final Map<String, JMetric> metricMap;
+    private final static JMetric DUMMY_METRIC = new DummyMetric();
+
     public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
                   Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor,
                   ExecutorService asyncExecutor, Properties properties){
@@ -225,6 +239,16 @@ public abstract class Server<E, Q, R>
         this.entrySerializer = entrySerializer;
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
+        if(config.isEnableMetric()) {
+            this.metricFactory = ServiceSupport.load(JMetricFactory.class);
+            this.metricMap = new ConcurrentHashMap<>();
+            if(config.getPrintMetricIntervalSec() > 0) {
+                this.threads.createThread(buildPrintMetricThread());
+            }
+        } else {
+            this.metricFactory = null;
+            this.metricMap = null;
+        }
         this.eventBus = new EventBus(config.getRpcTimeoutMs());
         persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
         metadataPersistence = persistenceFactory.createMetadataPersistenceInstance();
@@ -256,6 +280,16 @@ public abstract class Server<E, Q, R>
                 .doWork(this::flushJournal)
                 .sleepTime(config.getFlushIntervalMs(), config.getFlushIntervalMs())
                 .onException(e -> logger.warn("{} Exception: ", FLUSH_JOURNAL_THREAD, e))
+                .daemon(true)
+                .build();
+    }
+
+    private AsyncLoopThread buildPrintMetricThread() {
+        return ThreadBuilder.builder()
+                .name(PRINT_METRIC_THREAD)
+                .doWork(this::printMetrics)
+                .sleepTime(config.getPrintMetricIntervalSec() * 1000, config.getPrintMetricIntervalSec() * 1000)
+                .onException(e -> logger.warn("{} Exception: ", PRINT_METRIC_THREAD, e))
                 .daemon(true)
                 .build();
     }
@@ -302,6 +336,16 @@ public abstract class Server<E, Q, R>
                 properties.getProperty(
                         Config.GET_STATE_BATCH_SIZE_KEY,
                         String.valueOf(Config.DEFAULT_GET_STATE_BATCH_SIZE))));
+
+        config.setEnableMetric(Boolean.parseBoolean(
+                properties.getProperty(
+                        Config.ENABLE_METRIC_KEY,
+                        String.valueOf(Config.DEFAULT_ENABLE_METRIC))));
+
+        config.setPrintMetricIntervalSec(Integer.parseInt(
+                properties.getProperty(
+                        Config.PRINT_METRIC_INTERVAL_SEC_KEY,
+                        String.valueOf(Config.DEFAULT_PRINT_METRIC_INTERVAL_SEC))));
 
         return config;
     }
@@ -811,24 +855,57 @@ public abstract class Server<E, Q, R>
         return state;
     }
 
+    /**
+     * This method returns the metric instance of given name, instance will be created if not exists.
+     * if config.isEnableMetric() equals false, just return a dummy metric.
+     * @param name name of the metric
+     * @return the metric instance of given name.
+     */
+    @NotNull
+    protected JMetric getMetric(String name) {
+        if(config.isEnableMetric()) {
+            return metricMap.computeIfAbsent(name, metricFactory::create);
+        } else {
+            return DUMMY_METRIC;
+        }
+    }
+
+    private void printMetrics() {
+        metricMap.values()
+            .stream()
+                .map(JMetric::getAndReset)
+                .map(JMetricSupport::formatNs)
+                .forEach(logger::info);
+        onPrintMetric();
+    }
+
+    /**
+     * This method will be invoked when metric
+     */
+    protected void onPrintMetric() {}
     static class Config {
         final static int DEFAULT_SNAPSHOT_STEP = 0;
         final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;
         final static long DEFAULT_FLUSH_INTERVAL_MS = 50L;
         final static int DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;
+        final static boolean DEFAULT_ENABLE_METRIC = false;
+        final static int DEFAULT_PRINT_METRIC_INTERVAL_SEC = 0;
 
         final static String SNAPSHOT_STEP_KEY = "snapshot_step";
         final static String RPC_TIMEOUT_MS_KEY = "rpc_timeout_ms";
         final static String FLUSH_INTERVAL_MS_KEY = "flush_interval_ms";
         final static String WORKING_DIR_KEY = "working_dir";
         final static String GET_STATE_BATCH_SIZE_KEY = "get_state_batch_size";
+        final static String ENABLE_METRIC_KEY = "enable_metric";
+        final static String PRINT_METRIC_INTERVAL_SEC_KEY = "print_metric_interval_sec";
 
         private int snapshotStep = DEFAULT_SNAPSHOT_STEP;
         private long rpcTimeoutMs = DEFAULT_RPC_TIMEOUT_MS;
         private long flushIntervalMs = DEFAULT_FLUSH_INTERVAL_MS;
         private Path workingDir = Paths.get(System.getProperty("user.dir")).resolve("journalkeeper");
         private int getStateBatchSize = DEFAULT_GET_STATE_BATCH_SIZE;
-
+        private boolean enableMetric = DEFAULT_ENABLE_METRIC;
+        private int printMetricIntervalSec = DEFAULT_PRINT_METRIC_INTERVAL_SEC;
         int getSnapshotStep() {
             return snapshotStep;
         }
@@ -867,6 +944,22 @@ public abstract class Server<E, Q, R>
 
         public void setGetStateBatchSize(int getStateBatchSize) {
             this.getStateBatchSize = getStateBatchSize;
+        }
+
+        public boolean isEnableMetric() {
+            return enableMetric;
+        }
+
+        public void setEnableMetric(boolean enableMetric) {
+            this.enableMetric = enableMetric;
+        }
+
+        public int getPrintMetricIntervalSec() {
+            return printMetricIntervalSec;
+        }
+
+        public void setPrintMetricIntervalSec(int printMetricIntervalSec) {
+            this.printMetricIntervalSec = printMetricIntervalSec;
         }
     }
 }
