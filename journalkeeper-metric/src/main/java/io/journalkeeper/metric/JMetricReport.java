@@ -51,27 +51,6 @@ public interface JMetricReport {
     double [] latency();
 
     /**
-     * 读取时延。
-     *
-     * @return 返回固定长度为8的数组，每一个元素的含义如下：
-     * [平均时延, TP50, TP90, TP95, TP99, TP999, TP9999, 最大时延]
-     * 单位为ms。
-     */
-    default double [] latencyMs() {
-        return Arrays.stream(latency()).map(l -> l / 100000).toArray();
-    }
-    /**
-     * 读取时延。
-     *
-     * @return 返回固定长度为8的数组，每一个元素的含义如下：
-     * [平均时延, TP50, TP90, TP95, TP99, TP999, TP9999, 最大时延]
-     * 单位为s。
-     */
-
-    default double [] latencyS() {
-        return Arrays.stream(latency()).map(l -> l / 100000000).toArray();
-    }
-    /**
      * 生产报告的时间
      * @return 生产报告的时间。
      */

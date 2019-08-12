@@ -8,9 +8,13 @@ import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntrySerializer;
 import io.journalkeeper.core.server.Voter;
+import io.journalkeeper.metric.JMetric;
+import io.journalkeeper.metric.JMetricFactory;
+import io.journalkeeper.metric.JMetricSupport;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import io.journalkeeper.utils.format.Format;
+import io.journalkeeper.utils.spi.ServiceSupport;
 import io.journalkeeper.utils.test.ByteUtils;
 import io.journalkeeper.utils.test.TestPathUtils;
 import io.journalkeeper.utils.threads.NamedThreadFactory;
@@ -31,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -59,7 +64,113 @@ public class VoterTest {
 
     @Ignore
     @Test
-    public void singleNodeServerPerformanceTest() throws IOException, ExecutionException, InterruptedException {
+    public void singleNodeWritePerformanceTest() throws IOException, ExecutionException, InterruptedException {
+        Voter<byte[], byte[], byte[]> voter = createVoter();
+
+
+        try {
+            int count = 10 * 1024 * 1024;
+            int entrySize = 1024;
+            int[] partitions = {2};
+
+            while(voter.voterState() != Voter.VoterState.LEADER) {
+                Thread.sleep(50L);
+            }
+
+            voter.updateClusterState(new UpdateClusterStateRequest(new ScalePartitionsEntrySerializer().serialize(new ScalePartitionsEntry(partitions)),
+                    RaftJournal.RESERVED_PARTITION, 1)).get();
+
+
+            byte[] entry = ByteUtils.createFixedSizeBytes(entrySize);
+            long t0 = System.nanoTime();
+
+            for (int i = 0; i < partitions.length; i++) {
+                UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, partitions[i], 1);
+
+                for (long l = 0; l < count; l++) {
+                    voter.updateClusterState(request);
+                }
+            }
+
+
+            long t1 = System.nanoTime();
+            long takesMs = (t1 - t0) / 1000000;
+            logger.info("Write finished. " +
+                            "Write takes: {}ms, {}ps, tps: {}.",
+                    takesMs,
+                    Format.formatSize( 1000L * partitions.length * entrySize * count  / takesMs),
+                    1000L * partitions.length * count  / takesMs);
+
+        } finally {
+            voter.stop();
+        }
+
+
+
+    }
+    @Ignore
+    @Test
+    public void multiThreadsWritePerformanceTest() throws IOException, ExecutionException, InterruptedException {
+        Voter<byte[], byte[], byte[]> voter = createVoter();
+
+
+        try {
+            int count = 10 * 1024 * 1024;
+            int entrySize = 1024;
+            int threads = 1;
+            int[] partitions = {2, 3, 4, 5, 6};
+
+            while(voter.voterState() != Voter.VoterState.LEADER) {
+                Thread.sleep(50L);
+            }
+
+            voter.updateClusterState(new UpdateClusterStateRequest(new ScalePartitionsEntrySerializer().serialize(new ScalePartitionsEntry(partitions)),
+                    RaftJournal.RESERVED_PARTITION, 1)).get();
+
+
+            byte[] entry = ByteUtils.createFixedSizeBytes(entrySize);
+
+            CountDownLatch threadLatch = new CountDownLatch(threads);
+            AtomicInteger currentCount = new AtomicInteger(0);
+
+            JMetricFactory factory = ServiceSupport.load(JMetricFactory.class);
+            JMetric metric = factory.create("WRITE");
+
+
+            for (int i = 0; i < threads; i++) {
+                final int finalI = i;
+                Thread t = new Thread(() -> {
+                    int partition = partitions[finalI % partitions.length];
+                    UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, partition, 1);
+                    while (currentCount.incrementAndGet() <= count) {
+                        try {
+                            long t0 = System.nanoTime();
+                            voter.updateClusterState(request).get();
+                            metric.mark(System.nanoTime() - t0, entry.length);
+                        } catch (Throwable e) {
+                            logger.warn("Exception: ", e);
+                            break;
+                        }
+                    }
+                    threadLatch.countDown();
+                });
+                t.setName("ClientThread-" + i);
+                t.start();
+            }
+
+            threadLatch.await();
+
+            logger.info(JMetricSupport.formatNs(metric.get()));
+
+        } finally {
+            voter.stop();
+        }
+
+
+
+    }
+
+    private Voter<byte[], byte[], byte[]> createVoter() throws IOException {
         StateFactory<byte [], byte [], byte []> stateFactory = new NoopStateFactory();
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(4, new NamedThreadFactory("JournalKeeper-Scheduled-Executor"));
         ExecutorService asyncExecutorService = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors() * 2, new NamedThreadFactory("JournalKeeper-Async-Executor"));
@@ -73,61 +184,7 @@ public class VoterTest {
         voter.init(uri, Collections.singletonList(uri));
         voter.recover();
         voter.start();
-
-
-
-
-        try {
-            int count = 2 * 1024 * 1024;
-            int entrySize = 1024;
-            int[] partitions = {2};
-
-            while(voter.voterState() != Voter.VoterState.LEADER) {
-                Thread.sleep(50L);
-            }
-
-            voter.updateClusterState(new UpdateClusterStateRequest(new ScalePartitionsEntrySerializer().serialize(new ScalePartitionsEntry(partitions)),
-                    RaftJournal.RESERVED_PARTITION, 1)).get();
-
-
-            byte[] entry = ByteUtils.createFixedSizeBytes(entrySize);
-            List<CompletableFuture<UpdateClusterStateResponse>> responses = new LinkedList<>();
-            long t0 = System.nanoTime();
-
-            for (int i = 0; i < partitions.length; i++) {
-                UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, partitions[i], 1, ResponseConfig.RECEIVE);
-
-                for (long l = 0; l < count; l++) {
-                    responses.add(voter.updateClusterState(request));
-                }
-            }
-
-
-            long t1 = System.nanoTime();
-            long takesMs = (t1 - t0) / 1000000;
-            logger.info("Write finished. " +
-                            "Write takes: {}ms, {}ps, tps: {}.",
-                    takesMs,
-                    Format.formatSize( 1000L * partitions.length * entrySize * count  / takesMs),
-                    1000L * partitions.length * count  / takesMs);
-
-            for (CompletableFuture<UpdateClusterStateResponse> response : responses) {
-                response.get();
-            }
-            long t2 = System.nanoTime();
-            takesMs = (t2 - t0) / 1000000;
-            logger.info("Callback finished. " +
-                            "Callback takes: {}ms, {}ps, tps: {}.",
-                    takesMs,
-                    Format.formatSize( 1000L * partitions.length * entrySize * count  / takesMs),
-                    1000L * partitions.length * count  / takesMs);
-
-        } finally {
-            voter.stop();
-        }
-
-
-
+        return voter;
     }
 
     static class BytesSerializer implements Serializer<byte []> {

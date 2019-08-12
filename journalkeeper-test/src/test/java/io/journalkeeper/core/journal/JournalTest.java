@@ -21,6 +21,7 @@ import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.metric.JMetricFactory;
 import io.journalkeeper.metric.JMetricReport;
 import io.journalkeeper.metric.JMetricSupport;
+import io.journalkeeper.metrics.dropwizard.MetricFactory;
 import io.journalkeeper.persistence.BufferPool;
 import io.journalkeeper.persistence.PersistenceFactory;
 import io.journalkeeper.utils.format.Format;
@@ -89,7 +90,7 @@ public class JournalTest {
         int term = 8;
         int partition = 6;
         // 循环写入多少批
-        int loopCount = 2 * 1024;
+        int loopCount = 10 * 1024;
 
         JMetricFactory metricFactory = ServiceSupport.load(JMetricFactory.class);
 
@@ -155,7 +156,7 @@ public class JournalTest {
         int term = 8;
         int partition = 6;
         // 循环写入多少批
-        int loopCount = 2 * 1024;
+        int loopCount = 10 * 1024;
 
         JMetricFactory metricFactory = ServiceSupport.load(JMetricFactory.class);
 
@@ -216,7 +217,7 @@ public class JournalTest {
         int term = 8;
         int partition = 6;
         // 循环写入多少批
-        int loopCount = 2 * 1024;
+        int loopCount = 10 * 1024;
         List<byte []> entries = ByteUtils.createFixedSizeByteList(entrySize, batchCount);
         // 构建测试的entry
         List<Entry> storageEntries =
@@ -248,16 +249,19 @@ public class JournalTest {
         flushJournalThread.start();
         appendJournalThread.start();
 
-
+        JMetricFactory factory = ServiceSupport.load(JMetricFactory.class);
+        JMetric metric = factory.create("WRITE");
 
         try {
             long t0 = System.nanoTime();
             for (int i = 0; i < loopCount; i++) {
                 for (Entry storageEntry : storageEntries) {
+                    metric.start();
                     entryQueue.put(storageEntry);
+                    metric.end(storageEntry.getEntry().length);
                 }
             }
-
+            logger.info("{}", JMetricSupport.formatNs(metric.get()));
             while (!entryQueue.isEmpty()) {
                 Thread.yield();
             }
