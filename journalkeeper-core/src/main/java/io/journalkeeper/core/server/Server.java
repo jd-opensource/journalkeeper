@@ -810,17 +810,17 @@ public abstract class Server<E, Q, R>
         return state;
     }
 
-    static class Config {
-        final static int DEFAULT_SNAPSHOT_STEP = 0;
-        final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;
-        final static long DEFAULT_FLUSH_INTERVAL_MS = 50L;
-        final static int DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;
+    public static class Config {
+        public final static int DEFAULT_SNAPSHOT_STEP = 0;
+        public final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;
+        public final static long DEFAULT_FLUSH_INTERVAL_MS = 50L;
+        public final static int DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;
 
-        final static String SNAPSHOT_STEP_KEY = "snapshot_step";
-        final static String RPC_TIMEOUT_MS_KEY = "rpc_timeout_ms";
-        final static String FLUSH_INTERVAL_MS_KEY = "flush_interval_ms";
-        final static String WORKING_DIR_KEY = "working_dir";
-        final static String GET_STATE_BATCH_SIZE_KEY = "get_state_batch_size";
+        public final static String SNAPSHOT_STEP_KEY = "snapshot_step";
+        public final static String RPC_TIMEOUT_MS_KEY = "rpc_timeout_ms";
+        public final static String FLUSH_INTERVAL_MS_KEY = "flush_interval_ms";
+        public final static String WORKING_DIR_KEY = "working_dir";
+        public final static String GET_STATE_BATCH_SIZE_KEY = "get_state_batch_size";
 
         private int snapshotStep = DEFAULT_SNAPSHOT_STEP;
         private long rpcTimeoutMs = DEFAULT_RPC_TIMEOUT_MS;

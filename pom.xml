@@ -43,6 +43,7 @@
         <module>journalkeeper-examples</module>
         <module>journalkeeper-test</module>
         <module>journalkeeper-coordinating</module>
+        <module>journalkeeper-sql</module>
     </modules>
     <properties>
         <encoding>UTF-8</encoding>
