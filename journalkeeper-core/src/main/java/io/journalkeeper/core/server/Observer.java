@@ -90,12 +90,12 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
     private void pullEntries() throws Throwable {
 
         GetServerEntriesResponse response =
-                selectServer().getServerEntries(new GetServerEntriesRequest(commitIndex,config.getPullBatchSize())).get();
+                selectServer().getServerEntries(new GetServerEntriesRequest(commitIndex.get(),config.getPullBatchSize())).get();
 
         if(response.success()){
 
-            journal.appendRaw(response.getEntries());
-            commitIndex += response.getEntries().size();
+            journal.appendBatchRaw(response.getEntries());
+            commitIndex.addAndGet(response.getEntries().size());
             // 唤醒状态机线程
             threads.wakeupThread(STATE_MACHINE_THREAD);
         } else if( response.getStatusCode() == StatusCode.INDEX_UNDERFLOW){
@@ -144,7 +144,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
 
                     state.installFinish(r.getLastIncludedIndex() + 1, r.getLastIncludedTerm());
                     journal.compact(state.lastApplied());
-                    commitIndex = state.lastApplied();
+                    commitIndex.set(state.lastApplied());
 
                     State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
                     snapshots.put(snapshot.lastApplied(), snapshot);

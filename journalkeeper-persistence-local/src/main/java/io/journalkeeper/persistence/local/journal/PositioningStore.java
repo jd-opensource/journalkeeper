@@ -18,6 +18,7 @@ import io.journalkeeper.persistence.JournalPersistence;
 import io.journalkeeper.persistence.TooManyBytesException;
 import io.journalkeeper.utils.ThreadSafeFormat;
 import io.journalkeeper.utils.buffer.PreloadBufferPool;
+import io.journalkeeper.utils.format.Format;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -222,13 +223,16 @@ public class PositioningStore implements JournalPersistence,Closeable {
 
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         if (null == writeStoreFile) writeStoreFile = createStoreFile(writePosition.get());
-        if (config.getFileDataSize() - writeStoreFile.writePosition() < buffer.remaining()) writeStoreFile = createStoreFile(writePosition.get());
-        writePosition.getAndAdd(writeStoreFile.append(buffer));
-        return writePosition.get();
+        if (config.getFileDataSize() - writeStoreFile.writePosition() < buffer.remaining()) {
+            writeStoreFile = createStoreFile(writePosition.get());
+        }
+
+        return writePosition.addAndGet(writeStoreFile.append(buffer));
     }
 
+
     private void waitForFlush() {
-        while (max() - flushed() > config.getMaxDirtySize()) {
+        while (config.getMaxDirtySize() > 0 && max() - flushed() > config.getMaxDirtySize()) {
             Thread.yield();
         }
     }
@@ -270,7 +274,6 @@ public class PositioningStore implements JournalPersistence,Closeable {
         } else {
             checkDiskFreeSpace(base, config.getFileDataSize() + config.getFileHeaderSize());
         }
-
         return storeFile;
     }
 
@@ -285,7 +288,6 @@ public class PositioningStore implements JournalPersistence,Closeable {
         checkReadPosition(position);
         try {
 
-            // TODO 空指针
             Map.Entry<Long, StoreFile> storeFileEntry = storeFileMap.floorEntry(position);
             if (storeFileEntry == null) {
                 return null;
@@ -360,6 +362,10 @@ public class PositioningStore implements JournalPersistence,Closeable {
         }
     }
 
+    @Override
+    public Path getBasePath() {
+        return base.toPath();
+    }
 
     @Override
     public void close() {
@@ -374,7 +380,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
         final static int DEFAULT_FILE_DATA_SIZE = 128 * 1024 * 1024;
         final static int DEFAULT_CACHED_FILE_CORE_COUNT = 0;
         final static int DEFAULT_CACHED_FILE_MAX_COUNT = 2;
-        final static long DEFAULT_MAX_DIRTY_SIZE = 128 * 1024 * 1024;
+        final static long DEFAULT_MAX_DIRTY_SIZE = 0L;
         final static String FILE_HEADER_SIZE_KEY = "file_header_size";
         final static String FILE_DATA_SIZE_KEY = "file_data_size";
         final static String CACHED_FILE_CORE_COUNT_KEY = "cached_file_core_count";

@@ -17,16 +17,27 @@ import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.entry.Entry;
 import io.journalkeeper.core.entry.EntryHeader;
 import io.journalkeeper.core.entry.JournalEntryParser;
+import io.journalkeeper.metric.JMetric;
+import io.journalkeeper.metric.JMetricFactory;
+import io.journalkeeper.metric.JMetricReport;
+import io.journalkeeper.metric.JMetricSupport;
+import io.journalkeeper.metrics.dropwizard.MetricFactory;
 import io.journalkeeper.persistence.BufferPool;
 import io.journalkeeper.persistence.PersistenceFactory;
+import io.journalkeeper.utils.format.Format;
 import io.journalkeeper.utils.spi.ServiceSupport;
 import io.journalkeeper.utils.test.ByteUtils;
 import io.journalkeeper.utils.test.TestPathUtils;
+import io.journalkeeper.utils.threads.AsyncLoopThread;
+import io.journalkeeper.utils.threads.ThreadBuilder;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -37,12 +48,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -52,16 +67,231 @@ import java.util.stream.Stream;
  * Date: 2019-04-03
  */
 public class JournalTest {
+    private static final Logger logger = LoggerFactory.getLogger(JournalTest.class);
     private Path path = null;
     private Journal journal = null;
     private Set<Integer> partitions = Stream.of(0, 4, 5, 6).collect(Collectors.toSet());
     @Before
-    public void before() throws IOException {
+    public void before() throws IOException, InterruptedException {
        path = TestPathUtils.prepareBaseDir();
 
        journal = createJournal();
     }
 
+
+
+    @Ignore
+    @Test
+    public void writeRawPerformanceTest() throws InterruptedException {
+        // 每条entry大小
+        int entrySize = 1024;
+        // 每批多少条
+        int batchCount = 1024;
+        int term = 8;
+        int partition = 6;
+        // 循环写入多少批
+        int loopCount = 10 * 1024;
+
+        JMetricFactory metricFactory = ServiceSupport.load(JMetricFactory.class);
+
+        List<byte []> entries = ByteUtils.createFixedSizeByteList(entrySize, batchCount);
+        // 构建测试的entry
+        List<byte []> rawEntries =
+                entries.stream()
+                        .map(entry -> new Entry(entry, term, partition))
+                        .map(storageEntry -> {
+                            ByteBuffer byteBuffer = ByteBuffer.allocate(storageEntry.getHeader().getPayloadLength() + JournalEntryParser.getHeaderLength());
+                            JournalEntryParser.serialize(byteBuffer, storageEntry);
+                            return byteBuffer.array();
+                        })
+                        .collect(Collectors.toList());
+
+        // 启动刷盘线程
+        AsyncLoopThread flushJournalThread = ThreadBuilder.builder()
+                .name("FlushJournalThread")
+                .doWork(journal::flush)
+                .sleepTime(50L, 50L)
+                .onException(e -> logger.warn("FlushJournalThread Exception: ", e))
+                .daemon(true)
+                .build();
+
+
+        flushJournalThread.start();
+
+        try {
+            long t0 = System.currentTimeMillis();
+            for (int i = 0; i < loopCount; i++) {
+                for (byte [] rawEntry : rawEntries) {
+                    journal.appendBatchRaw(Collections.singletonList(rawEntry));
+                }
+            }
+            long t1 = System.currentTimeMillis();
+            while (journal.isDirty()) {
+                Thread.yield();
+            }
+            long t2 = System.currentTimeMillis();
+            long writeTakes = t1 - t0;
+            long flushTakes = t2 - t0;
+            long totalTraffic = (long) loopCount * batchCount * entrySize;
+            long totalCount = loopCount * batchCount;
+
+            logger.info("Total {}, write tps: {}/s, traffic: {}/s, flush tps: {}/s, traffic: {}/s.",
+                Format.formatSize(totalTraffic),
+                    Format.formatWithComma(totalCount * 1000L / writeTakes),
+                    Format.formatSize(totalTraffic * 1000L / writeTakes),
+                    Format.formatWithComma(totalCount * 1000L / flushTakes),
+                    Format.formatSize(totalTraffic * 1000L / flushTakes)
+            );
+        } finally {
+            flushJournalThread.stop();
+        }
+    }
+    @Ignore
+    @Test
+    public void writePerformanceTest() throws InterruptedException {
+        // 每条entry大小
+        int entrySize = 1024;
+        // 每批多少条
+        int batchCount = 1024;
+        int term = 8;
+        int partition = 6;
+        // 循环写入多少批
+        int loopCount = 10 * 1024;
+
+        JMetricFactory metricFactory = ServiceSupport.load(JMetricFactory.class);
+
+        List<byte []> entries = ByteUtils.createFixedSizeByteList(entrySize, batchCount);
+        // 构建测试的entry
+        List<Entry> storageEntries =
+                entries.stream()
+                        .map(entry -> new Entry(entry, term, partition))
+                        .collect(Collectors.toList());
+
+        // 启动刷盘线程
+        AsyncLoopThread flushJournalThread = ThreadBuilder.builder()
+                .name("FlushJournalThread")
+                .doWork(journal::flush)
+                .sleepTime(50L, 50L)
+                .onException(e -> logger.warn("FlushJournalThread Exception: ", e))
+                .daemon(true)
+                .build();
+
+
+        flushJournalThread.start();
+
+        try {
+            long t0 = System.currentTimeMillis();
+
+            for (int i = 0; i < loopCount; i++) {
+                for (Entry storageEntry : storageEntries) {
+                    journal.append(storageEntry);
+                }
+            }
+            long t1 = System.currentTimeMillis();
+            while (journal.isDirty()) {
+                Thread.yield();
+            }
+            long t2 = System.currentTimeMillis();
+            long writeTakes = t1 - t0;
+            long flushTakes = t2 - t0;
+            long totalTraffic = (long) loopCount * batchCount * entrySize;
+            long totalCount = loopCount * batchCount;
+
+            logger.info("Total {}, write tps: {}/s, traffic: {}/s, flush tps: {}/s, traffic: {}/s.",
+                    Format.formatSize(totalTraffic),
+                    Format.formatWithComma(totalCount * 1000L / writeTakes),
+                    Format.formatSize(totalTraffic * 1000L / writeTakes),
+                    Format.formatWithComma(totalCount * 1000L / flushTakes),
+                    Format.formatSize(totalTraffic * 1000L / flushTakes));
+        } finally {
+            flushJournalThread.stop();
+        }
+    }
+    @Ignore
+    @Test
+    public void queuedWritePerformanceTest() throws InterruptedException {
+        // 每条entry大小
+        int entrySize = 1024;
+        // 每批多少条
+        int batchCount = 1024;
+        int term = 8;
+        int partition = 6;
+        // 循环写入多少批
+        int loopCount = 10 * 1024;
+        List<byte []> entries = ByteUtils.createFixedSizeByteList(entrySize, batchCount);
+        // 构建测试的entry
+        List<Entry> storageEntries =
+                entries.stream()
+                        .map(entry -> new Entry(entry, term, partition))
+                        .collect(Collectors.toList());
+
+        BlockingQueue<Entry> entryQueue = new LinkedBlockingQueue<>(1024);
+        // 启动刷盘线程
+        AsyncLoopThread flushJournalThread = ThreadBuilder.builder()
+                .name("FlushJournalThread")
+                .doWork(journal::flush)
+                .sleepTime(10L, 10L)
+                .onException(e -> logger.warn("FlushJournalThread Exception: ", e))
+                .daemon(true)
+                .build();
+
+        AsyncLoopThread appendJournalThread = ThreadBuilder.builder()
+                .name("AppendJournalThread")
+                .doWork(() -> {
+                    Entry storageEntry = entryQueue.take();
+                    journal.append(new Entry(storageEntry.getEntry(), term, partition, 1));
+                })
+                .sleepTime(0L, 0L)
+                .onException(e -> logger.warn("AppendJournalThread Exception: ", e))
+                .daemon(true)
+                .build();
+
+        flushJournalThread.start();
+        appendJournalThread.start();
+
+        JMetricFactory factory = ServiceSupport.load(JMetricFactory.class);
+        JMetric metric = factory.create("WRITE");
+
+        try {
+            long t0 = System.nanoTime();
+            for (int i = 0; i < loopCount; i++) {
+                for (Entry storageEntry : storageEntries) {
+                    metric.start();
+                    entryQueue.put(storageEntry);
+                    metric.end(storageEntry.getEntry().length);
+                }
+            }
+            logger.info("{}", JMetricSupport.formatNs(metric.get()));
+            while (!entryQueue.isEmpty()) {
+                Thread.yield();
+            }
+            long t1 = System.nanoTime();
+
+            while (journal.isDirty()) {
+                Thread.yield();
+            }
+            long t2 = System.nanoTime();
+
+            long takeMs = (t1 - t0) / 1000000;
+            long totalSize = (long) loopCount * batchCount * entrySize;
+
+            logger.info("Write {} take {} ms, {}/s.",
+                    Format.formatSize(totalSize),
+                    takeMs,
+                    Format.formatSize(totalSize * 1000 / takeMs));
+
+
+            takeMs = (t2 - t0) / 1000000;
+
+            logger.info("Flush {} take {} ms, {}/s.",
+                    Format.formatSize(totalSize),
+                    takeMs,
+                    Format.formatSize(totalSize * 1000 / takeMs));
+        } finally {
+            appendJournalThread.stop();
+            flushJournalThread.stop();
+        }
+    }
     @Test
     public void writeReadEntryTest() {
         int maxLength = 1024;
@@ -101,8 +331,9 @@ public class JournalTest {
 
     }
 
+
     @Test
-    public void readByPartitionTest() throws IOException {
+    public void readByPartitionTest() throws IOException, InterruptedException {
         int maxLength = 1024;
         int size = 1024;
         int term = 8;
@@ -186,7 +417,7 @@ public class JournalTest {
                         .map(entry -> new Entry(entry, term, (int) 0))
                         .map(this::serialize)
                         .collect(Collectors.toList());
-        long maxIndex = journal.appendRaw(storageEntries);
+        long maxIndex = journal.appendBatchRaw(storageEntries);
         Assert.assertEquals(size, maxIndex);
         Assert.assertEquals(size, journal.maxIndex());
         Assert.assertEquals(0, journal.minIndex());
@@ -258,7 +489,7 @@ public class JournalTest {
 
 
     @Test
-    public void flushRecoverTest() throws IOException {
+    public void flushRecoverTest() throws IOException, InterruptedException {
         int maxLength = 1024;
         int size = 1024;
         int term = 8;
@@ -268,7 +499,7 @@ public class JournalTest {
                         .map(entry -> new Entry(entry, term, (int) 0))
                         .map(this::serialize)
                         .collect(Collectors.toList());
-        long maxIndex = journal.appendRaw(storageEntries);
+        long maxIndex = journal.appendBatchRaw(storageEntries);
         Assert.assertEquals(size, maxIndex);
         Assert.assertEquals(size, journal.maxIndex());
         Assert.assertEquals(0, journal.minIndex());
@@ -290,7 +521,7 @@ public class JournalTest {
 
 
     @Test
-    public void recoverTest() throws IOException {
+    public void recoverTest() throws IOException, InterruptedException {
 
 
         int entrySize = 128;
@@ -312,7 +543,7 @@ public class JournalTest {
                         .map(entry -> new Entry(entry, term, (int) 0))
                         .map(this::serialize)
                         .collect(Collectors.toList());
-        long maxIndex = journal.appendRaw(storageEntries);
+        long maxIndex = journal.appendBatchRaw(storageEntries);
         Assert.assertEquals(size, maxIndex);
         Assert.assertEquals(size, journal.maxIndex());
         Assert.assertEquals(0, journal.minIndex());
@@ -439,10 +670,12 @@ public class JournalTest {
 
     }
 
-    private Journal createJournal() throws IOException {
-       return createJournal(new Properties());
+    private Journal createJournal() throws IOException, InterruptedException {
+//        System.setProperty("PreloadBufferPool.PrintMetricIntervalMs", "1000");
+        Properties properties = new Properties();
+        return createJournal(properties);
     }
-    private Journal createJournal(Properties properties) throws IOException {
+    private Journal createJournal(Properties properties) throws IOException, InterruptedException {
         PersistenceFactory persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
         BufferPool bufferPool = ServiceSupport.load(BufferPool.class);
         Journal journal = new Journal(
@@ -450,6 +683,7 @@ public class JournalTest {
                 bufferPool);
         journal.recover(path,properties);
         journal.rePartition(partitions);
+        Thread.sleep(1000L);
         return journal;
     }
 

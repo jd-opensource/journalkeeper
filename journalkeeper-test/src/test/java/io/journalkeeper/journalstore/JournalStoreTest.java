@@ -14,6 +14,7 @@
 package io.journalkeeper.journalstore;
 
 import io.journalkeeper.core.api.RaftEntry;
+import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.exceptions.ServerBusyException;
 import io.journalkeeper.utils.format.Format;
 import io.journalkeeper.utils.net.NetworkingUtils;
@@ -63,7 +64,7 @@ public class JournalStoreTest {
 
     @Test
     public void writeReadOneNode() throws Exception{
-        writeReadTest(1, new int [] {2, 3, 4, 5, 6}, 1024, 20, 1024 * 100, false);
+        writeReadTest(1, new int [] {2}, 1024, 1,  1024 * 1024, true);
     }
 
     @Test
@@ -102,9 +103,10 @@ public class JournalStoreTest {
             }
             long t1 = System.nanoTime();
             logger.info("Replication finished. " +
-                    "Write takes: {}ms {}ps",
+                    "Write takes: {}ms, {}ps, tps: {}.",
                      (t1 - t0) / 1000000,
-                    Format.formatSize( 1000000000L * entrySize * batchCount  / (t1 - t0)));
+                    Format.formatSize( 1000000000L * partitions.length * entrySize * batchCount  / (t1 - t0)),
+                    1000000000L * partitions.length * batchCount  / (t1 - t0));
 
 
             // read
@@ -123,10 +125,10 @@ public class JournalStoreTest {
             }
             t1 = System.nanoTime();
             logger.info("Read finished. " +
-                            "Takes: {}ms {}ps.",
+                            "Takes: {}ms {}ps, tps: {}.",
                     (t1 - t0) / 1000000,
-                    Format.formatSize( 1000000000L * entrySize * batchCount  / (t1 - t0)));
-
+                    Format.formatSize( 1000000000L * partitions.length * entrySize * batchCount  / (t1 - t0)),
+                    1000000000L * partitions.length * batchCount  / (t1 - t0));
         } finally {
             stopServers(servers);
 
@@ -135,7 +137,7 @@ public class JournalStoreTest {
     }
 
     private void asyncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException {
-        ExecutorService executors = Executors.newFixedThreadPool(100, new NamedThreadFactory("ClientRetryThreads"));
+        ExecutorService executors = Executors.newFixedThreadPool(10, new NamedThreadFactory("ClientRetryThreads"));
         CountDownLatch latch = new CountDownLatch(partitions.length * batchCount);
         final List<Throwable> exceptions = Collections.synchronizedList(new LinkedList<>());
         long t0 = System.nanoTime();
@@ -149,7 +151,7 @@ public class JournalStoreTest {
         logger.info("Async write finished. " +
                         "Takes: {}ms {}ps.",
                 (t1 - t0) / 1000000,
-                Format.formatSize( 1000000000L * rawEntries.length * batchCount  / (t1 - t0)));
+                Format.formatSize( 1000000000L * partitions.length * rawEntries.length * batchCount  / (t1 - t0)));
 
         while (!latch.await(1, TimeUnit.SECONDS)) {
             Thread.yield();
@@ -161,27 +163,29 @@ public class JournalStoreTest {
     }
 
     private void asyncAppend(JournalStoreClient client, byte[] rawEntries, int partition, int batchSize, CountDownLatch latch, ExecutorService executorService, List<Throwable> exceptions) {
-        client.append(partition, batchSize, rawEntries)
-                .whenCompleteAsync((v, e) -> {
+        client.append(partition, batchSize, rawEntries, ResponseConfig.REPLICATION)
+                .whenComplete((v, e) -> {
 
                     if(e instanceof CompletionException && e.getCause() instanceof ServerBusyException) {
+//                        logger.info("Server busy!");
                         Thread.yield();
                         asyncAppend(client, rawEntries, partition, batchSize, latch, executorService, exceptions);
 
                     } else {
                         if(null != e) {
+                            logger.warn("Exception: ", e);
                             exceptions.add(e);
                         }
                         latch.countDown();
                     }
-                }, executorService);
+                });
     }
 
     private void syncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException, ExecutionException {
         // write
         for (int partition : partitions) {
             for (int i = 0; i < batchCount; i++) {
-                client.append(partition, batchSize, rawEntries).get();
+                client.append(partition, batchSize, rawEntries,ResponseConfig.RECEIVE).get();
             }
         }
     }
@@ -207,8 +211,10 @@ public class JournalStoreTest {
             Properties properties = new Properties();
             properties.setProperty("working_dir", workingDir.toString());
             properties.setProperty("snapshot_step", "0");
-            properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
-            properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
+            properties.setProperty("rpc_timeout_ms", "600000");
+            properties.setProperty("cache_requests", String.valueOf(1024L * 1024));
+//            properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
+//            properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
             propertiesList.add(properties);
         }
         return createServers(serverURIs, propertiesList);

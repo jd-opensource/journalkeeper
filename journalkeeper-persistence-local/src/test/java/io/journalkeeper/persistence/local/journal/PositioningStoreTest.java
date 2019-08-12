@@ -25,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
@@ -47,7 +48,7 @@ public class PositioningStoreTest {
     // cached / file
 
     @Test
-    public void journalReadWriteTest() throws IOException {
+    public void journalReadWriteTest() throws IOException, InterruptedException {
         try (JournalPersistence store = prepareStore()) {
             int size = 10;
             int maxLength = 999;
@@ -109,7 +110,7 @@ public class PositioningStoreTest {
     // setRight
 
     @Test
-    public void truncateTest() throws IOException {
+    public void truncateTest() throws IOException, InterruptedException {
         try (JournalPersistence store = prepareStore()) {
             int size = 10;
             int maxLength = 999;
@@ -155,19 +156,20 @@ public class PositioningStoreTest {
 
         }
     }
-
+    @Ignore
     @Test
     public void writePerformanceTest() throws IOException, InterruptedException {
         // 总共写入消息的的大小
-        long maxSize = 1024L * 1024 * 1024;
+        long maxSize = 2L * 1024L * 1024 * 1024;
         // 每条消息消息体大小
-        int batchSize = 1024 * 10;
+        int logSize = 1024;
 
         try (JournalPersistence store = prepareStore()) {
-            write(store, maxSize, ByteUtils.createRandomSizeBytes(batchSize));
+            write(store, maxSize, ByteUtils.createFixedSizeBytes(logSize));
         }
     }
 
+    @Ignore
     @Test
     public void readPerformanceTest() throws IOException, InterruptedException, TimeoutException {
         // 总共写入消息的的大小
@@ -182,10 +184,14 @@ public class PositioningStoreTest {
         }
     }
 
-    private JournalPersistence prepareStore() throws IOException {
+    private JournalPersistence prepareStore() throws IOException, InterruptedException {
         JournalPersistence store =
                 new PositioningStore();
-        store.recover(path, new Properties());
+        Properties properties = new Properties();
+        properties.put("cached_file_core_count", "5");
+        properties.put("cached_file_max_count", "20");
+        store.recover(path, properties);
+        Thread.sleep(1000L);
         return store;
     }
     private void read(JournalPersistence store, int batchSize, long maxSize) throws IOException{
@@ -221,22 +227,22 @@ public class PositioningStoreTest {
         try {
             flushThread.start();
             long startPosition = store.max();
-            long start = System.currentTimeMillis();
+            long start = System.nanoTime();
             while (currentMax < startPosition + maxSize) {
                 currentMax = store.append(journal);
             }
-            long t = System.currentTimeMillis();
-            long spendTimeMs = t - start;
-            long bps = (currentMax - startPosition) * 1000 / spendTimeMs;
+            long t = System.nanoTime();
+            long spendTimeNs = t - start;
+            long bps = (currentMax - startPosition) * 1000000000L / spendTimeNs;
 
             logger.info("Final write size: {}, write performance: {}/S.", currentMax - startPosition, Format.formatSize(bps));
 
             while (store.flushed() < store.max()) {
                 Thread.yield();
             }
-            t = System.currentTimeMillis();
-            spendTimeMs = t - start;
-            bps = (currentMax - startPosition) * 1000 / spendTimeMs;
+            t = System.nanoTime();
+            spendTimeNs = t - start;
+            bps = (currentMax - startPosition) * 1000000000L / spendTimeNs;
 
             logger.info("Flush performance: {}/S.", Format.formatSize(bps));
         } finally {

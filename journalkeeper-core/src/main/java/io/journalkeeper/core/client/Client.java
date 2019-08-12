@@ -16,6 +16,10 @@ package io.journalkeeper.core.client;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
+import io.journalkeeper.core.entry.reserved.CompactJournalEntrySerializer;
+import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
+import io.journalkeeper.core.entry.reserved.ScalePartitionsEntrySerializer;
 import io.journalkeeper.exceptions.ServerBusyException;
 import io.journalkeeper.rpc.client.QueryStateResponse;
 import io.journalkeeper.utils.event.EventType;
@@ -27,6 +31,7 @@ import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.LeaderResponse;
 import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.StatusCode;
+import io.journalkeeper.utils.threads.NamedThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import io.journalkeeper.rpc.client.ClientServerRpc;
@@ -36,9 +41,13 @@ import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 
 import java.net.URI;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 客户端实现
@@ -48,11 +57,15 @@ import java.util.concurrent.CompletionException;
 public class Client<E, Q, R> implements RaftClient<E, Q, R> {
     private static final Logger logger = LoggerFactory.getLogger(Client.class);
     private final ClientServerRpcAccessPoint clientServerRpcAccessPoint;
-    private final Properties properties;
     private final Serializer<E> entrySerializer;
     private final Serializer<Q> querySerializer;
     private final Serializer<R> resultSerializer;
+    private final Config config;
+    private final Executor executor;
     private URI leaderUri = null;
+    private final CompactJournalEntrySerializer compactJournalEntrySerializer = new CompactJournalEntrySerializer();
+    private final ScalePartitionsEntrySerializer scalePartitionsEntrySerializer = new ScalePartitionsEntrySerializer();
+
 
     public Client(ClientServerRpcAccessPoint clientServerRpcAccessPoint, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
                   Serializer<R> resultSerializer, Properties properties) {
@@ -60,12 +73,15 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
         this.entrySerializer = entrySerializer;
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
-        this.properties = properties;
+        this.config = toConfig(properties);
         this.clientServerRpcAccessPoint.defaultClientServerRpc().watch(event -> {
             if(event.getEventType() == EventType.ON_LEADER_CHANGE) {
                 this.leaderUri = URI.create(event.getEventData().get("leader"));
             }
         });
+
+        this.executor = Executors.newFixedThreadPool(config.getThreads(), new NamedThreadFactory("Client-Executors"));
+
     }
 
     @Override
@@ -75,16 +91,21 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
 
     @Override
     public CompletableFuture<Void> update(E entry, int partition, int batchSize, ResponseConfig responseConfig) {
+        return update(entrySerializer.serialize(entry), partition, batchSize, responseConfig);
+    }
+
+    private CompletableFuture<Void> update(byte [] entry, int partition, int batchSize, ResponseConfig responseConfig) {
         return invokeLeaderRpc(
-                leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entrySerializer.serialize(entry), partition, batchSize, responseConfig)))
+                leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entry, partition, batchSize, responseConfig)))
                 .thenAccept(resp -> {
                     if(!resp.success()) {
-
+//                        logger.warn("Respose failed: {}", resp.errorString());
                         if(resp.getStatusCode() == StatusCode.SERVER_BUSY) {
                             throw new CompletionException(new ServerBusyException());
                         } else {
                             throw new CompletionException(new RpcException(resp));
                         }
+
                     }
                 });
     }
@@ -153,7 +174,7 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
     private CompletableFuture<ClientServerRpc> getLeaderRpc() {
         return this.leaderUri == null ? queryLeaderRpc() :
                 CompletableFuture.supplyAsync(() ->
-                        this.clientServerRpcAccessPoint.getClintServerRpc(this.leaderUri));
+                        this.clientServerRpcAccessPoint.getClintServerRpc(this.leaderUri), executor);
     }
 
     private CompletableFuture<ClientServerRpc> queryLeaderRpc() {
@@ -174,9 +195,46 @@ public class Client<E, Q, R> implements RaftClient<E, Q, R> {
             }
         });
     }
+    @Override
+    public CompletableFuture<Void> compact(Map<Integer, Long> toIndices) {
+        return this.update(compactJournalEntrySerializer.serialize(new CompactJournalEntry(toIndices)),
+                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION);
+    }
+    @Override
+    public CompletableFuture<Void> scalePartitions(int[] partitions) {
+        return this.update(scalePartitionsEntrySerializer.serialize(new ScalePartitionsEntry(partitions)),
+                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION);
+    }
 
 
     public void stop() {
         clientServerRpcAccessPoint.stop();
+    }
+
+
+    private Config toConfig(Properties properties) {
+        Config config = new Config();
+        config.setThreads(Integer.parseInt(
+                properties.getProperty(
+                        Config.THREADS_KEY,
+                        String.valueOf(Config.DEFAULT_THREADS))));
+
+        return config;
+    }
+
+    static class Config {
+        final static int DEFAULT_THREADS = 8;
+
+        final static String THREADS_KEY = "client_async_threads";
+
+        private int threads = DEFAULT_THREADS;
+
+        public int getThreads() {
+            return threads;
+        }
+
+        public void setThreads(int threads) {
+            this.threads = threads;
+        }
     }
 }
