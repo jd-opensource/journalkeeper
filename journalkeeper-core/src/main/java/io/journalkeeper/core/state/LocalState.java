@@ -39,20 +39,20 @@ import java.util.stream.Collectors;
 /**
  * 使用本地文件存储的状态机实现
  */
-public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
+public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, Flushable {
     private static final Logger logger = LoggerFactory.getLogger(LocalState.class);
     public final static short CRLF = ByteBuffer.wrap(new byte[] {0x0D, 0x0A}).getShort();
 
     protected StateMetadata stateMetadata = null;
     protected Path path;
     protected Properties properties;
-    protected final StateFactory<E, Q, R> factory;
+    protected final StateFactory<E, ER, Q, QR> factory;
     /**
      * State文件读写锁
      */
     protected final ReadWriteLock stateFilesLock = new ReentrantReadWriteLock();
 
-    protected LocalState(StateFactory<E, Q, R> stateFactory) {
+    protected LocalState(StateFactory<E, ER, Q, QR> stateFactory) {
         this.factory = stateFactory;
     }
 
@@ -108,7 +108,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
     }
 
     @Override
-    public State<E, Q, R> takeASnapshot(Path destPath, RaftJournal raftJournal) throws IOException {
+    public State<E, ER, Q, QR> takeASnapshot(Path destPath, RaftJournal raftJournal) throws IOException {
         try {
             stateFilesLock.writeLock().lock();
             flushState(localStatePath());
@@ -118,7 +118,7 @@ public abstract class LocalState<E, Q, R> implements State<E, Q, R>, Flushable {
         try {
             stateFilesLock.readLock().lock();
 
-            State<E, Q, R> state = factory.createState();
+            State<E, ER, Q, QR> state = factory.createState();
             List<Path> srcFiles = listAllFiles();
 
             List<Path> destFiles = srcFiles.stream()

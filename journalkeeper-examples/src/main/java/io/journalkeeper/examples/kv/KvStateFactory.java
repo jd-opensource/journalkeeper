@@ -20,9 +20,9 @@ import io.journalkeeper.core.api.StateFactory;
  * @author LiYue
  * Date: 2019-04-03
  */
-public class KvStateFactory implements StateFactory<KvEntry, KvQuery, KvResult> {
+public class KvStateFactory implements StateFactory<KvEntry, Void, KvQuery, KvResult> {
     @Override
-    public State<KvEntry, KvQuery, KvResult> createState() {
+    public State<KvEntry, Void, KvQuery, KvResult> createState() {
         return new KvState(this);
     }
 }

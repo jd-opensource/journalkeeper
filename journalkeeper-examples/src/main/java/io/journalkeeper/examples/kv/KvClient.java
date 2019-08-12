@@ -32,9 +32,9 @@ import java.util.concurrent.TimeUnit;
  */
 public class KvClient {
     private static final Logger logger = LoggerFactory.getLogger(KvClient.class);
-    private final RaftClient<KvEntry, KvQuery, KvResult> client;
+    private final RaftClient<KvEntry, Void, KvQuery, KvResult> client;
 
-    public KvClient(RaftClient<KvEntry, KvQuery, KvResult> client) {
+    public KvClient(RaftClient<KvEntry, Void, KvQuery, KvResult> client) {
         this.client = client;
     }
 

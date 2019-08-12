@@ -36,7 +36,7 @@ public interface PartitionedJournalStore extends Watchable {
      * @param batchSize 日志数量
      * @param entries 待写入的序列化后的日志。
      */
-    CompletableFuture<Void> append(int partition, int batchSize, byte [] entries);
+    CompletableFuture<Long> append(int partition, int batchSize, byte [] entries);
 
     /**
      * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
@@ -45,7 +45,7 @@ public interface PartitionedJournalStore extends Watchable {
      * @param entries 待写入的序列化后的日志。
      * @param responseConfig 返回响应的配置。See {@link ResponseConfig}
      */
-    CompletableFuture<Void> append(int partition, int batchSize, byte [] entries, ResponseConfig responseConfig);
+    CompletableFuture<Long> append(int partition, int batchSize, byte [] entries, ResponseConfig responseConfig);
 
     /**
      * 查询日志

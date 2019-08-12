@@ -38,7 +38,7 @@ import java.util.concurrent.CompletableFuture;
  * @author LiYue
  * Date: 2019-04-03
  */
-public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
+public class KvState extends LocalState<KvEntry, Void, KvQuery, KvResult> {
     private static final Logger logger = LoggerFactory.getLogger(KvState.class);
     private Map<String, String> stateMap = new HashMap<>();
     private final static String FILENAME = "map";
@@ -64,7 +64,7 @@ public class KvState extends LocalState<KvEntry, KvQuery, KvResult> {
     }
 
     @Override
-    public Map<String, String> execute(KvEntry entry, int partition, long index, int batchSize) {
+    public Void execute(KvEntry entry, int partition, long index, int batchSize, Map<String, String> eventParams) {
         switch (entry.getCmd()) {
             case KvEntry.CMD_SET:
                 stateMap.put(entry.getKey(), entry.getValue());

@@ -29,10 +29,6 @@ public class JsonSerializer<T> implements Serializer<T> {
     public JsonSerializer(Class<T> tClass) {
         this.tClass = tClass;
     }
-    @Override
-    public int sizeOf(T t) {
-        return serialize(t).length;
-    }
 
     @Override
     public byte[] serialize(T entry) {

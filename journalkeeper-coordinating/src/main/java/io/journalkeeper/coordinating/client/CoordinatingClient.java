@@ -43,11 +43,11 @@ public class CoordinatingClient {
 
     private List<URI> servers;
     private Properties config;
-    private RaftClient<StateWriteRequest, StateReadRequest, StateResponse> client;
+    private RaftClient<StateWriteRequest, Void, StateReadRequest, StateResponse> client;
 
     public CoordinatingClient(List<URI> servers,
                               Properties config,
-                              RaftClient<StateWriteRequest, StateReadRequest, StateResponse> client) {
+                              RaftClient<StateWriteRequest, Void, StateReadRequest, StateResponse> client) {
         this.servers = servers;
         this.config = config;
         this.client = client;

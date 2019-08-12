@@ -40,19 +40,19 @@ import java.util.stream.Collectors;
  * Date: 2019-05-09
  */
 public class JournalStoreClient implements PartitionedJournalStore {
-    private final RaftClient<byte [], JournalStoreQuery, JournalStoreQueryResult> raftClient;
+    private final RaftClient<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient;
 
-    public JournalStoreClient(RaftClient<byte [], JournalStoreQuery, JournalStoreQueryResult> raftClient) {
+    public JournalStoreClient(RaftClient<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient) {
         this.raftClient = raftClient;
     }
 
     @Override
-    public CompletableFuture<Void> append(int partition, int batchSize, byte [] entries) {
+    public CompletableFuture<Long> append(int partition, int batchSize, byte [] entries) {
         return append(partition, batchSize, entries, ResponseConfig.REPLICATION);
     }
 
     @Override
-    public CompletableFuture<Void> append(int partition, int batchSize,
+    public CompletableFuture<Long> append(int partition, int batchSize,
                                           byte [] entries, ResponseConfig responseConfig) {
         return raftClient.update(entries, partition,
                 batchSize, responseConfig);

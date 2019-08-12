@@ -89,8 +89,8 @@ import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
  * @author LiYue
  * Date: 2019-03-14
  */
-public abstract class Server<E, Q, R>
-        extends RaftServer<E, Q, R>
+public abstract class Server<E, ER, Q, QR>
+        extends RaftServer<E, ER, Q, QR>
         implements ServerRpc {
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
     /**
@@ -119,7 +119,7 @@ public abstract class Server<E, Q, R>
     /**
      * 节点上的最新状态 和 被状态机执行的最大日志条目的索引值（从 0 开始递增）
      */
-    protected final State<E, Q, R> state;
+    protected final State<E, ER, Q, QR> state;
 
     protected final ScheduledExecutorService scheduledExecutor;
 
@@ -145,7 +145,7 @@ public abstract class Server<E, Q, R>
     /**
      * 存放节点上所有状态快照的稀疏数组，数组的索引（key）就是快照对应的日志位置的索引
      */
-    protected final NavigableMap<Long, State<E, Q, R>> snapshots = new ConcurrentSkipListMap<>();
+    protected final NavigableMap<Long, State<E, ER, Q, QR>> snapshots = new ConcurrentSkipListMap<>();
 
     /**
      * 已知的被提交的最大日志条目的索引值（从 0 开始递增）
@@ -200,8 +200,9 @@ public abstract class Server<E, Q, R>
     }
 
     protected final Serializer<E> entrySerializer;
+    protected final Serializer<ER> entryResultSerializer;
     protected final Serializer<Q> querySerializer;
-    protected final Serializer<R> resultSerializer;
+    protected final Serializer<QR> resultSerializer;
 
     protected final BufferPool bufferPool;
 
@@ -226,8 +227,9 @@ public abstract class Server<E, Q, R>
     private final Map<String, JMetric> metricMap;
     private final static JMetric DUMMY_METRIC = new DummyMetric();
 
-    public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
-                  Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor,
+    public Server(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer,
+                  Serializer<ER> entryResultSerializer, Serializer<Q> querySerializer,
+                  Serializer<QR> resultSerializer, ScheduledExecutorService scheduledExecutor,
                   ExecutorService asyncExecutor, Properties properties){
         super(stateFactory, properties);
         this.scheduledExecutor = scheduledExecutor;
@@ -239,6 +241,7 @@ public abstract class Server<E, Q, R>
         this.entrySerializer = entrySerializer;
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
+        this.entryResultSerializer = entryResultSerializer;
         if(config.isEnableMetric()) {
             this.metricFactory = ServiceSupport.load(JMetricFactory.class);
             this.metricMap = new ConcurrentHashMap<>();
@@ -378,25 +381,26 @@ public abstract class Server<E, Q, R>
         while ( this.serverState == ServerState.RUNNING && state.lastApplied() < commitIndex.get()) {
             takeASnapShotIfNeed();
             Entry storageEntry = journal.read(state.lastApplied());
-            Map<String, String> customizedEventData = null;
+            Map<String, String> customizedEventData = new HashMap<>();
+            ER result = null;
             if(storageEntry.getHeader().getPartition() != RESERVED_PARTITION) {
                 E entry = entrySerializer.parse(storageEntry.getEntry());
                 long stamp = stateLock.writeLock();
                 try {
-                    customizedEventData = state.execute(entry, storageEntry.getHeader().getPartition(),
-                            state.lastApplied(), storageEntry.getHeader().getBatchSize());
+                result = state.execute(entry, storageEntry.getHeader().getPartition(),
+                            state.lastApplied(), storageEntry.getHeader().getBatchSize(), customizedEventData);
                 } finally {
                     stateLock.unlockWrite(stamp);
                 }
             } else {
                 applyReservedEntry(storageEntry.getEntry()[0], storageEntry.getEntry());
             }
+
+            beforeStateChanged(result);
             state.next();
-            onStateChanged();
-            Map<String, String> parameters = new HashMap<>(customizedEventData == null ? 1: customizedEventData.size() + 1);
-            if(null != customizedEventData) {
-                customizedEventData.forEach(parameters::put);
-            }
+            afterStateChanged(result);
+            Map<String, String> parameters = new HashMap<>(customizedEventData.size() + 1);
+            customizedEventData.forEach(parameters::put);
             parameters.put("lastApplied", String.valueOf(state.lastApplied()));
             fireEvent(EventType.ON_STATE_CHANGE, parameters);
         }
@@ -449,9 +453,13 @@ public abstract class Server<E, Q, R>
 
 
     /**
-     * 当状态变化时触发事件
+     * 当状态变化后触发事件
      */
-    protected void onStateChanged() {}
+    protected void afterStateChanged(ER updateResult) {}
+    /**
+     * 当状态变化前触发事件
+     */
+    protected void beforeStateChanged(ER updateResult) {}
 
     /**
      * 如果需要，保存一次快照
@@ -463,7 +471,7 @@ public abstract class Server<E, Q, R>
                     synchronized (snapshots) {
                         if (config.getSnapshotStep() > 0 && (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep())) {
 
-                            State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
+                            State<E, ER, Q, QR> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
                             snapshots.put(snapshot.lastApplied(), snapshot);
                         }
                     }
@@ -553,10 +561,10 @@ public abstract class Server<E, Q, R>
                 }
 
 
-                State<E, Q, R> requestState = snapshots.get(request.getIndex());
+                State<E, ER, Q, QR> requestState = snapshots.get(request.getIndex());
 
                 if (null == requestState) {
-                    Map.Entry<Long, State<E, Q, R>> nearestSnapshot = snapshots.floorEntry(request.getIndex());
+                    Map.Entry<Long, State<E, ER, Q, QR>> nearestSnapshot = snapshots.floorEntry(request.getIndex());
                     if (null == nearestSnapshot) {
                         throw new IndexUnderflowException();
                     }
@@ -570,7 +578,7 @@ public abstract class Server<E, Q, R>
                     for (int i = 0; i < toBeExecutedEntries.size(); i++) {
                         RaftEntry entry = toBeExecutedEntries.get(i);
                         requestState.execute(entrySerializer.parse(entry.getEntry()), entry.getHeader().getPartition(),
-                                nearestSnapshot.getKey() + i, entry.getHeader().getBatchSize());
+                                nearestSnapshot.getKey() + i, entry.getHeader().getBatchSize(), new HashMap<>());
                     }
                     if(requestState instanceof Flushable) {
                         ((Flushable ) requestState).flush();
@@ -631,7 +639,7 @@ public abstract class Server<E, Q, R>
                 if (snapshotIndex < 0) {
                     snapshotIndex = snapshots.lastKey();
                 }
-                State<E, Q, R> state = snapshots.get(snapshotIndex);
+                State<E, ER, Q, QR> state = snapshots.get(snapshotIndex);
                 if (null != state) {
                     byte [] data;
                     try {
@@ -775,7 +783,7 @@ public abstract class Server<E, Q, R>
                         entry -> entry.getFileName().toString().matches("\\d+")
                     ).spliterator(), false)
                 .map(path -> {
-                    State<E, Q, R> snapshot = stateFactory.createState();
+                    State<E, ER, Q, QR> snapshot = stateFactory.createState();
                     snapshot.recover(path, journal, properties);
                     if(Long.parseLong(path.getFileName().toString()) == snapshot.lastApplied()) {
                         return snapshot;
@@ -840,8 +848,8 @@ public abstract class Server<E, Q, R>
 
     public void compact(long indexExclusive) throws IOException {
         if(config.getSnapshotStep() > 0) {
-            Map.Entry<Long, State<E, Q, R>> nearestEntry = snapshots.floorEntry(indexExclusive);
-            SortedMap<Long, State<E, Q, R>> toBeRemoved = snapshots.headMap(nearestEntry.getKey());
+            Map.Entry<Long, State<E, ER, Q, QR>> nearestEntry = snapshots.floorEntry(indexExclusive);
+            SortedMap<Long, State<E, ER, Q, QR>> toBeRemoved = snapshots.headMap(nearestEntry.getKey());
             while (!toBeRemoved.isEmpty()) {
                 toBeRemoved.remove(toBeRemoved.firstKey()).clear();
             }
@@ -851,7 +859,7 @@ public abstract class Server<E, Q, R>
         }
     }
 
-    public State<E, Q, R> getState() {
+    public State<E, ER, Q, QR> getState() {
         return state;
     }
 

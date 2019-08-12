@@ -1,3 +1,16 @@
+/**
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.journalkeeper.core;
 
 import io.journalkeeper.base.Serializer;
@@ -60,7 +73,7 @@ public class VoterTest {
     @Ignore
     @Test
     public void singleNodeWritePerformanceTest() throws IOException, ExecutionException, InterruptedException {
-        Voter<byte[], byte[], byte[]> voter = createVoter();
+        Voter<byte[],byte[], byte[], byte[]> voter = createVoter();
 
 
         try {
@@ -106,7 +119,7 @@ public class VoterTest {
     @Ignore
     @Test
     public void multiThreadsWritePerformanceTest() throws IOException, ExecutionException, InterruptedException {
-        Voter<byte[], byte[], byte[]> voter = createVoter();
+        Voter<byte[], byte[], byte[], byte[]> voter = createVoter();
 
 
         try {
@@ -165,8 +178,8 @@ public class VoterTest {
 
     }
 
-    private Voter<byte[], byte[], byte[]> createVoter() throws IOException {
-        StateFactory<byte [], byte [], byte []> stateFactory = new NoopStateFactory();
+    private Voter<byte[], byte[], byte[], byte[]> createVoter() throws IOException {
+        StateFactory<byte [], byte [], byte [], byte []> stateFactory = new NoopStateFactory();
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(4, new NamedThreadFactory("JournalKeeper-Scheduled-Executor"));
         ExecutorService asyncExecutorService = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors() * 2, new NamedThreadFactory("JournalKeeper-Async-Executor"));
         BytesSerializer bytesSerializer = new BytesSerializer();
@@ -174,7 +187,7 @@ public class VoterTest {
         properties.setProperty("working_dir", base.toString());
 //        properties.setProperty("cache_requests", String.valueOf(1024L * 1024 * 5));
 
-        Voter<byte [], byte [], byte []>  voter = new Voter<>(stateFactory, bytesSerializer, bytesSerializer, bytesSerializer, scheduledExecutorService, asyncExecutorService, properties);
+        Voter<byte [], byte [], byte [], byte []>  voter = new Voter<>(stateFactory, bytesSerializer, bytesSerializer, bytesSerializer, bytesSerializer, scheduledExecutorService, asyncExecutorService, properties);
         URI uri = URI.create("jk://localhost:8888");
         voter.init(uri, Collections.singletonList(uri));
         voter.recover();
@@ -183,10 +196,6 @@ public class VoterTest {
     }
 
     static class BytesSerializer implements Serializer<byte []> {
-        @Override
-        public int sizeOf(byte[] bytes) {
-            return bytes.length;
-        }
 
         @Override
         public byte[] serialize(byte[] entry) {
@@ -200,11 +209,11 @@ public class VoterTest {
     }
 
 
-    static class NoopState implements State<byte[], byte[], byte[]> {
+    static class NoopState implements State<byte[], byte[], byte[], byte[]> {
         private AtomicLong lastApplied = new AtomicLong(0L);
         private AtomicInteger term = new AtomicInteger(0);
         @Override
-        public Map<String, String> execute(byte[] entry, int partition, long index, int batchSize) {
+        public byte [] execute(byte[] entry, int partition, long index, int batchSize, Map<String, String> eventParams) {
             return null;
         }
 
@@ -225,7 +234,7 @@ public class VoterTest {
         }
 
         @Override
-        public State<byte[], byte[], byte[]> takeASnapshot(Path path, RaftJournal raftJournal) throws IOException {
+        public State<byte[], byte[], byte[], byte[]> takeASnapshot(Path path, RaftJournal raftJournal) throws IOException {
             return null;
         }
 
@@ -271,10 +280,10 @@ public class VoterTest {
     }
 
 
-    class NoopStateFactory implements StateFactory<byte [], byte [], byte []> {
+    class NoopStateFactory implements StateFactory<byte [], byte [], byte [], byte []> {
 
         @Override
-        public State<byte[], byte[], byte[]> createState() {
+        public State<byte[], byte[], byte[], byte[]> createState() {
             return new NoopState();
         }
     }

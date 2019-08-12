@@ -31,8 +31,7 @@ import java.util.List;
  *
  */
 public class ScalePartitionsEntrySerializer implements Serializer<ScalePartitionsEntry> {
-    @Override
-    public int sizeOf(ScalePartitionsEntry scalePartitionsEntry) {
+    private int sizeOf(ScalePartitionsEntry scalePartitionsEntry) {
         return Byte.BYTES + Short.BYTES * scalePartitionsEntry.getPartitions().length;
     }
 

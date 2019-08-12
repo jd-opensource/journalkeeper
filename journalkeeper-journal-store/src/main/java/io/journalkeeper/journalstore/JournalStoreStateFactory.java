@@ -20,9 +20,9 @@ import io.journalkeeper.core.api.StateFactory;
  * @author LiYue
  * Date: 2019-05-09
  */
-public class JournalStoreStateFactory implements StateFactory<byte [], JournalStoreQuery, JournalStoreQueryResult> {
+public class JournalStoreStateFactory implements StateFactory<byte [], Long , JournalStoreQuery, JournalStoreQueryResult> {
     @Override
-    public State<byte [], JournalStoreQuery, JournalStoreQueryResult> createState() {
+    public State<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> createState() {
         return new JournalStoreState(this);
     }
 }

@@ -46,20 +46,21 @@ public class CoordinatingServer implements StateServer {
     private RaftServer.Roll role;
     private Properties config;
 
-    private BootStrap<StateWriteRequest, StateReadRequest, StateResponse> bootStrap;
+    private BootStrap<StateWriteRequest, Void, StateReadRequest, StateResponse> bootStrap;
     private volatile CoordinatingClient client;
 
     public CoordinatingServer(URI current, List<URI> servers, Properties config,
                               RaftServer.Roll role,
-                              StateFactory<StateWriteRequest, StateReadRequest, StateResponse> stateFactory,
+                              StateFactory<StateWriteRequest, Void, StateReadRequest, StateResponse> stateFactory,
                               Serializer<StateWriteRequest> entrySerializer,
+                              Serializer<Void> entryResultSerializer,
                               Serializer<StateReadRequest> querySerializer,
                               Serializer<StateResponse> resultSerializer) {
         this.current = current;
         this.servers = servers;
         this.role = role;
         this.config = config;
-        this.bootStrap = new BootStrap<>(role, stateFactory, entrySerializer, querySerializer, resultSerializer, config);
+        this.bootStrap = new BootStrap<>(role, stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer, config);
     }
 
     public boolean waitForLeaderReady(int timeout, TimeUnit unit) {

@@ -24,9 +24,26 @@ import io.journalkeeper.rpc.StatusCode;
 public class UpdateClusterStateResponse extends LeaderResponse {
     public UpdateClusterStateResponse() {
         super();
+        this.result = null;
+    }
+    public UpdateClusterStateResponse(byte [] result) {
+        super();
+        this.result = result;
     }
     public UpdateClusterStateResponse(Throwable exception) {
         super(exception);
+        this.result = null;
+
+    }
+    private final byte [] result;
+
+
+    /**
+     * 序列化后的执行结果。
+     * @return 序列化后的执行结果。
+     */
+    public byte [] getResult() {
+        return result;
     }
 
     @Override

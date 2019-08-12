@@ -20,13 +20,6 @@ package io.journalkeeper.base;
  */
 public interface Serializer<T> {
     /**
-     * 计算实体序列化后的长度
-     * @param t 实体
-     * @return 日志序列化后的长度，单位字节。
-     */
-    int sizeOf(T t);
-
-    /**
      * 将日志序列化
      * @param entry 日志
      */
