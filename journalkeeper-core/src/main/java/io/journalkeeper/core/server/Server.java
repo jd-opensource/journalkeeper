@@ -227,6 +227,12 @@ public abstract class Server<E, ER, Q, QR>
     private final Map<String, JMetric> metricMap;
     private final static JMetric DUMMY_METRIC = new DummyMetric();
 
+    private final static String METRIC_EXEC_STATE_MACHINE = "METRIC_EXEC_STATE_MACHINE";
+    private final static String METRIC_APPLY_ENTRIES = "METRIC_APPLY_ENTRIES";
+
+    private final JMetric execStateMachineMetric;
+    private final JMetric applyEntriesMetric;
+
     public Server(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer,
                   Serializer<ER> entryResultSerializer, Serializer<Q> querySerializer,
                   Serializer<QR> resultSerializer, ScheduledExecutorService scheduledExecutor,
@@ -252,6 +258,10 @@ public abstract class Server<E, ER, Q, QR>
             this.metricFactory = null;
             this.metricMap = null;
         }
+        execStateMachineMetric = getMetric(METRIC_EXEC_STATE_MACHINE);
+        applyEntriesMetric = getMetric(METRIC_APPLY_ENTRIES);
+
+
         this.eventBus = new EventBus(config.getRpcTimeoutMs());
         persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
         metadataPersistence = persistenceFactory.createMetadataPersistenceInstance();
@@ -379,7 +389,10 @@ public abstract class Server<E, ER, Q, QR>
      */
     private void applyEntries()  {
         while ( this.serverState == ServerState.RUNNING && state.lastApplied() < commitIndex.get()) {
+            applyEntriesMetric.start();
+
             takeASnapShotIfNeed();
+
             Entry storageEntry = journal.read(state.lastApplied());
             Map<String, String> customizedEventData = new HashMap<>();
             ER result = null;
@@ -387,8 +400,10 @@ public abstract class Server<E, ER, Q, QR>
                 E entry = entrySerializer.parse(storageEntry.getEntry());
                 long stamp = stateLock.writeLock();
                 try {
-                result = state.execute(entry, storageEntry.getHeader().getPartition(),
+                    execStateMachineMetric.start();
+                    result = state.execute(entry, storageEntry.getHeader().getPartition(),
                             state.lastApplied(), storageEntry.getHeader().getBatchSize(), customizedEventData);
+                    execStateMachineMetric.end(storageEntry.getEntry().length);
                 } finally {
                     stateLock.unlockWrite(stamp);
                 }
@@ -403,6 +418,7 @@ public abstract class Server<E, ER, Q, QR>
             customizedEventData.forEach(parameters::put);
             parameters.put("lastApplied", String.valueOf(state.lastApplied()));
             fireEvent(EventType.ON_STATE_CHANGE, parameters);
+            applyEntriesMetric.end(storageEntry.getEntry().length);
         }
     }
 
