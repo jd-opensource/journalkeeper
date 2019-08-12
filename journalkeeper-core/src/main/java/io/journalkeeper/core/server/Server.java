@@ -330,7 +330,7 @@ public abstract class Server<E, Q, R>
      *
      */
     private void applyEntries()  {
-        while ( state.lastApplied() < commitIndex) {
+        while ( this.serverState == ServerState.RUNNING && state.lastApplied() < commitIndex) {
             takeASnapShotIfNeed();
             Entry storageEntry = journal.read(state.lastApplied());
             Map<String, String> customizedEventData = null;
