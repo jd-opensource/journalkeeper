@@ -54,6 +54,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Collectors;
@@ -154,7 +155,7 @@ public class JournalTest {
         int term = 8;
         int partition = 6;
         // 循环写入多少批
-        int loopCount = 10 * 1024;
+        int loopCount = 2 * 1024;
 
         JMetricFactory metricFactory = ServiceSupport.load(JMetricFactory.class);
 
@@ -215,7 +216,7 @@ public class JournalTest {
         int term = 8;
         int partition = 6;
         // 循环写入多少批
-        int loopCount = 10 * 1024;
+        int loopCount = 2 * 1024;
         List<byte []> entries = ByteUtils.createFixedSizeByteList(entrySize, batchCount);
         // 构建测试的entry
         List<Entry> storageEntries =
@@ -228,7 +229,7 @@ public class JournalTest {
         AsyncLoopThread flushJournalThread = ThreadBuilder.builder()
                 .name("FlushJournalThread")
                 .doWork(journal::flush)
-                .sleepTime(50L, 50L)
+                .sleepTime(10L, 10L)
                 .onException(e -> logger.warn("FlushJournalThread Exception: ", e))
                 .daemon(true)
                 .build();
@@ -262,6 +263,11 @@ public class JournalTest {
             }
             long t1 = System.nanoTime();
 
+            while (journal.isDirty()) {
+                Thread.yield();
+            }
+            long t2 = System.nanoTime();
+
             long takeMs = (t1 - t0) / 1000000;
             long totalSize = (long) loopCount * batchCount * entrySize;
 
@@ -269,10 +275,8 @@ public class JournalTest {
                     Format.formatSize(totalSize),
                     takeMs,
                     Format.formatSize(totalSize * 1000 / takeMs));
-            while (journal.isDirty()) {
-                Thread.yield();
-            }
-            long t2 = System.nanoTime();
+
+
             takeMs = (t2 - t0) / 1000000;
 
             logger.info("Flush {} take {} ms, {}/s.",

@@ -16,6 +16,7 @@ package io.journalkeeper.utils.threads;
 
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -33,7 +34,8 @@ abstract class LoopThread implements AsyncLoopThread {
     private boolean daemon;
     private final Lock wakeupLock = new ReentrantLock();
     private final java.util.concurrent.locks.Condition wakeupCondition = wakeupLock.newCondition();
-    private ServerState serverState = ServerState.STOPPED;
+    private volatile ServerState serverState = ServerState.STOPPED;
+    private AtomicBoolean needToWakeUp = new AtomicBoolean(false);
     /**
      * 每次循环需要执行的代码。
      */
@@ -110,7 +112,6 @@ abstract class LoopThread implements AsyncLoopThread {
 
             long t0 = System.nanoTime();
             try {
-                wakeupLock.lock();
                 if(condition()) {
                     doWork();
                 }
@@ -118,7 +119,15 @@ abstract class LoopThread implements AsyncLoopThread {
 
                 // 为了避免空转CPU高，如果执行时间过短，等一会儿再进行下一次循环
                 if (t1 - t0 < minSleep * 100000L) {
-                    wakeupCondition.await(minSleep < maxSleep ? ThreadLocalRandom.current().nextLong(minSleep, maxSleep): minSleep, TimeUnit.MILLISECONDS);
+
+                    wakeupLock.lock();
+                    try {
+                        needToWakeUp.set(true);
+                        wakeupCondition.await(minSleep < maxSleep ? ThreadLocalRandom.current().nextLong(minSleep, maxSleep) : minSleep, TimeUnit.MILLISECONDS);
+
+                    } finally {
+                        wakeupLock.unlock();
+                    }
                 }
 
             } catch (InterruptedException i) {
@@ -127,8 +136,6 @@ abstract class LoopThread implements AsyncLoopThread {
                 if (!handleException(t)) {
                     break;
                 }
-            } finally {
-                wakeupLock.unlock();
             }
         }
         serverState = ServerState.STOPPED;
@@ -139,7 +146,9 @@ abstract class LoopThread implements AsyncLoopThread {
      */
     @Override
     public synchronized void wakeup() {
-        if(wakeupLock.tryLock()) {
+
+        if(needToWakeUp.compareAndSet(true, false)) {
+            wakeupLock.lock();
             try {
                 wakeupCondition.signal();
             } finally {

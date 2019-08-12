@@ -78,7 +78,7 @@ public class VoterTest {
 
 
         try {
-            long count = 5 * 1024 * 1024;
+            int count = 2 * 1024 * 1024;
             int entrySize = 1024;
             int[] partitions = {2};
 
@@ -91,13 +91,14 @@ public class VoterTest {
 
 
             byte[] entry = ByteUtils.createFixedSizeBytes(entrySize);
+            List<CompletableFuture<UpdateClusterStateResponse>> responses = new LinkedList<>();
             long t0 = System.nanoTime();
 
             for (int i = 0; i < partitions.length; i++) {
-                UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, partitions[i], 1, ResponseConfig.REPLICATION);
+                UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, partitions[i], 1, ResponseConfig.RECEIVE);
 
                 for (long l = 0; l < count; l++) {
-                    voter.updateClusterState(request);
+                    responses.add(voter.updateClusterState(request));
                 }
             }
 
@@ -106,6 +107,17 @@ public class VoterTest {
             long takesMs = (t1 - t0) / 1000000;
             logger.info("Write finished. " +
                             "Write takes: {}ms, {}ps, tps: {}.",
+                    takesMs,
+                    Format.formatSize( 1000L * partitions.length * entrySize * count  / takesMs),
+                    1000L * partitions.length * count  / takesMs);
+
+            for (CompletableFuture<UpdateClusterStateResponse> response : responses) {
+                response.get();
+            }
+            long t2 = System.nanoTime();
+            takesMs = (t2 - t0) / 1000000;
+            logger.info("Callback finished. " +
+                            "Callback takes: {}ms, {}ps, tps: {}.",
                     takesMs,
                     Format.formatSize( 1000L * partitions.length * entrySize * count  / takesMs),
                     1000L * partitions.length * count  / takesMs);

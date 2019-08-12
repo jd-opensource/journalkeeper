@@ -69,6 +69,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.StampedLock;
@@ -139,7 +140,7 @@ public abstract class Server<E, Q, R>
     /**
      * 已知的被提交的最大日志条目的索引值（从 0 开始递增）
      */
-    protected long commitIndex;
+    protected AtomicLong commitIndex = new AtomicLong(0L);
 
     /**
      * 当前LEADER节点地址
@@ -201,7 +202,7 @@ public abstract class Server<E, Q, R>
     protected final Map<URI, ServerRpc> remoteServers = new HashMap<>();
     private Config config;
 
-    private ServerState serverState = ServerState.STOPPED;
+    private volatile ServerState serverState = ServerState.STOPPED;
     private ServerMetadata lastSavedServerMetadata = null;
     protected final EventBus eventBus;
     private final CompactJournalEntrySerializer compactJournalEntrySerializer = new CompactJournalEntrySerializer();
@@ -330,7 +331,7 @@ public abstract class Server<E, Q, R>
      *
      */
     private void applyEntries()  {
-        while ( this.serverState == ServerState.RUNNING && state.lastApplied() < commitIndex) {
+        while ( this.serverState == ServerState.RUNNING && state.lastApplied() < commitIndex.get()) {
             takeASnapShotIfNeed();
             Entry storageEntry = journal.read(state.lastApplied());
             Map<String, String> customizedEventData = null;
@@ -649,7 +650,7 @@ public abstract class Server<E, Q, R>
             }
         } catch(Throwable e) {
             logger.warn("Flush exception, commitIndex: {}, lastApplied: {}, server: {}: ",
-                    commitIndex, state.lastApplied(), uri, e);
+                    commitIndex.get(), state.lastApplied(), uri, e);
         }
     }
 
@@ -750,7 +751,7 @@ public abstract class Server<E, Q, R>
 
     protected void onMetadataRecovered(ServerMetadata metadata) {
         this.uri = metadata.getThisServer();
-        this.commitIndex = metadata.getCommitIndex();
+        this.commitIndex.set(metadata.getCommitIndex());
 
         if(metadata.getPartitions() == null ) {
             metadata.setPartitions(new HashSet<>());
@@ -768,7 +769,7 @@ public abstract class Server<E, Q, R>
     protected ServerMetadata createServerMetadata() {
         ServerMetadata serverMetadata = new ServerMetadata();
         serverMetadata.setThisServer(uri);
-        serverMetadata.setCommitIndex(commitIndex);
+        serverMetadata.setCommitIndex(commitIndex.get());
         return serverMetadata;
     }
 
