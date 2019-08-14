@@ -18,6 +18,7 @@ import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.exceptions.NotVoterException;
+import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.persistence.ServerMetadata;
 import io.journalkeeper.rpc.StatusCode;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
@@ -53,6 +54,9 @@ import java.util.concurrent.*;
 public class Observer<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     private static final Logger logger = LoggerFactory.getLogger(Observer.class);
     private static final String OBSERVER_REPLICATION_THREAD = "ObserverReplicationThread";
+
+    private static final String METRIC_OBSERVER_REPLICATION = "OBSERVER_REPLICATION";
+    private final JMetric replicationMetric;
     /**
      * 父节点
      */
@@ -71,6 +75,7 @@ public class Observer<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                     Properties properties) {
         super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, scheduledExecutor, asyncExecutor, properties);
         this.config = toConfig(properties);
+        this.replicationMetric = getMetric(METRIC_OBSERVER_REPLICATION);
         threads.createThread(buildReplicationThread());
     }
 
@@ -95,6 +100,8 @@ public class Observer<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
 
     private void pullEntries() throws Throwable {
 
+        replicationMetric.start();
+        long traffic = 0L;
         GetServerEntriesResponse response =
                 selectServer().getServerEntries(new GetServerEntriesRequest(commitIndex.get(),config.getPullBatchSize())).get();
 
@@ -104,12 +111,13 @@ public class Observer<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
             commitIndex.addAndGet(response.getEntries().size());
             // 唤醒状态机线程
             threads.wakeupThread(STATE_MACHINE_THREAD);
+            traffic = response.getEntries().stream().mapToLong(bytes -> bytes.length).sum();
         } else if( response.getStatusCode() == StatusCode.INDEX_UNDERFLOW){
             reset();
         } else {
             logger.warn("Pull entry failed! {}", response.errorString());
         }
-
+        replicationMetric.end(traffic);
 
     }
 

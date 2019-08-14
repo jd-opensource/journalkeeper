@@ -84,6 +84,10 @@ import java.util.stream.StreamSupport;
 
 import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
 
+// TODO: Add an UUID for each server instance,
+//  so multiple server instance of one process
+//  can be identified by UUID in logs and threads dump.
+
 /**
  * Server就是集群中的节点，它包含了存储在Server上日志（journal），一组快照（snapshots[]）和一个状态机（stateMachine）实例。
  * @author LiYue
@@ -227,8 +231,8 @@ public abstract class Server<E, ER, Q, QR>
     private final Map<String, JMetric> metricMap;
     private final static JMetric DUMMY_METRIC = new DummyMetric();
 
-    private final static String METRIC_EXEC_STATE_MACHINE = "METRIC_EXEC_STATE_MACHINE";
-    private final static String METRIC_APPLY_ENTRIES = "METRIC_APPLY_ENTRIES";
+    private final static String METRIC_EXEC_STATE_MACHINE = "EXEC_STATE_MACHINE";
+    private final static String METRIC_APPLY_ENTRIES = "APPLY_ENTRIES";
 
     private final JMetric execStateMachineMetric;
     private final JMetric applyEntriesMetric;
@@ -248,6 +252,8 @@ public abstract class Server<E, ER, Q, QR>
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
         this.entryResultSerializer = entryResultSerializer;
+
+        // init metrics
         if(config.isEnableMetric()) {
             this.metricFactory = ServiceSupport.load(JMetricFactory.class);
             this.metricMap = new ConcurrentHashMap<>();
@@ -392,7 +398,6 @@ public abstract class Server<E, ER, Q, QR>
             applyEntriesMetric.start();
 
             takeASnapShotIfNeed();
-
             Entry storageEntry = journal.read(state.lastApplied());
             Map<String, String> customizedEventData = new HashMap<>();
             ER result = null;
@@ -891,6 +896,12 @@ public abstract class Server<E, ER, Q, QR>
             return metricMap.computeIfAbsent(name, metricFactory::create);
         } else {
             return DUMMY_METRIC;
+        }
+    }
+    protected boolean isMetricEnabled() {return config.isEnableMetric();}
+    protected void removeMetric(String name) {
+        if(config.isEnableMetric()) {
+            metricMap.remove(name);
         }
     }
 
