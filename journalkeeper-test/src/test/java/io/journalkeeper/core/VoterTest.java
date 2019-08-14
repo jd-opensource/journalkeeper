@@ -15,6 +15,7 @@ package io.journalkeeper.core;
 
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftJournal;
+import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
@@ -24,12 +25,14 @@ import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.metric.JMetricFactory;
 import io.journalkeeper.metric.JMetricSupport;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
+import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import io.journalkeeper.utils.format.Format;
 import io.journalkeeper.utils.spi.ServiceSupport;
 import io.journalkeeper.utils.test.ByteUtils;
 import io.journalkeeper.utils.test.TestPathUtils;
 import io.journalkeeper.utils.threads.NamedThreadFactory;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -93,7 +96,7 @@ public class VoterTest {
             long t0 = System.nanoTime();
 
             for (int i = 0; i < partitions.length; i++) {
-                UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, partitions[i], 1);
+                UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, partitions[i], 1, ResponseConfig.RECEIVE);
 
                 for (long l = 0; l < count; l++) {
                     voter.updateClusterState(request);
@@ -173,10 +176,32 @@ public class VoterTest {
         } finally {
             voter.stop();
         }
+    }
+    @Test
+    public void updateClusterStateResultTest() throws IOException, ExecutionException, InterruptedException {
+        Voter<byte[],byte[], byte[], byte[]> voter = createVoter();
+
+
+        try {
+            byte [] entry = new byte[] {1, 2, 3,5, 8,9};
+            while(voter.voterState() != Voter.VoterState.LEADER) {
+                Thread.sleep(50L);
+            }
+
+
+
+            UpdateClusterStateResponse response = voter.updateClusterState(new UpdateClusterStateRequest(entry, RaftJournal.DEFAULT_PARTITION, 1)).get();
+            Assert.assertTrue(response.success());
+            Assert.assertArrayEquals(entry, response.getResult());
+
+        } finally {
+            voter.stop();
+        }
 
 
 
     }
+
 
     private Voter<byte[], byte[], byte[], byte[]> createVoter() throws IOException {
         StateFactory<byte [], byte [], byte [], byte []> stateFactory = new NoopStateFactory();
@@ -185,6 +210,8 @@ public class VoterTest {
         BytesSerializer bytesSerializer = new BytesSerializer();
         Properties properties = new Properties();
         properties.setProperty("working_dir", base.toString());
+        properties.setProperty("enable_metric", "true");
+        properties.setProperty("print_metric_interval_sec", "5");
 //        properties.setProperty("cache_requests", String.valueOf(1024L * 1024 * 5));
 
         Voter<byte [], byte [], byte [], byte []>  voter = new Voter<>(stateFactory, bytesSerializer, bytesSerializer, bytesSerializer, bytesSerializer, scheduledExecutorService, asyncExecutorService, properties);
@@ -209,12 +236,12 @@ public class VoterTest {
     }
 
 
-    static class NoopState implements State<byte[], byte[], byte[], byte[]> {
+    static class EchoState implements State<byte[], byte[], byte[], byte[]> {
         private AtomicLong lastApplied = new AtomicLong(0L);
         private AtomicInteger term = new AtomicInteger(0);
         @Override
         public byte [] execute(byte[] entry, int partition, long index, int batchSize, Map<String, String> eventParams) {
-            return null;
+            return entry;
         }
 
         @Override
@@ -284,7 +311,7 @@ public class VoterTest {
 
         @Override
         public State<byte[], byte[], byte[], byte[]> createState() {
-            return new NoopState();
+            return new EchoState();
         }
     }
 }

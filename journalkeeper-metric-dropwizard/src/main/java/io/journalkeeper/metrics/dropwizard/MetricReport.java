@@ -49,12 +49,13 @@ public class MetricReport implements JMetricReport {
 
     @Override
     public long trafficPs() {
-        return traffic / ((end - start) / 1000000000L);
-    }
+        long div = (end - start) / 1000000000L;
+        return div > 0 ? traffic / div: 0L;    }
 
     @Override
     public long requestsPs() {
-        return counter / ((end - start) / 1000000000L);
+        long div = (end - start) / 1000000000L;
+        return div > 0 ? counter / div: 0L;
     }
 
     @Override
