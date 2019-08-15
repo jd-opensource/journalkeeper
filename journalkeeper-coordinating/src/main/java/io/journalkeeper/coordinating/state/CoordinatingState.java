@@ -14,9 +14,10 @@
 package io.journalkeeper.coordinating.state;
 
 import io.journalkeeper.coordinating.state.config.CoordinatingConfigs;
-import io.journalkeeper.coordinating.state.domain.StateReadRequest;
-import io.journalkeeper.coordinating.state.domain.StateResponse;
-import io.journalkeeper.coordinating.state.domain.StateWriteRequest;
+import io.journalkeeper.coordinating.state.domain.ReadRequest;
+import io.journalkeeper.coordinating.state.domain.ReadResponse;
+import io.journalkeeper.coordinating.state.domain.WriteRequest;
+import io.journalkeeper.coordinating.state.domain.WriteResponse;
 import io.journalkeeper.coordinating.state.store.KVStore;
 import io.journalkeeper.coordinating.state.store.KVStoreManager;
 import io.journalkeeper.core.api.RaftJournal;
@@ -26,7 +27,6 @@ import io.journalkeeper.core.state.LocalState;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
@@ -37,13 +37,13 @@ import java.util.concurrent.CompletableFuture;
  *
  * date: 2019/5/30
  */
-public class CoordinatingState extends LocalState<StateWriteRequest, Void, StateReadRequest, StateResponse> {
+public class CoordinatingState extends LocalState<WriteRequest, WriteResponse, ReadRequest, ReadResponse> {
 
     private Properties properties;
     private KVStore kvStore;
     private CoordinatingStateHandler handler;
 
-    protected CoordinatingState(StateFactory<StateWriteRequest, Void, StateReadRequest, StateResponse> stateFactory) {
+    protected CoordinatingState(StateFactory<WriteRequest, WriteResponse, ReadRequest, ReadResponse> stateFactory) {
         super(stateFactory);
     }
 
@@ -55,24 +55,26 @@ public class CoordinatingState extends LocalState<StateWriteRequest, Void, State
     }
 
     @Override
-    public Void execute(StateWriteRequest entry, int partition, long index, int batchSize, Map<String, String> parameters) {
-        boolean isSuccess = handler.handle(entry);
+    public WriteResponse execute(WriteRequest request, int partition, long index, int batchSize, Map<String, String> parameters) {
+        boolean isSuccess = handler.handle(request);
         if (!isSuccess) {
             return null;
         }
 
-        parameters.put("type", String.valueOf(entry.getType()));
-        parameters.put("key", new String(entry.getKey(), Charset.forName("UTF-8")));
-        if (entry.getValue() != null) {
-            parameters.put("value", new String(entry.getValue(), Charset.forName("UTF-8")));
+        // TODO response
+        parameters.put("type", String.valueOf(request.getType()));
+        parameters.put("key", new String(request.getKey(), Charset.forName("UTF-8")));
+        if (request.getValue() != null) {
+            parameters.put("value", new String(request.getValue(), Charset.forName("UTF-8")));
         }
         return null;
     }
 
     @Override
-    public CompletableFuture<StateResponse> query(StateReadRequest query) {
-        return CompletableFuture.supplyAsync(() -> {
-            return handler.handle(query);
-        });
+    public CompletableFuture<ReadResponse> query(ReadRequest request) {
+        CompletableFuture<ReadResponse> future = new CompletableFuture<>();
+        ReadResponse response = handler.handle(request);
+        future.complete(response);
+        return future;
     }
 }

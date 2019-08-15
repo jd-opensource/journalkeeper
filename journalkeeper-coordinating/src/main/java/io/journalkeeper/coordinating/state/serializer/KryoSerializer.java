@@ -36,7 +36,6 @@ public class KryoSerializer<T> implements Serializer<T> {
 
     private Class<T> type;
 
-
     public KryoSerializer(Class<T> type) {
         this.type = type;
         this.kryoPool = new KryoPool.Builder(() -> {
@@ -47,7 +46,6 @@ public class KryoSerializer<T> implements Serializer<T> {
             return kryo;
         }).build();
     }
-
 
     @Override
     public byte[] serialize(Object entry) {

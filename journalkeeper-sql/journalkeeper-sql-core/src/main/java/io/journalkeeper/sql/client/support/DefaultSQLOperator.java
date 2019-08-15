@@ -21,6 +21,7 @@ import io.journalkeeper.sql.exception.SQLException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
 /**
  * DefaultSQLOperator
@@ -30,29 +31,36 @@ import java.util.Map;
 public class DefaultSQLOperator implements SQLOperator {
 
     private SQLClient client;
-    private TransactionIdGenerator transactionIdGenerator;
 
     public DefaultSQLOperator(SQLClient client) {
         this.client = client;
-        this.transactionIdGenerator = new TransactionIdGenerator();
     }
 
     @Override
     public String insert(String sql, Object... params) {
-        client.insert(sql, ParamHelper.toString(params));
-        return null;
+        try {
+            return client.insert(sql, ParamHelper.toString(params)).get();
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 
     @Override
     public int update(String sql, Object... params) {
-        client.update(sql, ParamHelper.toString(params));
-        return 0;
+        try {
+            return client.update(sql, ParamHelper.toString(params)).get();
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 
     @Override
     public int delete(String sql, Object... params) {
-        client.delete(sql, ParamHelper.toString(params));
-        return 0;
+        try {
+            return client.delete(sql, ParamHelper.toString(params)).get();
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 
     @Override
@@ -60,17 +68,26 @@ public class DefaultSQLOperator implements SQLOperator {
         try {
             return client.query(sql, ParamHelper.toString(params)).get();
         } catch (Exception e) {
-            if (e instanceof SQLException) {
-                throw (SQLException) e;
-            } else {
-                throw new SQLException(e);
-            }
+            throw convertException(e);
         }
     }
 
     @Override
     public SQLTransactionOperator beginTransaction() {
-        String id = transactionIdGenerator.generate();
-        return new DefaultSQLTransactionOperator(id, client);
+        try {
+            String id = client.beginTransaction().get();
+            return new DefaultSQLTransactionOperator(id, client);
+        } catch (Exception e) {
+            throw convertException(e);
+        }
+    }
+
+    protected SQLException convertException(Throwable e) {
+        if (e instanceof SQLException) {
+            return (SQLException) e;
+        } else if (e instanceof ExecutionException) {
+            return convertException(((ExecutionException) e).getCause());
+        }
+        return new SQLException(e);
     }
 }

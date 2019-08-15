@@ -16,7 +16,7 @@ package io.journalkeeper.sql.state.handler;
 import io.journalkeeper.sql.client.domain.Codes;
 import io.journalkeeper.sql.client.domain.OperationTypes;
 import io.journalkeeper.sql.client.domain.ReadRequest;
-import io.journalkeeper.sql.client.domain.Response;
+import io.journalkeeper.sql.client.domain.ReadResponse;
 import io.journalkeeper.sql.state.SQLExecutor;
 import io.journalkeeper.sql.state.SQLTransactionExecutor;
 import org.apache.commons.lang3.StringUtils;
@@ -44,7 +44,7 @@ public class SQLStateReadHandler {
         this.sqlExecutor = sqlExecutor;
     }
 
-    public Response handle(ReadRequest request) {
+    public ReadResponse handle(ReadRequest request) {
         OperationTypes type = OperationTypes.valueOf(request.getType());
         switch (type) {
             case QUERY: {
@@ -57,18 +57,18 @@ public class SQLStateReadHandler {
     }
 
     // TODO 简单写，需要重构
-    protected Response doQuery(ReadRequest request) {
+    protected ReadResponse doQuery(ReadRequest request) {
         if (StringUtils.isNotBlank(request.getId())) {
             SQLTransactionExecutor transaction = sqlExecutor.getTransaction(request.getId());
             if (transaction == null) {
                 logger.warn("transaction not exist, id: {}", request.getId());
-                return new Response(Codes.TRANSACTION_NOT_EXIST.getCode());
+                return new ReadResponse(Codes.TRANSACTION_NOT_EXIST.getCode());
             }
             List<Map<String, String>> result = transaction.query(request.getSql(), request.getParams());
-            return new Response(Codes.SUCCESS.getCode(), result);
+            return new ReadResponse(Codes.SUCCESS.getCode(), result);
         } else {
             List<Map<String, String>> result = sqlExecutor.query(request.getSql(), request.getParams());
-            return new Response(Codes.SUCCESS.getCode(), result);
+            return new ReadResponse(Codes.SUCCESS.getCode(), result);
         }
     }
 }

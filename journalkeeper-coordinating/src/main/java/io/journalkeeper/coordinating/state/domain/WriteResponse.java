@@ -14,55 +14,29 @@
 package io.journalkeeper.coordinating.state.domain;
 
 import java.io.Serializable;
-import java.util.Arrays;
-import java.util.List;
 
 /**
- * ReadResponse
+ * WriteResponse
  * author: gaohaoxiang
  *
  * date: 2019/5/30
  */
-public class ReadResponse implements Serializable {
+public class WriteResponse implements Serializable {
 
     private int code;
     private String msg;
-    private byte[] value;
-    private List<byte[]> values;
 
-    public ReadResponse() {
+    public WriteResponse() {
 
     }
 
-    public ReadResponse(int code) {
+    public WriteResponse(int code) {
         this.code = code;
     }
 
-    public ReadResponse(int code, byte[] value) {
-        this.code = code;
-        this.value = value;
-    }
-
-    public ReadResponse(int code, String msg) {
+    public WriteResponse(int code, String msg) {
         this.code = code;
         this.msg = msg;
-    }
-
-    public ReadResponse(int code, String msg, byte[] value) {
-        this.code = code;
-        this.msg = msg;
-        this.value = value;
-    }
-
-    public ReadResponse(int code, String msg, List<byte[]> values) {
-        this.code = code;
-        this.msg = msg;
-        this.values = values;
-    }
-
-    public ReadResponse(int code, List<byte[]> values) {
-        this.code = code;
-        this.values = values;
     }
 
     public int getCode() {
@@ -81,29 +55,11 @@ public class ReadResponse implements Serializable {
         this.msg = msg;
     }
 
-    public void setValue(byte[] value) {
-        this.value = value;
-    }
-
-    public byte[] getValue() {
-        return value;
-    }
-
-    public void setValues(List<byte[]> values) {
-        this.values = values;
-    }
-
-    public List<byte[]> getValues() {
-        return values;
-    }
-
     @Override
     public String toString() {
         return "ReadResponse{" +
                 "code=" + code +
                 ", msg='" + msg + '\'' +
-                ", value=" + Arrays.toString(value) +
-                ", values=" + values +
                 '}';
     }
 }

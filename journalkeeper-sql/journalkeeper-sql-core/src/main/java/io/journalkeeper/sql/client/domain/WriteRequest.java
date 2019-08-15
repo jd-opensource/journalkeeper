@@ -30,6 +30,10 @@ public class WriteRequest extends StateRequest {
 
     }
 
+    public WriteRequest(int type) {
+        super(type);
+    }
+
     public WriteRequest(int type, String id) {
         super(type);
         this.id = id;

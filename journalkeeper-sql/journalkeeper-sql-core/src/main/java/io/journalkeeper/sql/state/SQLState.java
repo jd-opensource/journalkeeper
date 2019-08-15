@@ -17,8 +17,9 @@ import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.state.LocalState;
 import io.journalkeeper.sql.client.domain.ReadRequest;
-import io.journalkeeper.sql.client.domain.Response;
+import io.journalkeeper.sql.client.domain.ReadResponse;
 import io.journalkeeper.sql.client.domain.WriteRequest;
+import io.journalkeeper.sql.client.domain.WriteResponse;
 import io.journalkeeper.sql.exception.SQLException;
 import io.journalkeeper.sql.state.config.SQLConfigs;
 import io.journalkeeper.sql.state.handler.SQLStateHandler;
@@ -31,7 +32,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
@@ -41,7 +41,7 @@ import java.util.concurrent.CompletableFuture;
  * author: gaohaoxiang
  * date: 2019/8/1
  */
-public class SQLState extends LocalState<WriteRequest, ReadRequest, Response> {
+public class SQLState extends LocalState<WriteRequest, WriteResponse, ReadRequest, ReadResponse> {
 
     private static final Logger logger = LoggerFactory.getLogger(SQLState.class);
 
@@ -49,7 +49,7 @@ public class SQLState extends LocalState<WriteRequest, ReadRequest, Response> {
     private SQLExecutor executor;
     private SQLStateHandler handler;
 
-    protected SQLState(StateFactory<WriteRequest, ReadRequest, Response> stateFactory) {
+    protected SQLState(StateFactory<WriteRequest, WriteResponse, ReadRequest, ReadResponse> stateFactory) {
         super(stateFactory);
     }
 
@@ -86,24 +86,20 @@ public class SQLState extends LocalState<WriteRequest, ReadRequest, Response> {
     }
 
     @Override
-    public Map<String, String> execute(WriteRequest request, int partition, long index, int batchSize) {
-        boolean isSuccess = handler.handleWrite(request);
-        if (!isSuccess) {
-            return null;
-        }
+    public WriteResponse execute(WriteRequest request, int partition, long index, int batchSize, Map<String, String> eventParams) {
+        WriteResponse response = handler.handleWrite(request);
 
-        Map<String, String> parameters = new HashMap<>();
-        parameters.put("type", String.valueOf(request.getType()));
-        parameters.put("sql", request.getSql());
+        eventParams.put("type", String.valueOf(request.getType()));
+        eventParams.put("sql", request.getSql());
         // TODO 参数处理
-//        parameters.put("params", request.getParams().toString());
-        return parameters;
+//        eventParams.put("params", request.getParams().toString());
+        return response;
     }
 
     @Override
-    public CompletableFuture<Response> query(ReadRequest request) {
-        CompletableFuture<Response> future = new CompletableFuture<>();
-        Response response = handler.handleRead(request);
+    public CompletableFuture<ReadResponse> query(ReadRequest request) {
+        CompletableFuture<ReadResponse> future = new CompletableFuture<>();
+        ReadResponse response = handler.handleRead(request);
         future.complete(response);
         return future;
     }

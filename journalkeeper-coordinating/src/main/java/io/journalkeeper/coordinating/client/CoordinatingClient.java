@@ -14,11 +14,12 @@
 package io.journalkeeper.coordinating.client;
 
 import io.journalkeeper.coordinating.client.exception.CoordinatingClientException;
+import io.journalkeeper.coordinating.state.domain.ReadRequest;
+import io.journalkeeper.coordinating.state.domain.ReadResponse;
 import io.journalkeeper.coordinating.state.domain.StateCodes;
-import io.journalkeeper.coordinating.state.domain.StateReadRequest;
-import io.journalkeeper.coordinating.state.domain.StateResponse;
 import io.journalkeeper.coordinating.state.domain.StateTypes;
-import io.journalkeeper.coordinating.state.domain.StateWriteRequest;
+import io.journalkeeper.coordinating.state.domain.WriteRequest;
+import io.journalkeeper.coordinating.state.domain.WriteResponse;
 import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.ResponseConfig;
 import org.slf4j.Logger;
@@ -37,65 +38,66 @@ import java.util.concurrent.ExecutionException;
  *
  * date: 2019/6/4
  */
+// TODO response
 public class CoordinatingClient {
 
     protected static final Logger logger = LoggerFactory.getLogger(CoordinatingClient.class);
 
     private List<URI> servers;
     private Properties config;
-    private RaftClient<StateWriteRequest, Void, StateReadRequest, StateResponse> client;
+    private RaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client;
 
     public CoordinatingClient(List<URI> servers,
                               Properties config,
-                              RaftClient<StateWriteRequest, Void, StateReadRequest, StateResponse> client) {
+                              RaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client) {
         this.servers = servers;
         this.config = config;
         this.client = client;
     }
 
-    public CompletableFuture<Void> set(byte[] key, byte[] value) {
-        return doUpdate(new StateWriteRequest(StateTypes.SET.getType(), key, value))
+    public CompletableFuture<WriteResponse> set(byte[] key, byte[] value) {
+        return doUpdate(new WriteRequest(StateTypes.SET.getType(), key, value))
                 .exceptionally(cause -> {
                     throw convertException(cause);
                 });
     }
 
     public CompletableFuture<byte[]> get(byte[] key) {
-        return doQuery(new StateReadRequest(StateTypes.GET.getType(), key))
+        return doQuery(new ReadRequest(StateTypes.GET.getType(), key))
                 .exceptionally(cause -> {
                     throw convertException(cause);
                 })
-                .thenApply(StateResponse::getValue);
+                .thenApply(ReadResponse::getValue);
     }
 
     public CompletableFuture<List<byte[]>> list(List<byte[]> keys) {
-        return doQuery(new StateReadRequest(StateTypes.LIST.getType(), new ArrayList<>(keys)))
-                .thenApply(StateResponse::getValues)
+        return doQuery(new ReadRequest(StateTypes.LIST.getType(), new ArrayList<>(keys)))
+                .thenApply(ReadResponse::getValues)
                 .exceptionally(cause -> {
                     throw convertException(cause);
                 });
     }
 
-    public CompletableFuture<Void> compareAndSet(byte[] key, byte[] expect, byte[] value) {
-        return doUpdate(new StateWriteRequest(StateTypes.COMPARE_AND_SET.getType(), key, expect, value))
+    public CompletableFuture<WriteResponse> compareAndSet(byte[] key, byte[] expect, byte[] value) {
+        return doUpdate(new WriteRequest(StateTypes.COMPARE_AND_SET.getType(), key, expect, value))
                 .exceptionally(cause -> {
                     throw convertException(cause);
                 });
     }
 
-    public CompletableFuture<Void> remove(byte[] key) {
-        return doUpdate(new StateWriteRequest(StateTypes.REMOVE.getType(), key))
+    public CompletableFuture<WriteResponse> remove(byte[] key) {
+        return doUpdate(new WriteRequest(StateTypes.REMOVE.getType(), key))
                 .exceptionally(cause -> {
                     throw convertException(cause);
                 });
     }
 
     public CompletableFuture<Boolean> exist(byte[] key) {
-        return doQuery(new StateReadRequest(StateTypes.EXIST.getType(), key))
+        return doQuery(new ReadRequest(StateTypes.EXIST.getType(), key))
                 .exceptionally(cause -> {
                     throw convertException(cause);
                 })
-                .thenApply(StateResponse::getValue)
+                .thenApply(ReadResponse::getValue)
                 .thenApply(response -> response[0] == 1);
     }
 
@@ -137,11 +139,11 @@ public class CoordinatingClient {
         }
     }
 
-    protected CompletableFuture<Void> doUpdate(StateWriteRequest request) {
+    protected CompletableFuture<WriteResponse> doUpdate(WriteRequest request) {
         return client.update(request, 0, 1, ResponseConfig.REPLICATION);
     }
 
-    protected CompletableFuture<StateResponse> doQuery(StateReadRequest request) {
+    protected CompletableFuture<ReadResponse> doQuery(ReadRequest request) {
         return client.query(request)
                 .exceptionally(t -> {
                     throw new CoordinatingClientException(t.getCause());

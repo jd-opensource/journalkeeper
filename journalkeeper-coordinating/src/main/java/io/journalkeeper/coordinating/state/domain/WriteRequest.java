@@ -16,33 +16,33 @@ package io.journalkeeper.coordinating.state.domain;
 import java.util.Arrays;
 
 /**
- * StateWriteRequest
+ * WriteRequest
  * author: gaohaoxiang
  *
  * date: 2019/5/30
  */
-public class StateWriteRequest extends StateRequest {
+public class WriteRequest extends StateRequest {
 
     private byte[] key;
     private byte[] expect;
     private byte[] value;
 
-    public StateWriteRequest() {
+    public WriteRequest() {
 
     }
 
-    public StateWriteRequest(int type, byte[] key) {
+    public WriteRequest(int type, byte[] key) {
         super(type);
         this.key = key;
     }
 
-    public StateWriteRequest(int type, byte[] key, byte[] value) {
+    public WriteRequest(int type, byte[] key, byte[] value) {
         super(type);
         this.key = key;
         this.value = value;
     }
 
-    public StateWriteRequest(int type, byte[] key, byte[] expect, byte[] value) {
+    public WriteRequest(int type, byte[] key, byte[] expect, byte[] value) {
         super(type);
         this.key = key;
         this.expect = expect;
@@ -75,7 +75,7 @@ public class StateWriteRequest extends StateRequest {
 
     @Override
     public String toString() {
-        return "StateWriteRequest{" +
+        return "WriteRequest{" +
                 "type=" + getType() +
                 "key=" + Arrays.toString(key) +
                 ", expect=" + Arrays.toString(expect) +

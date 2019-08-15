@@ -20,6 +20,7 @@ import io.journalkeeper.sql.exception.SQLException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
 /**
  * DefaultSQLTransactionOperator
@@ -34,37 +35,33 @@ public class DefaultSQLTransactionOperator implements SQLTransactionOperator {
     public DefaultSQLTransactionOperator(String id, SQLClient client) {
         this.id = id;
         this.client = client;
-        beginTransaction();
-    }
-
-    protected void beginTransaction() {
-        try {
-            client.beginTransaction(id).get();
-        } catch (Exception e) {
-            if (e instanceof SQLException) {
-                throw (SQLException) e;
-            } else {
-                throw new SQLException(e);
-            }
-        }
     }
 
     @Override
     public String insert(String sql, Object... params) {
-        client.insert(id, sql, ParamHelper.toString(params));
-        return null;
+        try {
+            return client.insert(id, sql, ParamHelper.toString(params)).get();
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 
     @Override
     public int update(String sql, Object... params) {
-        client.update(id, sql, ParamHelper.toString(params));
-        return 0;
+        try {
+            return client.update(id, sql, ParamHelper.toString(params)).get();
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 
     @Override
     public int delete(String sql, Object... params) {
-        client.delete(id, sql, ParamHelper.toString(params));
-        return 0;
+        try {
+            return client.delete(id, sql, ParamHelper.toString(params)).get();
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 
     @Override
@@ -72,12 +69,17 @@ public class DefaultSQLTransactionOperator implements SQLTransactionOperator {
         try {
             return client.query(id, sql, ParamHelper.toString(params)).get();
         } catch (Exception e) {
-            if (e instanceof SQLException) {
-                throw (SQLException) e;
-            } else {
-                throw new SQLException(e);
-            }
+            throw convertException(e);
         }
+    }
+
+    protected SQLException convertException(Throwable e) {
+        if (e instanceof SQLException) {
+            return (SQLException) e;
+        } else if (e instanceof ExecutionException) {
+            return convertException(((ExecutionException) e).getCause());
+        }
+        return new SQLException(e);
     }
 
     @Override

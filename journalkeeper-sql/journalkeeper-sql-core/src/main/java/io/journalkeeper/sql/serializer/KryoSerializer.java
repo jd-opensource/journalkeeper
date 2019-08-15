@@ -47,11 +47,6 @@ public class KryoSerializer<T> implements Serializer<T> {
     }
 
     @Override
-    public int sizeOf(Object o) {
-        return serialize(o).length;
-    }
-
-    @Override
     public byte[] serialize(Object entry) {
         Kryo kryo = kryoPool.borrow();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream(BUFFER_SIZE);

@@ -13,9 +13,10 @@
  */
 package io.journalkeeper.coordinating.state;
 
-import io.journalkeeper.coordinating.state.domain.StateReadRequest;
-import io.journalkeeper.coordinating.state.domain.StateResponse;
-import io.journalkeeper.coordinating.state.domain.StateWriteRequest;
+import io.journalkeeper.coordinating.state.domain.ReadRequest;
+import io.journalkeeper.coordinating.state.domain.ReadResponse;
+import io.journalkeeper.coordinating.state.domain.WriteRequest;
+import io.journalkeeper.coordinating.state.domain.WriteResponse;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 
@@ -25,10 +26,10 @@ import io.journalkeeper.core.api.StateFactory;
  *
  * date: 2019/5/30
  */
-public class CoordinatorStateFactory implements StateFactory<StateWriteRequest, Void, StateReadRequest, StateResponse> {
+public class CoordinatorStateFactory implements StateFactory<WriteRequest, WriteResponse, ReadRequest, ReadResponse> {
 
     @Override
-    public State<StateWriteRequest, Void, StateReadRequest, StateResponse> createState() {
+    public State<WriteRequest, WriteResponse, ReadRequest, ReadResponse> createState() {
         return new CoordinatingState(this);
     }
 }

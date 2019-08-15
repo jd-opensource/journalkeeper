@@ -13,9 +13,9 @@
  */
 package io.journalkeeper.coordinating.state;
 
+import io.journalkeeper.coordinating.state.domain.ReadRequest;
+import io.journalkeeper.coordinating.state.domain.ReadResponse;
 import io.journalkeeper.coordinating.state.domain.StateCodes;
-import io.journalkeeper.coordinating.state.domain.StateReadRequest;
-import io.journalkeeper.coordinating.state.domain.StateResponse;
 import io.journalkeeper.coordinating.state.domain.StateTypes;
 import io.journalkeeper.coordinating.state.store.KVStore;
 import org.slf4j.Logger;
@@ -43,7 +43,7 @@ public class CoordinatingStateReadHandler {
         this.kvStore = kvStore;
     }
 
-    public StateResponse handle(StateReadRequest request) {
+    public ReadResponse handle(ReadRequest request) {
         try {
             StateTypes type = StateTypes.valueOf(request.getType());
             switch (type) {
@@ -63,22 +63,22 @@ public class CoordinatingStateReadHandler {
             }
         } catch (Exception e) {
             logger.error("handle read request exception, request: {}", request, e);
-            return new StateResponse(StateCodes.ERROR.getCode(), e.toString());
+            return new ReadResponse(StateCodes.ERROR.getCode(), e.toString());
         }
     }
 
-    protected StateResponse doGet(byte[] key) {
+    protected ReadResponse doGet(byte[] key) {
         byte[] value = kvStore.get(key);
-        return new StateResponse(StateCodes.SUCCESS.getCode(), value);
+        return new ReadResponse(StateCodes.SUCCESS.getCode(), value);
     }
 
-    protected StateResponse doExist(byte[] key) {
+    protected ReadResponse doExist(byte[] key) {
         boolean isExist = kvStore.exist(key);
-        return new StateResponse(StateCodes.SUCCESS.getCode(), (isExist ? new byte[] {1} : new byte[] {0}));
+        return new ReadResponse(StateCodes.SUCCESS.getCode(), (isExist ? new byte[] {1} : new byte[] {0}));
     }
 
-    protected StateResponse doList(List<byte[]> keys) {
+    protected ReadResponse doList(List<byte[]> keys) {
         List<byte[]> values = kvStore.multiGet(keys);
-        return new StateResponse(StateCodes.SUCCESS.getCode(), new ArrayList<>(values));
+        return new ReadResponse(StateCodes.SUCCESS.getCode(), new ArrayList<>(values));
     }
 }

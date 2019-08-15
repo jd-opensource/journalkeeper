@@ -14,35 +14,34 @@
 package io.journalkeeper.sql.client.domain;
 
 import java.io.Serializable;
-import java.util.List;
-import java.util.Map;
 
 /**
- * Response
+ * WriteResponse
  * author: gaohaoxiang
  * date: 2019/5/30
  */
-public class Response implements Serializable {
+public class WriteResponse implements Serializable {
 
     private int code;
     private String msg;
-    private List<Map<String, String>> rows;
+    private String result;
 
-    public Response() {
+    public WriteResponse() {
 
     }
 
-    public Response(int code) {
+    public WriteResponse(int code) {
         this.code = code;
     }
 
-    public Response(int code, List<Map<String, String>> rows) {
+    public WriteResponse(int code, String msg) {
         this.code = code;
-        this.rows = rows;
+        this.msg = msg;
     }
 
-    public Response(int code, String msg) {
+    public WriteResponse(int code, String result, String msg) {
         this.code = code;
+        this.result = result;
         this.msg = msg;
     }
 
@@ -62,11 +61,11 @@ public class Response implements Serializable {
         this.msg = msg;
     }
 
-    public void setRows(List<Map<String, String>> rows) {
-        this.rows = rows;
+    public void setResult(String result) {
+        this.result = result;
     }
 
-    public List<Map<String, String>> getRows() {
-        return rows;
+    public String getResult() {
+        return result;
     }
 }

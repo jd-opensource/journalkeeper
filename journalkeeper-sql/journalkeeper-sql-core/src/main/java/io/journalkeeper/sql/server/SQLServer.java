@@ -19,8 +19,9 @@ import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.sql.client.SQLClient;
 import io.journalkeeper.sql.client.domain.ReadRequest;
-import io.journalkeeper.sql.client.domain.Response;
+import io.journalkeeper.sql.client.domain.ReadResponse;
 import io.journalkeeper.sql.client.domain.WriteRequest;
+import io.journalkeeper.sql.client.domain.WriteResponse;
 import io.journalkeeper.sql.exception.SQLException;
 import io.journalkeeper.utils.state.StateServer;
 import org.slf4j.Logger;
@@ -46,20 +47,22 @@ public class SQLServer implements StateServer {
     private RaftServer.Roll role;
     private Properties config;
 
-    private BootStrap<WriteRequest, ReadRequest, Response> bootStrap;
+    private BootStrap<WriteRequest, WriteResponse, ReadRequest, ReadResponse> bootStrap;
     private volatile SQLClient client;
 
     public SQLServer(URI current, List<URI> servers, Properties config,
                      RaftServer.Roll role,
-                     StateFactory<WriteRequest, ReadRequest, Response> stateFactory,
-                     Serializer<WriteRequest> entrySerializer,
-                     Serializer<ReadRequest> querySerializer,
-                     Serializer<Response> resultSerializer) {
+                     StateFactory<WriteRequest, WriteResponse, ReadRequest, ReadResponse> stateFactory,
+                     Serializer<WriteRequest> writeRequestSerializer,
+                     Serializer<WriteResponse> writeResponseSerializer,
+                     Serializer<ReadRequest> readRequestSerializer,
+                     Serializer<ReadResponse> readResponseSerializer) {
         this.current = current;
         this.servers = servers;
         this.role = role;
         this.config = config;
-        this.bootStrap = new BootStrap<>(role, stateFactory, entrySerializer, querySerializer, resultSerializer, config);
+        this.bootStrap = new BootStrap<>(role, stateFactory, writeRequestSerializer, writeResponseSerializer,
+                readRequestSerializer, readResponseSerializer, config);
     }
 
     public boolean waitForLeaderReady(int timeout, TimeUnit unit) {

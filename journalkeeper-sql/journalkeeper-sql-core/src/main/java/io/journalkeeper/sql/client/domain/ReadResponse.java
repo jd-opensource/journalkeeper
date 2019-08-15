@@ -18,30 +18,30 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Response
+ * ReadResponse
  * author: gaohaoxiang
  * date: 2019/5/30
  */
-public class Response implements Serializable {
+public class ReadResponse implements Serializable {
 
     private int code;
     private String msg;
     private List<Map<String, String>> rows;
 
-    public Response() {
+    public ReadResponse() {
 
     }
 
-    public Response(int code) {
+    public ReadResponse(int code) {
         this.code = code;
     }
 
-    public Response(int code, List<Map<String, String>> rows) {
+    public ReadResponse(int code, List<Map<String, String>> rows) {
         this.code = code;
         this.rows = rows;
     }
 
-    public Response(int code, String msg) {
+    public ReadResponse(int code, String msg) {
         this.code = code;
         this.msg = msg;
     }

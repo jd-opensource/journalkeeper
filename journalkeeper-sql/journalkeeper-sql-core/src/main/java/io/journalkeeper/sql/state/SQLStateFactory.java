@@ -16,18 +16,19 @@ package io.journalkeeper.sql.state;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.sql.client.domain.ReadRequest;
-import io.journalkeeper.sql.client.domain.Response;
+import io.journalkeeper.sql.client.domain.ReadResponse;
 import io.journalkeeper.sql.client.domain.WriteRequest;
+import io.journalkeeper.sql.client.domain.WriteResponse;
 
 /**
  * SQLStateFactory
  * author: gaohaoxiang
  * date: 2019/8/2
  */
-public class SQLStateFactory implements StateFactory<WriteRequest, ReadRequest, Response> {
+public class SQLStateFactory implements StateFactory<WriteRequest, WriteResponse, ReadRequest, ReadResponse> {
 
     @Override
-    public State<WriteRequest, ReadRequest, Response> createState() {
+    public State<WriteRequest, WriteResponse, ReadRequest, ReadResponse> createState() {
         return new SQLState(this);
     }
 }

@@ -15,8 +15,8 @@ package io.journalkeeper.sql.state.handler;
 
 import io.journalkeeper.sql.client.domain.Codes;
 import io.journalkeeper.sql.client.domain.OperationTypes;
-import io.journalkeeper.sql.client.domain.Response;
 import io.journalkeeper.sql.client.domain.WriteRequest;
+import io.journalkeeper.sql.client.domain.WriteResponse;
 import io.journalkeeper.sql.client.support.TransactionIdGenerator;
 import io.journalkeeper.sql.state.SQLExecutor;
 import io.journalkeeper.sql.state.SQLTransactionExecutor;
@@ -37,7 +37,6 @@ public class SQLStateWriteHandler {
 
     private Properties properties;
     private SQLExecutor sqlExecutor;
-    // TODO 暂时没用
     private TransactionIdGenerator transactionIdGenerator;
 
     public SQLStateWriteHandler(Properties properties, SQLExecutor sqlExecutor, TransactionIdGenerator transactionIdGenerator) {
@@ -46,7 +45,7 @@ public class SQLStateWriteHandler {
         this.transactionIdGenerator = transactionIdGenerator;
     }
 
-    public Response handle(WriteRequest request) {
+    public WriteResponse handle(WriteRequest request) {
         OperationTypes type = OperationTypes.valueOf(request.getType());
         switch (type) {
             case INSERT: {
@@ -74,73 +73,74 @@ public class SQLStateWriteHandler {
     }
 
     // TODO 简单写，需要重构
-    protected Response doInsert(WriteRequest request) {
+    protected WriteResponse doInsert(WriteRequest request) {
         if (StringUtils.isNotBlank(request.getId())) {
             SQLTransactionExecutor transaction = sqlExecutor.getTransaction(request.getId());
             if (transaction == null) {
                 logger.warn("transaction not exist, id: {}", request.getId());
-                return new Response(Codes.TRANSACTION_NOT_EXIST.getCode());
+                return new WriteResponse(Codes.TRANSACTION_NOT_EXIST.getCode());
             }
-            transaction.insert(request.getSql(), request.getParams());
-            return new Response(Codes.SUCCESS.getCode());
+            String result = transaction.insert(request.getSql(), request.getParams());
+            return new WriteResponse(Codes.SUCCESS.getCode(), result, null);
         } else {
-            sqlExecutor.insert(request.getSql(), request.getParams());
-            return new Response(Codes.SUCCESS.getCode());
+            String result = sqlExecutor.insert(request.getSql(), request.getParams());
+            return new WriteResponse(Codes.SUCCESS.getCode(), result, null);
         }
     }
 
-    protected Response doUpdate(WriteRequest request) {
+    protected WriteResponse doUpdate(WriteRequest request) {
         if (StringUtils.isNotBlank(request.getId())) {
             SQLTransactionExecutor transaction = sqlExecutor.getTransaction(request.getId());
             if (transaction == null) {
                 logger.warn("transaction not exist, id: {}", request.getId());
-                return new Response(Codes.TRANSACTION_NOT_EXIST.getCode());
+                return new WriteResponse(Codes.TRANSACTION_NOT_EXIST.getCode());
             }
-            transaction.update(request.getSql(), request.getParams());
-            return new Response(Codes.SUCCESS.getCode());
+            int result = transaction.update(request.getSql(), request.getParams());
+            return new WriteResponse(Codes.SUCCESS.getCode(), String.valueOf(result), null);
         } else {
-            sqlExecutor.update(request.getSql(), request.getParams());
-            return new Response(Codes.SUCCESS.getCode());
+            int result = sqlExecutor.update(request.getSql(), request.getParams());
+            return new WriteResponse(Codes.SUCCESS.getCode(), String.valueOf(result), null);
         }
     }
 
-    protected Response doDelete(WriteRequest request) {
+    protected WriteResponse doDelete(WriteRequest request) {
         if (StringUtils.isNotBlank(request.getId())) {
             SQLTransactionExecutor transaction = sqlExecutor.getTransaction(request.getId());
             if (transaction == null) {
                 logger.warn("transaction not exist, id: {}", request.getId());
-                return new Response(Codes.TRANSACTION_NOT_EXIST.getCode());
+                return new WriteResponse(Codes.TRANSACTION_NOT_EXIST.getCode());
             }
-            transaction.delete(request.getSql(), request.getParams());
-            return new Response(Codes.SUCCESS.getCode());
+            int result = transaction.delete(request.getSql(), request.getParams());
+            return new WriteResponse(Codes.SUCCESS.getCode(), String.valueOf(result), null);
         } else {
-            sqlExecutor.delete(request.getSql(), request.getParams());
-            return new Response(Codes.SUCCESS.getCode());
+            int result = sqlExecutor.delete(request.getSql(), request.getParams());
+            return new WriteResponse(Codes.SUCCESS.getCode(), String.valueOf(result), null);
         }
     }
 
-    protected Response doBeginTransaction(WriteRequest request) {
-        SQLTransactionExecutor transaction = sqlExecutor.beginTransaction(request.getId());
-        return new Response(Codes.SUCCESS.getCode());
+    protected WriteResponse doBeginTransaction(WriteRequest request) {
+        String id = transactionIdGenerator.generate();
+        SQLTransactionExecutor transaction = sqlExecutor.beginTransaction(id);
+        return new WriteResponse(Codes.SUCCESS.getCode(), id, null);
     }
 
-    protected Response doCommitTransaction(WriteRequest request) {
+    protected WriteResponse doCommitTransaction(WriteRequest request) {
         SQLTransactionExecutor transaction = sqlExecutor.getTransaction(request.getId());
         if (transaction == null) {
             logger.warn("transaction not exist, id: {}", request.getId());
-            return new Response(Codes.TRANSACTION_NOT_EXIST.getCode());
+            return new WriteResponse(Codes.TRANSACTION_NOT_EXIST.getCode());
         }
         transaction.commit();
-        return new Response(Codes.SUCCESS.getCode());
+        return new WriteResponse(Codes.SUCCESS.getCode());
     }
 
-    protected Response doRollbackTransaction(WriteRequest request) {
+    protected WriteResponse doRollbackTransaction(WriteRequest request) {
         SQLTransactionExecutor transaction = sqlExecutor.getTransaction(request.getId());
         if (transaction == null) {
             logger.warn("transaction not exist, id: {}", request.getId());
-            return new Response(Codes.TRANSACTION_NOT_EXIST.getCode());
+            return new WriteResponse(Codes.TRANSACTION_NOT_EXIST.getCode());
         }
         transaction.rollback();
-        return new Response(Codes.SUCCESS.getCode());
+        return new WriteResponse(Codes.SUCCESS.getCode());
     }
 }

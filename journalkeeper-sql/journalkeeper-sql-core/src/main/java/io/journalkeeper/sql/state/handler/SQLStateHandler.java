@@ -15,8 +15,9 @@ package io.journalkeeper.sql.state.handler;
 
 import io.journalkeeper.sql.client.domain.Codes;
 import io.journalkeeper.sql.client.domain.ReadRequest;
-import io.journalkeeper.sql.client.domain.Response;
+import io.journalkeeper.sql.client.domain.ReadResponse;
 import io.journalkeeper.sql.client.domain.WriteRequest;
+import io.journalkeeper.sql.client.domain.WriteResponse;
 import io.journalkeeper.sql.client.support.TransactionIdGenerator;
 import io.journalkeeper.sql.state.SQLExecutor;
 import org.slf4j.Logger;
@@ -29,7 +30,6 @@ import java.util.Properties;
  * author: gaohaoxiang
  * date: 2019/8/1
  */
-// TODO 事物超时处理
 public class SQLStateHandler {
 
     protected static final Logger logger = LoggerFactory.getLogger(SQLStateHandler.class);
@@ -48,22 +48,21 @@ public class SQLStateHandler {
         this.writeHandler = new SQLStateWriteHandler(properties, sqlExecutor, transactionIdGenerator);
     }
 
-    public boolean handleWrite(WriteRequest request) {
+    public WriteResponse handleWrite(WriteRequest request) {
         try {
-            Response response = writeHandler.handle(request);
-            return response.getCode() == Codes.SUCCESS.getCode();
+            return writeHandler.handle(request);
         } catch (Exception e) {
             logger.error("sql write exception, request: {}", request, e);
-            return false;
+            return new WriteResponse(Codes.ERROR.getCode(), e.toString());
         }
     }
 
-    public Response handleRead(ReadRequest request) {
+    public ReadResponse handleRead(ReadRequest request) {
         try {
             return readHandler.handle(request);
         } catch (Exception e) {
             logger.error("sql read exception, request: {}", request, e);
-            return new Response(Codes.ERROR.getCode(), e.toString());
+            return new ReadResponse(Codes.ERROR.getCode(), e.toString());
         }
     }
 }

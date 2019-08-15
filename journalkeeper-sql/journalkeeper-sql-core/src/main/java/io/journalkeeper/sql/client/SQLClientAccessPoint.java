@@ -18,8 +18,9 @@ import io.journalkeeper.core.client.Client;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.sql.client.domain.ReadRequest;
-import io.journalkeeper.sql.client.domain.Response;
+import io.journalkeeper.sql.client.domain.ReadResponse;
 import io.journalkeeper.sql.client.domain.WriteRequest;
+import io.journalkeeper.sql.client.domain.WriteResponse;
 import io.journalkeeper.sql.serializer.KryoSerializer;
 import io.journalkeeper.utils.spi.ServiceSupport;
 
@@ -36,31 +37,36 @@ import java.util.Properties;
 public class SQLClientAccessPoint {
 
     private Properties config;
-    private Serializer<WriteRequest> entrySerializer;
-    private Serializer<ReadRequest> querySerializer;
-    private Serializer<Response> resultSerializer;
+    private Serializer<WriteRequest> writeRequestSerializer;
+    private Serializer<WriteResponse> writeResponseSerializer;
+    private Serializer<ReadRequest> readRequestSerializer;
+    private Serializer<ReadResponse> readResponseSerializer;
 
     public SQLClientAccessPoint(Properties config) {
         this(config,
                 new KryoSerializer<>(WriteRequest.class),
+                new KryoSerializer<>(WriteResponse.class),
                 new KryoSerializer<>(ReadRequest.class),
-                new KryoSerializer<>(Response.class));
+                new KryoSerializer<>(ReadResponse.class));
     }
 
     public SQLClientAccessPoint(Properties config,
-                                Serializer<WriteRequest> entrySerializer,
-                                Serializer<ReadRequest> querySerializer,
-                                Serializer<Response> resultSerializer) {
+                                Serializer<WriteRequest> writeRequestSerializer,
+                                Serializer<WriteResponse> writeResponseSerializer,
+                                Serializer<ReadRequest> readRequestSerializer,
+                                Serializer<ReadResponse> readResponseSerializer) {
         this.config = config;
-        this.entrySerializer = entrySerializer;
-        this.querySerializer = querySerializer;
-        this.resultSerializer = resultSerializer;
+        this.writeRequestSerializer = writeRequestSerializer;
+        this.writeResponseSerializer = writeResponseSerializer;
+        this.readRequestSerializer = readRequestSerializer;
+        this.readResponseSerializer = readResponseSerializer;
     }
 
     public SQLClient createClient(List<URI> servers) {
         RpcAccessPointFactory rpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class);
         ClientServerRpcAccessPoint clientServerRpcAccessPoint = rpcAccessPoint.createClientServerRpcAccessPoint(servers, config);
-        Client<WriteRequest, ReadRequest, Response> client = new Client<>(clientServerRpcAccessPoint, entrySerializer, querySerializer, resultSerializer, config);
+        Client<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client = new Client<>(clientServerRpcAccessPoint, writeRequestSerializer,
+                writeResponseSerializer, readRequestSerializer, readResponseSerializer, config);
         return new SQLClient(servers, config, client);
     }
 }

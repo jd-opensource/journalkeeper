@@ -17,26 +17,26 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * StateReadRequest
+ * ReadRequest
  * author: gaohaoxiang
  *
  * date: 2019/5/30
  */
-public class StateReadRequest extends StateRequest {
+public class ReadRequest extends StateRequest {
 
     private byte[] key;
     private List<byte[]> keys;
 
-    public StateReadRequest() {
+    public ReadRequest() {
 
     }
 
-    public StateReadRequest(int type, byte[] key) {
+    public ReadRequest(int type, byte[] key) {
         super(type);
         this.key = key;
     }
 
-    public StateReadRequest(int type, List<byte[]> keys) {
+    public ReadRequest(int type, List<byte[]> keys) {
         super(type);
         this.keys = keys;
     }
@@ -59,7 +59,7 @@ public class StateReadRequest extends StateRequest {
 
     @Override
     public String toString() {
-        return "StateReadRequest{" +
+        return "ReadRequest{" +
                 "type=" + getType() +
                 "key=" + Arrays.toString(key) +
                 ", keys=" + keys +
