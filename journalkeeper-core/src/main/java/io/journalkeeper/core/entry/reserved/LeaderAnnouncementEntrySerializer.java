@@ -20,10 +20,6 @@ import io.journalkeeper.base.Serializer;
  * Date: 2019-05-09
  */
 public class LeaderAnnouncementEntrySerializer implements Serializer<LeaderAnnouncementEntry> {
-    @Override
-    public int sizeOf(LeaderAnnouncementEntry leaderAnnouncementEntry) {
-        return Byte.BYTES;
-    }
 
     @Override
     public byte[] serialize(LeaderAnnouncementEntry entry) {

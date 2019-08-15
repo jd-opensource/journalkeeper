@@ -48,10 +48,6 @@ public class KryoSerializer<T> implements Serializer<T> {
         }).build();
     }
 
-    @Override
-    public int sizeOf(Object o) {
-        return serialize(o).length;
-    }
 
     @Override
     public byte[] serialize(Object entry) {

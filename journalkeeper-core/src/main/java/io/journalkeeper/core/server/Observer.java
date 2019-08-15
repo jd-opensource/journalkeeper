@@ -50,7 +50,7 @@ import java.util.concurrent.*;
  * @author LiYue
  * Date: 2019-03-15
  */
-public class Observer<E, Q, R> extends Server<E, Q, R> {
+public class Observer<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     private static final Logger logger = LoggerFactory.getLogger(Observer.class);
     private static final String OBSERVER_REPLICATION_THREAD = "ObserverReplicationThread";
     /**
@@ -62,8 +62,14 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
 
     private final Config config;
 
-    public Observer(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer, Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
-        super(stateFactory, entrySerializer, querySerializer, resultSerializer, scheduledExecutor, asyncExecutor, properties);
+    public Observer(StateFactory<E, ER, Q, QR> stateFactory,
+                    Serializer<E> entrySerializer,
+                    Serializer<ER> entryResultSerializer,
+                    Serializer<Q> querySerializer,
+                    Serializer<QR> queryResultSerializer,
+                    ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor,
+                    Properties properties) {
+        super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, scheduledExecutor, asyncExecutor, properties);
         this.config = toConfig(properties);
         threads.createThread(buildReplicationThread());
     }
@@ -90,12 +96,12 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
     private void pullEntries() throws Throwable {
 
         GetServerEntriesResponse response =
-                selectServer().getServerEntries(new GetServerEntriesRequest(commitIndex,config.getPullBatchSize())).get();
+                selectServer().getServerEntries(new GetServerEntriesRequest(commitIndex.get(),config.getPullBatchSize())).get();
 
         if(response.success()){
 
-            journal.appendRaw(response.getEntries());
-            commitIndex += response.getEntries().size();
+            journal.appendBatchRaw(response.getEntries());
+            commitIndex.addAndGet(response.getEntries().size());
             // 唤醒状态机线程
             threads.wakeupThread(STATE_MACHINE_THREAD);
         } else if( response.getStatusCode() == StatusCode.INDEX_UNDERFLOW){
@@ -120,7 +126,7 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
             state.clear();
 
             // 删除所有快照
-            for(State<E, Q, R> snapshot: snapshots.values()) {
+            for(State<E, ER, Q, QR> snapshot: snapshots.values()) {
                 try {
                     if (snapshot instanceof Closeable) {
                         ((Closeable) snapshot).close();
@@ -144,9 +150,9 @@ public class Observer<E, Q, R> extends Server<E, Q, R> {
 
                     state.installFinish(r.getLastIncludedIndex() + 1, r.getLastIncludedTerm());
                     journal.compact(state.lastApplied());
-                    commitIndex = state.lastApplied();
+                    commitIndex.set(state.lastApplied());
 
-                    State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
+                    State<E, ER, Q, QR> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
                     snapshots.put(snapshot.lastApplied(), snapshot);
                 }
 

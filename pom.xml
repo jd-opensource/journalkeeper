@@ -43,6 +43,8 @@
         <module>journalkeeper-examples</module>
         <module>journalkeeper-test</module>
         <module>journalkeeper-coordinating</module>
+        <module>journalkeeper-metric</module>
+        <module>journalkeeper-metric-dropwizard</module>
         <module>journalkeeper-sql</module>
     </modules>
     <properties>
@@ -176,24 +178,32 @@
             </plugins>
         </pluginManagement>
 
-        <plugins>
-            <plugin>
-                <groupId>com.mycila</groupId>
-                <artifactId>license-maven-plugin</artifactId>
-                <version>3.0</version>
-                <configuration>
-                    <!--suppress UnresolvedMavenProperty -->
-                    <header>${maven.multiModuleProjectDirectory}/HEADER</header>
-                </configuration>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>check</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
 
     </build>
+    <profiles>
+        <profile >
+            <id>license</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.mycila</groupId>
+                        <artifactId>license-maven-plugin</artifactId>
+                        <version>3.0</version>
+                        <configuration>
+                            <!--suppress UnresolvedMavenProperty -->
+                            <header>${maven.multiModuleProjectDirectory}/HEADER</header>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>format</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+
+            </build>
+        </profile>
+    </profiles>
 </project>

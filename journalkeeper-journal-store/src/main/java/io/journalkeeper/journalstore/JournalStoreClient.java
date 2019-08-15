@@ -40,21 +40,19 @@ import java.util.stream.Collectors;
  * Date: 2019-05-09
  */
 public class JournalStoreClient implements PartitionedJournalStore {
-    private final CompactJournalEntrySerializer compactJournalEntrySerializer = new CompactJournalEntrySerializer();
-    private final ScalePartitionsEntrySerializer scalePartitionsEntrySerializer = new ScalePartitionsEntrySerializer();
-    private final RaftClient<byte [], JournalStoreQuery, JournalStoreQueryResult> raftClient;
+    private final RaftClient<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient;
 
-    public JournalStoreClient(RaftClient<byte [], JournalStoreQuery, JournalStoreQueryResult> raftClient) {
+    public JournalStoreClient(RaftClient<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient) {
         this.raftClient = raftClient;
     }
 
     @Override
-    public CompletableFuture<Void> append(int partition, int batchSize, byte [] entries) {
+    public CompletableFuture<Long> append(int partition, int batchSize, byte [] entries) {
         return append(partition, batchSize, entries, ResponseConfig.REPLICATION);
     }
 
     @Override
-    public CompletableFuture<Void> append(int partition, int batchSize,
+    public CompletableFuture<Long> append(int partition, int batchSize,
                                           byte [] entries, ResponseConfig responseConfig) {
         return raftClient.update(entries, partition,
                 batchSize, responseConfig);
@@ -97,14 +95,12 @@ public class JournalStoreClient implements PartitionedJournalStore {
 
     @Override
     public CompletableFuture<Void> compact(Map<Integer, Long> toIndices) {
-        return raftClient.update(compactJournalEntrySerializer.serialize(new CompactJournalEntry(toIndices)),
-                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION);
+        return raftClient.compact(toIndices);
     }
 
     @Override
     public CompletableFuture<Void> scalePartitions(int[] partitions) {
-        return raftClient.update(scalePartitionsEntrySerializer.serialize(new ScalePartitionsEntry(partitions)),
-                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION);
+        return raftClient.scalePartitions(partitions);
     }
 
     @Override

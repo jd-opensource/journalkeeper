@@ -16,7 +16,9 @@ package io.journalkeeper.core.api;
 import io.journalkeeper.base.Queryable;
 import io.journalkeeper.utils.event.Watchable;
 
+import java.io.Serializable;
 import java.net.URI;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -26,11 +28,12 @@ import java.util.concurrent.CompletableFuture;
  * @author LiYue
  * Date: 2019-03-14
  * @param <Q> 状态查询条件类型
- * @param <R> 状态查询结果类型
+ * @param <QR> 状态查询结果类型
  * @param <E> 日志的类型
+ * @param <ER> 更新执行结果
  *
  */
-public interface RaftClient<E, Q, R> extends Queryable<Q, R>, Watchable {
+public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable {
 
 
     /**
@@ -38,9 +41,9 @@ public interface RaftClient<E, Q, R> extends Queryable<Q, R>, Watchable {
      * 日志在集群中复制到大多数节点，并在状态机执行后返回。
      * @param entry 操作日志数组
      */
-    CompletableFuture<Void> update(E entry);
+    CompletableFuture<ER> update(E entry);
 
-    CompletableFuture<Void> update(E entry, int partition, int batchSize, ResponseConfig responseConfig);
+    CompletableFuture<ER> update(E entry, int partition, int batchSize, ResponseConfig responseConfig);
 
     /**
      * 查询集群当前的状态，即日志在状态机中执行完成后产生的数据。该服务保证强一致性，保证读到的状态总是集群的最新状态。
@@ -48,7 +51,7 @@ public interface RaftClient<E, Q, R> extends Queryable<Q, R>, Watchable {
      * @return 查询结果
      */
     @Override
-    CompletableFuture<R> query(Q query);
+    CompletableFuture<QR> query(Q query);
 
     /**
      * 获取集群配置。
@@ -63,6 +66,10 @@ public interface RaftClient<E, Q, R> extends Queryable<Q, R>, Watchable {
      * @return true：成功，其它：失败。
      */
     CompletableFuture<Boolean> updateVoters(UpdateVoterOperation operation, URI voter);
+
+    CompletableFuture<Void> compact(Map<Integer, Long> toIndices);
+
+    CompletableFuture<Void> scalePartitions(int[] partitions);
 
     void stop();
 

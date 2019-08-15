@@ -25,10 +25,10 @@ import io.journalkeeper.core.api.StateFactory;
  *
  * date: 2019/5/30
  */
-public class CoordinatorStateFactory implements StateFactory<StateWriteRequest, StateReadRequest, StateResponse> {
+public class CoordinatorStateFactory implements StateFactory<StateWriteRequest, Void, StateReadRequest, StateResponse> {
 
     @Override
-    public State<StateWriteRequest, StateReadRequest, StateResponse> createState() {
+    public State<StateWriteRequest, Void, StateReadRequest, StateResponse> createState() {
         return new CoordinatingState(this);
     }
 }

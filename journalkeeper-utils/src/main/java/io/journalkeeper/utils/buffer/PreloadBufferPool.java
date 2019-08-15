@@ -29,6 +29,10 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -41,9 +45,9 @@ public class PreloadBufferPool {
     private static final Logger logger = LoggerFactory.getLogger(PreloadBufferPool.class);
     private Map<Integer,PreLoadCache> bufferCache = new ConcurrentHashMap<>();
     private final Threads threads = ThreadsFactory.create();
-    private static final String PRELOAD_THREAD = "PreloadThread";
-    private static final String METRIC_THREAD = "MetricThread";
-    private static final String EVICT_THREAD = "EvictThread";
+    private static final String PRELOAD_THREAD = "PreloadBuffer-PreloadThread";
+    private static final String METRIC_THREAD = "PreloadBuffer-MetricThread";
+    private static final String EVICT_THREAD = "PreloadBuffer-EvictThread";
     private final long cacheLifetimeMs;
     private final long maxMemorySize;
     // 缓存比率：如果非堆内存使用率超过这个比率，就不再申请内存，抛出OOM。
@@ -234,18 +238,23 @@ public class PreloadBufferPool {
     }
 
     private ByteBuffer createOne(int size) {
+        reserveMemory(size);
+        return ByteBuffer.allocateDirect(size);
+    }
+
+    private void reserveMemory(int size) {
         while (usedSize.get() + size > maxMemorySize) {
             PreLoadCache preLoadCache = bufferCache.values().stream()
                     .filter(p -> p.cache.size() > 0)
                     .findAny().orElse(null);
-            if(null != preLoadCache) {
+            if (null != preLoadCache) {
                 destroyOne(preLoadCache.cache.remove());
             } else {
                 break;
             }
         }
 
-        if(usedSize.get() + size > maxMemorySize) {
+        if (usedSize.get() + size > maxMemorySize) {
             // 如果内存不足，唤醒清理线程立即执行清理
             threads.wakeupThread(EVICT_THREAD);
             // 等待5x10ms，如果还不足抛出异常
@@ -256,22 +265,14 @@ public class PreloadBufferPool {
                     logger.warn("Interrupted: ", e);
                 }
             }
-            if(usedSize.get() + size > maxMemorySize) {
+            if (usedSize.get() + size > maxMemorySize) {
                 throw new OutOfMemoryError();
             }
         }
-        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(size);
-        long u;
-        while (!usedSize.compareAndSet(u = usedSize.get(), u + size)){
-            Thread.yield();
-        }
 
-        if(usedSize.get() > maxMemorySize * EVICT_RATIO) {
+        if (usedSize.addAndGet(size) > maxMemorySize * EVICT_RATIO) {
             threads.wakeupThread(EVICT_THREAD);
         }
-//        logger.info("Allocate : {}", size);
-        return byteBuffer;
-
     }
 
     private void releaseIfDirect(ByteBuffer byteBuffer) {
@@ -288,17 +289,18 @@ public class PreloadBufferPool {
         }
     }
 
-    public void addMemoryMappedBufferHolder(BufferHolder bufferHolder) {
+    public void allocateMMap(BufferHolder bufferHolder) {
+        reserveMemory(bufferHolder.size());
         mMapBufferHolders.add(bufferHolder);
     }
 
-    public ByteBuffer allocate(int bufferSize, BufferHolder bufferHolder) {
-        ByteBuffer buffer = allocate(bufferSize);
+    public ByteBuffer allocateDirect(int bufferSize, BufferHolder bufferHolder) {
+        ByteBuffer buffer = allocateDirect(bufferSize);
         directBufferHolders.add(bufferHolder);
         return buffer;
     }
 
-    private ByteBuffer allocate(int bufferSize) {
+    private ByteBuffer allocateDirect(int bufferSize) {
         try {
             PreLoadCache preLoadCache = bufferCache.get(bufferSize);
             if(null != preLoadCache) {
@@ -307,7 +309,7 @@ public class PreloadBufferPool {
                     preLoadCache.onFlyCounter.getAndIncrement();
                     return byteBuffer;
                 } catch (NoSuchElementException e) {
-                    logger.debug("Pool is empty, create ByteBuffer: {}", bufferSize);
+                    logger.warn("Pool is empty, create ByteBuffer: {}", bufferSize);
                     ByteBuffer byteBuffer = createOne(bufferSize);
                     preLoadCache.onFlyCounter.getAndIncrement();
                     return byteBuffer;
@@ -322,7 +324,7 @@ public class PreloadBufferPool {
             throw outOfMemoryError;
         }
     }
-    public void release(ByteBuffer byteBuffer, BufferHolder bufferHolder) {
+    public void releaseDirect(ByteBuffer byteBuffer, BufferHolder bufferHolder) {
         directBufferHolders.remove(bufferHolder);
         int size = byteBuffer.capacity();
         PreLoadCache preLoadCache = bufferCache.get(size);
@@ -333,6 +335,13 @@ public class PreloadBufferPool {
         } else {
             destroyOne(byteBuffer);
         }
+    }
+
+
+    public void releaseMMap(BufferHolder bufferHolder) {
+        mMapBufferHolders.remove(bufferHolder);
+        usedSize.getAndAdd(-1 * bufferHolder.size());
+
     }
 
     static class PreLoadCache {

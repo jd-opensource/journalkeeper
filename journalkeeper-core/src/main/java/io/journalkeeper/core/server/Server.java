@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.core.server;
 
+import com.sun.istack.internal.NotNull;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.api.RaftJournal;
@@ -25,9 +26,13 @@ import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.Entry;
+import io.journalkeeper.core.metric.DummyMetric;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.exceptions.NoSuchSnapshotException;
+import io.journalkeeper.metric.JMetric;
+import io.journalkeeper.metric.JMetricFactory;
+import io.journalkeeper.metric.JMetricSupport;
 import io.journalkeeper.persistence.BufferPool;
 import io.journalkeeper.persistence.MetadataPersistence;
 import io.journalkeeper.persistence.PersistenceFactory;
@@ -69,6 +74,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.StampedLock;
@@ -83,8 +89,8 @@ import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
  * @author LiYue
  * Date: 2019-03-14
  */
-public abstract class Server<E, Q, R>
-        extends RaftServer<E, Q, R>
+public abstract class Server<E, ER, Q, QR>
+        extends RaftServer<E, ER, Q, QR>
         implements ServerRpc {
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
     /**
@@ -95,6 +101,11 @@ public abstract class Server<E, Q, R>
      * 刷盘Journal线程
      */
     protected final static String FLUSH_JOURNAL_THREAD = "FlushJournalThread";
+    /**
+     * 打印Metric线程
+     */
+    protected final static String PRINT_METRIC_THREAD = "PrintMetricThread";
+
     @Override
     public boolean isAlive() {
         return true;
@@ -108,7 +119,7 @@ public abstract class Server<E, Q, R>
     /**
      * 节点上的最新状态 和 被状态机执行的最大日志条目的索引值（从 0 开始递增）
      */
-    protected final State<E, Q, R> state;
+    protected final State<E, ER, Q, QR> state;
 
     protected final ScheduledExecutorService scheduledExecutor;
 
@@ -134,12 +145,12 @@ public abstract class Server<E, Q, R>
     /**
      * 存放节点上所有状态快照的稀疏数组，数组的索引（key）就是快照对应的日志位置的索引
      */
-    protected final NavigableMap<Long, State<E, Q, R>> snapshots = new ConcurrentSkipListMap<>();
+    protected final NavigableMap<Long, State<E, ER, Q, QR>> snapshots = new ConcurrentSkipListMap<>();
 
     /**
      * 已知的被提交的最大日志条目的索引值（从 0 开始递增）
      */
-    protected long commitIndex;
+    protected AtomicLong commitIndex = new AtomicLong(0L);
 
     /**
      * 当前LEADER节点地址
@@ -189,8 +200,9 @@ public abstract class Server<E, Q, R>
     }
 
     protected final Serializer<E> entrySerializer;
+    protected final Serializer<ER> entryResultSerializer;
     protected final Serializer<Q> querySerializer;
-    protected final Serializer<R> resultSerializer;
+    protected final Serializer<QR> resultSerializer;
 
     protected final BufferPool bufferPool;
 
@@ -201,7 +213,7 @@ public abstract class Server<E, Q, R>
     protected final Map<URI, ServerRpc> remoteServers = new HashMap<>();
     private Config config;
 
-    private ServerState serverState = ServerState.STOPPED;
+    private volatile ServerState serverState = ServerState.STOPPED;
     private ServerMetadata lastSavedServerMetadata = null;
     protected final EventBus eventBus;
     private final CompactJournalEntrySerializer compactJournalEntrySerializer = new CompactJournalEntrySerializer();
@@ -211,8 +223,13 @@ public abstract class Server<E, Q, R>
 
     protected final Threads threads = ThreadsFactory.create();
 
-    public Server(StateFactory<E, Q, R> stateFactory, Serializer<E> entrySerializer, Serializer<Q> querySerializer,
-                  Serializer<R> resultSerializer, ScheduledExecutorService scheduledExecutor,
+    private final JMetricFactory metricFactory;
+    private final Map<String, JMetric> metricMap;
+    private final static JMetric DUMMY_METRIC = new DummyMetric();
+
+    public Server(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer,
+                  Serializer<ER> entryResultSerializer, Serializer<Q> querySerializer,
+                  Serializer<QR> resultSerializer, ScheduledExecutorService scheduledExecutor,
                   ExecutorService asyncExecutor, Properties properties){
         super(stateFactory, properties);
         this.scheduledExecutor = scheduledExecutor;
@@ -224,6 +241,17 @@ public abstract class Server<E, Q, R>
         this.entrySerializer = entrySerializer;
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
+        this.entryResultSerializer = entryResultSerializer;
+        if(config.isEnableMetric()) {
+            this.metricFactory = ServiceSupport.load(JMetricFactory.class);
+            this.metricMap = new ConcurrentHashMap<>();
+            if(config.getPrintMetricIntervalSec() > 0) {
+                this.threads.createThread(buildPrintMetricThread());
+            }
+        } else {
+            this.metricFactory = null;
+            this.metricMap = null;
+        }
         this.eventBus = new EventBus(config.getRpcTimeoutMs());
         persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
         metadataPersistence = persistenceFactory.createMetadataPersistenceInstance();
@@ -255,6 +283,16 @@ public abstract class Server<E, Q, R>
                 .doWork(this::flushJournal)
                 .sleepTime(config.getFlushIntervalMs(), config.getFlushIntervalMs())
                 .onException(e -> logger.warn("{} Exception: ", FLUSH_JOURNAL_THREAD, e))
+                .daemon(true)
+                .build();
+    }
+
+    private AsyncLoopThread buildPrintMetricThread() {
+        return ThreadBuilder.builder()
+                .name(PRINT_METRIC_THREAD)
+                .doWork(this::printMetrics)
+                .sleepTime(config.getPrintMetricIntervalSec() * 1000, config.getPrintMetricIntervalSec() * 1000)
+                .onException(e -> logger.warn("{} Exception: ", PRINT_METRIC_THREAD, e))
                 .daemon(true)
                 .build();
     }
@@ -302,6 +340,16 @@ public abstract class Server<E, Q, R>
                         Config.GET_STATE_BATCH_SIZE_KEY,
                         String.valueOf(Config.DEFAULT_GET_STATE_BATCH_SIZE))));
 
+        config.setEnableMetric(Boolean.parseBoolean(
+                properties.getProperty(
+                        Config.ENABLE_METRIC_KEY,
+                        String.valueOf(Config.DEFAULT_ENABLE_METRIC))));
+
+        config.setPrintMetricIntervalSec(Integer.parseInt(
+                properties.getProperty(
+                        Config.PRINT_METRIC_INTERVAL_SEC_KEY,
+                        String.valueOf(Config.DEFAULT_PRINT_METRIC_INTERVAL_SEC))));
+
         return config;
     }
 
@@ -330,28 +378,29 @@ public abstract class Server<E, Q, R>
      *
      */
     private void applyEntries()  {
-        while ( state.lastApplied() < commitIndex) {
+        while ( this.serverState == ServerState.RUNNING && state.lastApplied() < commitIndex.get()) {
             takeASnapShotIfNeed();
             Entry storageEntry = journal.read(state.lastApplied());
-            Map<String, String> customizedEventData = null;
+            Map<String, String> customizedEventData = new HashMap<>();
+            ER result = null;
             if(storageEntry.getHeader().getPartition() != RESERVED_PARTITION) {
                 E entry = entrySerializer.parse(storageEntry.getEntry());
                 long stamp = stateLock.writeLock();
                 try {
-                    customizedEventData = state.execute(entry, storageEntry.getHeader().getPartition(),
-                            state.lastApplied(), storageEntry.getHeader().getBatchSize());
+                result = state.execute(entry, storageEntry.getHeader().getPartition(),
+                            state.lastApplied(), storageEntry.getHeader().getBatchSize(), customizedEventData);
                 } finally {
                     stateLock.unlockWrite(stamp);
                 }
             } else {
                 applyReservedEntry(storageEntry.getEntry()[0], storageEntry.getEntry());
             }
+
+            beforeStateChanged(result);
             state.next();
-            onStateChanged();
-            Map<String, String> parameters = new HashMap<>(customizedEventData == null ? 1: customizedEventData.size() + 1);
-            if(null != customizedEventData) {
-                customizedEventData.forEach(parameters::put);
-            }
+            afterStateChanged(result);
+            Map<String, String> parameters = new HashMap<>(customizedEventData.size() + 1);
+            customizedEventData.forEach(parameters::put);
             parameters.put("lastApplied", String.valueOf(state.lastApplied()));
             fireEvent(EventType.ON_STATE_CHANGE, parameters);
         }
@@ -404,9 +453,13 @@ public abstract class Server<E, Q, R>
 
 
     /**
-     * 当状态变化时触发事件
+     * 当状态变化后触发事件
      */
-    protected void onStateChanged() {}
+    protected void afterStateChanged(ER updateResult) {}
+    /**
+     * 当状态变化前触发事件
+     */
+    protected void beforeStateChanged(ER updateResult) {}
 
     /**
      * 如果需要，保存一次快照
@@ -418,7 +471,7 @@ public abstract class Server<E, Q, R>
                     synchronized (snapshots) {
                         if (config.getSnapshotStep() > 0 && (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep())) {
 
-                            State<E, Q, R> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
+                            State<E, ER, Q, QR> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
                             snapshots.put(snapshot.lastApplied(), snapshot);
                         }
                     }
@@ -508,10 +561,10 @@ public abstract class Server<E, Q, R>
                 }
 
 
-                State<E, Q, R> requestState = snapshots.get(request.getIndex());
+                State<E, ER, Q, QR> requestState = snapshots.get(request.getIndex());
 
                 if (null == requestState) {
-                    Map.Entry<Long, State<E, Q, R>> nearestSnapshot = snapshots.floorEntry(request.getIndex());
+                    Map.Entry<Long, State<E, ER, Q, QR>> nearestSnapshot = snapshots.floorEntry(request.getIndex());
                     if (null == nearestSnapshot) {
                         throw new IndexUnderflowException();
                     }
@@ -525,7 +578,7 @@ public abstract class Server<E, Q, R>
                     for (int i = 0; i < toBeExecutedEntries.size(); i++) {
                         RaftEntry entry = toBeExecutedEntries.get(i);
                         requestState.execute(entrySerializer.parse(entry.getEntry()), entry.getHeader().getPartition(),
-                                nearestSnapshot.getKey() + i, entry.getHeader().getBatchSize());
+                                nearestSnapshot.getKey() + i, entry.getHeader().getBatchSize(), new HashMap<>());
                     }
                     if(requestState instanceof Flushable) {
                         ((Flushable ) requestState).flush();
@@ -586,7 +639,7 @@ public abstract class Server<E, Q, R>
                 if (snapshotIndex < 0) {
                     snapshotIndex = snapshots.lastKey();
                 }
-                State<E, Q, R> state = snapshots.get(snapshotIndex);
+                State<E, ER, Q, QR> state = snapshots.get(snapshotIndex);
                 if (null != state) {
                     byte [] data;
                     try {
@@ -649,7 +702,7 @@ public abstract class Server<E, Q, R>
             }
         } catch(Throwable e) {
             logger.warn("Flush exception, commitIndex: {}, lastApplied: {}, server: {}: ",
-                    commitIndex, state.lastApplied(), uri, e);
+                    commitIndex.get(), state.lastApplied(), uri, e);
         }
     }
 
@@ -730,7 +783,7 @@ public abstract class Server<E, Q, R>
                         entry -> entry.getFileName().toString().matches("\\d+")
                     ).spliterator(), false)
                 .map(path -> {
-                    State<E, Q, R> snapshot = stateFactory.createState();
+                    State<E, ER, Q, QR> snapshot = stateFactory.createState();
                     snapshot.recover(path, journal, properties);
                     if(Long.parseLong(path.getFileName().toString()) == snapshot.lastApplied()) {
                         return snapshot;
@@ -750,7 +803,7 @@ public abstract class Server<E, Q, R>
 
     protected void onMetadataRecovered(ServerMetadata metadata) {
         this.uri = metadata.getThisServer();
-        this.commitIndex = metadata.getCommitIndex();
+        this.commitIndex.set(metadata.getCommitIndex());
 
         if(metadata.getPartitions() == null ) {
             metadata.setPartitions(new HashSet<>());
@@ -768,7 +821,7 @@ public abstract class Server<E, Q, R>
     protected ServerMetadata createServerMetadata() {
         ServerMetadata serverMetadata = new ServerMetadata();
         serverMetadata.setThisServer(uri);
-        serverMetadata.setCommitIndex(commitIndex);
+        serverMetadata.setCommitIndex(commitIndex.get());
         return serverMetadata;
     }
 
@@ -795,8 +848,8 @@ public abstract class Server<E, Q, R>
 
     public void compact(long indexExclusive) throws IOException {
         if(config.getSnapshotStep() > 0) {
-            Map.Entry<Long, State<E, Q, R>> nearestEntry = snapshots.floorEntry(indexExclusive);
-            SortedMap<Long, State<E, Q, R>> toBeRemoved = snapshots.headMap(nearestEntry.getKey());
+            Map.Entry<Long, State<E, ER, Q, QR>> nearestEntry = snapshots.floorEntry(indexExclusive);
+            SortedMap<Long, State<E, ER, Q, QR>> toBeRemoved = snapshots.headMap(nearestEntry.getKey());
             while (!toBeRemoved.isEmpty()) {
                 toBeRemoved.remove(toBeRemoved.firstKey()).clear();
             }
@@ -806,28 +859,61 @@ public abstract class Server<E, Q, R>
         }
     }
 
-    public State<E, Q, R> getState() {
+    public State<E, ER, Q, QR> getState() {
         return state;
     }
 
-    public static class Config {
-        public final static int DEFAULT_SNAPSHOT_STEP = 0;
-        public final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;
-        public final static long DEFAULT_FLUSH_INTERVAL_MS = 50L;
-        public final static int DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;
+    /**
+     * This method returns the metric instance of given name, instance will be created if not exists.
+     * if config.isEnableMetric() equals false, just return a dummy metric.
+     * @param name name of the metric
+     * @return the metric instance of given name.
+     */
+    @NotNull
+    protected JMetric getMetric(String name) {
+        if(config.isEnableMetric()) {
+            return metricMap.computeIfAbsent(name, metricFactory::create);
+        } else {
+            return DUMMY_METRIC;
+        }
+    }
 
-        public final static String SNAPSHOT_STEP_KEY = "snapshot_step";
-        public final static String RPC_TIMEOUT_MS_KEY = "rpc_timeout_ms";
-        public final static String FLUSH_INTERVAL_MS_KEY = "flush_interval_ms";
-        public final static String WORKING_DIR_KEY = "working_dir";
-        public final static String GET_STATE_BATCH_SIZE_KEY = "get_state_batch_size";
+    private void printMetrics() {
+        metricMap.values()
+            .stream()
+                .map(JMetric::getAndReset)
+                .map(JMetricSupport::formatNs)
+                .forEach(logger::info);
+        onPrintMetric();
+    }
+
+    /**
+     * This method will be invoked when metric
+     */
+    protected void onPrintMetric() {}
+    static class Config {
+        final static int DEFAULT_SNAPSHOT_STEP = 0;
+        final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;
+        final static long DEFAULT_FLUSH_INTERVAL_MS = 50L;
+        final static int DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;
+        final static boolean DEFAULT_ENABLE_METRIC = false;
+        final static int DEFAULT_PRINT_METRIC_INTERVAL_SEC = 0;
+
+        final static String SNAPSHOT_STEP_KEY = "snapshot_step";
+        final static String RPC_TIMEOUT_MS_KEY = "rpc_timeout_ms";
+        final static String FLUSH_INTERVAL_MS_KEY = "flush_interval_ms";
+        final static String WORKING_DIR_KEY = "working_dir";
+        final static String GET_STATE_BATCH_SIZE_KEY = "get_state_batch_size";
+        final static String ENABLE_METRIC_KEY = "enable_metric";
+        final static String PRINT_METRIC_INTERVAL_SEC_KEY = "print_metric_interval_sec";
 
         private int snapshotStep = DEFAULT_SNAPSHOT_STEP;
         private long rpcTimeoutMs = DEFAULT_RPC_TIMEOUT_MS;
         private long flushIntervalMs = DEFAULT_FLUSH_INTERVAL_MS;
         private Path workingDir = Paths.get(System.getProperty("user.dir")).resolve("journalkeeper");
         private int getStateBatchSize = DEFAULT_GET_STATE_BATCH_SIZE;
-
+        private boolean enableMetric = DEFAULT_ENABLE_METRIC;
+        private int printMetricIntervalSec = DEFAULT_PRINT_METRIC_INTERVAL_SEC;
         int getSnapshotStep() {
             return snapshotStep;
         }
@@ -866,6 +952,22 @@ public abstract class Server<E, Q, R>
 
         public void setGetStateBatchSize(int getStateBatchSize) {
             this.getStateBatchSize = getStateBatchSize;
+        }
+
+        public boolean isEnableMetric() {
+            return enableMetric;
+        }
+
+        public void setEnableMetric(boolean enableMetric) {
+            this.enableMetric = enableMetric;
+        }
+
+        public int getPrintMetricIntervalSec() {
+            return printMetricIntervalSec;
+        }
+
+        public void setPrintMetricIntervalSec(int printMetricIntervalSec) {
+            this.printMetricIntervalSec = printMetricIntervalSec;
         }
     }
 }

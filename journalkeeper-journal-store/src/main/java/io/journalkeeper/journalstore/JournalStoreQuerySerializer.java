@@ -19,10 +19,6 @@ import java.nio.ByteBuffer;
 
 public class JournalStoreQuerySerializer implements Serializer<JournalStoreQuery> {
     private static final int SIZE = Byte.BYTES + Short.BYTES + Integer.BYTES + Long.BYTES;
-    @Override
-    public int sizeOf(JournalStoreQuery partitionJournalStoreQuery) {
-        return SIZE;
-    }
 
     @Override
     public byte[] serialize(JournalStoreQuery query) {

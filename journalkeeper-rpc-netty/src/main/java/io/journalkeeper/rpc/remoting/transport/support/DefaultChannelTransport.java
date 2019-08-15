@@ -147,6 +147,7 @@ public class DefaultChannelTransport implements ChannelTransport {
             // 应答回来的时候或超时会自动释放command
             channel.writeAndFlush(command).addListener(new ResponseListener(future, barrier));
         } catch (TransportException e) {
+            barrier.release(RequestBarrier.SemaphoreType.ASYNC);
             command.release();
             throw e;
         }
@@ -184,6 +185,7 @@ public class DefaultChannelTransport implements ChannelTransport {
             channel.writeAndFlush(command).addListener(new ResponseListener(future, barrier));
             return future;
         } catch (TransportException e) {
+            barrier.release(RequestBarrier.SemaphoreType.ASYNC);
             command.release();
             throw e;
         }

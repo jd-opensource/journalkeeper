@@ -15,6 +15,7 @@ package io.journalkeeper.rpc.codec;
 
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import io.journalkeeper.rpc.header.JournalKeeperHeader;
+import io.journalkeeper.rpc.remoting.serialize.CodecSupport;
 import io.journalkeeper.rpc.remoting.transport.command.Type;
 import io.netty.buffer.ByteBuf;
 
@@ -25,12 +26,12 @@ import io.netty.buffer.ByteBuf;
 public class UpdateClusterStateResponseCodec extends LeaderResponseCodec<UpdateClusterStateResponse> implements Type {
     @Override
     protected void encodeLeaderResponse(UpdateClusterStateResponse leaderResponse, ByteBuf buffer) throws Exception {
-
+       CodecSupport.encodeBytes(buffer, leaderResponse.getResult());
     }
 
     @Override
     protected UpdateClusterStateResponse decodeLeaderResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
-        return new UpdateClusterStateResponse();
+        return new UpdateClusterStateResponse(CodecSupport.decodeBytes(buffer));
     }
 
     @Override

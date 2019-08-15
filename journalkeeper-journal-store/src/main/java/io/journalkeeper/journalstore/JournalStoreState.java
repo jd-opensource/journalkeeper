@@ -33,13 +33,13 @@ import java.util.stream.Collectors;
  * @author LiYue
  * Date: 2019-05-09
  */
-public class JournalStoreState extends LocalState<byte [], JournalStoreQuery, JournalStoreQueryResult> {
+public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> {
     private static final Logger logger = LoggerFactory.getLogger(JournalStoreState.class);
     private final static String STATE_FILE_NAME = "applied_indices";
     private RaftJournal journal;
     private AppliedIndicesFile appliedIndices;
 
-    protected JournalStoreState(StateFactory<byte [], JournalStoreQuery, JournalStoreQueryResult> stateFactory) {
+    protected JournalStoreState(StateFactory<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> stateFactory) {
         super(stateFactory);
     }
 
@@ -69,16 +69,15 @@ public class JournalStoreState extends LocalState<byte [], JournalStoreQuery, Jo
     }
 
     @Override
-    public Map<String, String> execute(byte [] entry, int partition, long lastApplied, int batchSize) {
-
-        appliedIndices.put(partition, appliedIndices.getOrDefault(partition, 0L) + batchSize);
+    public Long execute(byte [] entry, int partition, long lastApplied, int batchSize, Map<String, String> eventData) {
+        long partitionIndex = appliedIndices.getOrDefault(partition, 0L) + batchSize;
+        appliedIndices.put(partition, partitionIndex);
         long minIndex = journal.minIndex(partition);
         long maxIndex = appliedIndices.get(partition);
-        Map<String, String> eventData = new HashMap<>(3);
         eventData.put("partition", String.valueOf(partition));
         eventData.put("minIndex", String.valueOf(minIndex));
         eventData.put("maxIndex", String.valueOf(maxIndex));
-        return eventData;
+        return partitionIndex;
     }
 
     @Override

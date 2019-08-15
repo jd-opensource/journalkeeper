@@ -31,13 +31,14 @@ import java.util.Properties;
  */
 public class KvServer implements StateServer {
     private static final Logger logger = LoggerFactory.getLogger(KvServer.class);
-    private final BootStrap<KvEntry, KvQuery, KvResult> bootStrap;
+    private final BootStrap<KvEntry, Void, KvQuery, KvResult> bootStrap;
 
     public KvServer(Properties properties) {
         bootStrap =
                 new BootStrap<>(RaftServer.Roll.VOTER,
                         new KvStateFactory(),
                         new JsonSerializer<>(KvEntry.class),
+                        new JsonSerializer<>(Void.class),
                         new JsonSerializer<>(KvQuery.class),
                         new JsonSerializer<>(KvResult.class), properties);
 

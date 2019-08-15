@@ -94,16 +94,20 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
 
     private void loadRoUnsafe() throws IOException{
         if (null != pageBuffer) throw new IOException("Buffer already loaded!");
+        bufferPool.allocateMMap(this);
         ByteBuffer loadBuffer;
         try (RandomAccessFile raf = new RandomAccessFile(file, "r"); FileChannel fileChannel = raf.getChannel()) {
             loadBuffer =
                     fileChannel.map(FileChannel.MapMode.READ_ONLY, headerSize, file.length() - headerSize);
+            pageBuffer = loadBuffer;
+            bufferType = MAPPED_BUFFER;
+            pageBuffer.clear();
+        } catch (Throwable t) {
+            logger.warn("Exception: ", t);
+            bufferPool.releaseMMap(this);
+            pageBuffer = null;
+            throw t;
         }
-        pageBuffer = loadBuffer;
-        bufferType = MAPPED_BUFFER;
-        pageBuffer.clear();
-        bufferPool.addMemoryMappedBufferHolder(this);
-
     }
 
     private void loadRwUnsafe() throws IOException{
@@ -113,7 +117,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
                 unloadUnsafe();
             }
 
-            ByteBuffer buffer = bufferPool.allocate(capacity, this);
+            ByteBuffer buffer = bufferPool.allocateDirect(capacity, this);
             loadDirectBuffer(buffer);
 
     }
@@ -383,7 +387,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         final ByteBuffer direct = pageBuffer;
         pageBuffer = null;
         this.bufferType = NO_BUFFER;
-        if(null != direct) bufferPool.release(direct, this);
+        if(null != direct) bufferPool.releaseDirect(direct, this);
     }
 
     private void unloadMappedBuffer() {
@@ -398,6 +402,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
                 Cleaner cleaner = (Cleaner) getCleanerMethod.invoke(mapped, new Object[0]);
                 cleaner.clean();
             }
+            bufferPool.releaseMMap(this);
         }catch (Exception e) {
             logger.warn("Release direct buffer exception: ", e);
         }

@@ -61,8 +61,7 @@ public class JournalStoreQueryResultSerializer implements Serializer<JournalStor
     private static final int FIXED_LENGTH = Byte.BYTES + Byte.BYTES + Short.BYTES + Short.BYTES;
     private static final int ENTRY_HEADER_LENGTH = Integer.BYTES + Short.BYTES  + Short.BYTES + Short.BYTES;
 
-    @Override
-    public int sizeOf(JournalStoreQueryResult journalStoreQueryResult) {
+    private int sizeOf(JournalStoreQueryResult journalStoreQueryResult) {
         return
 
                 (journalStoreQueryResult.getBoundaries() == null ? 0 :

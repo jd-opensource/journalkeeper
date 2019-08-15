@@ -233,13 +233,17 @@ public class JournalEntryParser extends EntryParser {
         }
     }
 
-    public static  void serialize(ByteBuffer destBuffer, Entry storageEntry) {
+    public static  void serialize(ByteBuffer buffer, Entry storageEntry) {
 
-        destBuffer.putInt(storageEntry.getHeader().getPayloadLength());
-        destBuffer.putShort(Entry.MAGIC);
-        destBuffer.putInt(((EntryHeader) storageEntry.getHeader()).getTerm());
-        destBuffer.putShort((short ) storageEntry.getHeader().getPartition());
-        destBuffer.putShort((short )storageEntry.getHeader().getBatchSize());
-        destBuffer.put(storageEntry.getEntry());
+        serializeHeader(buffer, (EntryHeader )storageEntry.getHeader());
+        buffer.put(storageEntry.getEntry());
+    }
+    public static  void serializeHeader(ByteBuffer buffer, EntryHeader header) {
+
+        buffer.putInt(header.getPayloadLength());
+        buffer.putShort(Entry.MAGIC);
+        buffer.putInt(header.getTerm());
+        buffer.putShort((short ) header.getPartition());
+        buffer.putShort((short ) header.getBatchSize());
     }
 }

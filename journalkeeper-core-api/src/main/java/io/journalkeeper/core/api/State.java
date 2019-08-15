@@ -30,16 +30,17 @@ import java.util.Properties;
  * @author LiYue
  * Date: 2019-03-20
  */
-public interface State<E, Q, R> extends Queryable<Q, R> {
+public interface State<E, ER, Q, QR> extends Queryable<Q, QR> {
     /**
      * 在状态state上执行命令entries。要求线性语义和原子性.
      * 成功返回新状态，否则抛异常。
      * @param entry 待执行的命令
      * @param index entry在Journal中的索引序号
      * @param batchSize 如果当前entry是一个批量entry，batchSize为这批entry的数量，否则为1；
-     * @return 提供给事件 {@link EventType#ON_STATE_CHANGE} 的参数，如果没有参数可以返回null；
+     * @param eventParams 提供给事件 {@link EventType#ON_STATE_CHANGE} 的参数；
+     * @return 执行结果
      */
-    Map<String, String> execute(E entry, int partition, long index, int batchSize);
+    ER execute(E entry, int partition, long index, int batchSize, Map<String, String> eventParams);
 
     /**
      * 当前状态对应的日志位置
@@ -67,7 +68,7 @@ public interface State<E, Q, R> extends Queryable<Q, R> {
     /**
      * 将状态物理复制一份，保存到path
      */
-    State<E, Q, R> takeASnapshot(Path path, RaftJournal raftJournal) throws IOException;
+    State<E, ER, Q, QR> takeASnapshot(Path path, RaftJournal raftJournal) throws IOException;
 
     /**
      * 读取序列化后的状态数据。
