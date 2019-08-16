@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.sql.state.jdbc;
 
+import io.journalkeeper.sql.client.domain.ResultSet;
 import io.journalkeeper.sql.exception.SQLException;
 import io.journalkeeper.sql.state.jdbc.utils.DBUtils;
 
@@ -51,9 +52,10 @@ public class JDBCExecutor {
         }
     }
 
-    public List<Map<String, String>> query(Connection connection, String sql, Object... params) {
+    public ResultSet query(Connection connection, String sql, Object... params) {
         try {
-            return DBUtils.query(connection, sql, params);
+            List<Map<String, String>> rows = DBUtils.query(connection, sql, params);
+            return new ResultSet(rows);
         } catch (java.sql.SQLException e) {
             throw new SQLException(e);
         }

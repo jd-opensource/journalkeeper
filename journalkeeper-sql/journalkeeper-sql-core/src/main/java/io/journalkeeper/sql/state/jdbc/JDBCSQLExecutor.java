@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.sql.state.jdbc;
 
+import io.journalkeeper.sql.client.domain.ResultSet;
 import io.journalkeeper.sql.exception.SQLException;
 import io.journalkeeper.sql.state.SQLExecutor;
 import io.journalkeeper.sql.state.SQLTransactionExecutor;
@@ -21,8 +22,6 @@ import io.journalkeeper.sql.state.support.SQLTransactionExecutorManager;
 import javax.sql.DataSource;
 import java.nio.file.Path;
 import java.sql.Connection;
-import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -77,7 +76,7 @@ public class JDBCSQLExecutor implements SQLExecutor {
     }
 
     @Override
-    public List<Map<String, String>> query(String sql, Object... params) {
+    public ResultSet query(String sql, Object... params) {
         Connection connection = getConnection();
         try {
             return executor.query(connection, sql, params);

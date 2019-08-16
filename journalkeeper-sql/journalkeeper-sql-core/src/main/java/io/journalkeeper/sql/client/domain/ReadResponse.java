@@ -14,8 +14,6 @@
 package io.journalkeeper.sql.client.domain;
 
 import java.io.Serializable;
-import java.util.List;
-import java.util.Map;
 
 /**
  * ReadResponse
@@ -26,7 +24,7 @@ public class ReadResponse implements Serializable {
 
     private int code;
     private String msg;
-    private List<Map<String, String>> rows;
+    private ResultSet resultSet;
 
     public ReadResponse() {
 
@@ -36,9 +34,9 @@ public class ReadResponse implements Serializable {
         this.code = code;
     }
 
-    public ReadResponse(int code, List<Map<String, String>> rows) {
+    public ReadResponse(int code, ResultSet resultSet) {
         this.code = code;
-        this.rows = rows;
+        this.resultSet = resultSet;
     }
 
     public ReadResponse(int code, String msg) {
@@ -62,11 +60,11 @@ public class ReadResponse implements Serializable {
         this.msg = msg;
     }
 
-    public void setRows(List<Map<String, String>> rows) {
-        this.rows = rows;
+    public void setResultSet(ResultSet resultSet) {
+        this.resultSet = resultSet;
     }
 
-    public List<Map<String, String>> getRows() {
-        return rows;
+    public ResultSet getResultSet() {
+        return resultSet;
     }
 }

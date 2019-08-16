@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.sql.state.jdbc;
 
+import io.journalkeeper.sql.client.domain.ResultSet;
 import io.journalkeeper.sql.exception.SQLException;
 import io.journalkeeper.sql.state.SQLTransactionExecutor;
 import io.journalkeeper.sql.state.support.SQLTransactionExecutorManager;
@@ -20,8 +21,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
-import java.util.List;
-import java.util.Map;
 
 /**
  * JDBCSQLTransactionExecutor
@@ -61,7 +60,7 @@ public class JDBCSQLTransactionExecutor implements SQLTransactionExecutor {
     }
 
     @Override
-    public List<Map<String, String>> query(String sql, Object... params) {
+    public ResultSet query(String sql, Object... params) {
         return executor.query(connection, sql, params);
     }
 

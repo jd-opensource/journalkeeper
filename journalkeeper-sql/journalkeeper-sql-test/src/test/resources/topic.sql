@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS `topic` (
 	`partitions` int(11),
 	`priority_partitions` varchar(255),
 	`type` tinyint(1),
-	`create_time` datetime,
 	`update_time` datetime,
+	`create_time` datetime,
 	PRIMARY KEY (`id`)
 );
 

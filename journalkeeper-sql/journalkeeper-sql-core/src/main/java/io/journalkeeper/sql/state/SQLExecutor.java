@@ -13,8 +13,7 @@
  */
 package io.journalkeeper.sql.state;
 
-import java.util.List;
-import java.util.Map;
+import io.journalkeeper.sql.client.domain.ResultSet;
 
 /**
  * SQLExecutor
@@ -29,7 +28,7 @@ public interface SQLExecutor {
 
     int delete(String sql, Object... params);
 
-    List<Map<String, String>> query(String sql, Object... params);
+    ResultSet query(String sql, Object... params);
 
     SQLTransactionExecutor beginTransaction(String id);
 

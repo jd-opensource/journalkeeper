@@ -72,7 +72,7 @@ public class SQLState extends LocalState<WriteRequest, WriteResponse, ReadReques
 
         try {
             InputStream initFileStream = SQLState.class.getResourceAsStream(initFile);
-            if (initFile == null) {
+            if (initFileStream == null) {
                 logger.warn("init file not exist, file: {}", initFile);
                 return;
             }

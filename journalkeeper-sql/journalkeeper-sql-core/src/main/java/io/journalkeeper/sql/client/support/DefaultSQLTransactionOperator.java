@@ -15,11 +15,10 @@ package io.journalkeeper.sql.client.support;
 
 import io.journalkeeper.sql.client.SQLClient;
 import io.journalkeeper.sql.client.SQLTransactionOperator;
+import io.journalkeeper.sql.client.domain.ResultSet;
 import io.journalkeeper.sql.client.helper.ParamHelper;
 import io.journalkeeper.sql.exception.SQLException;
 
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 /**
@@ -65,7 +64,7 @@ public class DefaultSQLTransactionOperator implements SQLTransactionOperator {
     }
 
     @Override
-    public List<Map<String, String>> query(String sql, Object... params) {
+    public ResultSet query(String sql, Object... params) {
         try {
             return client.query(id, sql, ParamHelper.toString(params)).get();
         } catch (Exception e) {

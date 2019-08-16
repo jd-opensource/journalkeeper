@@ -19,6 +19,7 @@ import io.journalkeeper.sql.client.domain.Codes;
 import io.journalkeeper.sql.client.domain.OperationTypes;
 import io.journalkeeper.sql.client.domain.ReadRequest;
 import io.journalkeeper.sql.client.domain.ReadResponse;
+import io.journalkeeper.sql.client.domain.ResultSet;
 import io.journalkeeper.sql.client.domain.WriteRequest;
 import io.journalkeeper.sql.client.domain.WriteResponse;
 import io.journalkeeper.sql.client.exception.SQLClientException;
@@ -27,7 +28,6 @@ import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -53,14 +53,14 @@ public class SQLClient {
         this.client = client;
     }
 
-    public CompletableFuture<List<Map<String, String>>> query(String id, String sql, String... params) {
+    public CompletableFuture<ResultSet> query(String id, String sql, String... params) {
         return doQuery(new ReadRequest(OperationTypes.QUERY.getType(), id, sql, params))
                 .exceptionally(cause -> {
                     throw convertException(cause);
-                }).thenApply(ReadResponse::getRows);
+                }).thenApply(ReadResponse::getResultSet);
     }
 
-    public CompletableFuture<List<Map<String, String>>> query(String sql, String... params) {
+    public CompletableFuture<ResultSet> query(String sql, String... params) {
         return query(null, sql, params);
     }
 
