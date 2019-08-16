@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,10 +19,7 @@ import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.Entry;
 import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
 import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntrySerializer;
-import io.journalkeeper.exceptions.IndexOverflowException;
-import io.journalkeeper.exceptions.IndexUnderflowException;
-import io.journalkeeper.exceptions.NotLeaderException;
-import io.journalkeeper.persistence.ServerMetadata;
+import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
@@ -32,8 +29,11 @@ import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
-import io.journalkeeper.rpc.server.ServerRpc;
 import io.journalkeeper.utils.event.EventType;
+import io.journalkeeper.exceptions.IndexOverflowException;
+import io.journalkeeper.exceptions.IndexUnderflowException;
+import io.journalkeeper.exceptions.NotLeaderException;
+import io.journalkeeper.persistence.ServerMetadata;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
@@ -54,6 +54,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -77,23 +78,38 @@ import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
 public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     private static final Logger logger = LoggerFactory.getLogger(Voter.class);
     /**
-     * 选民状态，在LEADER、FOLLOWER和CANDIDATE之间转换。初始值为FOLLOWER。
+     * Leader接收客户端请求串行写入entries线程
      */
-    private VoterState voterState = VoterState.FOLLOWER;
+    private static final String LEADER_APPEND_ENTRY_THREAD = "LeaderAppendEntryThread";
+    /**
+     * Voter 处理AppendEntriesRequest线程
+     */
+    private static final String VOTER_REPLICATION_REQUESTS_HANDLER_THREAD = "VoterReplicationRequestHandlerThread";
+    /**
+     * Voter 处理回调线程
+     */
+    private static final String LEADER_CALLBACK_THREAD = "LeaderCallbackThread";
+    /**
+     * Leader 发送AppendEntries RPC线程
+     */
+    private static final String LEADER_REPLICATION_THREAD = "LeaderReplicationThread";
+    /**
+     * Leader 处理AppendEntries RPC Response 线程
+     */
+    private static final String LEADER_REPLICATION_RESPONSES_HANDLER_THREAD = "LeaderReplicationResponsesHandlerThread";
+
+    private final static String METRIC_UPDATE_CLUSTER_STATE = "UPDATE_CLUSTER_STATE";
+    private final static String METRIC_APPEND_JOURNAL = "APPEND_JOURNAL";
+    private final static String METRIC_APPEND_ENTRIES_RPC = "APPEND_ENTRIES_RPC";
+
+    private final JMetric updateClusterStateMetric;
+    private final JMetric appendJournalMetric;
+    private final Map<URI, JMetric> appendEntriesRpcMetricMap;
     /**
      * Voter最后知道的任期号（从 0 开始递增）
      */
     private final AtomicInteger currentTerm = new AtomicInteger(0);
-    /**
-     * 在当前任期内收到选票的候选人地址（如果没有就为 null）
-     */
-    private URI votedFor = null;
-
-    /**
-     * 已获得的选票
-     */
-    private AtomicInteger grantedVotes = new AtomicInteger(0);
-
+    // LEADER ONLY
     /**
      * 串行处理所有RequestVoterRPC request/response
      */
@@ -103,71 +119,53 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
      * 串行处理所有角色变更
      */
     private final Object rollMutex = new Object();
-    /**
-     * 选举（心跳）超时
-     */
-    private long electionTimeoutMs;
-    // LEADER ONLY
-    /**
-     * 当角色为LEADER时，记录所有FOLLOWER的位置等信息
-     */
-    private List<Follower> followers = new ArrayList<>();
-
     private final BlockingQueue<UpdateStateRequestResponse> pendingUpdateStateRequests;
-
-    /**
-     * 上次从LEADER收到心跳（asyncAppendEntries）的时间戳
-     */
-    private long lastHeartbeat;
-
-    /**
-     * 待处理的asyncAppendEntries Request，按照request中的preLogTerm和prevLogIndex排序。
-     */
-    private BlockingQueue<ReplicationRequestResponse> pendingAppendEntriesRequests;
-
     private final Config config;
-
-    /**
-     * Leader接收客户端请求串行写入entries线程
-     */
-    private static final String LEADER_APPEND_ENTRY_THREAD = "LeaderAppendEntryThread";
-    /**
-     * Voter 处理AppendEntriesRequest线程
-     */
-    private static final String VOTER_REPLICATION_REQUESTS_HANDLER_THREAD = "VoterReplicationRequestHandlerThread";
-
-    /**
-     * Voter 处理回调线程
-     */
-    private static final String LEADER_CALLBACK_THREAD = "LeaderCallbackThread";
-
-    /**
-     * Leader 发送AppendEntries RPC线程
-     */
-    private static final String LEADER_REPLICATION_THREAD = "LeaderReplicationThread";
-
-    /**
-     * Leader 处理AppendEntries RPC Response 线程
-     */
-    private static final String LEADER_REPLICATION_RESPONSES_HANDLER_THREAD = "LeaderReplicationResponsesHandlerThread";
-
-    private ScheduledFuture checkElectionTimeoutFuture;
-
     private final LeaderAnnouncementEntrySerializer leaderAnnouncementEntrySerializer = new LeaderAnnouncementEntrySerializer();
-
-    private final CallbackPositioningBelt replicationCallbacks = new CallbackPositioningBelt();
-    private final CallbackPositioningBelt flushCallbacks = new CallbackPositioningBelt();
-
+    private final CallbackBelt<ER> replicationCallbacks;
+    private final CallbackBelt<ER> flushCallbacks;
     /**
      * 刷盘位置
      */
     private final AtomicLong journalFlushIndex = new AtomicLong(0L);
+    /**
+     * 选民状态，在LEADER、FOLLOWER和CANDIDATE之间转换。初始值为FOLLOWER。
+     */
+    private VoterState voterState = VoterState.FOLLOWER;
+    /**
+     * 在当前任期内收到选票的候选人地址（如果没有就为 null）
+     */
+    private URI votedFor = null;
+    /**
+     * 已获得的选票
+     */
+    private AtomicInteger grantedVotes = new AtomicInteger(0);
+    /**
+     * 选举（心跳）超时
+     */
+    private long electionTimeoutMs;
+    /**
+     * 当角色为LEADER时，记录所有FOLLOWER的位置等信息
+     */
+    private List<Follower> followers = new ArrayList<>();
+    /**
+     * 上次从LEADER收到心跳（asyncAppendEntries）的时间戳
+     */
+    private long lastHeartbeat;
+    /**
+     * 待处理的asyncAppendEntries Request，按照request中的preLogTerm和prevLogIndex排序。
+     */
+    private BlockingQueue<ReplicationRequestResponse> pendingAppendEntriesRequests;
+    private ScheduledFuture checkElectionTimeoutFuture;
 
     public Voter(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
                  Serializer<Q> querySerializer, Serializer<QR> resultSerializer,
                  ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
         super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer, scheduledExecutor, asyncExecutor, properties);
         this.config = toConfig(properties);
+
+        replicationCallbacks = new LinkedQueueCallbackBelt<>(config.getRpcTimeoutMs(), entryResultSerializer);
+        flushCallbacks = new LinkedQueueCallbackBelt<>(config.getRpcTimeoutMs(), entryResultSerializer);
         electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
 
         pendingUpdateStateRequests = new LinkedBlockingQueue<>(config.getCacheRequests());
@@ -176,21 +174,23 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                         .thenComparing(ReplicationRequestResponse::getPrevLogIndex));
 
 
-
         threads.createThread(buildLeaderAppendJournalEntryThread());
         threads.createThread(buildVoterReplicationHandlerThread());
         threads.createThread(buildLeaderReplicationThread());
         threads.createThread(buildLeaderReplicationResponseThread());
         threads.createThread(buildCallbackThread());
-        threads.createThread(buildMonitorThread());
+
+        this.updateClusterStateMetric = getMetric(METRIC_UPDATE_CLUSTER_STATE);
+        this.appendJournalMetric = getMetric(METRIC_APPEND_JOURNAL);
+        this.appendEntriesRpcMetricMap = new HashMap<>(2);
     }
 
     private AsyncLoopThread buildLeaderAppendJournalEntryThread() {
         return ThreadBuilder.builder()
                 .name(LEADER_APPEND_ENTRY_THREAD)
-                .condition(() ->this.serverState() == ServerState.RUNNING)
+                .condition(() -> this.serverState() == ServerState.RUNNING)
                 .doWork(this::appendJournalEntry)
-                .sleepTime(0,0)
+                .sleepTime(0, 0)
                 .onException(e -> logger.warn("{} Exception, {}: ", LEADER_APPEND_ENTRY_THREAD, voterInfo(), e))
                 .daemon(true)
                 .build();
@@ -199,9 +199,9 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     private AsyncLoopThread buildVoterReplicationHandlerThread() {
         return ThreadBuilder.builder()
                 .name(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD)
-                .condition(() ->this.serverState() == ServerState.RUNNING)
-                .doWork(this::handleReplicationRequest)
-                .sleepTime(config.getHeartbeatIntervalMs(),config.getHeartbeatIntervalMs())
+                .condition(() -> this.serverState() == ServerState.RUNNING)
+                .doWork(this::followerHandleAppendEntriesRequest)
+                .sleepTime(config.getHeartbeatIntervalMs(), config.getHeartbeatIntervalMs())
                 .onException(e -> logger.warn("{} Exception, {}: ", VOTER_REPLICATION_REQUESTS_HANDLER_THREAD, voterInfo(), e))
                 .daemon(true)
                 .build();
@@ -210,42 +210,40 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     private AsyncLoopThread buildLeaderReplicationThread() {
         return ThreadBuilder.builder()
                 .name(LEADER_REPLICATION_THREAD)
-                .condition(() ->this.serverState() == ServerState.RUNNING)
+                .condition(() -> this.serverState() == ServerState.RUNNING)
                 .doWork(this::replication)
-                .sleepTime(config.getHeartbeatIntervalMs(),config.getHeartbeatIntervalMs())
+                .sleepTime(config.getHeartbeatIntervalMs(), config.getHeartbeatIntervalMs())
                 .onException(e -> logger.warn("{} Exception, {}: ", LEADER_REPLICATION_THREAD, voterInfo(), e))
                 .daemon(true)
                 .build();
     }
+
     private AsyncLoopThread buildLeaderReplicationResponseThread() {
         return ThreadBuilder.builder()
                 .name(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD)
-                .condition(() ->this.serverState() == ServerState.RUNNING && this.voterState == VoterState.LEADER)
-                .doWork(this::handleReplicationResponses)
-                .sleepTime(config.getHeartbeatIntervalMs(),config.getHeartbeatIntervalMs())
+                .condition(() -> this.serverState() == ServerState.RUNNING && this.voterState == VoterState.LEADER)
+                .doWork(this::leaderUpdateCommitIndex)
+                .sleepTime(config.getHeartbeatIntervalMs(), config.getHeartbeatIntervalMs())
                 .onException(e -> logger.warn("{} Exception, {}: ", LEADER_REPLICATION_RESPONSES_HANDLER_THREAD, voterInfo(), e))
                 .daemon(true)
                 .build();
     }
+
     private AsyncLoopThread buildCallbackThread() {
         return ThreadBuilder.builder()
                 .name(LEADER_CALLBACK_THREAD)
-                .condition(() ->this.serverState() == ServerState.RUNNING)
+                .condition(() -> this.serverState() == ServerState.RUNNING)
                 .doWork(this::callback)
-                .sleepTime(config.getHeartbeatIntervalMs(),config.getHeartbeatIntervalMs())
+                .sleepTime(config.getHeartbeatIntervalMs(), config.getHeartbeatIntervalMs())
                 .onException(e -> logger.warn("{} Exception, {}: ", LEADER_CALLBACK_THREAD, voterInfo(), e))
                 .daemon(true)
                 .build();
     }
 
-    private AsyncLoopThread buildMonitorThread() {
-        return ThreadBuilder.builder()
-                .name("MonitorThread")
-                .condition(() ->this.voterState == VoterState.LEADER)
-                .doWork(() -> logger.info("PendingUpdateRequests: {}, {}.", pendingUpdateStateRequests.size(), voterInfo()))
-                .sleepTime(1000,1000)
-                .daemon(true)
-                .build();
+    @Override
+    protected void onPrintMetric() {
+        super.onPrintMetric();
+        logger.info("PendingUpdateRequests: {}, {}.", pendingUpdateStateRequests.size(), voterInfo());
     }
 
     private void callback() {
@@ -261,7 +259,9 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         UpdateStateRequestResponse rr = pendingUpdateStateRequests.take();
         if (voterState == VoterState.LEADER) {
             try {
+                appendJournalMetric.start();
                 long index = journal.append(new Entry(rr.getRequest().getEntry(), currentTerm.get(), rr.getRequest().getPartition(), rr.getRequest().getBatchSize()));
+                index = index - 1;
                 if (rr.getRequest().getResponseConfig() == ResponseConfig.PERSISTENCE) {
                     flushCallbacks.put(new Callback<>(index, rr.getResponseFuture()));
                 } else if (rr.getRequest().getResponseConfig() == ResponseConfig.REPLICATION) {
@@ -269,6 +269,8 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                 }
                 // 唤醒复制线程
 //                threads.wakeupThread(LEADER_REPLICATION_THREAD);
+                appendJournalMetric.end(rr.getRequest().getEntry().length);
+
             } catch (Throwable t) {
                 rr.getResponseFuture().complete(new UpdateClusterStateResponse(t));
                 throw t;
@@ -283,10 +285,10 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     protected void onJournalFlushed() {
 
         journalFlushIndex.set(journal.maxIndex());
-        if(threads.getTreadState(LEADER_APPEND_ENTRY_THREAD) == ServerState.RUNNING) {
+        if (threads.getTreadState(LEADER_APPEND_ENTRY_THREAD) == ServerState.RUNNING) {
             threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
         }
-        if(threads.getTreadState(LEADER_CALLBACK_THREAD) == ServerState.RUNNING) {
+        if (threads.getTreadState(LEADER_CALLBACK_THREAD) == ServerState.RUNNING) {
             threads.wakeupThread(LEADER_CALLBACK_THREAD);
         }
     }
@@ -351,16 +353,16 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
      * 2. 给自己投票；
      * 3. 重置选举计时器：lastHeartBeat = now，生成一个随机的新的选举超时时间（RAFT的推荐值为150~300ms）。
      * 4. 向其他Voter发送RequestVote请求
-     *  4.1. 如果收到了来自大多数服务器的投票：成为LEADER
-     *  4.2. 如果收到了来自新领导人的asyncAppendEntries请求（heartbeat）：转换状态为FOLLOWER
-     *  4.3. 如果选举超时：开始新一轮的选举
+     * 4.1. 如果收到了来自大多数服务器的投票：成为LEADER
+     * 4.2. 如果收到了来自新领导人的asyncAppendEntries请求（heartbeat）：转换状态为FOLLOWER
+     * 4.3. 如果选举超时：开始新一轮的选举
      */
     private void startElection() {
         logger.info("Start election, {}", voterInfo());
         convertToCandidate();
 
         lastHeartbeat = System.currentTimeMillis();
-        long lastLogIndex = journal.maxIndex() - 1 ;
+        long lastLogIndex = journal.maxIndex() - 1;
         int lastLogTerm = journal.getTerm(lastLogIndex);
 
         // 处理单节点的特殊情况
@@ -384,21 +386,21 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                 }).filter(Objects::nonNull)
                 .forEach(serverRpc ->
                         serverRpc.requestVote(request)
-                .exceptionally(RequestVoteResponse::new)
-                .thenAccept(response -> {
-                    if(response.success()) {
-                        checkTerm(response.getTerm());
-                        synchronized (voteResponseMutex) {
-                            if (response.getTerm() == currentTerm.get() && voterState == VoterState.CANDIDATE && response.isVoteGranted()) {
-                                grantedVotes.incrementAndGet();
-                                logger.info("{} votes granted, {}.", grantedVotes.get(), voterInfo());
-                                if (grantedVotes.get() >= voters.size() / 2 + 1) {
-                                    convertToLeader();
-                                }
-                            }
-                        }
-                    }
-                }));
+                                .exceptionally(RequestVoteResponse::new)
+                                .thenAccept(response -> {
+                                    if (response.success()) {
+                                        checkTerm(response.getTerm());
+                                        synchronized (voteResponseMutex) {
+                                            if (response.getTerm() == currentTerm.get() && voterState == VoterState.CANDIDATE && response.isVoteGranted()) {
+                                                grantedVotes.incrementAndGet();
+                                                logger.info("{} votes granted, {}.", grantedVotes.get(), voterInfo());
+                                                if (grantedVotes.get() >= voters.size() / 2 + 1) {
+                                                    convertToLeader();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }));
     }
 
     /**
@@ -407,12 +409,12 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
      * 复制发送线程只负责发送asyncAppendEntries请求，不处理响应。
      */
     private void replication() {
-        int count;
+        int count = 1;
         // 如果是单节点，直接唤醒leaderReplicationResponseHandlerThread，减少响应时延。
-        if(serverState() == ServerState.RUNNING && voterState == VoterState.LEADER && followers.isEmpty()) {
+        if (serverState() == ServerState.RUNNING && voterState == VoterState.LEADER && followers.isEmpty()) {
             threads.wakeupThread(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD);
         }
-        do {
+        while (count > 0 && serverState() == ServerState.RUNNING) {
             if (serverState() == ServerState.RUNNING && voterState == VoterState.LEADER && !Thread.currentThread().isInterrupted()) {
 
                 count = followers.stream()
@@ -420,23 +422,23 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                             long maxIndex = journal.maxIndex();
                             int rpcCount = 0;
                             if (follower.nextIndex < maxIndex) {
-                                List<byte []> entries = journal.readRaw(follower.getNextIndex(), config.getReplicationBatchSize());
+                                List<byte[]> entries = journal.readRaw(follower.getNextIndex(), config.getReplicationBatchSize());
                                 AsyncAppendEntriesRequest request =
                                         new AsyncAppendEntriesRequest(currentTerm.get(), leader,
                                                 follower.getNextIndex() - 1, getPreLogTerm(follower.getNextIndex()),
                                                 entries, commitIndex.get());
-                                sendAsyncAppendEntriesRpc(follower, request);
+                                sendAppendEntriesRequest(follower, request);
                                 follower.setNextIndex(follower.getNextIndex() + entries.size());
                                 rpcCount++;
 
                             } else {
                                 // Send heartbeat
-                                if(System.currentTimeMillis() - follower.getLastHeartbeatRequestTime() >= config.getHeartbeatIntervalMs()) {
+                                if (System.currentTimeMillis() - follower.getLastHeartbeatRequestTime() >= config.getHeartbeatIntervalMs()) {
                                     AsyncAppendEntriesRequest request =
                                             new AsyncAppendEntriesRequest(currentTerm.get(), leader,
                                                     follower.getNextIndex() - 1, getPreLogTerm(follower.getNextIndex()),
                                                     Collections.emptyList(), commitIndex.get());
-                                    sendAsyncAppendEntriesRpc(follower, request);
+                                    sendAppendEntriesRequest(follower, request);
                                 }
                             }
                             return rpcCount;
@@ -445,87 +447,25 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
             } else {
                 count = 0;
             }
-        } while (count > 0);
+        }
 
     }
 
 
     private int getPreLogTerm(long currentLogIndex) {
-        if(currentLogIndex > journal.minIndex()) {
+        if (currentLogIndex > journal.minIndex()) {
             return journal.getTerm(currentLogIndex - 1);
         } else if (currentLogIndex == journal.maxIndex() && snapshots.containsKey(currentLogIndex)) {
             return snapshots.get(currentLogIndex).lastIncludedTerm();
-        } else if (currentLogIndex == 0 ) {
-            return  -1;
+        } else if (currentLogIndex == 0) {
+            return -1;
         } else {
             throw new IndexUnderflowException();
         }
     }
 
-    private void sendAsyncAppendEntriesRpc(Follower follower, AsyncAppendEntriesRequest request) {
-        if(serverState() == ServerState.RUNNING && voterState == VoterState.LEADER && request.getTerm() == currentTerm.get()) {
-            follower.setLastHeartbeatRequestTime(System.currentTimeMillis());
-            CompletableFuture.supplyAsync(() -> {
-                ServerRpc serverRpc = getServerRpc(follower.getUri());
-                if (null != request.getEntries() && !request.getEntries().isEmpty()) {
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("Send appendEntriesRequest, " +
-                                        "follower: {}, " +
-                                        "term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, " +
-                                        "entries: {}, leaderCommit: {}, {}.",
-                                follower.getUri(),
-                                request.getTerm(), request.getLeader(), request.getPrevLogIndex(), request.getPrevLogTerm(),
-                                request.getEntries().size(), request.getLeaderCommit(), voterInfo());
-                    }
-                } else {
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("Send heartbeat, term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, " +
-                                        "entries: {}, leaderCommit: {}, {}.",
-                                request.getTerm(), request.getLeader(), request.getPrevLogIndex(), request.getPrevLogTerm(),
-                                request.getEntries().size(), request.getLeaderCommit(), voterInfo());
-                    }
-                }
-                return serverRpc;
-            }, asyncExecutor)
-                    .thenCompose(serverRpc -> serverRpc.asyncAppendEntries(request))
-                    .exceptionally(AsyncAppendEntriesResponse::new)
-                    .thenAccept(response -> {
-                        if (response.success()) {
-                            if(logger.isDebugEnabled()) {
-                                logger.debug("Update lastHeartbeatResponseTime of {}, {}.", follower.getUri(), voterInfo());
-                            }
-                            follower.setLastHeartbeatResponseTime(System.currentTimeMillis());
-
-                            checkTerm(response.getTerm());
-                            if(response.getTerm() == currentTerm.get()) {
-                                if(response.getEntryCount() > 0) {
-                                    if(logger.isDebugEnabled()) {
-                                        logger.debug("Handle appendEntriesResponse, success: {}, journalIndex: {}, " +
-                                                        "entryCount: {}, term: {}, follower: {}, {}.",
-                                                response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
-                                                follower.getUri(), voterInfo());
-                                    }
-                                    follower.addResponse(response);
-                                    threads.wakeupThread(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD);
-                                } else if(logger.isDebugEnabled()){
-                                    logger.debug("Ignore heartbeat response, success: {}, journalIndex: {}, " +
-                                                    "entryCount: {}, term: {}, follower: {}, {}.",
-                                            response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
-                                            follower.getUri(), voterInfo());
-                                }
-
-                            } else {
-                                logger.warn("Drop outdated AsyncAppendEntries Response: follower: {}, term: {}, index: {}, {}.",
-                                        follower.getUri(), response.getTerm(), response.getJournalIndex(), voterInfo());
-                            }
-                        } else {
-                            logger.warn("Replication response error: {}", response.errorString());
-                            delaySendAsyncAppendEntriesRpc(follower, request);
-                        }
-
-                });
-
-        } else {
+    private void sendAppendEntriesRequest(Follower follower, AsyncAppendEntriesRequest request) {
+        if (serverState() != ServerState.RUNNING || voterState != VoterState.LEADER || request.getTerm() != currentTerm.get()) {
             logger.warn("Drop AsyncAppendEntries Request: follower: {}, term: {}, " +
                             "prevLogIndex: {}, prevLogTerm: {}, entries: {}, " +
                             "leader: {}, leaderCommit: {}, {}.",
@@ -533,15 +473,69 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                     request.getPrevLogTerm(), request.getEntries().size(),
                     request.getLeader(), request.getLeaderCommit(),
                     voterInfo());
+            return;
         }
+        if (logger.isDebugEnabled()) {
+            final boolean isHeartbeat = null == request.getEntries() || request.getEntries().isEmpty();
+            logger.debug("Send {}, " +
+                            "follower: {}, " +
+                            "term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, " +
+                            "entries: {}, leaderCommit: {}, {}.",
+                    isHeartbeat ? "heartbeat": "appendEntriesRequest",
+                    follower.getUri(),
+                    request.getTerm(), request.getLeader(), request.getPrevLogIndex(), request.getPrevLogTerm(),
+                    request.getEntries().size(), request.getLeaderCommit(), voterInfo());
+        }
+        follower.setLastHeartbeatRequestTime(System.currentTimeMillis());
 
+        CompletableFuture.supplyAsync(() -> getServerRpc(follower.getUri()), asyncExecutor)
+                .thenCompose(serverRpc -> serverRpc.asyncAppendEntries(request))
+                .exceptionally(AsyncAppendEntriesResponse::new)
+                .thenAccept(response -> leaderOnAppendEntriesResponse(follower, request, response));
+
+
+    }
+
+    private void leaderOnAppendEntriesResponse(Follower follower, AsyncAppendEntriesRequest request, AsyncAppendEntriesResponse response) {
+        if (response.success()) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Update lastHeartbeatResponseTime of {}, {}.", follower.getUri(), voterInfo());
+            }
+            follower.setLastHeartbeatResponseTime(System.currentTimeMillis());
+
+            checkTerm(response.getTerm());
+            if (response.getTerm() == currentTerm.get()) {
+                if (response.getEntryCount() > 0) {
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Handle appendEntriesResponse, success: {}, journalIndex: {}, " +
+                                        "entryCount: {}, term: {}, follower: {}, {}.",
+                                response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
+                                follower.getUri(), voterInfo());
+                    }
+                    follower.addResponse(response);
+                    threads.wakeupThread(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD);
+                } else if (logger.isDebugEnabled()) {
+                    logger.debug("Ignore heartbeat response, success: {}, journalIndex: {}, " +
+                                    "entryCount: {}, term: {}, follower: {}, {}.",
+                            response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
+                            follower.getUri(), voterInfo());
+                }
+
+            } else {
+                logger.warn("Drop outdated AsyncAppendEntries Response: follower: {}, term: {}, index: {}, {}.",
+                        follower.getUri(), response.getTerm(), response.getJournalIndex(), voterInfo());
+            }
+        } else {
+            logger.warn("Replication response error: {}", response.errorString());
+            delaySendAsyncAppendEntriesRpc(follower, request);
+        }
     }
 
     private void delaySendAsyncAppendEntriesRpc(Follower follower, AsyncAppendEntriesRequest request) {
         new Timer("Retry-AsyncAppendEntriesRpc", true).schedule(new TimerTask() {
             @Override
             public void run() {
-                sendAsyncAppendEntriesRpc(follower, request);
+                sendAppendEntriesRequest(follower, request);
             }
         }, config.getHeartbeatIntervalMs());
     }
@@ -551,20 +545,20 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
      * 对于每一个AsyncAppendRequest RPC请求，当收到成功响应的时需要更新repStartIndex、matchIndex和commitIndex。
      * 由于接收者按照日志的索引位置串行处理请求，一般情况下，收到的响应也是按照顺序返回的，但是考虑到网络延时和数据重传，
      * 依然不可避免乱序响应的情况。LEADER在处理响应时需要遵循：
-     *
+     * <p>
      * 1. 对于所有响应，先比较返回值中的term是否与当前term一致，如果不一致说明任期已经变更，丢弃响应，
      * 2. LEADER 反复重试所有term一致的超时和失败请求（考虑到性能问题，可以在每次重试前加一个时延）；
      * 3. 对于返回失败的请求，如果这个请求是所有在途请求中日志位置最小的（repStartIndex == logIndex），
-     *    说明接收者的日志落后于repStartIndex，这时LEADER需要回退，再次发送AsyncAppendRequest RPC请求，
-     *    直到找到FOLLOWER与LEADER相同的位置。
+     * 说明接收者的日志落后于repStartIndex，这时LEADER需要回退，再次发送AsyncAppendRequest RPC请求，
+     * 直到找到FOLLOWER与LEADER相同的位置。
      * 4. 对于成功的响应，需要按照日志索引位置顺序处理。规定只有返回值中的logIndex与repStartIndex相等时，
-     *    才更新repStartIndex和matchIndex，否则反复重试直到满足条件；
+     * 才更新repStartIndex和matchIndex，否则反复重试直到满足条件；
      * 5. 如果存在一个索引位置N，这个N是所有满足如下所有条件位置中的最大值，则将commitIndex更新为N。
-     *  5.1 超过半数的matchIndex都大于等于N
-     *  5.2 N > commitIndex
-     *  5.3 log[N].term == currentTerm
+     * 5.1 超过半数的matchIndex都大于等于N
+     * 5.2 N > commitIndex
+     * 5.3 log[N].term == currentTerm
      */
-    private void handleReplicationResponses() {
+    private void leaderUpdateCommitIndex() {
         if (followers.isEmpty()) { // 单节点情况需要单独处理
             long N = journal.maxIndex();
             if (voterState == VoterState.LEADER && N > commitIndex.get() && journal.getTerm(N - 1) == currentTerm.get()) {
@@ -575,7 +569,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         } else {
             // TODO: 是否有并发问题？
             long[] sortedMatchIndex = followers.parallelStream()
-                    .peek(this::handleReplicationResponse)
+                    .peek(this::leaderHandleAppendEntriesResponse)
                     .mapToLong(Follower::getMatchIndex)
                     .sorted().toArray();
             if (sortedMatchIndex.length > 0) {
@@ -598,10 +592,10 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         threads.wakeupThread(LEADER_REPLICATION_THREAD);
     }
 
-    private void handleReplicationResponse(Follower follower) {
+    private void leaderHandleAppendEntriesResponse(Follower follower) {
         AsyncAppendEntriesResponse response;
         while (serverState() == ServerState.RUNNING && (response = follower.pendingResponses.poll()) != null) {
-            if(response.getEntryCount() > 0) {
+            if (response.getEntryCount() > 0) {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Received appendEntriesResponse, success: {}, journalIndex: {}, " +
                                     "entryCount: {}, term: {}, follower: {}, {}.",
@@ -617,13 +611,13 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                 }
             }
             int fixTerm = currentTerm.get();
-            if(fixTerm == response.getTerm()) {
-                if(response.isSuccess()) {
+            if (fixTerm == response.getTerm()) {
+                if (response.isSuccess()) {
 
                     if (follower.getRepStartIndex() == response.getJournalIndex()) {
                         follower.setRepStartIndex(follower.getRepStartIndex() + response.getEntryCount());
                         follower.setMatchIndex(response.getJournalIndex() + response.getEntryCount());
-                        if(response.getEntryCount() > 0) {
+                        if (response.getEntryCount() > 0) {
                             if (logger.isDebugEnabled()) {
                                 logger.debug("Replication success, RepStartIndex: {}, matchIndex: {}, follower: {}, {}.",
                                         follower.getRepStartIndex(), follower.getMatchIndex(), follower.getUri(),
@@ -635,13 +629,13 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                         follower.addResponse(response);
                         break;
                     }
-                } else if(response.getEntryCount() > 0){
+                } else if (response.getEntryCount() > 0) {
                     // 失败且不是心跳
                     if (follower.getRepStartIndex() == response.getJournalIndex()) {
                         // 需要回退
                         int rollbackSize = (int) Math.min(config.getReplicationBatchSize(), follower.repStartIndex - journal.minIndex());
                         follower.repStartIndex -= rollbackSize;
-                        sendAsyncAppendEntriesRpc(follower,
+                        sendAppendEntriesRequest(follower,
                                 new AsyncAppendEntriesRequest(fixTerm, leader,
                                         follower.repStartIndex - 1,
                                         journal.getTerm(follower.repStartIndex - 1),
@@ -666,7 +660,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
      * 添加任何在已有的日志中不存在的条目
      * 如果leaderCommit > commitIndex，将commitIndex设置为leaderCommit和最新日志条目索引号中较小的一个
      */
-    private void handleReplicationRequest() throws InterruptedException {
+    private void followerHandleAppendEntriesRequest() throws InterruptedException {
 
         ReplicationRequestResponse rr = pendingAppendEntriesRequests.take();
         AsyncAppendEntriesRequest request = rr.getRequest();
@@ -704,13 +698,14 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                     return;
 
                 }
-            } catch (IndexOverflowException | IndexUnderflowException ignored) {}
+            } catch (IndexOverflowException | IndexUnderflowException ignored) {
+            }
 
             AsyncAppendEntriesResponse response = new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
                     currentTerm.get(), request.getEntries().size());
             rr.getResponseFuture()
                     .complete(response);
-            if(request.getEntries() != null && !request.getEntries().isEmpty()) {
+            if (request.getEntries() != null && !request.getEntries().isEmpty()) {
 
                 if (logger.isDebugEnabled()) {
                     logger.debug("Send appendEntriesResponse, success: {}, journalIndex: {}, entryCount: {}, term: {}, " +
@@ -722,7 +717,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         } catch (Throwable t) {
 
             logger.warn("Exception when handle AsyncReplicationRequest, " +
-                    "term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, entries: {}, leaderCommits: {}, " +
+                            "term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, entries: {}, leaderCommits: {}, " +
                             "{}.",
                     request.getTerm(), request.getLeader(), request.getPrevLogIndex(),
                     request.getPrevLogTerm(), request.getEntries().size(),
@@ -735,6 +730,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
 
     private void convertToCandidate() {
         synchronized (rollMutex) {
+            resetAppendEntriesRpcMetricMap();
             this.followers = Collections.emptyList();
             this.voterState = VoterState.CANDIDATE;
             currentTerm.incrementAndGet();
@@ -745,17 +741,35 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         }
     }
 
+    private void resetAppendEntriesRpcMetricMap() {
+        appendEntriesRpcMetricMap.forEach((followerUri, metric) -> {
+            removeMetric(getMetricName(METRIC_APPEND_ENTRIES_RPC, followerUri));
+        });
+        appendEntriesRpcMetricMap.clear();
+    }
+
+    private static String getMetricName(String prefix, URI followerUri) {
+        return prefix + "_" + followerUri.toString();
+    }
+
     /**
      * 将状态转换为Leader
      */
     private void convertToLeader() {
         synchronized (rollMutex) {
 
+            resetAppendEntriesRpcMetricMap();
+
             // 初始化followers
             this.followers = this.voters.stream()
                     .filter(uri -> !uri.equals(this.uri))
                     .map(uri -> new Follower(uri, journal.maxIndex(), config.getReplicationParallelism()))
                     .collect(Collectors.toList());
+
+            this.followers.forEach(follower ->
+                    appendEntriesRpcMetricMap.put(
+                            follower.getUri(),
+                            getMetric(getMetricName(METRIC_APPEND_ENTRIES_RPC, follower.getUri()))));
             // 变更状态
             journal.append(new Entry(
                     leaderAnnouncementEntrySerializer.serialize(new LeaderAnnouncementEntry()),
@@ -765,6 +779,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
             // Leader announcement
             threads.wakeupThread(LEADER_REPLICATION_THREAD);
             fireOnLeaderChangeEvent();
+
             logger.info("Convert to LEADER, {}.", voterInfo());
         }
 
@@ -779,6 +794,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
 
     private void convertToFollower() {
         synchronized (rollMutex) {
+            resetAppendEntriesRpcMetricMap();
             this.votedFor = null;
             this.followers = Collections.emptyList();
             this.electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
@@ -787,7 +803,6 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
             logger.info("Convert to FOLLOWER, electionTimeout: {}, {}.", electionTimeoutMs, voterInfo());
         }
     }
-
 
 
     @Override
@@ -802,10 +817,10 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     public CompletableFuture<AsyncAppendEntriesResponse> asyncAppendEntries(AsyncAppendEntriesRequest request) {
 
         checkTerm(request.getTerm());
-        if(voterState != VoterState.FOLLOWER) {
+        if (voterState != VoterState.FOLLOWER) {
             convertToFollower();
         }
-        if( logger.isDebugEnabled() && request.getEntries() != null && !request.getEntries().isEmpty()) {
+        if (logger.isDebugEnabled() && request.getEntries() != null && !request.getEntries().isEmpty()) {
             logger.debug("Received appendEntriesRequest, term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, " +
                             "entries: {}, leaderCommit: {}, {}.",
                     request.getTerm(), request.getLeader(), request.getPrevLogIndex(), request.getPrevLogTerm(),
@@ -814,15 +829,15 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
 
         // reset heartbeat
         lastHeartbeat = System.currentTimeMillis();
-        if(logger.isDebugEnabled()) {
+        if (logger.isDebugEnabled()) {
             logger.debug("Update lastHeartbeat, {}.", voterInfo());
         }
 
-        if(!request.getLeader().equals(leader)) {
+        if (!request.getLeader().equals(leader)) {
             leader = request.getLeader();
         }
 
-        if(request.getEntries().size() > 0) {
+        if (request.getEntries().size() > 0) {
 
             // 复制请求异步处理
             ReplicationRequestResponse requestResponse = new ReplicationRequestResponse(request);
@@ -837,7 +852,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
 
     /**
      * 接收者收到requestVote方法后的实现流程如下：
-     *
+     * <p>
      * 如果请求中的任期号 < 节点当前任期号，返回false；
      * 如果votedFor为空或者与candidateId相同，并且候选人的日志至少和自己的日志一样新，则给该候选人投票；
      */
@@ -855,11 +870,11 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                     return new RequestVoteResponse(request.getTerm(), false);
                 }
                 int lastLogTerm;
-                if((votedFor == null || votedFor.equals(request.getCandidate())) // If votedFor is null or candidateId
-                        && (request.getLastLogTerm() >  (lastLogTerm = journal.getTerm(journal.maxIndex() -1))
-                            || (request.getLastLogTerm() == lastLogTerm
-                            && request.getLastLogIndex() >= journal.maxIndex() -1)) // candidate’s log is at least as up-to-date as receiver’s log
-                        ) {
+                if ((votedFor == null || votedFor.equals(request.getCandidate())) // If votedFor is null or candidateId
+                        && (request.getLastLogTerm() > (lastLogTerm = journal.getTerm(journal.maxIndex() - 1))
+                        || (request.getLastLogTerm() == lastLogTerm
+                        && request.getLastLogIndex() >= journal.maxIndex() - 1)) // candidate’s log is at least as up-to-date as receiver’s log
+                ) {
                     votedFor = request.getCandidate();
                     return new RequestVoteResponse(request.getTerm(), true);
                 }
@@ -870,7 +885,8 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
 
     @Override
     public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
-        UpdateStateRequestResponse requestResponse = new UpdateStateRequestResponse(request);
+
+        UpdateStateRequestResponse requestResponse = new UpdateStateRequestResponse(request, updateClusterStateMetric);
 
         try {
             pendingUpdateStateRequests.put(requestResponse);
@@ -902,7 +918,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
 
     private void checkTerm(int term) {
         synchronized (currentTerm) {
-            if(term > currentTerm.get()) {
+            if (term > currentTerm.get()) {
                 currentTerm.set(term);
                 convertToFollower();
             }
@@ -916,7 +932,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         CompletableFuture<Void> completableFuture = new CompletableFuture<>();
         CompletableFuture.runAsync(() -> {
             try {
-                if(voterState == VoterState.LEADER) {
+                if (voterState == VoterState.LEADER) {
                     long start = System.currentTimeMillis();
                     while (!checkLeadership()) {
 
@@ -939,6 +955,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         }, asyncExecutor);
         return completableFuture;
     }
+
     @Override
     public CompletableFuture<LastAppliedResponse> lastApplied() {
         return waitLeadership()
@@ -971,7 +988,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     public void doStop() {
         try {
             stopAndWaitScheduledFeature(checkElectionTimeoutFuture, 1000L);
-            if(followers!= null) {
+            if (followers != null) {
                 followers.forEach(follower -> follower.pendingResponses.clear());
             }
             pendingAppendEntriesRequests.clear();
@@ -987,10 +1004,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     @Override
     protected void beforeStateChanged(ER updateResult) {
         super.beforeStateChanged(updateResult);
-        Callback<ER> callback = replicationCallbacks.get(state.lastApplied());
-        if(null != callback) {
-            callback.setResult(updateResult);
-        }
+        replicationCallbacks.setResult(state.lastApplied(), updateResult);
     }
 
     @Override
@@ -1019,7 +1033,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
 
     private String voterInfo() {
         return String.format("voterState: %s, currentTerm: %d, minIndex: %d, " +
-                "maxIndex: %d, commitIndex: %d, lastApplied: %d, uri: %s",
+                        "maxIndex: %d, commitIndex: %d, lastApplied: %d, uri: %s",
                 voterState.toString(), currentTerm.get(), journal.minIndex(),
                 journal.maxIndex(), commitIndex.get(), state.lastApplied(), uri.toString());
     }
@@ -1057,12 +1071,16 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     private static class UpdateStateRequestResponse {
         private final UpdateClusterStateRequest request;
         private final CompletableFuture<UpdateClusterStateResponse> responseFuture;
-
+        private final long start = System.nanoTime();
         private long logIndex;
 
-        UpdateStateRequestResponse(UpdateClusterStateRequest request) {
+        UpdateStateRequestResponse(UpdateClusterStateRequest request, JMetric metric) {
             this.request = request;
             responseFuture = new CompletableFuture<>();
+
+            responseFuture
+                    .thenRun(() -> metric.mark(System.nanoTime() - start, request.getEntry().length));
+
         }
 
         UpdateClusterStateRequest getRequest() {
@@ -1083,11 +1101,14 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     }
 
 
-
     private static class Follower {
 
 
         private final URI uri;
+        /**
+         * 仅LEADER使用，待处理的asyncAppendEntries Response，按照Response中的logIndex排序。
+         */
+        private final BlockingQueue<AsyncAppendEntriesResponse> pendingResponses;
         /**
          * 需要发给它的下一个日志条目的索引（初始化为领导人上一条日志的索引值 +1）
          */
@@ -1105,12 +1126,8 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
          * 上次从FOLLOWER收到心跳（asyncAppendEntries）成功响应的时间戳
          */
         private long lastHeartbeatResponseTime;
-
         private long lastHeartbeatRequestTime = 0L;
-        /**
-         * 仅LEADER使用，待处理的asyncAppendEntries Response，按照Response中的logIndex排序。
-         */
-        private final BlockingQueue<AsyncAppendEntriesResponse> pendingResponses;
+
         private Follower(URI uri, long nextIndex, int replicationParallelism) {
             this.uri = uri;
             this.nextIndex = nextIndex;
@@ -1172,93 +1189,6 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
             this.lastHeartbeatRequestTime = lastHeartbeatRequestTime;
         }
     }
-    private static class Callback<R> {
-        final long position;
-        final long timestamp;
-        R result;
-        final CompletableFuture<UpdateClusterStateResponse> completableFuture;
-
-        public Callback(long position, CompletableFuture<UpdateClusterStateResponse> completableFuture) {
-            this.position = position;
-            this.timestamp = System.currentTimeMillis();
-            this.completableFuture = completableFuture;
-        }
-
-        private long getPosition() {
-            return position;
-        }
-
-        public R getResult() {
-            return result;
-        }
-
-        public void setResult(R result) {
-            this.result = result;
-        }
-    }
-
-    private class CallbackPositioningBelt {
-
-        private final NavigableMap<Long, Callback<ER>> queue = new ConcurrentSkipListMap<>();
-        private AtomicLong callbackPosition = new AtomicLong(0L);
-
-
-        Callback<ER> getFirst() {
-            final Map.Entry<Long, Callback<ER>> entry = queue.firstEntry();
-            if(null == entry) {
-                throw new NoSuchElementException();
-            } else {
-                return entry.getValue();
-            }
-        }
-        Callback<ER> removeFirst() {
-            final Callback f = queue.pollFirstEntry().getValue();
-            if (f == null)
-                throw new NoSuchElementException();
-            return f;
-        }
-
-        boolean remove(Callback<ER> callback) { return queue.remove(callback.getPosition()) != null;}
-        void addLast(Callback<ER> callback) {
-            queue.put(callback.getPosition(), callback);
-        }
-
-        private AtomicLong counter = new AtomicLong(0L);
-        private AtomicLong putCounter = new AtomicLong(0L);
-        /**
-         * NOT Thread-safe!!!!!!
-         */
-        void callbackBefore(long position) {
-            callbackPosition.set(position);
-            try {
-                while (getFirst().position <= position){
-                    Callback<ER> callback = removeFirst();
-                    counter.incrementAndGet();
-
-                    callback.completableFuture.complete(new UpdateClusterStateResponse(entryResultSerializer.serialize(callback.getResult())));
-                }
-                long deadline = System.currentTimeMillis() - getRpcTimeoutMs();
-                while (getFirst().timestamp < deadline) {
-                    Callback<ER> callback = removeFirst();
-                    counter.incrementAndGet();
-                    callback.completableFuture.complete(new UpdateClusterStateResponse(new TimeoutException()));
-                }
-            } catch (NoSuchElementException ignored) {}
-        }
-
-        void put(Callback<ER> callback) {
-            putCounter.incrementAndGet();
-            addLast(callback);
-            if(callback.position <= callbackPosition.get() && remove(callback)){
-                counter.incrementAndGet();
-                callback.completableFuture.complete(new UpdateClusterStateResponse());
-            }
-        }
-
-        Callback<ER> get(long position) {
-            return queue.get(position);
-        }
-    }
 
     public static class Config extends Server.Config {
         public final static long DEFAULT_HEARTBEAT_INTERVAL_MS = 100L;
@@ -1278,6 +1208,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         private int replicationBatchSize = DEFAULT_REPLICATION_BATCH_SIZE;
         private int replicationParallelism = DEFAULT_REPLICATION_PARALLELISM;
         private int cacheRequests = DEFAULT_CACHE_REQUESTS;
+
         public int getReplicationBatchSize() {
             return replicationBatchSize;
         }
@@ -1320,4 +1251,5 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         }
 
     }
+
 }

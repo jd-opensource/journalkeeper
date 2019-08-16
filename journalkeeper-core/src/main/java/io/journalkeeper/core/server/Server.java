@@ -84,6 +84,10 @@ import java.util.stream.StreamSupport;
 
 import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
 
+// TODO: Add an UUID for each server instance,
+//  so multiple server instance of one process
+//  can be identified by UUID in logs and threads dump.
+
 /**
  * Server就是集群中的节点，它包含了存储在Server上日志（journal），一组快照（snapshots[]）和一个状态机（stateMachine）实例。
  * @author LiYue
@@ -227,6 +231,12 @@ public abstract class Server<E, ER, Q, QR>
     private final Map<String, JMetric> metricMap;
     private final static JMetric DUMMY_METRIC = new DummyMetric();
 
+    private final static String METRIC_EXEC_STATE_MACHINE = "EXEC_STATE_MACHINE";
+    private final static String METRIC_APPLY_ENTRIES = "APPLY_ENTRIES";
+
+    private final JMetric execStateMachineMetric;
+    private final JMetric applyEntriesMetric;
+
     public Server(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer,
                   Serializer<ER> entryResultSerializer, Serializer<Q> querySerializer,
                   Serializer<QR> resultSerializer, ScheduledExecutorService scheduledExecutor,
@@ -242,6 +252,8 @@ public abstract class Server<E, ER, Q, QR>
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
         this.entryResultSerializer = entryResultSerializer;
+
+        // init metrics
         if(config.isEnableMetric()) {
             this.metricFactory = ServiceSupport.load(JMetricFactory.class);
             this.metricMap = new ConcurrentHashMap<>();
@@ -252,6 +264,10 @@ public abstract class Server<E, ER, Q, QR>
             this.metricFactory = null;
             this.metricMap = null;
         }
+        execStateMachineMetric = getMetric(METRIC_EXEC_STATE_MACHINE);
+        applyEntriesMetric = getMetric(METRIC_APPLY_ENTRIES);
+
+
         this.eventBus = new EventBus(config.getRpcTimeoutMs());
         persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
         metadataPersistence = persistenceFactory.createMetadataPersistenceInstance();
@@ -379,6 +395,8 @@ public abstract class Server<E, ER, Q, QR>
      */
     private void applyEntries()  {
         while ( this.serverState == ServerState.RUNNING && state.lastApplied() < commitIndex.get()) {
+            applyEntriesMetric.start();
+
             takeASnapShotIfNeed();
             Entry storageEntry = journal.read(state.lastApplied());
             Map<String, String> customizedEventData = new HashMap<>();
@@ -387,8 +405,10 @@ public abstract class Server<E, ER, Q, QR>
                 E entry = entrySerializer.parse(storageEntry.getEntry());
                 long stamp = stateLock.writeLock();
                 try {
-                result = state.execute(entry, storageEntry.getHeader().getPartition(),
+                    execStateMachineMetric.start();
+                    result = state.execute(entry, storageEntry.getHeader().getPartition(),
                             state.lastApplied(), storageEntry.getHeader().getBatchSize(), customizedEventData);
+                    execStateMachineMetric.end(storageEntry.getEntry().length);
                 } finally {
                     stateLock.unlockWrite(stamp);
                 }
@@ -403,6 +423,7 @@ public abstract class Server<E, ER, Q, QR>
             customizedEventData.forEach(parameters::put);
             parameters.put("lastApplied", String.valueOf(state.lastApplied()));
             fireEvent(EventType.ON_STATE_CHANGE, parameters);
+            applyEntriesMetric.end(storageEntry.getEntry().length);
         }
     }
 
@@ -875,6 +896,12 @@ public abstract class Server<E, ER, Q, QR>
             return metricMap.computeIfAbsent(name, metricFactory::create);
         } else {
             return DUMMY_METRIC;
+        }
+    }
+    protected boolean isMetricEnabled() {return config.isEnableMetric();}
+    protected void removeMetric(String name) {
+        if(config.isEnableMetric()) {
+            metricMap.remove(name);
         }
     }
 
