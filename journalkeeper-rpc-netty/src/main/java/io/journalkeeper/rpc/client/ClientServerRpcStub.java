@@ -95,6 +95,11 @@ public class ClientServerRpcStub implements ClientServerRpc {
     }
 
     @Override
+    public CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request) {
+        return CommandSupport.sendRequest(request, RpcTypes.UPDATE_VOTERS_REQUEST, transport);
+    }
+
+    @Override
     public CompletableFuture<PullEventsResponse> pullEvents(PullEventsRequest request) {
         return CommandSupport.sendRequest(request, RpcTypes.PULL_EVENTS_REQUEST, transport);
     }

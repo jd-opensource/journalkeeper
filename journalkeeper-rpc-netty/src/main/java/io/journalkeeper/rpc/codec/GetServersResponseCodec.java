@@ -34,16 +34,16 @@ public class GetServersResponseCodec extends ResponseCodec<GetServersResponse> i
         if(null == clusterConfiguration) clusterConfiguration = new ClusterConfiguration();
 
         CodecSupport.encodeString(buffer, uriToString(clusterConfiguration.getLeader()));
-        CodecSupport.encodeList(buffer, clusterConfiguration.getVoters(), (obj, buffer1) -> CodecSupport.encodeString(buffer1, uriToString((URI) obj)));
-        CodecSupport.encodeList(buffer, clusterConfiguration.getObservers(), (obj, buffer1) -> CodecSupport.encodeString(buffer1, uriToString((URI) obj)));
+        CodecSupport.encodeList(buffer, clusterConfiguration.getVoters(), (obj, buffer1) -> CodecSupport.encodeUri(buffer1, (URI) obj));
+        CodecSupport.encodeList(buffer, clusterConfiguration.getObservers(), (obj, buffer1) -> CodecSupport.encodeUri(buffer1, (URI) obj));
     }
 
     // TODO 不存在leader转换uri错误
     @Override
     protected GetServersResponse decodeResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
         URI leader = stringToUri(CodecSupport.decodeString(buffer));
-        List<URI> voters = CodecSupport.decodeList(buffer, buffer1 -> stringToUri(CodecSupport.decodeString(buffer1)));
-        List<URI> observers = CodecSupport.decodeList(buffer, buffer1 -> stringToUri(CodecSupport.decodeString(buffer1)));
+        List<URI> voters = CodecSupport.decodeList(buffer, CodecSupport::decodeUri);
+        List<URI> observers = CodecSupport.decodeList(buffer, CodecSupport::decodeUri);
 
         return new GetServersResponse(new ClusterConfiguration(leader, voters, observers));
     }

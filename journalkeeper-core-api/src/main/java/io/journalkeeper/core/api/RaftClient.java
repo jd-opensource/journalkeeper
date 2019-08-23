@@ -18,6 +18,7 @@ import io.journalkeeper.utils.event.Watchable;
 
 import java.io.Serializable;
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -61,11 +62,11 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable {
 
     /**
      * 变更选民节点配置。
-     * @param operation 操作，ADD：添加，REMOVE：删除
-     * @param voter 需要添加或删除的节点地址。
+     * @param oldConfig 当前配置，用于验证。
+     * @param newConfig 变更后的配置
      * @return true：成功，其它：失败。
      */
-    CompletableFuture<Boolean> updateVoters(UpdateVoterOperation operation, URI voter);
+    CompletableFuture<Boolean> updateVoters(List<URI> oldConfig, List<URI> newConfig);
 
     CompletableFuture<Void> compact(Map<Integer, Long> toIndices);
 
@@ -73,5 +74,4 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable {
 
     void stop();
 
-    enum UpdateVoterOperation {ADD, REMOVE}
 }

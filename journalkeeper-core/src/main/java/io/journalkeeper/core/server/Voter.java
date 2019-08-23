@@ -25,6 +25,8 @@ import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
+import io.journalkeeper.rpc.client.UpdateVotersRequest;
+import io.journalkeeper.rpc.client.UpdateVotersResponse;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.RequestVoteRequest;
@@ -816,6 +818,14 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     public CompletableFuture<AsyncAppendEntriesResponse> asyncAppendEntries(AsyncAppendEntriesRequest request) {
 
         checkTerm(request.getTerm());
+
+        if(request.getTerm() < currentTerm.get()) {
+            // 如果收到的请求term小于当前term，拒绝请求
+            return CompletableFuture.supplyAsync(() -> new AsyncAppendEntriesResponse(false, request.getPrevLogIndex() + 1,
+                    currentTerm.get(), request.getEntries().size()));
+
+        }
+
         if (voterState != VoterState.FOLLOWER) {
             convertToFollower();
         }
@@ -862,6 +872,12 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                             "lastLogIndex: {}, lastLogTerm: {}, {}.",
                     request.getTerm(), request.getCandidate(),
                     request.getLastLogIndex(), request.getLastLogTerm(), voterInfo());
+
+            // 如果当前是LEADER或者上次收到心跳的至今小于最小选举超时，那直接拒绝投票
+            if(voterState == VoterState.LEADER || System.currentTimeMillis() - lastHeartbeat < config.getElectionTimeoutMs()) {
+                return new RequestVoteResponse(request.getTerm(), false);
+            }
+
             checkTerm(request.getTerm());
 
             synchronized (voteRequestMutex) {
@@ -968,6 +984,11 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                         return new LastAppliedResponse(t);
                     }
                 });
+    }
+
+    @Override
+    public CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request) {
+        return null; // TODO
     }
 
     public VoterState voterState() {
@@ -1203,7 +1224,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         public final static String CACHE_REQUESTS_KEY = "cache_requests";
 
         private long heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS;
-        private long electionTimeoutMs = DEFAULT_ELECTION_TIMEOUT_MS;
+        private long electionTimeoutMs = DEFAULT_ELECTION_TIMEOUT_MS;  // 最小选举超时
         private int replicationBatchSize = DEFAULT_REPLICATION_BATCH_SIZE;
         private int replicationParallelism = DEFAULT_REPLICATION_PARALLELISM;
         private int cacheRequests = DEFAULT_CACHE_REQUESTS;

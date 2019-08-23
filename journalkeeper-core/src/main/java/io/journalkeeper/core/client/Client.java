@@ -24,6 +24,7 @@ import io.journalkeeper.core.entry.reserved.ScalePartitionsEntrySerializer;
 import io.journalkeeper.exceptions.ServerBusyException;
 import io.journalkeeper.rpc.client.QueryStateResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
+import io.journalkeeper.rpc.client.UpdateVotersRequest;
 import io.journalkeeper.utils.event.EventType;
 import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.core.api.ClusterConfiguration;
@@ -43,6 +44,7 @@ import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
@@ -139,9 +141,10 @@ public class Client<E, ER, Q, QR> implements RaftClient<E, ER, Q, QR> {
     }
 
     @Override
-    public CompletableFuture<Boolean> updateVoters(UpdateVoterOperation operation, URI voter) {
-        // TODO 变更集群配置
-        return null;
+    public CompletableFuture<Boolean> updateVoters(List<URI> oldConfig, List<URI> newConfig) {
+        return invokeLeaderRpc(
+                leaderRpc -> leaderRpc.updateVoters(new UpdateVotersRequest(oldConfig, newConfig)))
+                .thenApply(BaseResponse::success);
     }
 
     @Override

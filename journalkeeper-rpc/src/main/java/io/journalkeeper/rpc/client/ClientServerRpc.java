@@ -100,6 +100,13 @@ public interface ClientServerRpc extends Detectable {
     CompletableFuture<RemovePullWatchResponse> removePullWatch(RemovePullWatchRequest request);
 
     /**
+     * 变更集群配置
+     * @param request See {@link UpdateVotersRequest}
+     * @return See {@link UpdateClusterStateResponse}
+     */
+    CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request);
+
+    /**
      * 拉取事件，并确认已拉取的事件位置。
      * @param request See {@link PullEventsRequest}
      * @see EventBus

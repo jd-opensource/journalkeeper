@@ -26,6 +26,8 @@ import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
+import io.journalkeeper.rpc.client.UpdateVotersRequest;
+import io.journalkeeper.rpc.client.UpdateVotersResponse;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.GetServerEntriesRequest;
@@ -228,6 +230,11 @@ public class Observer<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     @Override
     public CompletableFuture<LastAppliedResponse> lastApplied() {
         return CompletableFuture.supplyAsync(() -> new LastAppliedResponse(new NotLeaderException(leader)), asyncExecutor);
+    }
+
+    @Override
+    public CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request) {
+        return CompletableFuture.supplyAsync(() -> new UpdateVotersResponse(new NotLeaderException(leader)), asyncExecutor);
     }
 
     @Override

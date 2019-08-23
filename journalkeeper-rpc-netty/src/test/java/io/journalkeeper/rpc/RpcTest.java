@@ -31,6 +31,8 @@ import io.journalkeeper.rpc.client.RemovePullWatchRequest;
 import io.journalkeeper.rpc.client.RemovePullWatchResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
+import io.journalkeeper.rpc.client.UpdateVotersRequest;
+import io.journalkeeper.rpc.client.UpdateVotersResponse;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.GetServerEntriesRequest;
@@ -150,6 +152,36 @@ public class RpcTest {
         verify(serverRpcMock).updateClusterState(argThat((UpdateClusterStateRequest r) ->
                 Arrays.equals(entry, r.getEntry()) &&
                 ResponseConfig.RECEIVE == r.getResponseConfig()));
+
+    }
+
+
+    @Test
+    public void testUpdateVoters() throws ExecutionException, InterruptedException {
+        final List<URI> oldConfig = Arrays.asList(
+                URI.create("jk://192.168.0.1:8888"),
+                URI.create("jk://192.168.0.1:8889"),
+                URI.create("jk://192.168.0.1:8890")
+                );
+
+        final List<URI> newConfig = Arrays.asList(
+                URI.create("jk://192.168.0.1:8888"),
+                URI.create("jk://192.168.0.1:8889"),
+                URI.create("jk://192.168.0.1:8891")
+                );
+
+        UpdateVotersRequest request = new UpdateVotersRequest(oldConfig, newConfig);
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        UpdateVotersResponse response;
+        // Test success response
+        when(serverRpcMock.updateVoters(any(UpdateVotersRequest.class)))
+                .thenReturn(CompletableFuture.supplyAsync(UpdateVotersResponse::new));
+        response = clientServerRpc.updateVoters(request).get();
+        Assert.assertTrue(response.success());
+        verify(serverRpcMock).updateVoters(argThat((UpdateVotersRequest r) ->
+                oldConfig.equals(r.getOldConfig()) &&
+                        newConfig.equals(r.getNewConfig())
+                ));
 
     }
 

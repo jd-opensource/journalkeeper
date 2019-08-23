@@ -23,4 +23,8 @@ public class UpdateVotersResponse extends LeaderResponse {
     public UpdateVotersResponse(Throwable exception) {
         super(exception);
     }
+
+    public UpdateVotersResponse() {
+
+    }
 }

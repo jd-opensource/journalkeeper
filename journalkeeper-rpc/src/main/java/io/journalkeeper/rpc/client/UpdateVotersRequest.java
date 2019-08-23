@@ -13,9 +13,29 @@
  */
 package io.journalkeeper.rpc.client;
 
+import java.net.URI;
+import java.util.Collection;
+import java.util.List;
+
 /**
  * @author LiYue
  * Date: 2019-03-14
  */
 public class UpdateVotersRequest {
+    private final List<URI> oldConfig;
+    private final List<URI> newConfig;
+
+
+    public UpdateVotersRequest(List<URI> oldConfig, List<URI> newConfig) {
+        this.oldConfig = oldConfig;
+        this.newConfig = newConfig;
+    }
+
+    public List<URI> getOldConfig() {
+        return oldConfig;
+    }
+
+    public List<URI> getNewConfig() {
+        return newConfig;
+    }
 }
