@@ -15,33 +15,31 @@ package io.journalkeeper.core.client;
 
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.base.VoidSerializer;
+import io.journalkeeper.core.JdkSerializerFactory;
+import io.journalkeeper.core.api.ClusterConfiguration;
+import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
-import io.journalkeeper.core.entry.reserved.CompactJournalEntrySerializer;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
-import io.journalkeeper.core.entry.reserved.ScalePartitionsEntrySerializer;
-import io.journalkeeper.exceptions.ServerBusyException;
-import io.journalkeeper.rpc.client.QueryStateResponse;
-import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
-import io.journalkeeper.rpc.client.UpdateVotersRequest;
-import io.journalkeeper.utils.event.EventType;
-import io.journalkeeper.utils.event.EventWatcher;
-import io.journalkeeper.core.api.ClusterConfiguration;
-import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.exception.NoLeaderException;
+import io.journalkeeper.exceptions.ServerBusyException;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.LeaderResponse;
 import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.StatusCode;
-import io.journalkeeper.utils.threads.NamedThreadFactory;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.client.GetServersResponse;
 import io.journalkeeper.rpc.client.QueryStateRequest;
+import io.journalkeeper.rpc.client.QueryStateResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
+import io.journalkeeper.rpc.client.UpdateVotersRequest;
+import io.journalkeeper.utils.event.EventType;
+import io.journalkeeper.utils.event.EventWatcher;
+import io.journalkeeper.utils.threads.NamedThreadFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.util.List;
@@ -50,7 +48,6 @@ import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
@@ -68,8 +65,10 @@ public class Client<E, ER, Q, QR> implements RaftClient<E, ER, Q, QR> {
     private final Config config;
     private final Executor executor;
     private URI leaderUri = null;
-    private final CompactJournalEntrySerializer compactJournalEntrySerializer = new CompactJournalEntrySerializer();
-    private final ScalePartitionsEntrySerializer scalePartitionsEntrySerializer = new ScalePartitionsEntrySerializer();
+    private final Serializer<CompactJournalEntry> compactJournalEntrySerializer =
+            JdkSerializerFactory.createSerializer(CompactJournalEntry.class);
+    private final Serializer<ScalePartitionsEntry> scalePartitionsEntrySerializer =
+            JdkSerializerFactory.createSerializer(ScalePartitionsEntry.class);
 
 
     public Client(ClientServerRpcAccessPoint clientServerRpcAccessPoint,

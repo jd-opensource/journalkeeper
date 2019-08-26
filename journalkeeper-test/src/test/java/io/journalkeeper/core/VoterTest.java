@@ -15,11 +15,9 @@ package io.journalkeeper.core;
 
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftJournal;
-import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
-import io.journalkeeper.core.entry.reserved.ScalePartitionsEntrySerializer;
 import io.journalkeeper.core.server.Voter;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.metric.JMetricFactory;
@@ -88,7 +86,9 @@ public class VoterTest {
                 Thread.sleep(50L);
             }
 
-            voter.updateClusterState(new UpdateClusterStateRequest(new ScalePartitionsEntrySerializer().serialize(new ScalePartitionsEntry(partitions)),
+            voter.updateClusterState(new UpdateClusterStateRequest(
+                    JdkSerializerFactory.createSerializer(ScalePartitionsEntry.class)
+                            .serialize(new ScalePartitionsEntry(partitions)),
                     RaftJournal.RESERVED_PARTITION, 1)).get();
 
 
@@ -135,7 +135,9 @@ public class VoterTest {
                 Thread.sleep(50L);
             }
 
-            voter.updateClusterState(new UpdateClusterStateRequest(new ScalePartitionsEntrySerializer().serialize(new ScalePartitionsEntry(partitions)),
+            voter.updateClusterState(new UpdateClusterStateRequest(
+                    JdkSerializerFactory.createSerializer(ScalePartitionsEntry.class)
+                            .serialize(new ScalePartitionsEntry(partitions)),
                     RaftJournal.RESERVED_PARTITION, 1)).get();
 
 

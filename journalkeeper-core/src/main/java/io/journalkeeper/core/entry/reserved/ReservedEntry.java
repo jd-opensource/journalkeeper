@@ -21,8 +21,9 @@ public abstract class ReservedEntry {
     public final static int TYPE_LEADER_ANNOUNCEMENT = 0;
     public final static int TYPE_COMPACT_JOURNAL = 1;
     public final static int TYPE_SCALE_PARTITIONS = 2;
-    public final static int TYPE_UPDATE_VOTERS = 3;
-    public final static int TYPE_UPDATE_OBSERVERS = 3;
+    public final static int TYPE_UPDATE_VOTERS_S1 = 3;
+    public final static int TYPE_UPDATE_VOTERS_S2 = 4;
+    public final static int TYPE_UPDATE_OBSERVERS = 5;
     private final int type;
 
     protected ReservedEntry(int type) {

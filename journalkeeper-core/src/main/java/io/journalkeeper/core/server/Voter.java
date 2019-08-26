@@ -14,12 +14,20 @@
 package io.journalkeeper.core.server;
 
 import io.journalkeeper.base.Serializer;
+import io.journalkeeper.core.JdkSerializerFactory;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.Entry;
 import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
-import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntrySerializer;
+import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
+import io.journalkeeper.core.entry.reserved.UpdateVotersS2Entry;
+import io.journalkeeper.core.exception.SerializeException;
+import io.journalkeeper.core.exception.UpdateConfigurationException;
+import io.journalkeeper.exceptions.IndexOverflowException;
+import io.journalkeeper.exceptions.IndexUnderflowException;
+import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.metric.JMetric;
+import io.journalkeeper.persistence.ServerMetadata;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
@@ -32,15 +40,14 @@ import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
 import io.journalkeeper.utils.event.EventType;
-import io.journalkeeper.exceptions.IndexOverflowException;
-import io.journalkeeper.exceptions.IndexUnderflowException;
-import io.journalkeeper.exceptions.NotLeaderException;
-import io.journalkeeper.persistence.ServerMetadata;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -48,16 +55,13 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.NavigableMap;
-import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -123,7 +127,9 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     private final Object rollMutex = new Object();
     private final BlockingQueue<UpdateStateRequestResponse> pendingUpdateStateRequests;
     private final Config config;
-    private final LeaderAnnouncementEntrySerializer leaderAnnouncementEntrySerializer = new LeaderAnnouncementEntrySerializer();
+    private final Serializer<LeaderAnnouncementEntry> leaderAnnouncementEntrySerializer =
+            JdkSerializerFactory.createSerializer(LeaderAnnouncementEntry.class);
+
     private final CallbackBelt<ER> replicationCallbacks;
     private final CallbackBelt<ER> flushCallbacks;
     /**
@@ -159,6 +165,8 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
      */
     private BlockingQueue<ReplicationRequestResponse> pendingAppendEntriesRequests;
     private ScheduledFuture checkElectionTimeoutFuture;
+
+    private CompletableFuture<UpdateVotersResponse> updateVotersResponseCompletableFuture = null;
 
     public Voter(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
                  Serializer<Q> querySerializer, Serializer<QR> resultSerializer,
@@ -986,9 +994,57 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                 });
     }
 
+    /**
+     * 在处理变更集群配置时，JournalKeeper采用RAFT协议中推荐的，二阶段变更的方式来避免在配置变更过程中可能出现的集群分裂。
+     * 包括LEADER在内的，变更前后包含的所有节点，都通过二个阶段来安全的完成配置变更。配置变更期间，集群依然可以对外提供服务。
+     *
+     * 1. 共同一致阶段： 每个节点在写入配置变更日志$C_{old, new}$后，不用等到这条日志被提交，立即变更配置，进入共同一致阶段。
+     * 在这个阶段，使用新旧配置的两个集群（这个时候这两个集群可能共享大部分节点，并且拥有相同的LEADER节点）同时在线，
+     * 每一条日志都需要，在使用新旧配置的二个集群中达成大多数一致。
+     * 或者说，日志需要在新旧二个集群中，分别复制到超过半数以上的节点上，才能被提交。
+     *
+     * 2. 新配置阶段：每个节点在写入配置变更日志$C_{new}$后，不用等到这条日志被提交，立即变更配置，进入新配置阶段，完成配置变更。
+     *
+     * 当客户端调用updateVoters方法时:
+     *
+     * 1. LEADER先在本地写入配置变更日志$C_{old, new}$，然后立刻变更自身的配置为$C_{old, new}$，进入共同一致阶段。
+     * 2. 在共同一致阶段，LEADER把包括配置变更日志$C_{old, new}$和其它在这一阶段的其它日志，
+     *  按照顺序一并复制到新旧两个集群的所有节点，每一条日志都需要在新旧二个集群都达到半数以上，才会被提交。
+     * 3. 处于新旧配置中的每个FOLLOWER节点，在收到并写入配置变更日志$C_{old, new}$后，无需等待日志提交，
+     *  立刻将配置变更为$C_{old, new}$，并进入共同一致阶段。
+     * 4. LEADER在配置变更日志$C_{old, new}$提交后，写入新的配置变更日志$C_{new}$，然后立即变更自身的配置为$C_{new}$，进入新配置阶段。
+     * 5. 处于共同一致阶段中的每个FOLLOWER节点，在收到并写入配置变更日志$C_{new}$后，无需等待日志提交，
+     *  立刻将配置变更为$C_{new}$，并进新配置阶段。此时节点需要检查一下自身是否还是是集群中的一员，
+     *  如果不是，说明当前节点已经被从集群中移除，需要停止当前节点服务。
+     * 6. LEADER在$C_{new}$被提交后，也需要检查一下自身是否还是是集群中的一员，如果不是，
+     *  说明当前节点已经被从集群中移除，需要停止当前节点服务。新集群会自动选举出新的LEADER。
+     *
+     * @param request See {@link UpdateVotersRequest}
+     * @return See {@link UpdateVotersResponse}
+     */
+
     @Override
     public CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request) {
-        return null; // TODO
+        return CompletableFuture.supplyAsync(
+                () -> new UpdateVotersS1Entry(request.getOldConfig(), request.getNewConfig()), asyncExecutor)
+                .thenApply(updateVotersS1EntrySerializer::serialize)
+                .thenApply(entry -> new UpdateClusterStateRequest(entry, RESERVED_PARTITION, 1))
+                .thenCompose(this::updateClusterState)
+                .thenAccept(response -> {
+                    if(!response.success()) {
+                        throw new CompletionException(new UpdateConfigurationException("Failed to update voters configuration in step 1. " + response.errorString()));
+                    }
+                }).thenApply(aVoid -> new UpdateVotersS2Entry(request.getNewConfig()))
+                .thenApply(updateVotersS2EntrySerializer::serialize)
+                .thenApply(entry -> new UpdateClusterStateRequest(entry, RESERVED_PARTITION, 1))
+                .thenCompose(this::updateClusterState)
+                .thenAccept(response -> {
+                    if(!response.success()) {
+                        throw new CompletionException(new UpdateConfigurationException("Failed to update voters configuration in step 2. " + response.errorString()));
+                    }
+                })
+                .thenApply(aVoid -> new UpdateVotersResponse())
+                .exceptionally(UpdateVotersResponse::new);
     }
 
     public VoterState voterState() {
@@ -1271,5 +1327,6 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         }
 
     }
+
 
 }

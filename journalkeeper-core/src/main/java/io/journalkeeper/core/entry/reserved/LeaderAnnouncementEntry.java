@@ -13,11 +13,15 @@
  */
 package io.journalkeeper.core.entry.reserved;
 
+import java.io.Serializable;
+
 /**
  * @author LiYue
  * Date: 2019-05-09
  */
-public class LeaderAnnouncementEntry extends ReservedEntry {
+public class LeaderAnnouncementEntry extends ReservedEntry implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     public LeaderAnnouncementEntry() {
         super(TYPE_LEADER_ANNOUNCEMENT);
     }

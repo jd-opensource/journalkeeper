@@ -14,9 +14,12 @@
 package io.journalkeeper.persistence;
 
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * @author LiYue
@@ -31,11 +34,18 @@ public class ServerMetadata {
     private URI thisServer;
     private Set<Integer> partitions;
 
+    private List<URI> oldVoters;
+    private boolean jointConsensus = false;
+
+    private AtomicLong savedVersion = new AtomicLong(0L);
+    private AtomicLong version = new AtomicLong(0L);
+
     public long getCommitIndex() {
         return commitIndex;
     }
 
-    public void setCommitIndex(long commitIndex) {
+    public synchronized void setCommitIndex(long commitIndex) {
+        version.incrementAndGet();
         this.commitIndex = commitIndex;
     }
 
@@ -43,7 +53,8 @@ public class ServerMetadata {
         return voters;
     }
 
-    public void setVoters(List<URI> voters) {
+    public synchronized void setVoters(List<URI> voters) {
+        version.incrementAndGet();
         this.voters = voters;
     }
 
@@ -51,7 +62,8 @@ public class ServerMetadata {
         return parents;
     }
 
-    public void setParents(List<URI> parents) {
+    public synchronized void setParents(List<URI> parents) {
+        version.incrementAndGet();
         this.parents = parents;
     }
 
@@ -59,7 +71,8 @@ public class ServerMetadata {
         return currentTerm;
     }
 
-    public void setCurrentTerm(int currentTerm) {
+    public synchronized void setCurrentTerm(int currentTerm) {
+        version.incrementAndGet();
         this.currentTerm = currentTerm;
     }
 
@@ -67,7 +80,8 @@ public class ServerMetadata {
         return votedFor;
     }
 
-    public void setVotedFor(URI votedFor) {
+    public synchronized void setVotedFor(URI votedFor) {
+        version.incrementAndGet();
         this.votedFor = votedFor;
     }
 
@@ -75,7 +89,8 @@ public class ServerMetadata {
         return thisServer;
     }
 
-    public void setThisServer(URI thisServer) {
+    public synchronized void setThisServer(URI thisServer) {
+        version.incrementAndGet();
         this.thisServer = thisServer;
     }
 
@@ -84,13 +99,44 @@ public class ServerMetadata {
         return partitions;
     }
 
-    public void setPartitions(Set<Integer> partitions) {
+    public synchronized void setPartitions(Set<Integer> partitions) {
+        version.incrementAndGet();
         this.partitions = partitions;
     }
 
+    public List<URI> getOldVoters() {
+        return oldVoters;
+    }
+
+    public synchronized void setOldVoters(List<URI> oldVoters) {
+        version.incrementAndGet();
+        this.oldVoters = oldVoters;
+    }
+
+    public boolean isJointConsensus() {
+        return jointConsensus;
+    }
+
+    public synchronized void setJointConsensus(boolean jointConsensus) {
+        version.incrementAndGet();
+        this.jointConsensus = jointConsensus;
+    }
+
     @Override
-    public int hashCode() {
-        return Objects.hash(commitIndex, voters, parents, currentTerm, votedFor, thisServer, partitions);
+    public synchronized ServerMetadata clone() {
+        ServerMetadata clone = new ServerMetadata();
+        clone.commitIndex = this.commitIndex;
+        clone.voters = new ArrayList<>(this.voters);
+        clone.parents = new ArrayList<>(this.parents);
+        clone.currentTerm = this.currentTerm;
+        clone.votedFor = this.votedFor;
+        clone.thisServer = this.thisServer;
+        clone.partitions = new HashSet<>(this.partitions);
+        clone.oldVoters = new ArrayList<>(this.oldVoters);
+        clone.jointConsensus = this.jointConsensus;
+        clone.version = new AtomicLong(version.get());
+        clone.savedVersion = new AtomicLong(savedVersion.get());
+        return clone;
     }
 
     @Override
@@ -100,10 +146,29 @@ public class ServerMetadata {
         ServerMetadata that = (ServerMetadata) o;
         return commitIndex == that.commitIndex &&
                 currentTerm == that.currentTerm &&
+                jointConsensus == that.jointConsensus &&
                 Objects.equals(voters, that.voters) &&
                 Objects.equals(parents, that.parents) &&
                 Objects.equals(votedFor, that.votedFor) &&
                 Objects.equals(thisServer, that.thisServer) &&
-                Objects.equals(partitions, that.partitions);
+                Objects.equals(partitions, that.partitions) &&
+                Objects.equals(oldVoters, that.oldVoters);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(commitIndex, voters, parents, currentTerm, votedFor, thisServer, partitions, oldVoters, jointConsensus);
+    }
+
+    public boolean isDirty() {
+        return savedVersion.get() < version.get();
+    }
+
+    public void setSavedPoint(long savePoint) {
+        savedVersion.set(savePoint);
+    }
+
+    public long getVersion() {
+        return version.get();
     }
 }

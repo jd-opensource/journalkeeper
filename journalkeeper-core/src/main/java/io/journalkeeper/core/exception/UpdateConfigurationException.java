@@ -11,24 +11,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.entry.reserved;
+package io.journalkeeper.core.exception;
 
-import java.io.Serializable;
-
-/**
- * @author LiYue
- * Date: 2019-05-09
- */
-public class ScalePartitionsEntry extends ReservedEntry implements Serializable {
-    private static final long serialVersionUID = 1L;
-
-    private final int [] partitions;
-    public ScalePartitionsEntry(int[] partitions) {
-        super(TYPE_SCALE_PARTITIONS);
-        this.partitions = partitions;
+public class UpdateConfigurationException extends RuntimeException {
+    public UpdateConfigurationException(String message) {
+        super(message);
+    }
+    public UpdateConfigurationException(){
+        super();
+    }
+    public UpdateConfigurationException(String message, Throwable t) {
+        super(message, t);
     }
 
-    public int[] getPartitions() {
-        return partitions;
+    public UpdateConfigurationException(Throwable t) {
+        super(t);
     }
 }

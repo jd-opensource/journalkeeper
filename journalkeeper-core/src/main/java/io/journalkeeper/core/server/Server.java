@@ -15,17 +15,20 @@ package io.journalkeeper.core.server;
 
 import com.sun.istack.internal.NotNull;
 import io.journalkeeper.base.Serializer;
+import io.journalkeeper.core.JdkSerializerFactory;
+import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.api.RaftJournal;
-import io.journalkeeper.core.entry.reserved.CompactJournalEntrySerializer;
-import io.journalkeeper.core.entry.reserved.ReservedEntry;
-import io.journalkeeper.core.entry.reserved.ScalePartitionsEntrySerializer;
-import io.journalkeeper.core.journal.Journal;
-import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.Entry;
+import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
+import io.journalkeeper.core.entry.reserved.ReservedEntry;
+import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
+import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
+import io.journalkeeper.core.entry.reserved.UpdateVotersS2Entry;
+import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.metric.DummyMetric;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
@@ -52,16 +55,16 @@ import io.journalkeeper.rpc.server.GetServerStateRequest;
 import io.journalkeeper.rpc.server.GetServerStateResponse;
 import io.journalkeeper.rpc.server.ServerRpc;
 import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
+import io.journalkeeper.utils.event.Event;
+import io.journalkeeper.utils.event.EventBus;
+import io.journalkeeper.utils.event.EventType;
+import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.utils.spi.ServiceSupport;
 import io.journalkeeper.utils.state.StateServer;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
 import io.journalkeeper.utils.threads.Threads;
 import io.journalkeeper.utils.threads.ThreadsFactory;
-import io.journalkeeper.utils.event.Event;
-import io.journalkeeper.utils.event.EventBus;
-import io.journalkeeper.utils.event.EventType;
-import io.journalkeeper.utils.event.EventWatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,11 +75,33 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.ConcurrentModificationException;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.Objects;
+import java.util.Properties;
+import java.util.Set;
+import java.util.SortedMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.StampedLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -110,6 +135,11 @@ public abstract class Server<E, ER, Q, QR>
      */
     protected final static String PRINT_METRIC_THREAD = "PrintMetricThread";
 
+    /**
+     * 当前集群配置
+     */
+    private VoterConfigurationStateMachine voterConfigurationStateMachine;
+
     @Override
     public boolean isAlive() {
         return true;
@@ -133,10 +163,10 @@ public abstract class Server<E, ER, Q, QR>
      */
     public final static float RAND_INTERVAL_RANGE = 0.25F;
 
-    /**
-     * 所有选民节点地址，包含LEADER
-     */
-    protected List<URI> voters;
+//    /**
+//     * 所有选民节点地址，包含LEADER
+//     */
+//    protected List<URI> voters;
 
     /**
      * 当前Server URI
@@ -218,10 +248,21 @@ public abstract class Server<E, ER, Q, QR>
     private Config config;
 
     private volatile ServerState serverState = ServerState.STOPPED;
+    /**
+     * 上次保存的元数据
+     */
     private ServerMetadata lastSavedServerMetadata = null;
+
     protected final EventBus eventBus;
-    private final CompactJournalEntrySerializer compactJournalEntrySerializer = new CompactJournalEntrySerializer();
-    private final ScalePartitionsEntrySerializer scalePartitionsEntrySerializer = new ScalePartitionsEntrySerializer();
+    private final Serializer<CompactJournalEntry> compactJournalEntrySerializer =
+            JdkSerializerFactory.createSerializer(CompactJournalEntry.class);
+    private final Serializer<ScalePartitionsEntry> scalePartitionsEntrySerializer =
+            JdkSerializerFactory.createSerializer(ScalePartitionsEntry.class);
+    protected final Serializer<UpdateVotersS1Entry> updateVotersS1EntrySerializer =
+            JdkSerializerFactory.createSerializer(UpdateVotersS1Entry.class);
+    protected final Serializer<UpdateVotersS2Entry> updateVotersS2EntrySerializer =
+            JdkSerializerFactory.createSerializer(UpdateVotersS2Entry.class);
+
     protected final Lock scalePartitionLock = new ReentrantLock(true);
     protected final Lock compactLock = new ReentrantLock(true);
 
@@ -314,12 +355,10 @@ public abstract class Server<E, ER, Q, QR>
     }
 
     @Override
-    public void init(URI uri, List<URI> voters) throws IOException {
+    public synchronized void init(URI uri, List<URI> voters) throws IOException {
         this.uri = uri;
-        this.voters = voters;
-
+        voterConfigurationStateMachine = new VoterConfigurationStateMachine(voters);
         createMissingDirectories();
-
         metadataPersistence.recover(metadataPath(), properties);
         lastSavedServerMetadata = createServerMetadata();
         metadataPersistence.save(lastSavedServerMetadata);
@@ -648,7 +687,10 @@ public abstract class Server<E, ER, Q, QR>
 
     @Override
     public CompletableFuture<GetServersResponse> getServers() {
-        return CompletableFuture.supplyAsync(() -> new GetServersResponse(new ClusterConfiguration(leader, voters, observers)), asyncExecutor);
+        return CompletableFuture.supplyAsync(() ->
+                new GetServersResponse(
+                        new ClusterConfiguration(leader, voterConfigurationStateMachine.voters(), observers)),
+                asyncExecutor);
     }
 
     @Override
@@ -716,10 +758,10 @@ public abstract class Server<E, ER, Q, QR>
             if (state instanceof Flushable) {
                 ((Flushable) state).flush();
             }
-            ServerMetadata serverMetadata = createServerMetadata();
-            if (!serverMetadata.equals(lastSavedServerMetadata)) {
-                metadataPersistence.save(serverMetadata);
-                lastSavedServerMetadata = serverMetadata;
+            ServerMetadata metadata = createServerMetadata();
+            if (!metadata.equals(lastSavedServerMetadata)) {
+                metadataPersistence.save(metadata);
+                lastSavedServerMetadata = metadata;
             }
         } catch(Throwable e) {
             logger.warn("Flush exception, commitIndex: {}, lastApplied: {}, server: {}: ",
@@ -778,8 +820,17 @@ public abstract class Server<E, ER, Q, QR>
      * 3. 日志
      */
     @Override
-    public void recover() throws IOException {
+    public synchronized void recover() throws IOException {
         lastSavedServerMetadata = metadataPersistence.recover(metadataPath(), properties);
+        if(lastSavedServerMetadata.isJointConsensus()) {
+            voterConfigurationStateMachine = new VoterConfigurationStateMachine(
+                    lastSavedServerMetadata.getOldVoters(),
+                    lastSavedServerMetadata.getVoters()
+            );
+        } else {
+            voterConfigurationStateMachine =
+                    new VoterConfigurationStateMachine(lastSavedServerMetadata.getVoters());
+        }
         onMetadataRecovered(lastSavedServerMetadata);
         recoverJournal(lastSavedServerMetadata.getPartitions());
         state.recover(statePath(), journal, properties);
@@ -839,9 +890,15 @@ public abstract class Server<E, ER, Q, QR>
 
     }
 
+
+
     protected ServerMetadata createServerMetadata() {
         ServerMetadata serverMetadata = new ServerMetadata();
         serverMetadata.setThisServer(uri);
+        VoterConfigurationStateMachine config = voterConfigurationStateMachine.clone();
+        serverMetadata.setVoters(config.configNew);
+        serverMetadata.setOldVoters(config.configOld);
+        serverMetadata.setJointConsensus(config.jointConsensus);
         serverMetadata.setCommitIndex(commitIndex.get());
         return serverMetadata;
     }
@@ -913,6 +970,119 @@ public abstract class Server<E, ER, Q, QR>
                 .forEach(logger::info);
         onPrintMetric();
     }
+
+    /**
+     * Server当前集群配置的状态机，线程安全。包括二个状态：
+     * 普通状态：常态。
+     * 共同一致状态：变更进群配置过程中的中间状态。
+     */
+    private static class VoterConfigurationStateMachine {
+        private final List<URI> configNew = new ArrayList<>(3);
+        private final List<URI> configOld = new ArrayList<>(3);
+        private boolean jointConsensus;
+        private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
+
+        private VoterConfigurationStateMachine(List<URI> configOld, List<URI> configNew) {
+            jointConsensus = true;
+            this.configOld.addAll(configOld);
+            this.configNew.addAll(configNew);
+        }
+        private VoterConfigurationStateMachine(List<URI> configNew) {
+            jointConsensus = false;
+            this.configNew.addAll(configNew);
+        }
+
+        public List<URI> getConfigNew() {
+            rwLock.readLock().lock();
+            try {
+                return new ArrayList<>(configNew);
+            } finally {
+                rwLock.readLock().unlock();
+            }
+        }
+
+        public List<URI> getConfigOld() {
+            rwLock.readLock().lock();
+            try {
+                return new ArrayList<>(configOld);
+            } finally {
+                rwLock.readLock().unlock();
+            }
+        }
+
+        public boolean isJointConsensus() {
+            rwLock.readLock().lock();
+            try {
+                return jointConsensus;
+            } finally {
+                rwLock.readLock().unlock();
+            }
+        }
+
+        /**
+         * 获取集群配置，如果集群处于普通状态，返回当前配置。
+         * 如果集群处于共同一致状态，返回旧配置。
+         * @return 当前集群配置，
+         */
+        private List<URI> voters() {
+            rwLock.readLock().lock();
+            try {
+                if(jointConsensus) {
+                    return new ArrayList<>(configOld);
+                } else {
+                    return new ArrayList<>(configNew);
+                }
+            } finally {
+                rwLock.readLock().unlock();
+            }
+        }
+
+        private void toNewConfig() {
+            rwLock.writeLock().lock();
+            try {
+                if(!jointConsensus) {
+                    throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == true, actual: false.");
+                }
+
+                jointConsensus = false;
+                configOld.clear();
+            }finally {
+                rwLock.writeLock().unlock();
+            }
+        }
+
+        private void toJointConsensus(List<URI> config) {
+            rwLock.writeLock().lock();
+            try {
+                if(jointConsensus) {
+                    throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == false, actual: true.");
+                }
+                jointConsensus = true;
+                configOld.addAll(configNew);
+                configNew.clear();
+                configNew.addAll(config);
+
+            }finally {
+                rwLock.writeLock().unlock();
+            }
+        }
+
+        @Override
+        protected VoterConfigurationStateMachine clone() {
+            rwLock.readLock().lock();
+            try {
+                if(jointConsensus) {
+                    return new VoterConfigurationStateMachine(new ArrayList<>(configOld), new ArrayList<>(configNew));
+                } else {
+                    return new VoterConfigurationStateMachine(new ArrayList<>(configNew));
+                }
+
+            } finally {
+                rwLock.readLock().unlock();
+            }
+        }
+    }
+
 
     /**
      * This method will be invoked when metric

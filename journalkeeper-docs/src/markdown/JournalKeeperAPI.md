@@ -11,64 +11,6 @@ VOTER | Y| Y| 选民，所有选民构成RAFT集群，拥有选举权和被选�
 OBSERVER | Y| N| 观察者，没有选举权和被选举权的节点，本地存储日志和数据，提供只读服务，从其它选民或者观察者复制日志，更新状态。数据不大的情况下，建议除选民节点外，所有节点都设为观察者。
 CLIENT | N| N| 客户端，本地不存储数据，从选民或者观察者节点读取数据，适用于数据量较大的集群。
 
-# Journal Store API(JK-JS API)
-一致性日志接口和事件，兼容[openmessaging-storage Minimal API](https://github.com/openmessaging/openmessaging-storage)。
-## 接口
-方法 |  说明
--- |  --
-append |  写入日志。
-get |  查询日志。
-minIndex |  当前已提交日志最小位置。
-maxIndex |  当前已提交日志最大位置。
-compact | 删除旧日志。
-
-### append
-写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。日志在集群中被复制到大多数节点后返回。
-参数 | 描述
--- | --
-entries[] | 待写入的日志。
-
-返回 | 描述
--- | --
-result | 写入结果，包括：<br/>**SUCCESS**: 成功。<br/> **FAILED**: 写入失败，写入过程中发生其他错误。
-maxIndex | 当前日志最大索引位置
-
-### get
-查询日志。
-
-参数 | 描述
--- | --
-index | 查询起始位置。
-size | 查询的条数。
-
-返回 | 描述
--- | --
-result | 读取结果，包括：<br/>**SUCCESS**: 成功。<br/>**INDEX_UNDERFLOW**: 参数index不能小于当前minIndex。<br/> **INDEX_OVERFLOW**: 参数index必须小于当前maxIndex。
-entries[] | 读到的日志，返回的数据条数为$min(maxIndex - index, size)$
-
-### minIndex maxIndex
-查询当前最小/最大已提交日志索引位置，这两个方法都没有请求参数。
-
-返回 | 描述
--- | --
-minIndex/maxIndex | 返回的最小/最大已提交日志索引位置。
-
-### compact
-删除旧日志，只允许删除最旧的部分日志（即增加minIndex，删除之前的日志）。保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。在集群中复制到大多数节点都完成删除后返回。
-参数 | 描述
--- | --
-to | 删除日志索引位置，小于这个位置的日志将被删除。
-
-返回 | 描述
--- | --
-result | 写入结果，包括：<br/>**SUCCESS**: 成功。<br/> **FAILED**: 删除失败。
-minIndex | 当前最小已提交日志索引位置。
-
-## 事件
-事件 | 内容 | 说明
--- | -- | --
-onJournalChanged | minIndex: 当前日志最小位置。<br/> maxIndex：当前日志最大位置。| 日志变更后触发。
-
 # Partitioned Journal Store API (JK-PS API)
 多分区一致性日志接口和事件。
 
