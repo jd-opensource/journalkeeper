@@ -71,6 +71,7 @@ import org.slf4j.LoggerFactory;
 import java.io.Closeable;
 import java.io.Flushable;
 import java.io.IOException;
+import java.lang.reflect.Executable;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -87,6 +88,7 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.SortedMap;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -138,7 +140,7 @@ public abstract class Server<E, ER, Q, QR>
     /**
      * 当前集群配置
      */
-    private VoterConfigurationStateMachine voterConfigurationStateMachine;
+    protected VoterConfigurationStateMachine voterConfigurationStateMachine;
 
     @Override
     public boolean isAlive() {
@@ -976,17 +978,29 @@ public abstract class Server<E, ER, Q, QR>
      * 普通状态：常态。
      * 共同一致状态：变更进群配置过程中的中间状态。
      */
-    private static class VoterConfigurationStateMachine {
+    protected static class VoterConfigurationStateMachine {
         private final List<URI> configNew = new ArrayList<>(3);
         private final List<URI> configOld = new ArrayList<>(3);
         private boolean jointConsensus;
         private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
 
+        // all voters include configNew and configOld
+        private List<URI> allVoters = new ArrayList<>(3);
+
         private VoterConfigurationStateMachine(List<URI> configOld, List<URI> configNew) {
             jointConsensus = true;
             this.configOld.addAll(configOld);
             this.configNew.addAll(configNew);
+
+            buildAllVoters();
         }
+
+        private void buildAllVoters() {
+            allVoters = Stream.concat(configNew.stream(), configOld.stream())
+                    .distinct()
+                    .collect(Collectors.toList());
+        }
+
         private VoterConfigurationStateMachine(List<URI> configNew) {
             jointConsensus = false;
             this.configNew.addAll(configNew);
@@ -1019,48 +1033,43 @@ public abstract class Server<E, ER, Q, QR>
             }
         }
 
-        /**
-         * 获取集群配置，如果集群处于普通状态，返回当前配置。
-         * 如果集群处于共同一致状态，返回旧配置。
-         * @return 当前集群配置，
-         */
-        private List<URI> voters() {
+        protected List<URI> voters() {
             rwLock.readLock().lock();
             try {
-                if(jointConsensus) {
-                    return new ArrayList<>(configOld);
-                } else {
-                    return new ArrayList<>(configNew);
-                }
+                return allVoters;
             } finally {
                 rwLock.readLock().unlock();
             }
         }
 
-        private void toNewConfig() {
+        protected void toNewConfig(Callable appendEntryCallable) throws Exception {
             rwLock.writeLock().lock();
             try {
                 if(!jointConsensus) {
                     throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == true, actual: false.");
                 }
-
+                appendEntryCallable.call();
                 jointConsensus = false;
                 configOld.clear();
+                buildAllVoters();
+
             }finally {
                 rwLock.writeLock().unlock();
             }
         }
 
-        private void toJointConsensus(List<URI> config) {
+        protected void toJointConsensus(List<URI> configOld, List<URI> configNew, Callable appendEntryCallable) throws Exception {
             rwLock.writeLock().lock();
             try {
                 if(jointConsensus) {
                     throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == false, actual: true.");
                 }
+                appendEntryCallable.call();
                 jointConsensus = true;
-                configOld.addAll(configNew);
-                configNew.clear();
-                configNew.addAll(config);
+                this.configOld.addAll(configOld);
+                this.configNew.clear();
+                this.configNew.addAll(configNew);
+                buildAllVoters();
 
             }finally {
                 rwLock.writeLock().unlock();

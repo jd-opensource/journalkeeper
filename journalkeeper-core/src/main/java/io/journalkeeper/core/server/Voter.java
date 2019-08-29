@@ -19,6 +19,8 @@ import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.Entry;
 import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
+import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
+import io.journalkeeper.core.entry.reserved.ReservedEntry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS2Entry;
 import io.journalkeeper.core.exception.SerializeException;
@@ -264,30 +266,57 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     /**
      * 串行写入日志
      */
-    private void appendJournalEntry() throws InterruptedException {
+    private void appendJournalEntry() throws Exception {
 
         UpdateStateRequestResponse rr = pendingUpdateStateRequests.take();
+        final UpdateClusterStateRequest request = rr.getRequest();
+        final CompletableFuture<UpdateClusterStateResponse> responseFuture = rr.getResponseFuture();
         if (voterState == VoterState.LEADER) {
             try {
-                appendJournalMetric.start();
-                long index = journal.append(new Entry(rr.getRequest().getEntry(), currentTerm.get(), rr.getRequest().getPartition(), rr.getRequest().getBatchSize()));
-                if (rr.getRequest().getResponseConfig() == ResponseConfig.PERSISTENCE) {
-                    flushCallbacks.put(new Callback<>(index - 1, rr.getResponseFuture()));
-                } else if (rr.getRequest().getResponseConfig() == ResponseConfig.REPLICATION) {
-                    replicationCallbacks.put(new Callback<>(index - 1, rr.getResponseFuture()));
+
+                // 如果是配置变更请求，立刻更新当前配置
+                if(request.getPartition() == RESERVED_PARTITION ){
+                    int entryType = ReservedEntriesSerializeSupport.parseEntryType(request.getEntry());
+
+                    if(entryType == ReservedEntry.TYPE_UPDATE_VOTERS_S1) {
+                        UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(request.getEntry());
+                        voterConfigurationStateMachine.toJointConsensus(
+                                updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew(),
+                                () -> doAppendJournalEntryCallable(request, responseFuture));
+                        return;
+                    } else if (entryType == ReservedEntry.TYPE_UPDATE_VOTERS_S2) {
+                        voterConfigurationStateMachine.toNewConfig(() -> doAppendJournalEntryCallable(request, responseFuture));
+                        return;
+                    }
                 }
-                // 唤醒复制线程
-//                threads.wakeupThread(LEADER_REPLICATION_THREAD);
-                appendJournalMetric.end(rr.getRequest().getEntry().length);
+
+                doAppendJournalEntry(request, responseFuture);
 
             } catch (Throwable t) {
-                rr.getResponseFuture().complete(new UpdateClusterStateResponse(t));
+                responseFuture.complete(new UpdateClusterStateResponse(t));
                 throw t;
             }
         } else {
             logger.warn("NOT_LEADER!");
             rr.getResponseFuture().complete(new UpdateClusterStateResponse(new NotLeaderException(leader)));
         }
+    }
+
+    private Void doAppendJournalEntryCallable(UpdateClusterStateRequest request, CompletableFuture<UpdateClusterStateResponse> responseFuture) {
+        doAppendJournalEntry(request, responseFuture);
+        return null;
+    }
+
+    private void doAppendJournalEntry(UpdateClusterStateRequest request, CompletableFuture<UpdateClusterStateResponse> responseFuture) {
+        appendJournalMetric.start();
+
+        long index = journal.append(new Entry(request.getEntry(), currentTerm.get(), request.getPartition(), request.getBatchSize()));
+        if (request.getResponseConfig() == ResponseConfig.PERSISTENCE) {
+            flushCallbacks.put(new Callback<>(index - 1, responseFuture));
+        } else if (request.getResponseConfig() == ResponseConfig.REPLICATION) {
+            replicationCallbacks.put(new Callback<>(index - 1, responseFuture));
+        }
+        appendJournalMetric.end(request.getEntry().length);
     }
 
     @Override
@@ -995,29 +1024,48 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
     }
 
     /**
+     *
      * 在处理变更集群配置时，JournalKeeper采用RAFT协议中推荐的，二阶段变更的方式来避免在配置变更过程中可能出现的集群分裂。
      * 包括LEADER在内的，变更前后包含的所有节点，都通过二个阶段来安全的完成配置变更。配置变更期间，集群依然可以对外提供服务。
      *
-     * 1. 共同一致阶段： 每个节点在写入配置变更日志$C_{old, new}$后，不用等到这条日志被提交，立即变更配置，进入共同一致阶段。
-     * 在这个阶段，使用新旧配置的两个集群（这个时候这两个集群可能共享大部分节点，并且拥有相同的LEADER节点）同时在线，
-     * 每一条日志都需要，在使用新旧配置的二个集群中达成大多数一致。
-     * 或者说，日志需要在新旧二个集群中，分别复制到超过半数以上的节点上，才能被提交。
+     * * **共同一致阶段：** 每个节点在写入配置变更日志$C_{old, new}$后，不用等到这条日志被提交，立即变更配置，进入共同一致阶段。
+     * 在这个阶段，使用新旧配置的两个集群（这个时候这两个集群可能共享大部分节点，并且拥有相同的LEADER节点）同时在线，每一条日志都需要，
+     * 在使用新旧配置的二个集群中达成大多数一致。或者说，日志需要在新旧二个集群中，分别复制到超过半数以上的节点上，才能被提交。
      *
-     * 2. 新配置阶段：每个节点在写入配置变更日志$C_{new}$后，不用等到这条日志被提交，立即变更配置，进入新配置阶段，完成配置变更。
+     * * **新配置阶段：** 每个节点在写入配置变更日志$C_{new}$后，不用等到这条日志被提交，立即变更配置，进入新配置阶段，完成配置变更。
      *
      * 当客户端调用updateVoters方法时:
      *
      * 1. LEADER先在本地写入配置变更日志$C_{old, new}$，然后立刻变更自身的配置为$C_{old, new}$，进入共同一致阶段。
-     * 2. 在共同一致阶段，LEADER把包括配置变更日志$C_{old, new}$和其它在这一阶段的其它日志，
-     *  按照顺序一并复制到新旧两个集群的所有节点，每一条日志都需要在新旧二个集群都达到半数以上，才会被提交。
+     *
+     * 2. 在共同一致阶段，LEADER把包括配置变更日志$C_{old, new}$和其它在这一阶段的其它日志，按照顺序一并复制到新旧两个集群的所有节点，
+     * 每一条日志都需要在新旧二个集群都达到半数以上，才会被提交。**$C_{old, new}$被提交后，
+     * 无论后续发生什么情况，这次配置变更最终都会执行成功。**
+     *
      * 3. 处于新旧配置中的每个FOLLOWER节点，在收到并写入配置变更日志$C_{old, new}$后，无需等待日志提交，
-     *  立刻将配置变更为$C_{old, new}$，并进入共同一致阶段。
+     * 立刻将配置变更为$C_{old, new}$，并进入共同一致阶段。
+     *
      * 4. LEADER在配置变更日志$C_{old, new}$提交后，写入新的配置变更日志$C_{new}$，然后立即变更自身的配置为$C_{new}$，进入新配置阶段。
-     * 5. 处于共同一致阶段中的每个FOLLOWER节点，在收到并写入配置变更日志$C_{new}$后，无需等待日志提交，
-     *  立刻将配置变更为$C_{new}$，并进新配置阶段。此时节点需要检查一下自身是否还是是集群中的一员，
-     *  如果不是，说明当前节点已经被从集群中移除，需要停止当前节点服务。
-     * 6. LEADER在$C_{new}$被提交后，也需要检查一下自身是否还是是集群中的一员，如果不是，
-     *  说明当前节点已经被从集群中移除，需要停止当前节点服务。新集群会自动选举出新的LEADER。
+     *
+     * 5. 处于共同一致阶段中的每个FOLLOWER节点，在收到并写入配置变更日志$C_{new}$后，无需等待日志提交，立刻将配置变更为$C_{new}$，
+     * 并进新配置阶段。此时节点需要检查一下自身是否还是是集群中的一员，如果不是，说明当前节点已经被从集群中移除，需要停止当前节点服务。
+     *
+     * 6. LEADER在$C_{new}$被提交后，也需要检查一下自身是否还是是集群中的一员，如果不是，说明当前节点已经被从集群中移除，
+     * 需要停止当前节点服务。新集群会自动选举出新的LEADER。
+     *
+     * 如果变更过程中，节点发生了故障。为了确保节点能从故障中正确的恢复，需要保证：
+     * **节点当前的配置总是和节点当前日志中最后一条配置变更日志（注意，这条日志可能已经提交也可能未被提交）保持一致。**
+     *
+     * 由于每个节点都遵循“写入配置变更日志-更新节点配置-提交配置变更日志”这样一个时序，所以，如果最后一条配置变更日志经被提交，
+     * 那节点的配置和日志一定是一致的。但是，对于未提交配置变更日志，节点的配置有可能还没来得及更新就，节点宕机了。
+     * 这种情况下，节点的配置是落后于日志的，因此，需要：
+     *
+     * * 在节点启动时进行检查，如果存在一条未提交的配置变更日志，如果节点配置和日志不一致，需要按照日志更新节点配置。
+     * * 当节点删除未提交的日志时，如果被删除的日志中包含配置变更，需要将当前节点的配置也一并回滚；
+     *
+     * 在这个方法中，只是构造第一阶段的配置变更日志$C_{old, new}$，调用{@link #updateClusterState(UpdateClusterStateRequest)}方法，
+     * 正常写入$C_{old, new}$，$C_{old, new}$被提交之后，会返回 {@link UpdateClusterStateResponse}，只要响应成功，
+     * 虽然这时集群的配置并没有完成变更，但无论后续发生什么情况，集群最终都会完成此次变更。因此，直接返回客户端变更成功。
      *
      * @param request See {@link UpdateVotersRequest}
      * @return See {@link UpdateVotersResponse}
@@ -1034,18 +1082,11 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                     if(!response.success()) {
                         throw new CompletionException(new UpdateConfigurationException("Failed to update voters configuration in step 1. " + response.errorString()));
                     }
-                }).thenApply(aVoid -> new UpdateVotersS2Entry(request.getNewConfig()))
-                .thenApply(updateVotersS2EntrySerializer::serialize)
-                .thenApply(entry -> new UpdateClusterStateRequest(entry, RESERVED_PARTITION, 1))
-                .thenCompose(this::updateClusterState)
-                .thenAccept(response -> {
-                    if(!response.success()) {
-                        throw new CompletionException(new UpdateConfigurationException("Failed to update voters configuration in step 2. " + response.errorString()));
-                    }
                 })
                 .thenApply(aVoid -> new UpdateVotersResponse())
                 .exceptionally(UpdateVotersResponse::new);
     }
+
 
     public VoterState voterState() {
         return voterState;
