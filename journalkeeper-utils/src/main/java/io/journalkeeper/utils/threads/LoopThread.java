@@ -145,7 +145,7 @@ abstract class LoopThread implements AsyncLoopThread {
      * 唤醒任务如果任务在Sleep
      */
     @Override
-    public synchronized void wakeup() {
+    public void wakeup() {
 
         if(needToWakeUp.compareAndSet(true, false)) {
             wakeupLock.lock();

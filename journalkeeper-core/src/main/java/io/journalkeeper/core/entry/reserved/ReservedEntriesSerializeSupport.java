@@ -44,7 +44,7 @@ public class ReservedEntriesSerializeSupport {
 
     }
 
-    public <E extends ReservedEntry> byte [] serialize(E  entry) {
+    public static <E extends ReservedEntry> byte [] serialize(E  entry) {
         @SuppressWarnings("unchecked")
         Serializer<E> serializer = (Serializer<E>) serializerMap.get(entry.getClass());
         if(serializer == null) {

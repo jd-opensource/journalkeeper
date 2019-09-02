@@ -37,6 +37,11 @@ class LinkedQueueCallbackBelt<ER> implements CallbackBelt<ER> {
         return f;
     }
 
+    @Override
+    public int size() {
+        return queue.size();
+    }
+
     /**
      * NOT Thread-safe!!!!!!
      */
@@ -48,11 +53,11 @@ class LinkedQueueCallbackBelt<ER> implements CallbackBelt<ER> {
 
                 callback.getCompletableFuture().complete(new UpdateClusterStateResponse(serialize.serialize(callback.getResult())));
             }
-            long deadline = System.currentTimeMillis() - timeoutMs;
-            while (getFirst().getTimestamp() < deadline) {
-                Callback<ER> callback = removeFirst();
-                callback.getCompletableFuture().complete(new UpdateClusterStateResponse(new TimeoutException()));
-            }
+//            long deadline = System.currentTimeMillis() - timeoutMs;
+//            while (getFirst().getTimestamp() < deadline) {
+//                Callback<ER> callback = removeFirst();
+//                callback.getCompletableFuture().complete(new UpdateClusterStateResponse(new TimeoutException()));
+//            }
         } catch (NoSuchElementException ignored) {
         }
     }

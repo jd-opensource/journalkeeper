@@ -245,6 +245,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             indexBuffer.putLong(offset);
             indexPersistence.append(indexBytes);
 
+            // TODO: 在状态机中创建分区索引
             // 写入分区索引
             appendPartitionIndex(indexBytes, header);
 

@@ -15,6 +15,8 @@ package io.journalkeeper.rpc.server;
 
 import io.journalkeeper.rpc.BaseResponse;
 
+import java.net.URI;
+
 /**
  * @author LiYue
  * Date: 2019-03-14
@@ -23,6 +25,8 @@ public class RequestVoteResponse  extends BaseResponse implements Termed{
 
     private final int term;
     private final boolean voteGranted;
+    // Transient
+    private URI uri;
 
     public RequestVoteResponse(Throwable throwable) {
         this(throwable, -1, false);
@@ -45,5 +49,13 @@ public class RequestVoteResponse  extends BaseResponse implements Termed{
 
     public boolean isVoteGranted() {
         return voteGranted;
+    }
+
+    public URI getUri() {
+        return uri;
+    }
+
+    public void setUri(URI uri) {
+        this.uri = uri;
     }
 }

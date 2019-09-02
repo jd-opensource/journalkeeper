@@ -213,6 +213,8 @@ public class JournalStoreTest {
             properties.setProperty("snapshot_step", "0");
             properties.setProperty("rpc_timeout_ms", "600000");
             properties.setProperty("cache_requests", String.valueOf(1024L * 1024));
+            properties.setProperty("print_metric_interval_sec", String.valueOf(1));
+            properties.setProperty("enable_metric", String.valueOf(true));
 //            properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
 //            properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
             propertiesList.add(properties);

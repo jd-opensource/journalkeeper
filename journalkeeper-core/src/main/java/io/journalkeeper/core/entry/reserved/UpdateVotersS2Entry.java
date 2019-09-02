@@ -11,7 +11,7 @@ import java.util.List;
  */
 public class UpdateVotersS2Entry extends ReservedEntry implements Serializable {
     private static final long serialVersionUID = 1L;
-
+    // TODO: delete
     private final List<URI> configNew;
     public UpdateVotersS2Entry(List<URI> configNew) {
         super(TYPE_UPDATE_VOTERS_S2);

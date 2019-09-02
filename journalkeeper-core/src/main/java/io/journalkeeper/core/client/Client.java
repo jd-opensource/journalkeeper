@@ -15,12 +15,12 @@ package io.journalkeeper.core.client;
 
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.base.VoidSerializer;
-import io.journalkeeper.core.JdkSerializerFactory;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
+import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import io.journalkeeper.core.exception.NoLeaderException;
 import io.journalkeeper.exceptions.ServerBusyException;
@@ -49,6 +49,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 客户端实现
@@ -65,10 +66,6 @@ public class Client<E, ER, Q, QR> implements RaftClient<E, ER, Q, QR> {
     private final Config config;
     private final Executor executor;
     private URI leaderUri = null;
-    private final Serializer<CompactJournalEntry> compactJournalEntrySerializer =
-            JdkSerializerFactory.createSerializer(CompactJournalEntry.class);
-    private final Serializer<ScalePartitionsEntry> scalePartitionsEntrySerializer =
-            JdkSerializerFactory.createSerializer(ScalePartitionsEntry.class);
 
 
     public Client(ClientServerRpcAccessPoint clientServerRpcAccessPoint,
@@ -108,9 +105,11 @@ public class Client<E, ER, Q, QR> implements RaftClient<E, ER, Q, QR> {
                 leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entry, partition, batchSize, responseConfig)))
                 .thenApply(resp -> {
                     if(!resp.success()) {
-//                        logger.warn("Respose failed: {}", resp.errorString());
+//                        logger.warn("Response failed: {}", resp.errorString());
                         if(resp.getStatusCode() == StatusCode.SERVER_BUSY) {
                             throw new CompletionException(new ServerBusyException());
+                        } else if (resp.getStatusCode() == StatusCode.TIMEOUT) {
+                            throw new CompletionException(new TimeoutException());
                         } else {
                             throw new CompletionException(new RpcException(resp));
                         }
@@ -211,12 +210,12 @@ public class Client<E, ER, Q, QR> implements RaftClient<E, ER, Q, QR> {
     }
     @Override
     public CompletableFuture<Void> compact(Map<Integer, Long> toIndices) {
-        return this.update(compactJournalEntrySerializer.serialize(new CompactJournalEntry(toIndices)),
+        return this.update(ReservedEntriesSerializeSupport.serialize(new CompactJournalEntry(toIndices)),
                 RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
     }
     @Override
     public CompletableFuture<Void> scalePartitions(int[] partitions) {
-        return this.update(scalePartitionsEntrySerializer.serialize(new ScalePartitionsEntry(partitions)),
+        return this.update(ReservedEntriesSerializeSupport.serialize(new ScalePartitionsEntry(partitions)),
                 RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
     }
 

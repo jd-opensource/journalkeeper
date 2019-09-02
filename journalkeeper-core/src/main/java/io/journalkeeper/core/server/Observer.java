@@ -110,6 +110,8 @@ public class Observer<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         if(response.success()){
 
             journal.appendBatchRaw(response.getEntries());
+
+            maybeUpdateConfig(response.getEntries());
             commitIndex.addAndGet(response.getEntries().size());
             // 唤醒状态机线程
             threads.wakeupThread(STATE_MACHINE_THREAD);

@@ -15,15 +15,18 @@ package io.journalkeeper.core.server;
 
 import com.sun.istack.internal.NotNull;
 import io.journalkeeper.base.Serializer;
-import io.journalkeeper.core.JdkSerializerFactory;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
+import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.Entry;
+import io.journalkeeper.core.entry.EntryHeader;
+import io.journalkeeper.core.entry.JournalEntryParser;
 import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
+import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ReservedEntry;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
@@ -49,6 +52,7 @@ import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
 import io.journalkeeper.rpc.client.RemovePullWatchRequest;
 import io.journalkeeper.rpc.client.RemovePullWatchResponse;
+import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.server.GetServerEntriesRequest;
 import io.journalkeeper.rpc.server.GetServerEntriesResponse;
 import io.journalkeeper.rpc.server.GetServerStateRequest;
@@ -71,8 +75,8 @@ import org.slf4j.LoggerFactory;
 import java.io.Closeable;
 import java.io.Flushable;
 import java.io.IOException;
-import java.lang.reflect.Executable;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -140,7 +144,7 @@ public abstract class Server<E, ER, Q, QR>
     /**
      * 当前集群配置
      */
-    protected VoterConfigurationStateMachine voterConfigurationStateMachine;
+    protected VoterConfigurationStateMachine votersConfigStateMachine;
 
     @Override
     public boolean isAlive() {
@@ -249,21 +253,13 @@ public abstract class Server<E, ER, Q, QR>
     protected final Map<URI, ServerRpc> remoteServers = new HashMap<>();
     private Config config;
 
-    private volatile ServerState serverState = ServerState.STOPPED;
+    private volatile ServerState serverState = ServerState.CREATED;
     /**
      * 上次保存的元数据
      */
     private ServerMetadata lastSavedServerMetadata = null;
 
     protected final EventBus eventBus;
-    private final Serializer<CompactJournalEntry> compactJournalEntrySerializer =
-            JdkSerializerFactory.createSerializer(CompactJournalEntry.class);
-    private final Serializer<ScalePartitionsEntry> scalePartitionsEntrySerializer =
-            JdkSerializerFactory.createSerializer(ScalePartitionsEntry.class);
-    protected final Serializer<UpdateVotersS1Entry> updateVotersS1EntrySerializer =
-            JdkSerializerFactory.createSerializer(UpdateVotersS1Entry.class);
-    protected final Serializer<UpdateVotersS2Entry> updateVotersS2EntrySerializer =
-            JdkSerializerFactory.createSerializer(UpdateVotersS2Entry.class);
 
     protected final Lock scalePartitionLock = new ReentrantLock(true);
     protected final Lock compactLock = new ReentrantLock(true);
@@ -358,8 +354,9 @@ public abstract class Server<E, ER, Q, QR>
 
     @Override
     public synchronized void init(URI uri, List<URI> voters) throws IOException {
+
         this.uri = uri;
-        voterConfigurationStateMachine = new VoterConfigurationStateMachine(voters);
+        votersConfigStateMachine = new VoterConfigurationStateMachine(voters);
         createMissingDirectories();
         metadataPersistence.recover(metadataPath(), properties);
         lastSavedServerMetadata = createServerMetadata();
@@ -454,12 +451,14 @@ public abstract class Server<E, ER, Q, QR>
                     stateLock.unlockWrite(stamp);
                 }
             } else {
-                applyReservedEntry(storageEntry.getEntry()[0], storageEntry.getEntry());
+                applyReservedEntry(storageEntry.getEntry());
             }
+
 
             beforeStateChanged(result);
             state.next();
             afterStateChanged(result);
+
             Map<String, String> parameters = new HashMap<>(customizedEventData.size() + 1);
             customizedEventData.forEach(parameters::put);
             parameters.put("lastApplied", String.valueOf(state.lastApplied()));
@@ -468,20 +467,59 @@ public abstract class Server<E, ER, Q, QR>
         }
     }
 
-    protected void applyReservedEntry(int type, byte [] reservedEntry) {
+    protected void applyReservedEntry(byte [] reservedEntry) {
+        int type = ReservedEntriesSerializeSupport.parseEntryType(reservedEntry);
+        logger.info("Apply reserved entry, type: {}", type);
         switch (type) {
             case ReservedEntry
                     .TYPE_LEADER_ANNOUNCEMENT:
                 // Nothing to do.
                 break;
             case ReservedEntry.TYPE_COMPACT_JOURNAL:
-                compactJournalAsync(compactJournalEntrySerializer.parse(reservedEntry).getCompactIndices());
+                compactJournalAsync(ReservedEntriesSerializeSupport.parse(reservedEntry, CompactJournalEntry.class).getCompactIndices());
                 break;
             case ReservedEntry.TYPE_SCALE_PARTITIONS:
-                scalePartitions(scalePartitionsEntrySerializer.parse(reservedEntry).getPartitions());
+                scalePartitions(ReservedEntriesSerializeSupport.parse(reservedEntry, ScalePartitionsEntry.class).getPartitions());
+                break;
+            case ReservedEntry.TYPE_UPDATE_VOTERS_S1:
+                byte [] s2Entry = ReservedEntriesSerializeSupport.serialize(new UpdateVotersS2Entry(votersConfigStateMachine.getConfigNew()));
+                    try {
+                        if(votersConfigStateMachine.isJointConsensus()) {
+                            updateClusterState(new UpdateClusterStateRequest(s2Entry, RESERVED_PARTITION, 1, ResponseConfig.ONE_WAY)).get();
+                        } else {
+                            throw new IllegalStateException();
+                        }
+                    } catch (Exception e) {
+                        UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(reservedEntry);
+                        logger.warn("Failed to update voter config in step 2! Config in the first step entry from: {} To: {}, " +
+                                        "voter config old: {}, new: {}.",
+                                updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew(),
+                                votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew());
+                    }
+                break;
+            case ReservedEntry.TYPE_UPDATE_VOTERS_S2:
                 break;
             default:
                 logger.warn("Invalid reserved entry type: {}.", type);
+        }
+    }
+
+    protected void maybeUpdateConfig(List<byte []> entries) throws Exception {
+        for (byte[] rawEntry : entries) {
+            ByteBuffer entryBuffer = ByteBuffer.wrap(rawEntry);
+            EntryHeader entryHeader = JournalEntryParser.parseHeader(entryBuffer);
+            if(entryHeader.getPartition() == RESERVED_PARTITION) {
+                byte [] payload = JournalEntryParser.getEntry(rawEntry);
+                int entryType = ReservedEntriesSerializeSupport.parseEntryType(payload);
+                if (entryType == ReservedEntry.TYPE_UPDATE_VOTERS_S1) {
+                    UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(payload);
+
+                    votersConfigStateMachine.toJointConsensus(updateVotersS1Entry.getConfigNew(),
+                            () -> null);
+                } else if (entryType == ReservedEntry.TYPE_UPDATE_VOTERS_S2) {
+                    votersConfigStateMachine.toNewConfig(() -> null);
+                }
+            }
         }
     }
 
@@ -691,7 +729,7 @@ public abstract class Server<E, ER, Q, QR>
     public CompletableFuture<GetServersResponse> getServers() {
         return CompletableFuture.supplyAsync(() ->
                 new GetServersResponse(
-                        new ClusterConfiguration(leader, voterConfigurationStateMachine.voters(), observers)),
+                        new ClusterConfiguration(leader, votersConfigStateMachine.voters(), observers)),
                 asyncExecutor);
     }
 
@@ -725,6 +763,9 @@ public abstract class Server<E, ER, Q, QR>
 
     @Override
     public final void start() {
+        if(this.serverState != ServerState.CREATED) {
+            throw new IllegalStateException("Server can only start once!");
+        }
         this.serverState = ServerState.STARTING;
         doStart();
         threads.start();
@@ -824,19 +865,50 @@ public abstract class Server<E, ER, Q, QR>
     @Override
     public synchronized void recover() throws IOException {
         lastSavedServerMetadata = metadataPersistence.recover(metadataPath(), properties);
-        if(lastSavedServerMetadata.isJointConsensus()) {
-            voterConfigurationStateMachine = new VoterConfigurationStateMachine(
-                    lastSavedServerMetadata.getOldVoters(),
-                    lastSavedServerMetadata.getVoters()
-            );
-        } else {
-            voterConfigurationStateMachine =
-                    new VoterConfigurationStateMachine(lastSavedServerMetadata.getVoters());
-        }
         onMetadataRecovered(lastSavedServerMetadata);
         recoverJournal(lastSavedServerMetadata.getPartitions());
+        onJournalRecovered(journal);
         state.recover(statePath(), journal, properties);
         recoverSnapshots();
+    }
+
+    protected void onJournalRecovered(Journal journal) {
+        recoverVoterConfig();
+    }
+
+
+
+    /**
+     * Check reserved entries to ensure the last UpdateVotersConfig entry is applied to the current voter config.
+     */
+    private void recoverVoterConfig() {
+        boolean isRecoveredFromJournal = false;
+        for(long index = journal.maxIndex(RESERVED_PARTITION) - 1;
+            index >= journal.minIndex(RESERVED_PARTITION);
+            index --) {
+            RaftEntry entry = journal.readByPartition(RESERVED_PARTITION, index);
+            int type = ReservedEntriesSerializeSupport.parseEntryType(entry.getEntry());
+
+            if(type == ReservedEntry.TYPE_UPDATE_VOTERS_S1) {
+                UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(entry.getEntry());
+                votersConfigStateMachine = new VoterConfigurationStateMachine(
+                        updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew());
+                isRecoveredFromJournal = true;
+                break;
+            } else if(type == ReservedEntry.TYPE_UPDATE_VOTERS_S2) {
+                UpdateVotersS2Entry updateVotersS2Entry = ReservedEntriesSerializeSupport.parse(entry.getEntry());
+                votersConfigStateMachine = new VoterConfigurationStateMachine(updateVotersS2Entry.getConfigNew());
+                isRecoveredFromJournal = true;
+                break;
+            }
+        }
+
+        if (isRecoveredFromJournal) {
+            logger.info("Voters config is recovered from journal.");
+        } else {
+            logger.info("No voters config entry found in journal, Using config in the metadata.");
+        }
+        logger.info(votersConfigStateMachine.toString());
     }
 
 
@@ -876,6 +948,15 @@ public abstract class Server<E, ER, Q, QR>
     }
 
     protected void onMetadataRecovered(ServerMetadata metadata) {
+        if(lastSavedServerMetadata.isJointConsensus()) {
+            votersConfigStateMachine = new VoterConfigurationStateMachine(
+                    lastSavedServerMetadata.getOldVoters(),
+                    lastSavedServerMetadata.getVoters()
+            );
+        } else {
+            votersConfigStateMachine =
+                    new VoterConfigurationStateMachine(lastSavedServerMetadata.getVoters());
+        }
         this.uri = metadata.getThisServer();
         this.commitIndex.set(metadata.getCommitIndex());
 
@@ -897,7 +978,7 @@ public abstract class Server<E, ER, Q, QR>
     protected ServerMetadata createServerMetadata() {
         ServerMetadata serverMetadata = new ServerMetadata();
         serverMetadata.setThisServer(uri);
-        VoterConfigurationStateMachine config = voterConfigurationStateMachine.clone();
+        VoterConfigurationStateMachine config = votersConfigStateMachine.clone();
         serverMetadata.setVoters(config.configNew);
         serverMetadata.setOldVoters(config.configOld);
         serverMetadata.setJointConsensus(config.jointConsensus);
@@ -1004,9 +1085,10 @@ public abstract class Server<E, ER, Q, QR>
         private VoterConfigurationStateMachine(List<URI> configNew) {
             jointConsensus = false;
             this.configNew.addAll(configNew);
+            buildAllVoters();
         }
 
-        public List<URI> getConfigNew() {
+        protected List<URI> getConfigNew() {
             rwLock.readLock().lock();
             try {
                 return new ArrayList<>(configNew);
@@ -1015,7 +1097,7 @@ public abstract class Server<E, ER, Q, QR>
             }
         }
 
-        public List<URI> getConfigOld() {
+        protected List<URI> getConfigOld() {
             rwLock.readLock().lock();
             try {
                 return new ArrayList<>(configOld);
@@ -1024,7 +1106,7 @@ public abstract class Server<E, ER, Q, QR>
             }
         }
 
-        public boolean isJointConsensus() {
+        protected boolean isJointConsensus() {
             rwLock.readLock().lock();
             try {
                 return jointConsensus;
@@ -1058,15 +1140,16 @@ public abstract class Server<E, ER, Q, QR>
             }
         }
 
-        protected void toJointConsensus(List<URI> configOld, List<URI> configNew, Callable appendEntryCallable) throws Exception {
+        protected void toJointConsensus(List<URI> configNew, Callable appendEntryCallable) throws Exception {
             rwLock.writeLock().lock();
             try {
                 if(jointConsensus) {
                     throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == false, actual: true.");
                 }
+
                 appendEntryCallable.call();
                 jointConsensus = true;
-                this.configOld.addAll(configOld);
+                this.configOld.addAll(this.configNew);
                 this.configNew.clear();
                 this.configNew.addAll(configNew);
                 buildAllVoters();
@@ -1086,6 +1169,27 @@ public abstract class Server<E, ER, Q, QR>
                     return new VoterConfigurationStateMachine(new ArrayList<>(configNew));
                 }
 
+            } finally {
+                rwLock.readLock().unlock();
+            }
+        }
+
+        @Override
+        public String toString() {
+            rwLock.readLock().lock();
+            try {
+                String str = "Voters config: jointConsensus: " +
+                        jointConsensus + ", ";
+                if(jointConsensus) {
+                    str += "old config: [" +
+                            configOld.stream().map(URI::toString).collect(Collectors.joining(", ")) + "], ";
+                    str += "new config: [" +
+                            configNew.stream().map(URI::toString).collect(Collectors.joining(", ")) + "].";
+                } else {
+                    str += "config: [" +
+                            configNew.stream().map(URI::toString).collect(Collectors.joining(", ")) + "].";
+                }
+                return str;
             } finally {
                 rwLock.readLock().unlock();
             }

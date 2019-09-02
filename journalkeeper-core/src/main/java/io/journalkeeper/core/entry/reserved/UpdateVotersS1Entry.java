@@ -12,6 +12,7 @@ import java.util.List;
 public class UpdateVotersS1Entry extends ReservedEntry implements Serializable {
     private static final long serialVersionUID = 1L;
 
+    // TODO: delete
     private final List<URI> configOld;
     private final List<URI> configNew;
     public UpdateVotersS1Entry(List<URI> configOld, List<URI> configNew) {

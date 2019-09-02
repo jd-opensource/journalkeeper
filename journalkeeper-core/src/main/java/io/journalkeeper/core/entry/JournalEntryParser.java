@@ -18,6 +18,7 @@ import io.journalkeeper.utils.parser.EntryParser;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -68,6 +69,11 @@ public class JournalEntryParser extends EntryParser {
         return byteBuffer;
 
     }
+
+    public static byte [] getEntry(byte [] entryWithHeader) {
+        return Arrays.copyOfRange(entryWithHeader, getHeaderLength(), entryWithHeader.length);
+    }
+
 
     public static byte [] getBytes(ByteBuffer messageBuffer, int relativeOffset) {
         ByteBuffer byteBuffer = getByteBuffer(messageBuffer, relativeOffset);
