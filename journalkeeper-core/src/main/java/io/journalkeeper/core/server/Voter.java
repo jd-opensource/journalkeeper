@@ -23,6 +23,7 @@ import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ReservedEntry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
+import io.journalkeeper.core.entry.reserved.UpdateVotersS2Entry;
 import io.journalkeeper.core.exception.UpdateConfigurationException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.exceptions.IndexOverflowException;
@@ -47,6 +48,7 @@ import io.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -334,8 +336,13 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
      * Block current thread and waiting until all entries were committed。
      */
     private void waitingForAllEntriesCommitted() throws InterruptedException {
-        while(commitIndex.get() < journal.maxIndex()) {
-            Thread.sleep(10L);
+        long t0 = System.nanoTime();
+        while(journal.commitIndex() < journal.maxIndex()) {
+            if(System.nanoTime() - t0 < 10000000000L) {
+                Thread.yield();
+            } else {
+                Thread.sleep(10L);
+            }
         }
     }
 
@@ -532,7 +539,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                     AsyncAppendEntriesRequest request =
                             new AsyncAppendEntriesRequest(currentTerm.get(), leader,
                                     follower.getNextIndex() - 1, getPreLogTerm(follower.getNextIndex()),
-                                    entries, commitIndex.get());
+                                    entries, journal.commitIndex());
                     sendAppendEntriesRequest(follower, request);
                     follower.setNextIndex(follower.getNextIndex() + entries.size());
                     hasData = true;
@@ -542,7 +549,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                         AsyncAppendEntriesRequest request =
                                 new AsyncAppendEntriesRequest(currentTerm.get(), leader,
                                         follower.getNextIndex() - 1, getPreLogTerm(follower.getNextIndex()),
-                                        Collections.emptyList(), commitIndex.get());
+                                        Collections.emptyList(), journal.commitIndex());
                         sendAppendEntriesRequest(follower, request);
                     }
                 }
@@ -669,7 +676,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
      * 5.2 N > commitIndex
      * 5.3 log[N].term == currentTerm
      */
-    private void leaderUpdateCommitIndex() throws InterruptedException, ExecutionException {
+    private void leaderUpdateCommitIndex() throws InterruptedException, ExecutionException, IOException {
         List<Follower> finalFollowers = new ArrayList<>(followers);
         long N = finalFollowers.isEmpty() ? journal.maxIndex() : 0L;
 
@@ -714,11 +721,11 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
             }
 
         }
-        if (voterState() == VoterState.LEADER && N > commitIndex.get() && journal.getTerm(N - 1) == currentTerm.get()) {
+        if (voterState() == VoterState.LEADER && N > journal.commitIndex() && journal.getTerm(N - 1) == currentTerm.get()) {
             if (logger.isDebugEnabled()) {
-                logger.debug("Set commitIndex {} to {}, {}.", commitIndex.get(), N, voterInfo());
+                logger.debug("Set commitIndex {} to {}, {}.", journal.commitIndex(), N, voterInfo());
             }
-            commitIndex.set(N);
+            journal.commit(N);
             onCommitted();
         }
     }
@@ -787,13 +794,13 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                                         follower.repStartIndex - 1,
                                         journal.getTerm(follower.repStartIndex - 1),
                                         journal.readRaw(follower.repStartIndex, rollbackSize),
-                                        commitIndex.get()));
+                                        journal.commitIndex()));
                     }
                     delaySendAsyncAppendEntriesRpc(follower, new AsyncAppendEntriesRequest(finalTerm, leader,
                             response.getJournalIndex() - 1,
                             journal.getTerm(response.getJournalIndex() - 1),
                             journal.readRaw(response.getJournalIndex(), response.getEntryCount()),
-                            commitIndex.get()));
+                            journal.commitIndex()));
                 }
             }
         }
@@ -808,7 +815,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
      * 添加任何在已有的日志中不存在的条目
      * 如果leaderCommit > commitIndex，将commitIndex设置为leaderCommit和最新日志条目索引号中较小的一个
      */
-    private void followerHandleAppendEntriesRequest() throws InterruptedException {
+    private void followerHandleAppendEntriesRequest() throws InterruptedException, IOException {
 
         ReplicationRequestResponse rr = pendingAppendEntriesRequests.take();
         AsyncAppendEntriesRequest request = rr.getRequest();
@@ -820,7 +827,11 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
 
                     try {
                         // TODO: 如果删除的entries中包括变更配置，需要回滚配置
-                        journal.compareOrAppendRaw(request.getEntries(), request.getPrevLogIndex() + 1);
+                        final long startIndex = request.getPrevLogIndex() + 1;
+
+                        maybeRollbackConfig(startIndex);
+
+                        journal.compareOrAppendRaw(request.getEntries(), startIndex);
 
                         maybeUpdateConfig(request.getEntries());
 
@@ -840,8 +851,8 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
                         logger.warn("Handle replication request exception! {}", voterInfo(), t);
                         rr.getResponseFuture().complete(new AsyncAppendEntriesResponse(t));
                     } finally {
-                        if (request.getLeaderCommit() > commitIndex.get()) {
-                            commitIndex.set(Math.min(request.getLeaderCommit(), journal.maxIndex()));
+                        if (request.getLeaderCommit() > journal.commitIndex()) {
+                            journal.commit(Math.min(request.getLeaderCommit(), journal.maxIndex()));
                             threads.wakeupThread(STATE_MACHINE_THREAD);
                             threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
                         }
@@ -876,6 +887,27 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
             throw t;
         }
 
+    }
+
+    private void maybeRollbackConfig(long startIndex) throws Exception {
+        if(startIndex >= journal.maxIndex()) {
+            return;
+        }
+        long index = journal.maxIndex(RESERVED_PARTITION);
+        long startOffset = journal.readOffset(startIndex);
+        while (--index >= journal.minIndex(RESERVED_PARTITION)) {
+            RaftEntry entry = journal.readByPartition(RESERVED_PARTITION, index);
+            if (entry.getHeader().getOffset() < startOffset) {
+                break;
+            }
+            int reservedEntryType = ReservedEntriesSerializeSupport.parseEntryType(entry.getEntry());
+            if(reservedEntryType == ReservedEntry.TYPE_UPDATE_VOTERS_S2) {
+                UpdateVotersS2Entry updateVotersS2Entry = ReservedEntriesSerializeSupport.parse(entry.getEntry());
+                votersConfigStateMachine.rollbackToJointConsensus(updateVotersS2Entry.getConfigOld());
+            } else if(reservedEntryType == ReservedEntry.TYPE_UPDATE_VOTERS_S1) {
+                votersConfigStateMachine.rollbackToOldConfig();
+            }
+        }
     }
 
 
@@ -1281,7 +1313,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         return String.format("voterState: %s, currentTerm: %d, minIndex: %d, " +
                         "maxIndex: %d, commitIndex: %d, lastApplied: %d, uri: %s",
                 voterState.getState(), currentTerm.get(), journal.minIndex(),
-                journal.maxIndex(), commitIndex.get(), state.lastApplied(), uri.toString());
+                journal.maxIndex(), journal.commitIndex(), state.lastApplied(), uri.toString());
     }
 
     public enum VoterState {LEADER, FOLLOWER, CANDIDATE}

@@ -92,8 +92,6 @@ public class JournalTest {
         // 循环写入多少批
         int loopCount = 10 * 1024;
 
-        JMetricFactory metricFactory = ServiceSupport.load(JMetricFactory.class);
-
         List<byte []> entries = ByteUtils.createFixedSizeByteList(entrySize, batchCount);
         // 构建测试的entry
         List<byte []> rawEntries =
@@ -114,10 +112,18 @@ public class JournalTest {
                 .onException(e -> logger.warn("FlushJournalThread Exception: ", e))
                 .daemon(true)
                 .build();
+        // 启动提交线程
+        AsyncLoopThread commitJournalThread = ThreadBuilder.builder()
+                .name("CommitJournalThread")
+                .doWork(() -> journal.commit(journal.maxIndex()))
+                .sleepTime(50L, 50L)
+                .onException(e -> logger.warn("CommitJournalThread Exception: ", e))
+                .daemon(true)
+                .build();
 
 
         flushJournalThread.start();
-
+        commitJournalThread.start();
         try {
             long t0 = System.currentTimeMillis();
             for (int i = 0; i < loopCount; i++) {
@@ -144,6 +150,7 @@ public class JournalTest {
             );
         } finally {
             flushJournalThread.stop();
+            commitJournalThread.stop();
         }
     }
     @Ignore
@@ -176,9 +183,18 @@ public class JournalTest {
                 .daemon(true)
                 .build();
 
+        // 启动提交线程
+        AsyncLoopThread commitJournalThread = ThreadBuilder.builder()
+                .name("CommitJournalThread")
+                .doWork(() -> journal.commit(journal.maxIndex()))
+                .sleepTime(50L, 50L)
+                .onException(e -> logger.warn("CommitJournalThread Exception: ", e))
+                .daemon(true)
+                .build();
+
 
         flushJournalThread.start();
-
+        commitJournalThread.start();
         try {
             long t0 = System.currentTimeMillis();
 
@@ -205,6 +221,7 @@ public class JournalTest {
                     Format.formatSize(totalTraffic * 1000L / flushTakes));
         } finally {
             flushJournalThread.stop();
+            commitJournalThread.stop();
         }
     }
     @Ignore
@@ -234,6 +251,14 @@ public class JournalTest {
                 .onException(e -> logger.warn("FlushJournalThread Exception: ", e))
                 .daemon(true)
                 .build();
+        // 启动提交线程
+        AsyncLoopThread commitJournalThread = ThreadBuilder.builder()
+                .name("CommitJournalThread")
+                .doWork(() -> journal.commit(journal.maxIndex()))
+                .sleepTime(50L, 50L)
+                .onException(e -> logger.warn("CommitJournalThread Exception: ", e))
+                .daemon(true)
+                .build();
 
         AsyncLoopThread appendJournalThread = ThreadBuilder.builder()
                 .name("AppendJournalThread")
@@ -247,6 +272,7 @@ public class JournalTest {
                 .build();
 
         flushJournalThread.start();
+        commitJournalThread.start();
         appendJournalThread.start();
 
         JMetricFactory factory = ServiceSupport.load(JMetricFactory.class);
@@ -289,6 +315,7 @@ public class JournalTest {
                     Format.formatSize(totalSize * 1000 / takeMs));
         } finally {
             appendJournalThread.stop();
+            commitJournalThread.stop();
             flushJournalThread.stop();
         }
     }
@@ -357,11 +384,15 @@ public class JournalTest {
         for(Entry storageEntry: storageEntries) {
             journal.append(storageEntry);
         }
+        journal.commit(journal.maxIndex());
+        long commitIndex = journal.commitIndex();
         journal.flush();
         journal.close();
 
-        journal = createJournal();
-        partitionEntries.forEach((partition, pEntries) -> {
+        journal = createJournal(commitIndex);
+        for (Map.Entry<Integer, List<Entry>> entry : partitionEntries.entrySet()) {
+            Integer partition = entry.getKey();
+            List<Entry> pEntries = entry.getValue();
             Assert.assertEquals(pEntries.size(), journal.maxIndex(partition));
             Assert.assertEquals(0, journal.minIndex(partition));
             for (int i = 0; i < pEntries.size(); i++) {
@@ -371,12 +402,12 @@ public class JournalTest {
                 Assert.assertEquals(0, batchEntries.getHeader().getOffset());
                 Assert.assertArrayEquals(pEntry.getEntry(), batchEntries.getEntry());
             }
-        });
+        }
     }
 
 
     @Test
-    public void batchEntriesTest() {
+    public void batchEntriesTest() throws IOException {
         int maxLength = 1024;
         int size = 1024;
         int term = 8;
@@ -393,7 +424,7 @@ public class JournalTest {
         for(Entry storageEntry: storageEntries) {
             journal.append(storageEntry);
         }
-
+        journal.commit(journal.maxIndex());
         Assert.assertEquals(size * batchSize , journal.maxIndex(partition));
 
         for (int i = 0; i < journal.maxIndex(); i++) {
@@ -407,7 +438,7 @@ public class JournalTest {
 
 
     @Test
-    public void writeReadRawTest() {
+    public void writeReadRawTest() throws IOException {
         int maxLength = 1024;
         int size = 1024;
         int term = 8;
@@ -418,6 +449,7 @@ public class JournalTest {
                         .map(this::serialize)
                         .collect(Collectors.toList());
         long maxIndex = journal.appendBatchRaw(storageEntries);
+        journal.commit(journal.maxIndex());
         Assert.assertEquals(size, maxIndex);
         Assert.assertEquals(size, journal.maxIndex());
         Assert.assertEquals(0, journal.minIndex());
@@ -519,6 +551,7 @@ public class JournalTest {
 
     }
 
+    // TODO: recoverPartitionsTest： 需要增加测试恢复分区索引的测试用例
 
     @Test
     public void recoverTest() throws IOException, InterruptedException {
@@ -623,7 +656,7 @@ public class JournalTest {
         List<byte []> entries = ByteUtils.createFixedSizeByteList(entrySize, size);
         List<Entry> storageEntries =
                 entries.stream()
-                        .map(entry -> new Entry(entry, term, (int) 0))
+                        .map(entry -> new Entry(entry, term, 0))
                         .collect(Collectors.toList());
         List<Integer> partitionList = new ArrayList<>(partitions);
         for (int i = 0; i < storageEntries.size(); i++) {
@@ -640,6 +673,7 @@ public class JournalTest {
         Assert.assertEquals(size, journal.maxIndex());
         Assert.assertEquals(0, journal.minIndex());
 
+        journal.commit(journal.maxIndex());
         journal.flush();
 
 
@@ -670,18 +704,24 @@ public class JournalTest {
 
     }
 
-    private Journal createJournal() throws IOException, InterruptedException {
+    private Journal createJournal(long commitIndex) throws IOException, InterruptedException {
 //        System.setProperty("PreloadBufferPool.PrintMetricIntervalMs", "1000");
         Properties properties = new Properties();
-        return createJournal(properties);
+        return createJournal(commitIndex, properties);
+    }
+    private Journal createJournal() throws IOException, InterruptedException {
+        return createJournal(0L);
     }
     private Journal createJournal(Properties properties) throws IOException, InterruptedException {
+        return createJournal(0L, properties);
+    }
+    private Journal createJournal(long commitIndex, Properties properties) throws IOException, InterruptedException {
         PersistenceFactory persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
         BufferPool bufferPool = ServiceSupport.load(BufferPool.class);
         Journal journal = new Journal(
                 persistenceFactory,
                 bufferPool);
-        journal.recover(path,properties);
+        journal.recover(path,commitIndex, properties);
         journal.rePartition(partitions);
         Thread.sleep(1000L);
         return journal;

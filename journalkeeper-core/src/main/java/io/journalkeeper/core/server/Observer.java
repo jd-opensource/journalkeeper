@@ -105,14 +105,15 @@ public class Observer<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         replicationMetric.start();
         long traffic = 0L;
         GetServerEntriesResponse response =
-                selectServer().getServerEntries(new GetServerEntriesRequest(commitIndex.get(),config.getPullBatchSize())).get();
+                selectServer().getServerEntries(new GetServerEntriesRequest(journal.commitIndex(),config.getPullBatchSize())).get();
 
         if(response.success()){
 
             journal.appendBatchRaw(response.getEntries());
 
             maybeUpdateConfig(response.getEntries());
-            commitIndex.addAndGet(response.getEntries().size());
+//            commitIndex.addAndGet(response.getEntries().size());
+            journal.commit(journal.maxIndex());
             // 唤醒状态机线程
             threads.wakeupThread(STATE_MACHINE_THREAD);
             traffic = response.getEntries().stream().mapToLong(bytes -> bytes.length).sum();
@@ -162,7 +163,6 @@ public class Observer<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
 
                     state.installFinish(r.getLastIncludedIndex() + 1, r.getLastIncludedTerm());
                     journal.compact(state.lastApplied());
-                    commitIndex.set(state.lastApplied());
 
                     State<E, ER, Q, QR> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
                     snapshots.put(snapshot.lastApplied(), snapshot);

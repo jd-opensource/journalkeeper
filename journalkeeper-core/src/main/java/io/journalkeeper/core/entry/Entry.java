@@ -19,7 +19,7 @@ import io.journalkeeper.core.api.RaftEntry;
 import java.nio.ByteBuffer;
 
 /**
- * 每个Entry Header 包括：
+ * 每个Entry 包括：
  *
  * Length: 4 bytes
  * Magic: 2 bytes

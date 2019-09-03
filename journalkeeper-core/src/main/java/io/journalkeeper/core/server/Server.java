@@ -188,11 +188,6 @@ public abstract class Server<E, ER, Q, QR>
     protected final NavigableMap<Long, State<E, ER, Q, QR>> snapshots = new ConcurrentSkipListMap<>();
 
     /**
-     * 已知的被提交的最大日志条目的索引值（从 0 开始递增）
-     */
-    protected AtomicLong commitIndex = new AtomicLong(0L);
-
-    /**
      * 当前LEADER节点地址
      */
     protected URI leader;
@@ -432,7 +427,7 @@ public abstract class Server<E, ER, Q, QR>
      *
      */
     private void applyEntries()  {
-        while ( this.serverState == ServerState.RUNNING && state.lastApplied() < commitIndex.get()) {
+        while ( this.serverState == ServerState.RUNNING && state.lastApplied() < journal.commitIndex()) {
             applyEntriesMetric.start();
 
             takeASnapShotIfNeed();
@@ -482,7 +477,7 @@ public abstract class Server<E, ER, Q, QR>
                 scalePartitions(ReservedEntriesSerializeSupport.parse(reservedEntry, ScalePartitionsEntry.class).getPartitions());
                 break;
             case ReservedEntry.TYPE_UPDATE_VOTERS_S1:
-                byte [] s2Entry = ReservedEntriesSerializeSupport.serialize(new UpdateVotersS2Entry(votersConfigStateMachine.getConfigNew()));
+                byte [] s2Entry = ReservedEntriesSerializeSupport.serialize(new UpdateVotersS2Entry(votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew()));
                     try {
                         if(votersConfigStateMachine.isJointConsensus()) {
                             updateClusterState(new UpdateClusterStateRequest(s2Entry, RESERVED_PARTITION, 1, ResponseConfig.ONE_WAY)).get();
@@ -808,7 +803,7 @@ public abstract class Server<E, ER, Q, QR>
             }
         } catch(Throwable e) {
             logger.warn("Flush exception, commitIndex: {}, lastApplied: {}, server: {}: ",
-                    commitIndex.get(), state.lastApplied(), uri, e);
+                    journal.commitIndex(), state.lastApplied(), uri, e);
         }
     }
 
@@ -866,7 +861,7 @@ public abstract class Server<E, ER, Q, QR>
     public synchronized void recover() throws IOException {
         lastSavedServerMetadata = metadataPersistence.recover(metadataPath(), properties);
         onMetadataRecovered(lastSavedServerMetadata);
-        recoverJournal(lastSavedServerMetadata.getPartitions());
+        recoverJournal(lastSavedServerMetadata.getPartitions(), lastSavedServerMetadata.getCommitIndex());
         onJournalRecovered(journal);
         state.recover(statePath(), journal, properties);
         recoverSnapshots();
@@ -912,8 +907,8 @@ public abstract class Server<E, ER, Q, QR>
     }
 
 
-    private void recoverJournal(Set<Integer> partitions) throws IOException {
-        journal.recover(journalPath(), properties);
+    private void recoverJournal(Set<Integer> partitions, long commitIndex) throws IOException {
+        journal.recover(journalPath(), commitIndex, properties);
         journal.rePartition(partitions);
     }
 
@@ -958,7 +953,6 @@ public abstract class Server<E, ER, Q, QR>
                     new VoterConfigurationStateMachine(lastSavedServerMetadata.getVoters());
         }
         this.uri = metadata.getThisServer();
-        this.commitIndex.set(metadata.getCommitIndex());
 
         if(metadata.getPartitions() == null ) {
             metadata.setPartitions(new HashSet<>());
@@ -982,7 +976,7 @@ public abstract class Server<E, ER, Q, QR>
         serverMetadata.setVoters(config.configNew);
         serverMetadata.setOldVoters(config.configOld);
         serverMetadata.setJointConsensus(config.jointConsensus);
-        serverMetadata.setCommitIndex(commitIndex.get());
+        serverMetadata.setCommitIndex(journal.commitIndex());
         return serverMetadata;
     }
 
@@ -1192,6 +1186,39 @@ public abstract class Server<E, ER, Q, QR>
                 return str;
             } finally {
                 rwLock.readLock().unlock();
+            }
+        }
+
+        public void rollbackToOldConfig() {
+            rwLock.writeLock().lock();
+            try {
+                if(!jointConsensus) {
+                    throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == true, actual: false.");
+                }
+                jointConsensus = false;
+                configNew.clear();
+                configNew.addAll(configOld);
+                configOld.clear();
+                buildAllVoters();
+
+            }finally {
+                rwLock.writeLock().unlock();
+            }
+        }
+
+        public void rollbackToJointConsensus(List<URI> configOld) {
+            rwLock.writeLock().lock();
+            try {
+                if(jointConsensus) {
+                    throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == false, actual: true.");
+                }
+
+                jointConsensus = true;
+                this.configOld.addAll(configOld);
+                buildAllVoters();
+
+            }finally {
+                rwLock.writeLock().unlock();
             }
         }
     }
