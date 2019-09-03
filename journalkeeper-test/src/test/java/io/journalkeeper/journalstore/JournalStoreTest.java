@@ -49,7 +49,7 @@ import java.util.concurrent.TimeUnit;
 public class JournalStoreTest {
     private static final Logger logger = LoggerFactory.getLogger(JournalStoreTest.class);
     private Path base = null;
-//    Server<List<byte[]>,JournalStoreQuery, List<byte[]>>
+//    AbstractServer<List<byte[]>,JournalStoreQuery, List<byte[]>>
 
 
     @Before
@@ -167,7 +167,7 @@ public class JournalStoreTest {
                 .whenComplete((v, e) -> {
 
                     if(e instanceof CompletionException && e.getCause() instanceof ServerBusyException) {
-//                        logger.info("Server busy!");
+//                        logger.info("AbstractServer busy!");
                         Thread.yield();
                         asyncAppend(client, rawEntries, partition, batchSize, latch, executorService, exceptions);
 

@@ -105,6 +105,11 @@ public class ClientServerRpcStub implements ClientServerRpc {
     }
 
     @Override
+    public CompletableFuture<ConvertRollResponse> convertRoll(ConvertRollRequest request) {
+        return CommandSupport.sendRequest(request, RpcTypes.CONVERT_ROLL_REQUEST, transport);
+    }
+
+    @Override
     public void watch(EventWatcher eventWatcher) {
         if(null == eventBus) {
             initPullEvent();

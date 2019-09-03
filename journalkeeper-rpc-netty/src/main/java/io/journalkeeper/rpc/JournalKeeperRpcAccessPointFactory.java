@@ -16,7 +16,7 @@ package io.journalkeeper.rpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.client.JournalKeeperClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.codec.JournalKeeperCodec;
-import io.journalkeeper.rpc.handler.ServerRpcCommandHandlerReegistry;
+import io.journalkeeper.rpc.handler.ServerRpcCommandHandlerRegistry;
 import io.journalkeeper.rpc.remoting.transport.TransportClientFactory;
 import io.journalkeeper.rpc.remoting.transport.TransportServer;
 import io.journalkeeper.rpc.remoting.transport.command.support.DefaultCommandHandlerFactory;
@@ -59,7 +59,7 @@ public class JournalKeeperRpcAccessPointFactory implements RpcAccessPointFactory
     @Override
     public StateServer bindServerService(ServerRpc serverRpc) {
         DefaultCommandHandlerFactory handlerFactory = new DefaultCommandHandlerFactory();
-        ServerRpcCommandHandlerReegistry.register(handlerFactory, serverRpc);
+        ServerRpcCommandHandlerRegistry.register(handlerFactory, serverRpc);
         DefaultTransportServerFactory defaultTransportServerFactory = new DefaultTransportServerFactory(
                 new JournalKeeperCodec(), handlerFactory
         );

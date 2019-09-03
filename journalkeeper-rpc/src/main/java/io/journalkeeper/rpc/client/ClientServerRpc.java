@@ -115,6 +115,12 @@ public interface ClientServerRpc extends Detectable {
     CompletableFuture<PullEventsResponse> pullEvents(PullEventsRequest request);
 
     /**
+     * 执行角色转换
+     * @param request See {@link ConvertRollRequest}
+     * @return See {@link ConvertRollResponse}
+     */
+    CompletableFuture<ConvertRollResponse> convertRoll(ConvertRollRequest request);
+    /**
      * 添加事件监听器，当事件发生时会调用监听器
      * @see EventBus
      * @param eventWatcher 事件监听器
@@ -126,6 +132,8 @@ public interface ClientServerRpc extends Detectable {
      * @param eventWatcher 事件监听器
      */
     void unWatch(EventWatcher eventWatcher);
+
+
 
     void stop();
 }

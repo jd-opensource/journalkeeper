@@ -20,7 +20,7 @@ import io.journalkeeper.rpc.server.ServerRpc;
  * @author LiYue
  * Date: 2019-04-02
  */
-public class ServerRpcCommandHandlerReegistry {
+public class ServerRpcCommandHandlerRegistry {
     public static void register(DefaultCommandHandlerFactory factory, ServerRpc serverRpc) {
         factory.register(new UpdateClusterStateHandler(serverRpc));
         factory.register(new LastAppliedHandler(serverRpc));
@@ -32,6 +32,7 @@ public class ServerRpcCommandHandlerReegistry {
         factory.register(new RemovePullWatchHandler(serverRpc));
         factory.register(new PullEventsHandler(serverRpc));
         factory.register(new UpdateVotersHandler(serverRpc));
+        factory.register(new ConvertRollHandler(serverRpc));
 
         factory.register(new AsyncAppendEntriesHandler(serverRpc));
         factory.register(new RequestVoteHandler(serverRpc));

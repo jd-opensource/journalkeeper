@@ -13,7 +13,8 @@
  */
 package io.journalkeeper.core;
 
-import io.journalkeeper.core.server.Server;
+import io.journalkeeper.core.api.RaftServer;
+import io.journalkeeper.core.server.AbstractServer;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 
@@ -26,9 +27,9 @@ import java.util.List;
  * Date: 2019-03-25
  */
 public class LocalDefaultRpcAccessPoint implements ClientServerRpcAccessPoint {
-    private final Server server;
+    private final ClientServerRpc server;
     private final ClientServerRpcAccessPoint clientServerRpcAccessPoint;
-    public LocalDefaultRpcAccessPoint(Server server, ClientServerRpcAccessPoint clientServerRpcAccessPoint) {
+    public LocalDefaultRpcAccessPoint(ClientServerRpc server, ClientServerRpcAccessPoint clientServerRpcAccessPoint) {
         this.server = server;
         this.clientServerRpcAccessPoint = clientServerRpcAccessPoint;
     }

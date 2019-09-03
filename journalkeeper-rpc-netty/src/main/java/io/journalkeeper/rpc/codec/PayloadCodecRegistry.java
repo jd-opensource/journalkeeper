@@ -37,7 +37,8 @@ public class PayloadCodecRegistry {
         payloadCodecFactory.register(new PullEventsResponseCodec());
         payloadCodecFactory.register(new UpdateVotersRequestCodec());
         payloadCodecFactory.register(new UpdateVotersResponseCodec());
-
+        payloadCodecFactory.register(new ConvertRollRequestCodec());
+        payloadCodecFactory.register(new ConvertRollResponseCodec());
 
         payloadCodecFactory.register(new AsyncAppendEntriesRequestCodec());
         payloadCodecFactory.register(new AsyncAppendEntriesResponseCodec());

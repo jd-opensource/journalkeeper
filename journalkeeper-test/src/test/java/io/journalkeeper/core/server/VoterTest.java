@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core;
+package io.journalkeeper.core.server;
 
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftJournal;
@@ -19,7 +19,6 @@ import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
-import io.journalkeeper.core.server.Voter;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.metric.JMetricFactory;
 import io.journalkeeper.metric.JMetricSupport;

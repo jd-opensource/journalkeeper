@@ -14,6 +14,7 @@
 package io.journalkeeper.rpc;
 
 import io.journalkeeper.core.api.ClusterConfiguration;
+import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
@@ -21,6 +22,8 @@ import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.rpc.client.AddPullWatchResponse;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
+import io.journalkeeper.rpc.client.ConvertRollRequest;
+import io.journalkeeper.rpc.client.ConvertRollResponse;
 import io.journalkeeper.rpc.client.GetServersResponse;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.client.PullEventsRequest;
@@ -181,6 +184,24 @@ public class RpcTest {
         verify(serverRpcMock).updateVoters(argThat((UpdateVotersRequest r) ->
                 oldConfig.equals(r.getOldConfig()) &&
                         newConfig.equals(r.getNewConfig())
+                ));
+
+    }
+
+    @Test
+    public void testConvertRoll() throws ExecutionException, InterruptedException {
+        RaftServer.Roll roll = RaftServer.Roll.VOTER;
+
+        ConvertRollRequest request = new ConvertRollRequest(roll);
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ConvertRollResponse response;
+        // Test success response
+        when(serverRpcMock.convertRoll(any(ConvertRollRequest.class)))
+                .thenReturn(CompletableFuture.supplyAsync(ConvertRollResponse::new));
+        response = clientServerRpc.convertRoll(request).get();
+        Assert.assertTrue(response.success());
+        verify(serverRpcMock).convertRoll(argThat((ConvertRollRequest r) ->
+                roll == r.getRoll()
                 ));
 
     }

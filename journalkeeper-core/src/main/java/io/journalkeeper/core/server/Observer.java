@@ -53,7 +53,7 @@ import java.util.concurrent.*;
  * @author LiYue
  * Date: 2019-03-15
  */
-public class Observer<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
+class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     private static final Logger logger = LoggerFactory.getLogger(Observer.class);
     private static final String OBSERVER_REPLICATION_THREAD = "ObserverReplicationThread";
 
@@ -111,7 +111,7 @@ public class Observer<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
 
             journal.appendBatchRaw(response.getEntries());
 
-            maybeUpdateConfig(response.getEntries());
+            maybeUpdateConfigOnReplication(response.getEntries());
 //            commitIndex.addAndGet(response.getEntries().size());
             journal.commit(journal.maxIndex());
             // 唤醒状态机线程

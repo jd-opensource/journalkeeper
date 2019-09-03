@@ -86,7 +86,7 @@ import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
  * @author LiYue
  * Date: 2019-03-18
  */
-public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
+class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     private static final Logger logger = LoggerFactory.getLogger(Voter.class);
     /**
      * Leader接收客户端请求串行写入entries线程
@@ -833,7 +833,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
 
                         journal.compareOrAppendRaw(request.getEntries(), startIndex);
 
-                        maybeUpdateConfig(request.getEntries());
+                        maybeUpdateConfigOnReplication(request.getEntries());
 
                         AsyncAppendEntriesResponse response = new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
                                 currentTerm.get(), request.getEntries().size());
@@ -1496,7 +1496,7 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
         }
     }
 
-    public static class Config extends Server.Config {
+    public static class Config extends AbstractServer.Config {
         public final static long DEFAULT_HEARTBEAT_INTERVAL_MS = 100L;
         public final static long DEFAULT_ELECTION_TIMEOUT_MS = 500L;
         public final static int DEFAULT_REPLICATION_BATCH_SIZE = 128;

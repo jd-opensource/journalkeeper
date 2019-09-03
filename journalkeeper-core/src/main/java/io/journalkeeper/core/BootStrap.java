@@ -19,9 +19,7 @@ import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.client.Client;
-import io.journalkeeper.core.server.Observer;
 import io.journalkeeper.core.server.Server;
-import io.journalkeeper.core.server.Voter;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.utils.spi.ServiceSupport;
@@ -112,12 +110,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
         }
 
         if(null != roll) {
-            switch (roll) {
-                case VOTER:
-                    return new Voter<>(stateFactory,entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, scheduledExecutorService, asyncExecutorService, properties);
-                case OBSERVER:
-                    return new Observer<>(stateFactory,entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, scheduledExecutorService, asyncExecutorService, properties);
-            }
+            return new Server<>(roll,stateFactory,entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, scheduledExecutorService, asyncExecutorService, properties);
         }
         return null;
     }

@@ -186,6 +186,22 @@ public class KvTest {
         }
     }
 
+
+    // 增加节点
+
+    public void addVotersTest() throws IOException {
+        Path path = TestPathUtils.prepareBaseDir("AddVotersTest");
+        List<KvServer> kvServers = createServers(3, path);
+
+    }
+
+    // 减少节点
+
+    // 增加并且减少
+
+
+
+
     private void stopServers(List<KvServer> kvServers) {
         for(KvServer kvServer: kvServers) {
             try {

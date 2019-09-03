@@ -41,6 +41,8 @@ public class RpcTypes {
     public final static int REMOVE_PULL_WATCH_RESPONSE = -10;
     public final static int PULL_EVENTS_REQUEST = 11;
     public final static int PULL_EVENTS_RESPONSE = -11;
+    public static final int CONVERT_ROLL_REQUEST = 12;
+    public static final int CONVERT_ROLL_RESPONSE = -12;
 
 
 
