@@ -43,6 +43,8 @@ public class RpcTypes {
     public final static int PULL_EVENTS_RESPONSE = -11;
     public static final int CONVERT_ROLL_REQUEST = 12;
     public static final int CONVERT_ROLL_RESPONSE = -12;
+    public static final int GET_SERVER_STATUS_REQUEST = 13;
+    public static final int GET_SERVER_STATUS_RESPONSE = -13;
 
 
 

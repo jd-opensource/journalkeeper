@@ -85,6 +85,11 @@ public class ClientServerRpcStub implements ClientServerRpc {
     }
 
     @Override
+    public CompletableFuture<GetServerStatusResponse> getServerStatus() {
+        return CommandSupport.sendRequest(null, RpcTypes.GET_SERVER_STATUS_REQUEST, transport);
+    }
+
+    @Override
     public CompletableFuture<AddPullWatchResponse> addPullWatch() {
         return CommandSupport.sendRequest(null, RpcTypes.ADD_PULL_WATCH_REQUEST, transport);
     }

@@ -33,6 +33,7 @@ public class ServerRpcCommandHandlerRegistry {
         factory.register(new PullEventsHandler(serverRpc));
         factory.register(new UpdateVotersHandler(serverRpc));
         factory.register(new ConvertRollHandler(serverRpc));
+        factory.register(new GetServerStatusHandler(serverRpc));
 
         factory.register(new AsyncAppendEntriesHandler(serverRpc));
         factory.register(new RequestVoteHandler(serverRpc));

@@ -18,6 +18,7 @@ import io.journalkeeper.base.VoidSerializer;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.RaftJournal;
+import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
@@ -30,7 +31,9 @@ import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.StatusCode;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
+import io.journalkeeper.rpc.client.ConvertRollRequest;
 import io.journalkeeper.rpc.client.GetServersResponse;
+import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
@@ -139,10 +142,22 @@ public class Client<E, ER, Q, QR> implements RaftClient<E, ER, Q, QR> {
     }
 
     @Override
+    public CompletableFuture<ClusterConfiguration> getServers(URI uri) {
+         return clientServerRpcAccessPoint.getClintServerRpc(uri)
+                .getServers()
+                .thenApply(GetServersResponse::getClusterConfiguration);
+    }
+
+    @Override
     public CompletableFuture<Boolean> updateVoters(List<URI> oldConfig, List<URI> newConfig) {
         return invokeLeaderRpc(
                 leaderRpc -> leaderRpc.updateVoters(new UpdateVotersRequest(oldConfig, newConfig)))
                 .thenApply(BaseResponse::success);
+    }
+
+    @Override
+    public CompletableFuture convertRoll(URI uri, RaftServer.Roll roll) {
+        return clientServerRpcAccessPoint.getClintServerRpc(uri).convertRoll(new ConvertRollRequest(roll));
     }
 
     @Override
@@ -217,6 +232,16 @@ public class Client<E, ER, Q, QR> implements RaftClient<E, ER, Q, QR> {
     public CompletableFuture<Void> scalePartitions(int[] partitions) {
         return this.update(ReservedEntriesSerializeSupport.serialize(new ScalePartitionsEntry(partitions)),
                 RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
+    }
+
+    @Override
+    public CompletableFuture<Long> serverLastApplied(URI uri) {
+        return clientServerRpcAccessPoint
+                .getClintServerRpc(uri)
+                .lastApplied()
+                .exceptionally(e -> new LastAppliedResponse(-1))
+                .thenApply(LastAppliedResponse::getLastApplied)
+                .thenApply(l -> l == null ? -1: l);
     }
 
 

@@ -16,7 +16,9 @@ package io.journalkeeper.core.server;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.StateFactory;
+import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.entry.Entry;
 import io.journalkeeper.core.entry.EntryHeader;
 import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
@@ -31,6 +33,7 @@ import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.persistence.ServerMetadata;
+import io.journalkeeper.rpc.client.GetServerStatusResponse;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
@@ -1184,6 +1187,19 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 });
     }
 
+
+    @Override
+    public CompletableFuture<GetServerStatusResponse> getServerStatus() {
+        return CompletableFuture.supplyAsync(() -> new ServerStatus(
+                Roll.VOTER,
+                journal.minIndex(),
+                journal.maxIndex(),
+                journal.commitIndex(),
+                state.lastApplied(),
+                voterState()), asyncExecutor)
+                .thenApply(GetServerStatusResponse::new);
+    }
+
     /**
      *
      * 在处理变更集群配置时，JournalKeeper采用RAFT协议中推荐的，二阶段变更的方式来避免在配置变更过程中可能出现的集群分裂。
@@ -1316,7 +1332,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 journal.maxIndex(), journal.commitIndex(), state.lastApplied(), uri.toString());
     }
 
-    public enum VoterState {LEADER, FOLLOWER, CANDIDATE}
 
 
     private static class VoterStateMachine {

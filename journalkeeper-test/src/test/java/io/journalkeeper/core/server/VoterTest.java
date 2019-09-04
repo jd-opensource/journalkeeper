@@ -17,6 +17,7 @@ import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
+import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import io.journalkeeper.metric.JMetric;
@@ -82,7 +83,7 @@ public class VoterTest {
             int entrySize = 1024;
             int[] partitions = {2};
 
-            while(voter.voterState() != Voter.VoterState.LEADER) {
+            while(voter.voterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
             }
 
@@ -131,7 +132,7 @@ public class VoterTest {
             int threads = 1;
             int[] partitions = {2, 3, 4, 5, 6};
 
-            while(voter.voterState() != Voter.VoterState.LEADER) {
+            while(voter.voterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
             }
 
@@ -186,7 +187,7 @@ public class VoterTest {
 
         try {
             byte [] entry = new byte[] {1, 2, 3,5, 8,9};
-            while(voter.voterState() != Voter.VoterState.LEADER) {
+            while(voter.voterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
             }
 

@@ -16,6 +16,8 @@ package io.journalkeeper.rpc;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.api.ServerStatus;
+import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.exceptions.NotLeaderException;
@@ -24,6 +26,7 @@ import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
 import io.journalkeeper.rpc.client.ConvertRollResponse;
+import io.journalkeeper.rpc.client.GetServerStatusResponse;
 import io.journalkeeper.rpc.client.GetServersResponse;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.client.PullEventsRequest;
@@ -564,6 +567,29 @@ public class RpcTest {
                                 r.getLastIncludedIndex() == request.getLastIncludedIndex() &&
                                 r.getOffset() == request.getOffset()
                 ));
+
+    }
+
+    @Test
+    public void testGetServerStatus() throws ExecutionException, InterruptedException {
+
+
+        ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
+        GetServerStatusResponse response, serverResponse;
+        serverResponse = new GetServerStatusResponse(new ServerStatus(
+                RaftServer.Roll.VOTER,
+                0L,
+                1024L,
+                1000L,
+                1020L,
+                VoterState.LEADER
+        ));
+        // Test success response
+        when(serverRpcMock.getServerStatus())
+                .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
+        response = serverRpc.getServerStatus().get();
+        Assert.assertTrue(response.success());
+        Assert.assertEquals(serverResponse.getServerStatus(), response.getServerStatus());
 
     }
 

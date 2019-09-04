@@ -54,11 +54,19 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable {
     @Override
     CompletableFuture<QR> query(Q query);
 
+    //TODO: 把下面这些集群管理和监控的功能拆分出单独的ManagementClient接口
+
     /**
      * 获取集群配置。
      * @return 所有选民节点、观察者节点和当前的LEADER节点。
      */
     CompletableFuture<ClusterConfiguration> getServers();
+
+    /**
+     * 获取集群配置。
+     * @return 所有选民节点、观察者节点和当前的LEADER节点。
+     */
+    CompletableFuture<ClusterConfiguration> getServers(URI uri);
 
     /**
      * 变更选民节点配置。
@@ -68,10 +76,25 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable {
      */
     CompletableFuture<Boolean> updateVoters(List<URI> oldConfig, List<URI> newConfig);
 
+    /**
+     * 转换节点的角色。如果提供的角色与当前角色相同，立即返回。
+     * 如果需要转换角色，成功转换之后返回。
+     * 转换失败抛出异常。
+     * @param uri 节点URI
+     * @param roll 新角色
+     */
+    CompletableFuture convertRoll(URI uri, RaftServer.Roll roll);
+
+    /**
+     * 压缩WAL
+     * @param toIndices
+     * @return
+     */
     CompletableFuture<Void> compact(Map<Integer, Long> toIndices);
 
     CompletableFuture<Void> scalePartitions(int[] partitions);
 
+    CompletableFuture<Long> serverLastApplied(URI uri);
     void stop();
 
 }

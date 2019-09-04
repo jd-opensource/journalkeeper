@@ -15,15 +15,18 @@ package io.journalkeeper.examples.kv;
 
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftClient;
+import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.utils.event.EventType;
 import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.utils.format.Format;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.URI;
 import java.util.List;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -101,6 +104,46 @@ public class KvClient {
         }
     }
 
+    public long serverLastApplied(URI uri) {
+        try {
+            return client.serverLastApplied(uri).get();
+        } catch (Throwable e) {
+            return -1L;
+        }
+    }
+
+
+    public URI leaderUri() {
+        try {
+            return client.getServers().thenApply(ClusterConfiguration::getLeader).get();
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
+    public List<URI> getVoters() {
+        try {
+            return client.getServers().thenApply(ClusterConfiguration::getVoters).get();
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
+    public List<URI> getVoters(URI uri) {
+        try {
+            return client.getServers(uri).thenApply(ClusterConfiguration::getVoters).get();
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
+    public void convertRoll(URI uri, RaftServer.Roll roll) throws ExecutionException, InterruptedException {
+        client.convertRoll(uri, roll).get();
+    }
+
+    public boolean updateVoters(List<URI> oldConfigs, List<URI> newConfigs) throws ExecutionException, InterruptedException {
+        return client.updateVoters(oldConfigs, newConfigs).get();
+    }
 
     public void waitForLeader(long timeoutMs) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);

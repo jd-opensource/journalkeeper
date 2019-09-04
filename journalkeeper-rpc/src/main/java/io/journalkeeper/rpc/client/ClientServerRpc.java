@@ -85,6 +85,13 @@ public interface ClientServerRpc extends Detectable {
      * @return See {@link GetServersResponse}
      */
     CompletableFuture<GetServersResponse> getServers();
+
+    /**
+     * 获取当前节点状态
+     *
+     * @return See {@link GetServerStatusResponse}
+     */
+    CompletableFuture<GetServerStatusResponse> getServerStatus();
     /**
      * 添加pull模式事件监听。
      * @see EventBus

@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.core;
 
+import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.examples.kv.KvClient;
 import io.journalkeeper.examples.kv.KvServer;
 import io.journalkeeper.utils.net.NetworkingUtils;
@@ -26,6 +27,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 /**
@@ -98,7 +100,7 @@ public class KvTest {
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
             propertiesList.add(properties);
         }
-        List<KvServer> kvServers = createServers(serverURIs, propertiesList,true);
+        List<KvServer> kvServers = createServers(serverURIs, propertiesList, RaftServer.Roll.VOTER,true);
         int keyNum = 0;
         while (!kvServers.isEmpty()) {
             KvClient kvClient = kvServers.get(0).createClient();
@@ -189,9 +191,98 @@ public class KvTest {
 
     // 增加节点
 
-    public void addVotersTest() throws IOException {
+    @Test
+    public void addVotersTest() throws IOException, InterruptedException, ExecutionException {
+        final int newServerCount = 2;
+        final int oldServerCount = 3;
+
+        // 初始化并启动一个3个节点的集群
         Path path = TestPathUtils.prepareBaseDir("AddVotersTest");
-        List<KvServer> kvServers = createServers(3, path);
+        List<KvServer> oldServers = createServers(oldServerCount, path);
+
+        KvClient kvClient = oldServers.get(0).createClient();
+
+        // 写入一些数据
+        for (int i = 0; i < 10; i++) {
+            kvClient.set("key" + i, String.valueOf(i));
+        }
+
+        // 初始化另外2个新节点，先以OBSERVER方式启动
+        List<KvServer> newServers = new ArrayList<>(newServerCount);
+        List<URI> oldConfig = oldServers.stream().map(KvServer::serverUri).collect(Collectors.toList());
+        List<URI> newConfig = new ArrayList<>(oldServerCount + newServerCount);
+        newConfig.addAll(oldConfig);
+
+        logger.info("Create {} observers", newServerCount);
+        List<URI> newServerUris = new ArrayList<>(newServerCount);
+        for (int i = oldServers.size(); i < oldServers.size() + newServerCount; i++) {
+            URI uri = URI.create("jk://localhost:" + NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces());
+            newConfig.add(uri);
+            Path workingDir = path.resolve("server" + i);
+            Properties properties = new Properties();
+            properties.setProperty("working_dir", workingDir.toString());
+            properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
+            properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
+            KvServer kvServer = new KvServer(RaftServer.Roll.OBSERVER, properties);
+            newServers.add(kvServer);
+            newServerUris.add(uri);
+        }
+
+
+        for (int i = 0; i < newServerCount; i++) {
+            KvServer newServer = newServers.get(i);
+            URI uri = newServerUris.get(i);
+            newServer.init(uri, newConfig);
+            newServer.recover();
+            newServer.start();
+        }
+
+        URI leaderUri = kvClient.leaderUri();
+        while (null == leaderUri) {
+            leaderUri = kvClient.leaderUri();
+            Thread.sleep(100L);
+        }
+        long leaderApplied = kvClient.serverLastApplied(leaderUri);
+
+        // 等待2个节点拉取数据直到与现有集群同步
+        logger.info("Wait for observers to catch up the cluster.");
+        boolean synced = false;
+        while (!synced) {
+            synced = newServerUris.stream().allMatch(uri -> kvClient.serverLastApplied(uri) == leaderApplied);
+            Thread.sleep(100L);
+        }
+
+        // 转换成VOTER
+        logger.info("Convert roll to voter of new servers.");
+
+        for (URI uri : newServerUris) {
+            kvClient.convertRoll(uri, RaftServer.Roll.VOTER);
+        }
+
+        // 更新集群配置
+        logger.info("Update cluster config...");
+        boolean success = kvClient.updateVoters(oldConfig, newConfig);
+
+        // 验证集群配置
+        Assert.assertTrue(success);
+
+        // 等待2阶段变更都提交了
+        synced = false;
+        long newApplied = leaderApplied + 2;
+        while (synced) {
+            synced = newConfig.stream().allMatch(uri -> kvClient.serverLastApplied(uri) == newApplied);
+            Thread.sleep(100L);
+        }
+        // 验证所有节点都成功完成了配置变更
+        for (URI uri : newConfig) {
+            Assert.assertEquals(newConfig, kvClient.getVoters(uri));
+        }
+
+
+        // 读取数据，验证是否正确
+        for (int i = 0; i < 10; i++) {
+            Assert.assertEquals(String.valueOf(i), kvClient.get("key" + i));
+        }
 
     }
 
@@ -211,11 +302,11 @@ public class KvTest {
             }
         }
     }
-
     private List<KvServer> createServers(int nodes, Path path) throws IOException {
-        return createServers(nodes, path ,true);
+        return createServers(nodes, path, RaftServer.Roll.VOTER, true);
     }
-    private List<KvServer> createServers(int nodes, Path path, boolean waitForLeader) throws IOException {
+
+    private List<KvServer> createServers(int nodes, Path path, RaftServer.Roll roll, boolean waitForLeader) throws IOException {
         logger.info("Create {} nodes servers", nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
         List<Properties> propertiesList = new ArrayList<>(nodes);
@@ -230,14 +321,17 @@ public class KvTest {
 
             propertiesList.add(properties);
         }
-        return createServers(serverURIs, propertiesList,waitForLeader);
+        return createServers(serverURIs, propertiesList, roll,waitForLeader);
 
     }
-    private List<KvServer> createServers(List<URI> serverURIs, List<Properties> propertiesList, boolean waitForLeader) throws IOException {
+
+
+
+    private List<KvServer> createServers(List<URI> serverURIs, List<Properties> propertiesList, RaftServer.Roll roll, boolean waitForLeader) throws IOException {
 
         List<KvServer> kvServers = new ArrayList<>(serverURIs.size());
         for (int i = 0; i < serverURIs.size(); i++) {
-            KvServer kvServer = new KvServer(propertiesList.get(i));
+            KvServer kvServer = new KvServer(roll, propertiesList.get(i));
             kvServers.add(kvServer);
             kvServer.init(serverURIs.get(i), serverURIs);
             kvServer.recover();
@@ -248,6 +342,7 @@ public class KvTest {
         }
         return kvServers;
     }
+
 
 
 }

@@ -14,6 +14,7 @@
 package io.journalkeeper.core.server;
 
 import io.journalkeeper.base.Serializer;
+import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.exceptions.NotLeaderException;
@@ -21,6 +22,7 @@ import io.journalkeeper.exceptions.NotVoterException;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.persistence.ServerMetadata;
 import io.journalkeeper.rpc.StatusCode;
+import io.journalkeeper.rpc.client.GetServerStatusResponse;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
@@ -45,6 +47,7 @@ import org.slf4j.LoggerFactory;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.*;
@@ -100,6 +103,12 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 .build();
     }
 
+    @Override
+    public synchronized void init(URI uri, List<URI> voters) throws IOException {
+        parents = new ArrayList<>(voters);
+        super.init(uri, voters);
+    }
+
     private void pullEntries() throws Throwable {
 
         replicationMetric.start();
@@ -117,9 +126,11 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
             // 唤醒状态机线程
             threads.wakeupThread(STATE_MACHINE_THREAD);
             traffic = response.getEntries().stream().mapToLong(bytes -> bytes.length).sum();
+
+
         } else if( response.getStatusCode() == StatusCode.INDEX_UNDERFLOW){
             reset();
-        } else {
+        } else if( response.getStatusCode() != StatusCode.INDEX_OVERFLOW){
             logger.warn("Pull entry failed! {}", response.errorString());
         }
         replicationMetric.end(traffic);
@@ -232,6 +243,18 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     @Override
     public CompletableFuture<LastAppliedResponse> lastApplied() {
         return CompletableFuture.supplyAsync(() -> new LastAppliedResponse(new NotLeaderException(leader)), asyncExecutor);
+    }
+
+    @Override
+    public CompletableFuture<GetServerStatusResponse> getServerStatus() {
+        return CompletableFuture.supplyAsync(() -> new ServerStatus(
+                Roll.OBSERVER,
+                journal.minIndex(),
+                journal.maxIndex(),
+                journal.commitIndex(),
+                state.lastApplied(),
+                null), asyncExecutor)
+                .thenApply(GetServerStatusResponse::new);
     }
 
     @Override

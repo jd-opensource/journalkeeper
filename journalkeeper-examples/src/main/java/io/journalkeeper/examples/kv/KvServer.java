@@ -34,8 +34,13 @@ public class KvServer implements StateServer {
     private final BootStrap<KvEntry, Void, KvQuery, KvResult> bootStrap;
 
     public KvServer(Properties properties) {
+        this(RaftServer.Roll.VOTER, properties);
+
+    }
+
+    public KvServer(RaftServer.Roll roll, Properties properties) {
         bootStrap =
-                new BootStrap<>(RaftServer.Roll.VOTER,
+                new BootStrap<>(roll,
                         new KvStateFactory(),
                         new JsonSerializer<>(KvEntry.class),
                         new JsonSerializer<>(Void.class),

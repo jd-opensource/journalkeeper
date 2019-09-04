@@ -84,6 +84,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -997,8 +998,17 @@ public abstract class AbstractServer<E, ER, Q, QR>
     public CompletableFuture<GetServerEntriesResponse> getServerEntries(GetServerEntriesRequest request) {
         return CompletableFuture.supplyAsync(() ->
                 new GetServerEntriesResponse(
-                        journal.readRaw(request.getIndex(), request.getMaxSize()),
-                        journal.minIndex(), state.lastApplied()), asyncExecutor);
+                        journal.readRaw(request.getIndex(), (int) Math.min(request.getMaxSize(), state.lastApplied() - request.getIndex())),
+                        journal.minIndex(), state.lastApplied()), asyncExecutor)
+                .exceptionally(e -> {
+                    try {
+                        throw e;
+                    } catch (CompletionException ce) {
+                        return new GetServerEntriesResponse(ce.getCause());
+                    } catch (Throwable throwable) {
+                        return new GetServerEntriesResponse(throwable);
+                    }
+                });
     }
 
     @Override

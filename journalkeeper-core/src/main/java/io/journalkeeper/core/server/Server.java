@@ -6,6 +6,7 @@ import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.rpc.client.AddPullWatchResponse;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
 import io.journalkeeper.rpc.client.ConvertRollResponse;
+import io.journalkeeper.rpc.client.GetServerStatusResponse;
 import io.journalkeeper.rpc.client.GetServersResponse;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.client.PullEventsRequest;
@@ -34,6 +35,8 @@ import java.net.URI;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 
@@ -64,17 +67,17 @@ public class Server<E, ER, Q, QR>
         this.scheduledExecutor = scheduledExecutor;
         this.asyncExecutor = asyncExecutor;
         this.properties = properties;
-        switch (roll) {
-            case VOTER:
-                this.server = new Voter<>(stateFactory, entrySerializer,entryResultSerializer, querySerializer, resultSerializer,scheduledExecutor, asyncExecutor, properties);
-                break;
-            default:
-                this.server = new Observer<>(stateFactory, entrySerializer,entryResultSerializer, querySerializer, resultSerializer,scheduledExecutor, asyncExecutor, properties);
-                break;
-        }
+        this.server = createServer(roll);
     }
 
-
+    private AbstractServer<E, ER, Q, QR> createServer(Roll roll) {
+        switch (roll) {
+            case VOTER:
+                return new Voter<>(stateFactory, entrySerializer,entryResultSerializer, querySerializer, resultSerializer,scheduledExecutor, asyncExecutor, properties);
+            default:
+                return new Observer<>(stateFactory, entrySerializer,entryResultSerializer, querySerializer, resultSerializer,scheduledExecutor, asyncExecutor, properties);
+        }
+    }
 
 
     @Override
@@ -128,6 +131,11 @@ public class Server<E, ER, Q, QR>
     }
 
     @Override
+    public CompletableFuture<GetServerStatusResponse> getServerStatus() {
+        return server.getServerStatus();
+    }
+
+    @Override
     public CompletableFuture<AddPullWatchResponse> addPullWatch() {
         return server.addPullWatch();
     }
@@ -149,8 +157,23 @@ public class Server<E, ER, Q, QR>
 
     @Override
     public CompletableFuture<ConvertRollResponse> convertRoll(ConvertRollRequest request) {
-        // TODO 转换状态
-        return null;
+
+        return CompletableFuture.supplyAsync(()-> {
+            if(request.getRoll() != null && request.getRoll() != server.roll()) {
+                try {
+                    if(server.serverState() != ServerState.RUNNING) {
+                        throw  new IllegalStateException("Server is not running, current state: " + server.serverState() + "!");
+                    }
+                    server.stop();
+                    server = createServer(request.getRoll());
+                    server.recover();
+                    server.start();
+                } catch (Throwable t) {
+                    return new ConvertRollResponse(t);
+                }
+            }
+            return new ConvertRollResponse();
+        }, asyncExecutor);
     }
 
     @Override
