@@ -57,6 +57,10 @@ public class KvServer implements StateServer {
         bootStrap.getServer().recover();
     }
 
+    public List<URI> getParents() {
+        return bootStrap.getServer().getParents();
+    }
+
     @Override
     public void start() {
         bootStrap.getServer().start();

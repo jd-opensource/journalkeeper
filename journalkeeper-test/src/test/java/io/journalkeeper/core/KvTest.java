@@ -14,11 +14,15 @@
 package io.journalkeeper.core;
 
 import io.journalkeeper.core.api.RaftServer;
+import io.journalkeeper.core.api.ServerStatus;
+import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.examples.kv.KvClient;
 import io.journalkeeper.examples.kv.KvServer;
 import io.journalkeeper.utils.net.NetworkingUtils;
+import io.journalkeeper.utils.state.StateServer;
 import io.journalkeeper.utils.test.TestPathUtils;
 import org.junit.Assert;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -223,7 +227,10 @@ public class KvTest {
             properties.setProperty("working_dir", workingDir.toString());
             properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
+            properties.setProperty("enable_metric", "true");
+            properties.setProperty("print_metric_interval_sec", "3");
             KvServer kvServer = new KvServer(RaftServer.Roll.OBSERVER, properties);
+            kvServer.getParents().addAll(oldConfig);
             newServers.add(kvServer);
             newServerUris.add(uri);
         }
@@ -242,13 +249,13 @@ public class KvTest {
             leaderUri = kvClient.leaderUri();
             Thread.sleep(100L);
         }
-        long leaderApplied = kvClient.serverLastApplied(leaderUri);
+        long leaderApplied = kvClient.serverStatus(leaderUri).getLastApplied();
 
         // 等待2个节点拉取数据直到与现有集群同步
         logger.info("Wait for observers to catch up the cluster.");
         boolean synced = false;
         while (!synced) {
-            synced = newServerUris.stream().allMatch(uri -> kvClient.serverLastApplied(uri) == leaderApplied);
+            synced = newServerUris.stream().allMatch(uri -> kvClient.serverStatus(uri).getLastApplied() == leaderApplied);
             Thread.sleep(100L);
         }
 
@@ -257,6 +264,7 @@ public class KvTest {
 
         for (URI uri : newServerUris) {
             kvClient.convertRoll(uri, RaftServer.Roll.VOTER);
+            Assert.assertEquals(RaftServer.Roll.VOTER, kvClient.serverStatus(uri).getRoll());
         }
 
         // 更新集群配置
@@ -270,12 +278,19 @@ public class KvTest {
         synced = false;
         long newApplied = leaderApplied + 2;
         while (synced) {
-            synced = newConfig.stream().allMatch(uri -> kvClient.serverLastApplied(uri) == newApplied);
+            synced = newConfig.stream().allMatch(uri -> (kvClient.serverStatus(uri).getLastApplied() == newApplied));
             Thread.sleep(100L);
         }
         // 验证所有节点都成功完成了配置变更
         for (URI uri : newConfig) {
             Assert.assertEquals(newConfig, kvClient.getVoters(uri));
+            ServerStatus serverStatus = kvClient.serverStatus(uri);
+            Assert.assertEquals(RaftServer.Roll.VOTER, serverStatus.getRoll());
+            if (leaderUri.equals(uri)) {
+                Assert.assertEquals(VoterState.LEADER, serverStatus.getVoterState());
+            } else {
+                Assert.assertEquals(VoterState.FOLLOWER, serverStatus.getVoterState());
+            }
         }
 
 
@@ -287,6 +302,66 @@ public class KvTest {
     }
 
     // 减少节点
+
+    @Test
+    public void removeVotersTest() throws IOException, InterruptedException, ExecutionException {
+        final int newServerCount = 3;
+        final int oldServerCount = 5;
+
+        // 初始化并启动一个5节点的集群
+        Path path = TestPathUtils.prepareBaseDir("RemoveVotersTest");
+        List<KvServer> oldServers = createServers(oldServerCount, path);
+
+        KvClient kvClient = oldServers.get(0).createClient();
+
+        // 写入一些数据
+        for (int i = 0; i < 10; i++) {
+            kvClient.set("key" + i, String.valueOf(i));
+        }
+
+        long leaderApplied = kvClient.serverStatus(kvClient.leaderUri()).getLastApplied();
+        List<URI> oldConfig = oldServers.stream().map(KvServer::serverUri).collect(Collectors.toList());
+        List<URI> newConfig = new ArrayList<>(newServerCount);
+        newConfig.addAll(oldConfig.subList(0, newServerCount));
+
+        // 更新集群配置
+        logger.info("Update cluster config...");
+        boolean success = kvClient.updateVoters(oldConfig, newConfig);
+
+        // 验证集群配置
+        Assert.assertTrue(success);
+
+        // 等待2阶段变更都提交了
+        boolean synced = false;
+        long newApplied = leaderApplied + 2;
+        while (synced) {
+            synced = newConfig.stream().allMatch(uri -> (kvClient.serverStatus(uri).getLastApplied() == newApplied));
+            Thread.sleep(100L);
+        }
+
+        // 可能发生选举，需要等待选举完成。
+        kvClient.waitForLeader(5000L);
+        // 验证所有节点都成功完成了配置变更
+        for (URI uri : oldConfig) {
+            if(newConfig.contains(uri)) {
+                Assert.assertEquals(newConfig, kvClient.getVoters(uri));
+            } else {
+                KvServer removedServer = oldServers.stream().filter(kvServer -> kvServer.serverUri().equals(uri)).findAny().orElse(null);
+                Assert.assertNotNull(removedServer);
+                Assert.assertEquals(StateServer.ServerState.STOPPED, removedServer.serverState());
+                oldServers.remove(removedServer);
+            }
+        }
+
+        KvClient newClient = oldServers.get(0).createClient();
+
+        // 读取数据，验证是否正确
+        for (int i = 0; i < 10; i++) {
+            Assert.assertEquals(String.valueOf(i), newClient.get("key" + i));
+        }
+
+    }
+
 
     // 增加并且减少
 
@@ -318,7 +393,8 @@ public class KvTest {
             properties.setProperty("working_dir", workingDir.toString());
             properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
-
+            properties.setProperty("enable_metric", "true");
+            properties.setProperty("print_metric_interval_sec", "3");
             propertiesList.add(properties);
         }
         return createServers(serverURIs, propertiesList, roll,waitForLeader);

@@ -16,6 +16,7 @@ package io.journalkeeper.examples.kv;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.RaftServer;
+import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.utils.event.EventType;
 import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.utils.format.Format;
@@ -104,11 +105,12 @@ public class KvClient {
         }
     }
 
-    public long serverLastApplied(URI uri) {
+
+    public ServerStatus serverStatus(URI uri) {
         try {
-            return client.serverLastApplied(uri).get();
+            return client.serverStatus(uri).get();
         } catch (Throwable e) {
-            return -1L;
+            return null;
         }
     }
 

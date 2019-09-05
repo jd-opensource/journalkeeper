@@ -21,9 +21,11 @@ import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.entry.Entry;
 import io.journalkeeper.core.entry.EntryHeader;
+import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
 import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ReservedEntry;
+import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS2Entry;
 import io.journalkeeper.core.exception.UpdateConfigurationException;
@@ -45,6 +47,7 @@ import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
+import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
 import io.journalkeeper.utils.event.EventType;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
@@ -177,8 +180,8 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
     public Voter(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
                  Serializer<Q> querySerializer, Serializer<QR> resultSerializer,
-                 ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
-        super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer, scheduledExecutor, asyncExecutor, properties);
+                 ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, ServerRpcAccessPoint serverRpcAccessPoint, Properties properties) {
+        super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         this.config = toConfig(properties);
 
         replicationCallbacks = new LinkedQueueCallbackBelt<>(config.getRpcTimeoutMs(), entryResultSerializer);
@@ -295,6 +298,42 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
         }
     }
 
+    @Override
+    protected void applyReservedEntry(byte [] reservedEntry) {
+        super.applyReservedEntry(reservedEntry);
+        int type = ReservedEntriesSerializeSupport.parseEntryType(reservedEntry);
+        switch (type) {
+            case ReservedEntry.TYPE_UPDATE_VOTERS_S1:
+                if(voterState() == VoterState.LEADER) {
+                    byte[] s2Entry = ReservedEntriesSerializeSupport.serialize(new UpdateVotersS2Entry(votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew()));
+                    try {
+                        if (votersConfigStateMachine.isJointConsensus()) {
+                            updateClusterState(new UpdateClusterStateRequest(s2Entry, RESERVED_PARTITION, 1, ResponseConfig.ONE_WAY));
+                        } else {
+                            throw new IllegalStateException();
+                        }
+                    } catch (Exception e) {
+                        UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(reservedEntry);
+                        logger.warn("Failed to update voter config in step 1! Config in the first step entry from: {} To: {}, " +
+                                        "voter config old: {}, new: {}.",
+                                updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew(),
+                                votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew(), e);
+                    }
+                } else if(!votersConfigStateMachine.voters().contains(this.serverUri())) {
+                    // Stop myself if I'm no longer a member of the cluster. Any follower can be stopped safely on this stage.
+                    this.stopAsync();
+                }
+                break;
+            case ReservedEntry.TYPE_UPDATE_VOTERS_S2:
+                // Stop myself if I'm no longer a member of the cluster.
+                // Leader can be stopped on this stage, a new leader will be elected in the new configuration.
+                if(!votersConfigStateMachine.voters().contains(this.serverUri())) {
+                    this.stopAsync();
+                }
+                break;
+            default:
+        }
+    }
 
     private boolean maybeUpdateLeaderConfig(UpdateClusterStateRequest request, CompletableFuture<UpdateClusterStateResponse> responseFuture) throws Exception {
         // 如果是配置变更请求，立刻更新当前配置
@@ -465,7 +504,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
         RequestVoteRequest request = new RequestVoteRequest(currentTerm.get(), uri, lastLogIndex, lastLogTerm);
 
         List<RequestVoteResponse> responses =
-        votersConfigStateMachine.voters().parallelStream()
+        votersConfigStateMachine.voters().stream()
             .filter(uri -> !uri.equals(this.uri))
             .map(uri -> {
                 try {
@@ -822,62 +861,59 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
         ReplicationRequestResponse rr = pendingAppendEntriesRequests.take();
         AsyncAppendEntriesRequest request = rr.getRequest();
-
+        AsyncAppendEntriesResponse response = null;
         try {
 
             try {
-                if (rr.getPrevLogIndex() < journal.minIndex() || journal.getTerm(rr.getPrevLogIndex()) == request.getPrevLogTerm()) {
+                if (null != request.getEntries() && request.getEntries().size() > 0) {
+                    if (rr.getPrevLogIndex() < journal.minIndex() || journal.getTerm(rr.getPrevLogIndex()) == request.getPrevLogTerm()) {
+                        // 处理复制请求
+                        try {
+                            final long startIndex = request.getPrevLogIndex() + 1;
 
-                    try {
-                        // TODO: 如果删除的entries中包括变更配置，需要回滚配置
-                        final long startIndex = request.getPrevLogIndex() + 1;
+                            maybeRollbackConfig(startIndex);
 
-                        maybeRollbackConfig(startIndex);
+                            journal.compareOrAppendRaw(request.getEntries(), startIndex);
 
-                        journal.compareOrAppendRaw(request.getEntries(), startIndex);
+                            maybeUpdateConfigOnReplication(request.getEntries());
 
-                        maybeUpdateConfigOnReplication(request.getEntries());
+                            response = new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
+                                    currentTerm.get(), request.getEntries().size());
+                        } catch (Throwable t) {
+                            logger.warn("Handle replication request exception! {}", voterInfo(), t);
+                            response = new AsyncAppendEntriesResponse(t);
+                        }
 
-                        AsyncAppendEntriesResponse response = new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
+                    } else {
+                        response = new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
                                 currentTerm.get(), request.getEntries().size());
-                        rr.getResponseFuture()
-                                .complete(response);
-                        if (request.getEntries() != null && !request.getEntries().isEmpty()) {
-                            if (logger.isDebugEnabled()) {
-                                logger.debug("Send appendEntriesResponse, success: {}, " +
-                                                "journalIndex: {}, entryCount: {}, term: {}, {}.",
-                                        response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
-                                        voterInfo());
-                            }
-                        }
-                    } catch (Throwable t) {
-                        logger.warn("Handle replication request exception! {}", voterInfo(), t);
-                        rr.getResponseFuture().complete(new AsyncAppendEntriesResponse(t));
-                    } finally {
-                        if (request.getLeaderCommit() > journal.commitIndex()) {
-                            journal.commit(Math.min(request.getLeaderCommit(), journal.maxIndex()));
-                            threads.wakeupThread(STATE_MACHINE_THREAD);
-                            threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
-                        }
                     }
-                    return;
-
                 }
+
+                // 心跳已经回复过响应，不需要再返回响应
+                // 但是心跳也需要更新提交位置
+
             } catch (IndexOverflowException | IndexUnderflowException ignored) {
+                response = new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
+                        currentTerm.get(), request.getEntries().size());
+            }
+            if(null != response) {
+                rr.getResponseFuture().complete(response);
+                if (request.getEntries() != null && !request.getEntries().isEmpty()) {
+
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Send appendEntriesResponse, success: {}, journalIndex: {}, entryCount: {}, term: {}, " +
+                                        "{}.",
+                                response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
+                                voterInfo());
+                    }
+                }
             }
 
-            AsyncAppendEntriesResponse response = new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
-                    currentTerm.get(), request.getEntries().size());
-            rr.getResponseFuture()
-                    .complete(response);
-            if (request.getEntries() != null && !request.getEntries().isEmpty()) {
-
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Send appendEntriesResponse, success: {}, journalIndex: {}, entryCount: {}, term: {}, " +
-                                    "{}.",
-                            response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
-                            voterInfo());
-                }
+            if (request.getLeaderCommit() > journal.commitIndex()) {
+                journal.commit(Math.min(request.getLeaderCommit(), journal.maxIndex()));
+                threads.wakeupThread(STATE_MACHINE_THREAD);
+                threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
             }
         } catch (Throwable t) {
 
@@ -1047,17 +1083,16 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
             leader = request.getLeader();
         }
 
-        if (request.getEntries().size() > 0) {
+        ReplicationRequestResponse requestResponse = new ReplicationRequestResponse(request);
+        pendingAppendEntriesRequests.add(requestResponse);
 
-            // 复制请求异步处理
-            ReplicationRequestResponse requestResponse = new ReplicationRequestResponse(request);
-            pendingAppendEntriesRequests.add(requestResponse);
-            return requestResponse.getResponseFuture();
-        } else {
+        if (request.getEntries() == null || request.getEntries().size() == 0) {
             // 心跳直接返回成功
-            return CompletableFuture.supplyAsync(() -> new AsyncAppendEntriesResponse(true, request.getPrevLogIndex() + 1,
+            requestResponse.responseFuture.complete(new AsyncAppendEntriesResponse(true, request.getPrevLogIndex() + 1,
                     currentTerm.get(), request.getEntries().size()));
         }
+
+        return requestResponse.getResponseFuture();
     }
 
     /**

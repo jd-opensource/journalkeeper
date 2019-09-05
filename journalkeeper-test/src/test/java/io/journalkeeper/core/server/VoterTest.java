@@ -15,6 +15,7 @@ package io.journalkeeper.core.server;
 
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftJournal;
+import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;
@@ -75,7 +76,7 @@ public class VoterTest {
     @Ignore
     @Test
     public void singleNodeWritePerformanceTest() throws IOException, ExecutionException, InterruptedException {
-        Voter<byte[],byte[], byte[], byte[]> voter = createVoter();
+        Server<byte[],byte[], byte[], byte[]> voter = createVoter();
 
 
         try {
@@ -83,7 +84,7 @@ public class VoterTest {
             int entrySize = 1024;
             int[] partitions = {2};
 
-            while(voter.voterState() != VoterState.LEADER) {
+            while(voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
             }
 
@@ -123,7 +124,7 @@ public class VoterTest {
     @Ignore
     @Test
     public void multiThreadsWritePerformanceTest() throws IOException, ExecutionException, InterruptedException {
-        Voter<byte[], byte[], byte[], byte[]> voter = createVoter();
+        Server<byte[], byte[], byte[], byte[]> voter = createVoter();
 
 
         try {
@@ -132,7 +133,7 @@ public class VoterTest {
             int threads = 1;
             int[] partitions = {2, 3, 4, 5, 6};
 
-            while(voter.voterState() != VoterState.LEADER) {
+            while(voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
             }
 
@@ -182,12 +183,12 @@ public class VoterTest {
     }
     @Test
     public void updateClusterStateResultTest() throws IOException, ExecutionException, InterruptedException {
-        Voter<byte[],byte[], byte[], byte[]> voter = createVoter();
+        Server<byte[],byte[], byte[], byte[]> voter = createVoter();
 
 
         try {
             byte [] entry = new byte[] {1, 2, 3,5, 8,9};
-            while(voter.voterState() != VoterState.LEADER) {
+            while(voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
             }
 
@@ -206,7 +207,7 @@ public class VoterTest {
     }
 
 
-    private Voter<byte[], byte[], byte[], byte[]> createVoter() throws IOException {
+    private Server<byte[], byte[], byte[], byte[]> createVoter() throws IOException {
         StateFactory<byte [], byte [], byte [], byte []> stateFactory = new NoopStateFactory();
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(4, new NamedThreadFactory("JournalKeeper-Scheduled-Executor"));
         ExecutorService asyncExecutorService = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors() * 2, new NamedThreadFactory("JournalKeeper-Async-Executor"));
@@ -217,7 +218,7 @@ public class VoterTest {
         properties.setProperty("print_metric_interval_sec", "3");
 //        properties.setProperty("cache_requests", String.valueOf(1024L * 1024 * 5));
 
-        Voter<byte [], byte [], byte [], byte []>  voter = new Voter<>(stateFactory, bytesSerializer, bytesSerializer, bytesSerializer, bytesSerializer, scheduledExecutorService, asyncExecutorService, properties);
+        Server<byte [], byte [], byte [], byte []>  voter = new Server<>(RaftServer.Roll.VOTER, stateFactory, bytesSerializer, bytesSerializer, bytesSerializer, bytesSerializer, scheduledExecutorService, asyncExecutorService, properties);
         URI uri = URI.create("jk://localhost:8888");
         voter.init(uri, Collections.singletonList(uri));
         voter.recover();

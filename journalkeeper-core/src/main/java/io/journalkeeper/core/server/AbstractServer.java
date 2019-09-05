@@ -244,8 +244,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
     protected final BufferPool bufferPool;
 
     protected ServerRpcAccessPoint serverRpcAccessPoint;
-    protected final RpcAccessPointFactory rpcAccessPointFactory;
-    protected StateServer rpcServer = null;
 
     protected final Map<URI, ServerRpc> remoteServers = new HashMap<>();
     private Config config;
@@ -276,7 +274,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     public AbstractServer(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer,
                           Serializer<ER> entryResultSerializer, Serializer<Q> querySerializer,
                           Serializer<QR> resultSerializer, ScheduledExecutorService scheduledExecutor,
-                          ExecutorService asyncExecutor, Properties properties){
+                          ExecutorService asyncExecutor, ServerRpcAccessPoint serverRpcAccessPoint, Properties properties){
         super(stateFactory, properties);
         this.scheduledExecutor = scheduledExecutor;
         this.asyncExecutor = asyncExecutor;
@@ -288,6 +286,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
         this.entryResultSerializer = entryResultSerializer;
+        this.serverRpcAccessPoint = serverRpcAccessPoint;
 
         // init metrics
         if(config.isEnableMetric()) {
@@ -308,8 +307,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
         persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
         metadataPersistence = persistenceFactory.createMetadataPersistenceInstance();
         bufferPool = ServiceSupport.load(BufferPool.class);
-        rpcAccessPointFactory = ServiceSupport.load(RpcAccessPointFactory.class);
-        serverRpcAccessPoint = rpcAccessPointFactory.createServerRpcAccessPoint(properties);
         journal = new Journal(
                 persistenceFactory,
                 bufferPool);
@@ -468,10 +465,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
         int type = ReservedEntriesSerializeSupport.parseEntryType(reservedEntry);
         logger.info("Apply reserved entry, type: {}", type);
         switch (type) {
-            case ReservedEntry
-                    .TYPE_LEADER_ANNOUNCEMENT:
-                // Nothing to do.
-                break;
             case ReservedEntry.TYPE_COMPACT_JOURNAL:
                 compactJournalAsync(ReservedEntriesSerializeSupport.parse(reservedEntry, CompactJournalEntry.class).getCompactIndices());
                 break;
@@ -479,26 +472,8 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 scalePartitions(ReservedEntriesSerializeSupport.parse(reservedEntry, ScalePartitionsEntry.class).getPartitions());
                 break;
             case ReservedEntry.TYPE_UPDATE_VOTERS_S1:
-                byte [] s2Entry = ReservedEntriesSerializeSupport.serialize(new UpdateVotersS2Entry(votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew()));
-                    try {
-                        if(votersConfigStateMachine.isJointConsensus()) {
-                            updateClusterState(new UpdateClusterStateRequest(s2Entry, RESERVED_PARTITION, 1, ResponseConfig.ONE_WAY)).get();
-                        } else {
-                            throw new IllegalStateException();
-                        }
-                    } catch (Exception e) {
-                        UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(reservedEntry);
-                        logger.warn("Failed to update voter config in step 2! Config in the first step entry from: {} To: {}, " +
-                                        "voter config old: {}, new: {}.",
-                                updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew(),
-                                votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew());
-                    }
-                break;
             case ReservedEntry.TYPE_UPDATE_VOTERS_S2:
-                // Stop myself if I'm no longer a member of the cluster.
-                if(roll() == Roll.VOTER && !votersConfigStateMachine.voters().contains(this.serverUri())) {
-                    this.stopAsync();
-                }
+            case ReservedEntry.TYPE_LEADER_ANNOUNCEMENT:
                 break;
             default:
                 logger.warn("Invalid reserved entry type: {}.", type);
@@ -777,8 +752,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
         flushFuture = scheduledExecutor.scheduleAtFixedRate(this::flushState,
                 ThreadLocalRandom.current().nextLong(10L, 50L),
                 config.getFlushIntervalMs(), TimeUnit.MILLISECONDS);
-        rpcServer = rpcAccessPointFactory.bindServerService(this);
-        rpcServer.start();
         this.serverState = ServerState.RUNNING;
     }
 
@@ -827,10 +800,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
             this.serverState = ServerState.STOPPING;
             doStop();
             remoteServers.values().forEach(ServerRpc::stop);
-            if(rpcServer != null) {
-                rpcServer.stop();
-            }
-            serverRpcAccessPoint.stop();
             threads.stop();
             stopAndWaitScheduledFeature(flushFuture, 1000L);
             if(persistenceFactory instanceof Closeable) {

@@ -39,6 +39,7 @@ import io.journalkeeper.rpc.server.GetServerStateResponse;
 import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
 import io.journalkeeper.rpc.server.ServerRpc;
+import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
@@ -65,7 +66,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     /**
      * 父节点
      */
-    private List<URI> parents;
+    private final List<URI> parents;
 
     private ServerRpc currentServer = null;
 
@@ -77,8 +78,10 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                     Serializer<Q> querySerializer,
                     Serializer<QR> queryResultSerializer,
                     ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor,
+                    ServerRpcAccessPoint serverRpcAccessPoint,
                     Properties properties) {
-        super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, scheduledExecutor, asyncExecutor, properties);
+        super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
+        this.parents = new ArrayList<>();
         this.config = toConfig(properties);
         this.replicationMetric = getMetric(METRIC_OBSERVER_REPLICATION);
         threads.createThread(buildReplicationThread());
@@ -103,9 +106,12 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 .build();
     }
 
+    public List<URI> getParents(){
+        return parents;
+    }
+
     @Override
     public synchronized void init(URI uri, List<URI> voters) throws IOException {
-        parents = new ArrayList<>(voters);
         super.init(uri, voters);
     }
 
@@ -216,7 +222,8 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     @Override
     protected void onMetadataRecovered(ServerMetadata metadata) {
         super.onMetadataRecovered(metadata);
-        this.parents = metadata.getParents();
+        this.parents.clear();
+        this.parents.addAll(metadata.getParents());
     }
 
     @Override

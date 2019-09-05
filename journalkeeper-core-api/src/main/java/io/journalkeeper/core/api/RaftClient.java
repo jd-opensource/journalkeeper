@@ -94,7 +94,7 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable {
 
     CompletableFuture<Void> scalePartitions(int[] partitions);
 
-    CompletableFuture<Long> serverLastApplied(URI uri);
+    CompletableFuture<ServerStatus> serverStatus(URI uri);
     void stop();
 
 }

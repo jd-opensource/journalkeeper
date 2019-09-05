@@ -40,6 +40,11 @@ public abstract class RaftServer<E, ER, Q, QR> implements StateServer {
         return properties;
     }
     public abstract Roll roll();
+
+    public List<URI> getParents(){
+        return null;
+    }
+
     public abstract void init(URI uri, List<URI> voters) throws IOException;
     public abstract void recover() throws IOException;
     public abstract URI serverUri();

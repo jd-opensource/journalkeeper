@@ -20,6 +20,7 @@ import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
@@ -32,6 +33,7 @@ import io.journalkeeper.rpc.StatusCode;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
+import io.journalkeeper.rpc.client.GetServerStatusResponse;
 import io.journalkeeper.rpc.client.GetServersResponse;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.client.QueryStateRequest;
@@ -235,13 +237,11 @@ public class Client<E, ER, Q, QR> implements RaftClient<E, ER, Q, QR> {
     }
 
     @Override
-    public CompletableFuture<Long> serverLastApplied(URI uri) {
+    public CompletableFuture<ServerStatus> serverStatus(URI uri) {
         return clientServerRpcAccessPoint
                 .getClintServerRpc(uri)
-                .lastApplied()
-                .exceptionally(e -> new LastAppliedResponse(-1))
-                .thenApply(LastAppliedResponse::getLastApplied)
-                .thenApply(l -> l == null ? -1: l);
+                .getServerStatus()
+                .thenApply(GetServerStatusResponse::getServerStatus);
     }
 
 

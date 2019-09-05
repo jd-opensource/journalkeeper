@@ -3,6 +3,7 @@ package io.journalkeeper.core.server;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
+import io.journalkeeper.rpc.RpcAccessPointFactory;
 import io.journalkeeper.rpc.client.AddPullWatchResponse;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
 import io.journalkeeper.rpc.client.ConvertRollResponse;
@@ -28,15 +29,18 @@ import io.journalkeeper.rpc.server.GetServerStateResponse;
 import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
 import io.journalkeeper.rpc.server.ServerRpc;
+import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
+import io.journalkeeper.utils.event.Event;
+import io.journalkeeper.utils.event.EventType;
 import io.journalkeeper.utils.event.EventWatcher;
+import io.journalkeeper.utils.spi.ServiceSupport;
+import io.journalkeeper.utils.state.StateServer;
 
 import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 
@@ -47,7 +51,10 @@ import java.util.concurrent.ScheduledExecutorService;
 public class Server<E, ER, Q, QR>
         extends RaftServer<E, ER, Q, QR>
         implements ServerRpc {
-    private AbstractServer<E, ER, Q, QR> server = null;
+    private AbstractServer<E, ER, Q, QR> server;
+    private StateServer rpcServer = null;
+    private ServerState serverState = ServerState.CREATED;
+    private final RpcAccessPointFactory rpcAccessPointFactory;
 
     private final Serializer<E> entrySerializer;
     private final Serializer<ER> entryResultSerializer;
@@ -56,10 +63,14 @@ public class Server<E, ER, Q, QR>
     private final ScheduledExecutorService scheduledExecutor;
     private final ExecutorService asyncExecutor;
     private final Properties properties;
+    private ServerRpcAccessPoint serverRpcAccessPoint;
+
     public Server(Roll roll, StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
                   Serializer<Q> querySerializer, Serializer<QR> resultSerializer,
                   ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
+
         super(stateFactory, properties);
+        rpcAccessPointFactory = ServiceSupport.load(RpcAccessPointFactory.class);
         this.entrySerializer = entrySerializer;
         this.entryResultSerializer = entryResultSerializer;
         this.querySerializer = querySerializer;
@@ -67,18 +78,26 @@ public class Server<E, ER, Q, QR>
         this.scheduledExecutor = scheduledExecutor;
         this.asyncExecutor = asyncExecutor;
         this.properties = properties;
+        this.serverRpcAccessPoint = rpcAccessPointFactory.createServerRpcAccessPoint(properties);
         this.server = createServer(roll);
     }
 
     private AbstractServer<E, ER, Q, QR> createServer(Roll roll) {
         switch (roll) {
             case VOTER:
-                return new Voter<>(stateFactory, entrySerializer,entryResultSerializer, querySerializer, resultSerializer,scheduledExecutor, asyncExecutor, properties);
+                return new Voter<>(stateFactory, entrySerializer,entryResultSerializer, querySerializer, resultSerializer,scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
             default:
-                return new Observer<>(stateFactory, entrySerializer,entryResultSerializer, querySerializer, resultSerializer,scheduledExecutor, asyncExecutor, properties);
+                return new Observer<>(stateFactory, entrySerializer,entryResultSerializer, querySerializer, resultSerializer,scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         }
     }
 
+    public List<URI> getParents() {
+        if(null != server && server instanceof Observer) {
+            return server.getParents();
+        } else {
+            return null;
+        }
+    }
 
     @Override
     public Roll roll() {
@@ -213,12 +232,26 @@ public class Server<E, ER, Q, QR>
 
     @Override
     public void start() {
+        if(this.serverState != ServerState.CREATED) {
+            throw new IllegalStateException("Server can only start once!");
+        }
+        this.serverState = ServerState.STARTING;
         server.start();
+        rpcServer = rpcAccessPointFactory.bindServerService(this);
+        rpcServer.start();
+        this.serverState = ServerState.RUNNING;
+
     }
 
     @Override
     public void stop() {
+        this.serverState = ServerState.STOPPING;
+        if(rpcServer != null) {
+            rpcServer.stop();
+        }
         server.stop();
+        serverRpcAccessPoint.stop();
+        this.serverState = ServerState.STOPPED;
     }
 
     @Override
