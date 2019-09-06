@@ -83,13 +83,21 @@ public class DefaultSQLTransactionOperator implements SQLTransactionOperator {
 
     @Override
     public boolean commit() {
-        client.commitTransaction(id);
-        return true;
+        try {
+            client.commitTransaction(id).get();
+            return true;
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 
     @Override
     public boolean rollback() {
-        client.rollbackTransaction(id);
-        return true;
+        try {
+            client.rollbackTransaction(id).get();
+            return true;
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 }

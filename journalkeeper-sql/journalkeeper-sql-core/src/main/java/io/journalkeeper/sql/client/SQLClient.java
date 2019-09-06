@@ -169,7 +169,15 @@ public class SQLClient {
     }
 
     protected CompletableFuture<WriteResponse> doUpdate(WriteRequest request) {
-        return client.update(request, 0, 1, ResponseConfig.REPLICATION);
+        return client.update(request, 0, 1, ResponseConfig.REPLICATION).exceptionally(t -> {
+            throw new SQLClientException(t.getCause());
+        }).thenApply(response -> {
+            if (response.getCode() != Codes.SUCCESS.getCode()) {
+                throw new SQLClientException(String.format("code: %s, msg: %s",
+                        String.valueOf(Codes.valueOf(response.getCode())), response.getMsg()));
+            }
+            return response;
+        });
     }
 
     protected CompletableFuture<ReadResponse> doQuery(ReadRequest request) {

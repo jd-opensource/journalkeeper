@@ -47,5 +47,10 @@
             <artifactId>journalkeeper-core</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>io.journalkeeper</groupId>
+            <artifactId>journalkeeper-metric</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 </project>

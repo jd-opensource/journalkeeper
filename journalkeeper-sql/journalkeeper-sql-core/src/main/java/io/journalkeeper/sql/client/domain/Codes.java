@@ -44,6 +44,8 @@ public enum Codes {
                 return SUCCESS;
             case 1:
                 return ERROR;
+            case 10:
+                return TRANSACTION_NOT_EXIST;
             default:
                 throw new UnsupportedOperationException(String.valueOf(type));
         }

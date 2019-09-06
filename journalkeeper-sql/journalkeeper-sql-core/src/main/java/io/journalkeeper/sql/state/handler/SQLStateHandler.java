@@ -13,7 +13,12 @@
  */
 package io.journalkeeper.sql.state.handler;
 
+import io.journalkeeper.metric.JMetric;
+import io.journalkeeper.metric.JMetricFactory;
+import io.journalkeeper.metric.JMetricFactoryManager;
+import io.journalkeeper.metric.JMetricSupport;
 import io.journalkeeper.sql.client.domain.Codes;
+import io.journalkeeper.sql.client.domain.OperationTypes;
 import io.journalkeeper.sql.client.domain.ReadRequest;
 import io.journalkeeper.sql.client.domain.ReadResponse;
 import io.journalkeeper.sql.client.domain.WriteRequest;
@@ -23,7 +28,12 @@ import io.journalkeeper.sql.state.SQLExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * SQLStateHandler
@@ -40,29 +50,78 @@ public class SQLStateHandler {
     private SQLStateReadHandler readHandler;
     private SQLStateWriteHandler writeHandler;
 
+    private JMetricFactory metricFactory;
+    private final ConcurrentMap<String, JMetric> metricMap = new ConcurrentHashMap<>();
+
     public SQLStateHandler(Properties properties, SQLExecutor sqlExecutor) {
         this.properties = properties;
         this.sqlExecutor = sqlExecutor;
         this.transactionIdGenerator = new TransactionIdGenerator();
         this.readHandler = new SQLStateReadHandler(properties, sqlExecutor);
         this.writeHandler = new SQLStateWriteHandler(properties, sqlExecutor, transactionIdGenerator);
+        this.metricFactory = JMetricFactoryManager.getFactory();
+
+        // TODO 临时代码
+        Executors.newScheduledThreadPool(1).scheduleWithFixedDelay(() -> {
+            for (Map.Entry<String, JMetric> entry : metricMap.entrySet()) {
+                logger.info("sql: {}, metric: {}", entry.getKey(), JMetricSupport.format(entry.getValue().get(), TimeUnit.MILLISECONDS));
+            }
+        }, Integer.valueOf(properties.getProperty("sql.metric.interval", String.valueOf(1000 * 10))),
+                Integer.valueOf(properties.getProperty("sql.metric.interval", String.valueOf(1000 * 10))),
+                TimeUnit.MILLISECONDS);
     }
 
     public WriteResponse handleWrite(WriteRequest request) {
+        JMetric jMetric = null;
+
+        if (!(request.getType() == OperationTypes.TRANSACTION_BEGIN.getType() ||
+                request.getType() == OperationTypes.TRANSACTION_COMMIT.getType() ||
+                request.getType() == OperationTypes.TRANSACTION_ROLLBACK.getType())) {
+
+            jMetric = getJMetric(request.getSql(), request.getParams());
+            jMetric.start();
+        }
+
         try {
             return writeHandler.handle(request);
         } catch (Exception e) {
             logger.error("sql write exception, request: {}", request, e);
             return new WriteResponse(Codes.ERROR.getCode(), e.toString());
+        } finally {
+            if (jMetric != null) {
+                jMetric.end();
+            }
         }
     }
 
     public ReadResponse handleRead(ReadRequest request) {
+        JMetric jMetric = getJMetric(request.getSql(), request.getParams());
+        jMetric.start();
+
         try {
             return readHandler.handle(request);
         } catch (Exception e) {
             logger.error("sql read exception, request: {}", request, e);
             return new ReadResponse(Codes.ERROR.getCode(), e.toString());
+        } finally {
+            if (jMetric != null) {
+                jMetric.end();
+            }
         }
+    }
+
+    protected JMetric getJMetric(String sql, Object... params) {
+        JMetric jMetric = metricMap.get(sql);
+        if (jMetric != null) {
+            return jMetric;
+        }
+
+        jMetric = metricFactory.create(sql);
+        JMetric oldJMetric = metricMap.putIfAbsent(sql, jMetric);
+
+        if (oldJMetric != null) {
+            return oldJMetric;
+        }
+        return jMetric;
     }
 }
