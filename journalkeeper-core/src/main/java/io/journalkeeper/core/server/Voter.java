@@ -1104,15 +1104,15 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     @Override
     public CompletableFuture<RequestVoteResponse> requestVote(RequestVoteRequest request) {
         return CompletableFuture.supplyAsync(() -> {
-            logger.info("RequestVoteRpc received: term: {}, candidate: {}, " +
-                            "lastLogIndex: {}, lastLogTerm: {}, {}.",
-                    request.getTerm(), request.getCandidate(),
-                    request.getLastLogIndex(), request.getLastLogTerm(), voterInfo());
 
             // 如果当前是LEADER或者上次收到心跳的至今小于最小选举超时，那直接拒绝投票
             if(voterState() == VoterState.LEADER || System.currentTimeMillis() - lastHeartbeat < config.getElectionTimeoutMs()) {
                 return new RequestVoteResponse(request.getTerm(), false);
             }
+            logger.info("RequestVoteRpc received: term: {}, candidate: {}, " +
+                            "lastLogIndex: {}, lastLogTerm: {}, {}.",
+                    request.getTerm(), request.getCandidate(),
+                    request.getLastLogIndex(), request.getLastLogTerm(), voterInfo());
 
             checkTerm(request.getTerm());
 

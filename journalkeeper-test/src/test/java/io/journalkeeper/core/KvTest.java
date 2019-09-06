@@ -60,7 +60,7 @@ public class KvTest {
     }
 
     @Test
-    public void singleNodeRecoverTest() throws IOException, InterruptedException {
+    public void singleNodeRecoverTest() throws Exception{
         Path path = TestPathUtils.prepareBaseDir("singleNodeTest");
         KvServer kvServer = createServers(1, path).get(0);
         KvClient kvClient = kvServer.createClient();
@@ -340,17 +340,20 @@ public class KvTest {
         }
 
         // 可能发生选举，需要等待选举完成。
-        kvClient.waitForLeader(5000L);
-        // 验证所有节点都成功完成了配置变更
-        for (URI uri : oldConfig) {
-            if(newConfig.contains(uri)) {
-                Assert.assertEquals(newConfig, kvClient.getVoters(uri));
-            } else {
-                KvServer removedServer = oldServers.stream().filter(kvServer -> kvServer.serverUri().equals(uri)).findAny().orElse(null);
-                Assert.assertNotNull(removedServer);
-                Assert.assertEquals(StateServer.ServerState.STOPPED, removedServer.serverState());
-                oldServers.remove(removedServer);
+        boolean leaderExists = kvClient.waitForLeader(5000L);
+
+        Assert.assertTrue(leaderExists);
+
+        // 停止已不在集群内的节点
+
+        for (KvServer server : oldServers) {
+            if(!newConfig.contains(server.serverUri())) {
+                server.stop();
             }
+        }
+        // 验证所有节点都成功完成了配置变更
+        for (URI uri : newConfig) {
+                Assert.assertEquals(newConfig, kvClient.getVoters(uri));
         }
 
         KvClient newClient = oldServers.get(0).createClient();
@@ -393,8 +396,8 @@ public class KvTest {
             properties.setProperty("working_dir", workingDir.toString());
             properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
-            properties.setProperty("enable_metric", "true");
-            properties.setProperty("print_metric_interval_sec", "3");
+//            properties.setProperty("enable_metric", "true");
+//            properties.setProperty("print_metric_interval_sec", "3");
             propertiesList.add(properties);
         }
         return createServers(serverURIs, propertiesList, roll,waitForLeader);

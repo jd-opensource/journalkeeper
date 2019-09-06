@@ -147,12 +147,14 @@ public class KvClient {
         return client.updateVoters(oldConfigs, newConfigs).get();
     }
 
-    public void waitForLeader(long timeoutMs) throws InterruptedException {
-        CountDownLatch latch = new CountDownLatch(1);
-        EventWatcher watcher = event -> {if(event.getEventType() == EventType.ON_LEADER_CHANGE) latch.countDown();} ;
-        client.watch(watcher);
-        latch.await(timeoutMs, TimeUnit.MILLISECONDS);
-        client.unWatch(watcher);
+    public boolean waitForLeader(long timeoutMs) throws InterruptedException, ExecutionException {
+        long t0 = System.currentTimeMillis();
+        while (System.currentTimeMillis() - t0 < timeoutMs) {
+            if(null != client.getServers().get().getLeader()) {
+                return true;
+            }
+        }
+        return false;
     }
 
 }
