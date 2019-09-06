@@ -96,7 +96,7 @@ public class VoterTest {
             long t0 = System.nanoTime();
 
             for (int i = 0; i < partitions.length; i++) {
-                UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, partitions[i], 1, ResponseConfig.RECEIVE);
+                UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, partitions[i], 1);
 
                 for (long l = 0; l < count; l++) {
                     voter.updateClusterState(request);
@@ -211,7 +211,7 @@ public class VoterTest {
         Properties properties = new Properties();
         properties.setProperty("working_dir", base.toString());
         properties.setProperty("enable_metric", "true");
-        properties.setProperty("print_metric_interval_sec", "5");
+        properties.setProperty("print_metric_interval_sec", "3");
 //        properties.setProperty("cache_requests", String.valueOf(1024L * 1024 * 5));
 
         Voter<byte [], byte [], byte [], byte []>  voter = new Voter<>(stateFactory, bytesSerializer, bytesSerializer, bytesSerializer, bytesSerializer, scheduledExecutorService, asyncExecutorService, properties);

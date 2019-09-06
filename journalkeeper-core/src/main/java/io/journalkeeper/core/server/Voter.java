@@ -261,11 +261,10 @@ public class Voter<E, ER, Q, QR> extends Server<E, ER, Q, QR> {
             try {
                 appendJournalMetric.start();
                 long index = journal.append(new Entry(rr.getRequest().getEntry(), currentTerm.get(), rr.getRequest().getPartition(), rr.getRequest().getBatchSize()));
-                index = index - 1;
                 if (rr.getRequest().getResponseConfig() == ResponseConfig.PERSISTENCE) {
-                    flushCallbacks.put(new Callback<>(index, rr.getResponseFuture()));
+                    flushCallbacks.put(new Callback<>(index - 1, rr.getResponseFuture()));
                 } else if (rr.getRequest().getResponseConfig() == ResponseConfig.REPLICATION) {
-                    replicationCallbacks.put(new Callback<>(index, rr.getResponseFuture()));
+                    replicationCallbacks.put(new Callback<>(index - 1, rr.getResponseFuture()));
                 }
                 // 唤醒复制线程
 //                threads.wakeupThread(LEADER_REPLICATION_THREAD);
