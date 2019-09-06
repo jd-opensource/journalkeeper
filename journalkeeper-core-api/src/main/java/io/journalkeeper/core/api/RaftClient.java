@@ -16,7 +16,6 @@ package io.journalkeeper.core.api;
 import io.journalkeeper.base.Queryable;
 import io.journalkeeper.utils.event.Watchable;
 
-import java.io.Serializable;
 import java.net.URI;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;

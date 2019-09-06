@@ -18,49 +18,49 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * StateResponse
+ * ReadResponse
  * author: gaohaoxiang
  *
  * date: 2019/5/30
  */
-public class StateResponse implements Serializable {
+public class ReadResponse implements Serializable {
 
     private int code;
     private String msg;
     private byte[] value;
     private List<byte[]> values;
 
-    public StateResponse() {
+    public ReadResponse() {
 
     }
 
-    public StateResponse(int code) {
+    public ReadResponse(int code) {
         this.code = code;
     }
 
-    public StateResponse(int code, byte[] value) {
+    public ReadResponse(int code, byte[] value) {
         this.code = code;
         this.value = value;
     }
 
-    public StateResponse(int code, String msg) {
+    public ReadResponse(int code, String msg) {
         this.code = code;
         this.msg = msg;
     }
 
-    public StateResponse(int code, String msg, byte[] value) {
+    public ReadResponse(int code, String msg, byte[] value) {
         this.code = code;
         this.msg = msg;
         this.value = value;
     }
 
-    public StateResponse(int code, String msg, List<byte[]> values) {
+    public ReadResponse(int code, String msg, List<byte[]> values) {
         this.code = code;
         this.msg = msg;
         this.values = values;
     }
 
-    public StateResponse(int code, List<byte[]> values) {
+    public ReadResponse(int code, List<byte[]> values) {
         this.code = code;
         this.values = values;
     }
@@ -99,7 +99,7 @@ public class StateResponse implements Serializable {
 
     @Override
     public String toString() {
-        return "StateResponse{" +
+        return "ReadResponse{" +
                 "code=" + code +
                 ", msg='" + msg + '\'' +
                 ", value=" + Arrays.toString(value) +

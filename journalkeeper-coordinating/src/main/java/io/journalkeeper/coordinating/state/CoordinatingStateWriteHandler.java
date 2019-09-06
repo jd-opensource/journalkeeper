@@ -14,7 +14,7 @@
 package io.journalkeeper.coordinating.state;
 
 import io.journalkeeper.coordinating.state.domain.StateTypes;
-import io.journalkeeper.coordinating.state.domain.StateWriteRequest;
+import io.journalkeeper.coordinating.state.domain.WriteRequest;
 import io.journalkeeper.coordinating.state.store.KVStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +40,7 @@ public class CoordinatingStateWriteHandler {
     }
 
     // TODO 临时测试
-    public boolean handle(StateWriteRequest request) {
+    public boolean handle(WriteRequest request) {
         try {
             StateTypes type = StateTypes.valueOf(request.getType());
             switch (type) {

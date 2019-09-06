@@ -45,6 +45,7 @@
         <module>journalkeeper-coordinating</module>
         <module>journalkeeper-metric</module>
         <module>journalkeeper-metric-dropwizard</module>
+        <module>journalkeeper-sql</module>
     </modules>
     <properties>
         <encoding>UTF-8</encoding>
