@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -107,16 +108,9 @@ public class JournalStoreClient implements PartitionedJournalStore {
                 .thenApply(boundaries -> boundaries.keySet().stream().mapToInt(Integer::intValue).toArray());
     }
 
-    public void waitForLeader(long timeoutMs) throws InterruptedException {
+    public void waitForLeader(long timeoutMs) throws InterruptedException, ExecutionException {
 
-        CountDownLatch latch = new CountDownLatch(1);
-        EventWatcher watcher = event -> {if(event.getEventType() == EventType.ON_LEADER_CHANGE) latch.countDown();} ;
-        watch(watcher);
-        try {
-            latch.await(timeoutMs, TimeUnit.MILLISECONDS);
-        } finally {
-            unWatch(watcher);
-        }
+        adminClient.waitClusterReady(timeoutMs).get();
     }
 
     @Override
