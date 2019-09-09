@@ -18,7 +18,7 @@ import io.journalkeeper.rpc.BaseResponse;
 
 /**
  * RPC 方法
- * {@link ClientServerRpc#getServers() getServers()}
+ * {@link ClientServerRpc#getServers() getClusterConfiguration()}
  * 返回响应。
  *
  * @author LiYue

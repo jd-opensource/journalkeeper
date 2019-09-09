@@ -13,7 +13,9 @@
  */
 package io.journalkeeper.sql.test.h2;
 
+import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.RaftServer;
+import io.journalkeeper.core.client.DefaultAdminClient;
 import io.journalkeeper.core.server.Server;
 import io.journalkeeper.sql.client.SQLClient;
 import io.journalkeeper.sql.client.SQLClientAccessPoint;
@@ -35,6 +37,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -47,9 +50,8 @@ public class H2Test {
     private static final int BASE_PORT = 50088;
     private List<SQLServer> servers = new ArrayList<>();
     private List<SQLClient> clients = new ArrayList<>();
-
     @Before
-    public void before() {
+    public void before() throws ExecutionException, InterruptedException {
         try {
             FileUtils.deleteDirectory(new File(String.format("%s/export/h2", System.getProperty("user.dir"))));
         } catch (IOException e) {
@@ -63,7 +65,7 @@ public class H2Test {
 
         for (int i = 0; i < NODES; i++) {
             Properties properties = new Properties();
-            properties.setProperty(Server.Config.WORKING_DIR_KEY, String.format("%s/export/h2/%s", System.getProperty("user.dir"), i));
+            properties.setProperty("working_dir", String.format("%s/export/h2/%s", System.getProperty("user.dir"), i));
 //            properties.setProperty(SQLConfigs.TRANSACTION_CLEAR_INTERVAL, String.valueOf(1));
 //            properties.setProperty(SQLConfigs.TRANSACTION_TIMEOUT, String.valueOf(1000 * 1));
             properties.setProperty(SQLConfigs.INIT_FILE, "/topic.sql");
@@ -86,7 +88,9 @@ public class H2Test {
             this.clients.add(client);
         }
 
-        this.servers.get(0).waitForLeaderReady(1000 * 30, TimeUnit.MILLISECONDS);
+
+
+        this.clients.get(0).waitClusterReady(1000 * 30).get();
         try {
             Thread.currentThread().sleep(1000 * 5);
         } catch (InterruptedException e) {

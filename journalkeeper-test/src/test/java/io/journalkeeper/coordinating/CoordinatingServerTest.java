@@ -31,6 +31,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -50,7 +51,7 @@ public class CoordinatingServerTest {
     private static final String WORKING_DIR = "CoordinatingServerTest";
     private Path base = null;
     @Before
-    public void before() throws IOException {
+    public void before() throws IOException, ExecutionException, InterruptedException {
 
         base = TestPathUtils.prepareBaseDir(WORKING_DIR );
         List<URI> voters = new ArrayList<>();
@@ -95,7 +96,7 @@ public class CoordinatingServerTest {
             clients.add(client);
         }
 
-        servers.get(0).waitForLeaderReady(1000 * 10, TimeUnit.MILLISECONDS);
+        clients.get(0).waitClusterReady(0L).get();
     }
 
     @Test

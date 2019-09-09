@@ -53,6 +53,7 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
         // 增加
         uriList.forEach(uri -> serverInstances.putIfAbsent(uri, null));
 
+        this.defaultServerUri = null;
 
     }
 

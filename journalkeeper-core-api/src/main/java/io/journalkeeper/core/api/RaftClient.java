@@ -33,7 +33,7 @@ import java.util.concurrent.CompletableFuture;
  * @param <ER> 更新执行结果
  *
  */
-public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable {
+public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, ClusterReadyAware, ServerConfigAware {
 
 
     /**
@@ -43,6 +43,15 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable {
      */
     CompletableFuture<ER> update(E entry);
 
+    /**
+     * 写入操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
+     * 日志在集群中复制到大多数节点，并在状态机执行后返回。
+     * @param entry 操作日志数组
+     * @param partition 分区
+     * @param batchSize 批量大小
+     * @param responseConfig 响应级别。See {@link ResponseConfig}
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     */
     CompletableFuture<ER> update(E entry, int partition, int batchSize, ResponseConfig responseConfig);
 
     /**
@@ -53,47 +62,9 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable {
     @Override
     CompletableFuture<QR> query(Q query);
 
-    //TODO: 把下面这些集群管理和监控的功能拆分出单独的ManagementClient接口
 
-    /**
-     * 获取集群配置。
-     * @return 所有选民节点、观察者节点和当前的LEADER节点。
-     */
-    CompletableFuture<ClusterConfiguration> getServers();
 
-    /**
-     * 获取集群配置。
-     * @return 所有选民节点、观察者节点和当前的LEADER节点。
-     */
-    CompletableFuture<ClusterConfiguration> getServers(URI uri);
 
-    /**
-     * 变更选民节点配置。
-     * @param oldConfig 当前配置，用于验证。
-     * @param newConfig 变更后的配置
-     * @return true：成功，其它：失败。
-     */
-    CompletableFuture<Boolean> updateVoters(List<URI> oldConfig, List<URI> newConfig);
-
-    /**
-     * 转换节点的角色。如果提供的角色与当前角色相同，立即返回。
-     * 如果需要转换角色，成功转换之后返回。
-     * 转换失败抛出异常。
-     * @param uri 节点URI
-     * @param roll 新角色
-     */
-    CompletableFuture convertRoll(URI uri, RaftServer.Roll roll);
-
-    /**
-     * 压缩WAL
-     * @param toIndices
-     * @return
-     */
-    CompletableFuture<Void> compact(Map<Integer, Long> toIndices);
-
-    CompletableFuture<Void> scalePartitions(int[] partitions);
-
-    CompletableFuture<ServerStatus> serverStatus(URI uri);
     void stop();
 
 }

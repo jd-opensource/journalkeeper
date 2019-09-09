@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.examples.kv;
 
+import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.utils.net.NetworkingUtils;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
@@ -25,11 +26,12 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 public class KvExampleApplicationMain {
     private static final Logger logger = LoggerFactory.getLogger(KvExampleApplicationMain.class);
-    public static void main(String [] args) throws IOException {
+    public static void main(String [] args) throws IOException, ExecutionException, InterruptedException {
         int nodes = 1;
         logger.info("Usage: java " + KvExampleApplicationMain.class.getName() + " [nodes(default 3)]");
         if(args.length > 0) {
@@ -53,8 +55,12 @@ public class KvExampleApplicationMain {
             kvServer.recover();
             kvServer.start();
         }
-        kvServers.get(0).waitForLeaderReady();
+
+        AdminClient adminClient = kvServers.get(0).getAdminClient();
+        adminClient.waitClusterReady(0).get();
+
         List<KvClient> kvClients = kvServers.stream().map(KvServer::createClient).collect(Collectors.toList());
+
 
 
         for (int j = 0; j < 10; j++) {

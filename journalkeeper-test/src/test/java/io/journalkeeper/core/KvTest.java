@@ -13,9 +13,11 @@
  */
 package io.journalkeeper.core;
 
+import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.VoterState;
+import io.journalkeeper.core.client.DefaultAdminClient;
 import io.journalkeeper.examples.kv.KvClient;
 import io.journalkeeper.examples.kv.KvServer;
 import io.journalkeeper.utils.net.NetworkingUtils;
@@ -41,21 +43,21 @@ import java.util.stream.Collectors;
 public class KvTest {
     private static final Logger logger = LoggerFactory.getLogger(KvTest.class);
     @Test
-    public void singleNodeTest() throws IOException {
+    public void singleNodeTest() throws IOException, ExecutionException, InterruptedException {
         setGetTest(1);
     }
 
     @Test
-    public void tripleNodesTest() throws IOException {
+    public void tripleNodesTest() throws IOException, ExecutionException, InterruptedException {
         setGetTest(3);
     }
 
     @Test
-    public void fiveNodesTest() throws IOException {
+    public void fiveNodesTest() throws IOException, ExecutionException, InterruptedException {
         setGetTest(5);
     }
     @Test
-    public void sevenNodesTest() throws IOException {
+    public void sevenNodesTest() throws IOException, ExecutionException, InterruptedException {
         setGetTest(7);
     }
 
@@ -68,28 +70,28 @@ public class KvTest {
         kvServer.stop();
 
         kvServer = recoverServer("server0", path);
-
+        kvServer.getAdminClient().waitClusterReady(0L).get();
         kvClient = kvServer.createClient();
-        kvClient.waitForLeader(10000);
+
         Assert.assertEquals("value", kvClient.get("key"));
         kvServer.stop();
         TestPathUtils.destroyBaseDir(path.toFile());
 
     }
     @Test
-    public void singleNodeAvailabilityTest() throws IOException, InterruptedException {
+    public void singleNodeAvailabilityTest() throws IOException, InterruptedException, ExecutionException {
         availabilityTest(1);
     }
 
     @Test
-    public void tripleNodesAvailabilityTest() throws IOException, InterruptedException {
+    public void tripleNodesAvailabilityTest() throws IOException, InterruptedException, ExecutionException {
         availabilityTest(3);
     }
 
     /**
      * 创建N个server，依次停掉每个server，再依次启动，验证集群可用性
      */
-    private void availabilityTest(int nodes) throws IOException, InterruptedException {
+    private void availabilityTest(int nodes) throws IOException, InterruptedException, ExecutionException {
         logger.info("{} nodes availability test.", nodes);
         Path path = TestPathUtils.prepareBaseDir("availabilityTest" + nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
@@ -168,7 +170,7 @@ public class KvTest {
         return kvServer;
     }
 
-    private void setGetTest(int nodes) throws IOException {
+    private void setGetTest(int nodes) throws IOException, ExecutionException, InterruptedException {
 
         Path path = TestPathUtils.prepareBaseDir("SetGetTest-" + nodes);
         List<KvServer> kvServers = createServers(nodes, path);
@@ -244,18 +246,27 @@ public class KvTest {
             newServer.start();
         }
 
-        URI leaderUri = kvClient.leaderUri();
+        AdminClient oldAdminClient = new DefaultAdminClient(oldConfig, new Properties());
+        AdminClient newAdminClient = new DefaultAdminClient(newConfig, new Properties());
+
+        URI leaderUri = oldAdminClient.getClusterConfiguration().get().getLeader();
         while (null == leaderUri) {
-            leaderUri = kvClient.leaderUri();
+            leaderUri = oldAdminClient.getClusterConfiguration().get().getLeader();
             Thread.sleep(100L);
         }
-        long leaderApplied = kvClient.serverStatus(leaderUri).getLastApplied();
+        long leaderApplied = oldAdminClient.getServerStatus(leaderUri).get().getLastApplied();
 
         // 等待2个节点拉取数据直到与现有集群同步
         logger.info("Wait for observers to catch up the cluster.");
         boolean synced = false;
         while (!synced) {
-            synced = newServerUris.stream().allMatch(uri -> kvClient.serverStatus(uri).getLastApplied() == leaderApplied);
+            synced = newServerUris.stream().allMatch(uri -> {
+                try {
+                    return newAdminClient.getServerStatus(uri).get().getLastApplied() == leaderApplied;
+                } catch (Throwable e) {
+                    return false;
+                }
+            });
             Thread.sleep(100L);
         }
 
@@ -263,13 +274,13 @@ public class KvTest {
         logger.info("Convert roll to voter of new servers.");
 
         for (URI uri : newServerUris) {
-            kvClient.convertRoll(uri, RaftServer.Roll.VOTER);
-            Assert.assertEquals(RaftServer.Roll.VOTER, kvClient.serverStatus(uri).getRoll());
+            newAdminClient.convertRoll(uri, RaftServer.Roll.VOTER).get();
+            Assert.assertEquals(RaftServer.Roll.VOTER, newAdminClient.getServerStatus(uri).get().getRoll());
         }
 
         // 更新集群配置
         logger.info("Update cluster config...");
-        boolean success = kvClient.updateVoters(oldConfig, newConfig);
+        boolean success = oldAdminClient.updateVoters(oldConfig, newConfig).get();
 
         // 验证集群配置
         Assert.assertTrue(success);
@@ -277,14 +288,20 @@ public class KvTest {
         // 等待2阶段变更都提交了
         synced = false;
         long newApplied = leaderApplied + 2;
-        while (synced) {
-            synced = newConfig.stream().allMatch(uri -> (kvClient.serverStatus(uri).getLastApplied() == newApplied));
+        while (!synced) {
+            synced = newServerUris.stream().allMatch(uri -> {
+                try {
+                    return newAdminClient.getServerStatus(uri).get().getLastApplied() == newApplied;
+                } catch (Throwable e) {
+                    return false;
+                }
+            });
             Thread.sleep(100L);
         }
         // 验证所有节点都成功完成了配置变更
         for (URI uri : newConfig) {
-            Assert.assertEquals(newConfig, kvClient.getVoters(uri));
-            ServerStatus serverStatus = kvClient.serverStatus(uri);
+            Assert.assertEquals(newConfig, newAdminClient.getClusterConfiguration(uri).get().getVoters());
+            ServerStatus serverStatus = newAdminClient.getServerStatus(uri).get();
             Assert.assertEquals(RaftServer.Roll.VOTER, serverStatus.getRoll());
             if (leaderUri.equals(uri)) {
                 Assert.assertEquals(VoterState.LEADER, serverStatus.getVoterState());
@@ -298,6 +315,9 @@ public class KvTest {
         for (int i = 0; i < 10; i++) {
             Assert.assertEquals(String.valueOf(i), kvClient.get("key" + i));
         }
+
+        oldAdminClient.stop();
+        newAdminClient.stop();
 
     }
 
@@ -357,32 +377,43 @@ public class KvTest {
             newServer.start();
         }
 
-        URI leaderUri = kvClient.leaderUri();
+
+        AdminClient oldAdminClient = new DefaultAdminClient(oldConfig, new Properties());
+        AdminClient newAdminClient = new DefaultAdminClient(newConfig, new Properties());
+
+
+
+        URI leaderUri = oldAdminClient.getClusterConfiguration().get().getLeader();
         while (null == leaderUri) {
-            leaderUri = kvClient.leaderUri();
+            leaderUri = oldAdminClient.getClusterConfiguration().get().getLeader();
             Thread.sleep(100L);
         }
-        long leaderApplied = kvClient.serverStatus(leaderUri).getLastApplied();
+        long leaderApplied = oldAdminClient.getServerStatus(leaderUri).get().getLastApplied();
 
         // 等待新节点拉取数据直到与现有集群同步
         logger.info("Wait for observers to catch up the cluster.");
         boolean synced = false;
         while (!synced) {
-            synced = newServerUris.stream().allMatch(uri -> kvClient.serverStatus(uri).getLastApplied() == leaderApplied);
+            synced = newServerUris.stream().allMatch(uri -> {
+                try {
+                    return newAdminClient.getServerStatus(uri).get().getLastApplied() == leaderApplied;
+                } catch (Throwable e) {
+                    return false;
+                }
+            });
             Thread.sleep(100L);
         }
-
         // 转换成VOTER
         logger.info("Convert roll to voter of new servers.");
 
         for (URI uri : newServerUris) {
-            kvClient.convertRoll(uri, RaftServer.Roll.VOTER);
-            Assert.assertEquals(RaftServer.Roll.VOTER, kvClient.serverStatus(uri).getRoll());
+            newAdminClient.convertRoll(uri, RaftServer.Roll.VOTER).get();
+            Assert.assertEquals(RaftServer.Roll.VOTER, newAdminClient.getServerStatus(uri).get().getRoll());
         }
 
         // 更新集群配置
         logger.info("Update cluster config...");
-        boolean success = kvClient.updateVoters(oldConfig, newConfig);
+        boolean success = oldAdminClient.updateVoters(oldConfig, newConfig).get();
 
         // 验证集群配置
         Assert.assertTrue(success);
@@ -390,8 +421,14 @@ public class KvTest {
         // 等待2阶段变更都提交了
         synced = false;
         long newApplied = leaderApplied + 2;
-        while (synced) {
-            synced = newConfig.stream().allMatch(uri -> (kvClient.serverStatus(uri).getLastApplied() == newApplied));
+        while (!synced) {
+            synced = newServerUris.stream().allMatch(uri -> {
+                try {
+                    return newAdminClient.getServerStatus(uri).get().getLastApplied() == newApplied;
+                } catch (Throwable e) {
+                    return false;
+                }
+            });
             Thread.sleep(100L);
         }
 
@@ -400,7 +437,7 @@ public class KvTest {
 
         for (KvServer server : oldServers) {
             if(!newConfig.contains(server.serverUri())) {
-                if(kvClient.serverStatus(server.serverUri()).getVoterState() == VoterState.LEADER) {
+                if(oldAdminClient.getServerStatus(server.serverUri()).get().getVoterState() == VoterState.LEADER) {
                     // 如果是LEADER，等着它执行完变更自行停止
                     logger.info("Waiting for leader stopped");
                     while (server.serverState() != StateServer.ServerState.STOPPED) {
@@ -415,18 +452,16 @@ public class KvTest {
         }
 
         // 可能发生选举，需要等待选举完成。
-        Thread.sleep(5000L);
+        newAdminClient.waitClusterReady(0L).get();
 
         KvClient newClient = newServers.get(0).createClient();
-        boolean leaderExists = newClient.waitForLeader(5000L);
-        leaderUri = newClient.leaderUri();
-        Assert.assertTrue(leaderExists);
+        leaderUri = newAdminClient.getClusterConfiguration().get().getLeader();
 
 
         // 验证所有节点都成功完成了配置变更
         for (URI uri : newConfig) {
-            Assert.assertEquals(newConfig, newClient.getVoters(uri));
-            ServerStatus serverStatus = newClient.serverStatus(uri);
+            Assert.assertEquals(newConfig, newAdminClient.getClusterConfiguration(uri).get().getVoters());
+            ServerStatus serverStatus = newAdminClient.getServerStatus(uri).get();
             Assert.assertEquals(RaftServer.Roll.VOTER, serverStatus.getRoll());
             if (leaderUri.equals(uri)) {
                 Assert.assertEquals(VoterState.LEADER, serverStatus.getVoterState());
@@ -442,6 +477,9 @@ public class KvTest {
             logger.info("Query {}...", "key" + i);
             Assert.assertEquals(String.valueOf(i), newClient.get("key" + i));
         }
+
+        oldAdminClient.stop();
+        newAdminClient.stop();
 
     }
 
@@ -463,14 +501,17 @@ public class KvTest {
             kvClient.set("key" + i, String.valueOf(i));
         }
 
-        long leaderApplied = kvClient.serverStatus(kvClient.leaderUri()).getLastApplied();
         List<URI> oldConfig = oldServers.stream().map(KvServer::serverUri).collect(Collectors.toList());
         List<URI> newConfig = new ArrayList<>(newServerCount);
         newConfig.addAll(oldConfig.subList(0, newServerCount));
 
+        AdminClient oldAdminClient = new DefaultAdminClient(oldConfig, new Properties());
+        AdminClient newAdminClient = new DefaultAdminClient(newConfig, new Properties());
+        URI leaderUri = oldAdminClient.getClusterConfiguration().get().getLeader();
+        long leaderApplied = oldAdminClient.getServerStatus(leaderUri).get().getLastApplied();
         // 更新集群配置
         logger.info("Update cluster config...");
-        boolean success = kvClient.updateVoters(oldConfig, newConfig);
+        boolean success = oldAdminClient.updateVoters(oldConfig, newConfig).get();
 
         // 验证集群配置
         Assert.assertTrue(success);
@@ -478,33 +519,48 @@ public class KvTest {
         // 等待2阶段变更都提交了
         boolean synced = false;
         long newApplied = leaderApplied + 2;
-        while (synced) {
-            synced = newConfig.stream().allMatch(uri -> (kvClient.serverStatus(uri).getLastApplied() == newApplied));
+        while (!synced) {
+            synced = newConfig.stream().allMatch(uri -> {
+                try {
+                    return newAdminClient.getServerStatus(uri).get().getLastApplied() == newApplied;
+                } catch (Throwable e) {
+                    return false;
+                }
+            });
             Thread.sleep(100L);
         }
 
-        // 可能发生选举，需要等待选举完成。
-        boolean leaderExists = kvClient.waitForLeader(5000L);
-
-        Assert.assertTrue(leaderExists);
 
         // 停止已不在集群内的节点
 
         for (KvServer server : oldServers) {
             if(!newConfig.contains(server.serverUri())) {
-                server.stop();
+                if(oldAdminClient.getServerStatus(server.serverUri()).get().getVoterState() == VoterState.LEADER) {
+                    // 如果是LEADER，等着它执行完变更自行停止
+                    logger.info("Waiting for leader stopped");
+                    while (server.serverState() != StateServer.ServerState.STOPPED) {
+                        Thread.sleep(100L);
+                    }
+                } else {
+
+                    logger.info("Stop server: {}.", server.serverUri());
+                    server.stop();
+                }
             }
         }
+
+        // 可能发生选举，需要等待选举完成。
+        newAdminClient.waitClusterReady(0L).get();
+
         // 验证所有节点都成功完成了配置变更
         for (URI uri : newConfig) {
-            Assert.assertEquals(newConfig, kvClient.getVoters(uri));
+            Assert.assertEquals(newConfig, newAdminClient.getClusterConfiguration(uri).get().getVoters());
         }
 
-        KvClient newClient = oldServers.get(0).createClient();
 
         // 读取数据，验证是否正确
         for (int i = 0; i < 10; i++) {
-            Assert.assertEquals(String.valueOf(i), newClient.get("key" + i));
+            Assert.assertEquals(String.valueOf(i), kvClient.get("key" + i));
         }
 
     }
@@ -524,11 +580,11 @@ public class KvTest {
             }
         }
     }
-    private List<KvServer> createServers(int nodes, Path path) throws IOException {
+    private List<KvServer> createServers(int nodes, Path path) throws IOException, ExecutionException, InterruptedException {
         return createServers(nodes, path, RaftServer.Roll.VOTER, true);
     }
 
-    private List<KvServer> createServers(int nodes, Path path, RaftServer.Roll roll, boolean waitForLeader) throws IOException {
+    private List<KvServer> createServers(int nodes, Path path, RaftServer.Roll roll, boolean waitForLeader) throws IOException, ExecutionException, InterruptedException {
         logger.info("Create {} nodes servers", nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
         List<Properties> propertiesList = new ArrayList<>(nodes);
@@ -550,7 +606,7 @@ public class KvTest {
 
 
 
-    private List<KvServer> createServers(List<URI> serverURIs, List<Properties> propertiesList, RaftServer.Roll roll, boolean waitForLeader) throws IOException {
+    private List<KvServer> createServers(List<URI> serverURIs, List<Properties> propertiesList, RaftServer.Roll roll, boolean waitForLeader) throws IOException, ExecutionException, InterruptedException {
 
         List<KvServer> kvServers = new ArrayList<>(serverURIs.size());
         for (int i = 0; i < serverURIs.size(); i++) {
@@ -561,10 +617,13 @@ public class KvTest {
             kvServer.start();
         }
         if(waitForLeader) {
-            kvServers.get(0).waitForLeaderReady();
+            kvServers.get(0).getAdminClient().waitClusterReady(0).get();
         }
         return kvServers;
     }
+
+
+
 
 
 

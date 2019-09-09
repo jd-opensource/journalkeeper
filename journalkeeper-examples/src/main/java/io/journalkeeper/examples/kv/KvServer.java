@@ -14,6 +14,7 @@
 package io.journalkeeper.examples.kv;
 
 import io.journalkeeper.core.BootStrap;
+import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.exception.NoLeaderException;
 import io.journalkeeper.utils.state.StateServer;
@@ -61,24 +62,15 @@ public class KvServer implements StateServer {
         return bootStrap.getServer().getParents();
     }
 
+    public AdminClient getAdminClient() {
+        return bootStrap.getAdminClient();
+    }
+
     @Override
     public void start() {
         bootStrap.getServer().start();
     }
 
-    public void waitForLeaderReady() {
-        // 等待选出leader
-        URI leader = null;
-        while (leader == null) {
-            try {
-                leader = bootStrap.getClient().getServers().get().getLeader();
-                Thread.sleep(10);
-            } catch (NoLeaderException ignored) {}
-            catch (Exception e) {
-                logger.warn("Exception:", e);
-            }
-        }
-    }
 
     @Override
     public void stop() {
@@ -93,6 +85,9 @@ public class KvServer implements StateServer {
 
     public KvClient createClient() {
         return new KvClient(bootStrap.getClient());
+    }
+    public AdminClient createAdminClient() {
+        return bootStrap.getAdminClient();
     }
 
     public RaftServer.Roll roll() {

@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.journalstore;
 
+import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.PartitionedJournalStore;
 import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.RaftEntry;
@@ -36,9 +37,10 @@ import java.util.stream.Collectors;
  */
 public class JournalStoreClient implements PartitionedJournalStore {
     private final RaftClient<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient;
-
-    public JournalStoreClient(RaftClient<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient) {
+    private final AdminClient adminClient;
+    public JournalStoreClient(RaftClient<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient, AdminClient adminClient) {
         this.raftClient = raftClient;
+        this.adminClient = adminClient;
     }
 
     @Override
@@ -89,13 +91,13 @@ public class JournalStoreClient implements PartitionedJournalStore {
     }
 
     @Override
-    public CompletableFuture<Void> compact(Map<Integer, Long> toIndices) {
-        return raftClient.compact(toIndices);
+    public CompletableFuture compact(Map<Integer, Long> toIndices) {
+        return adminClient.compact(toIndices);
     }
 
     @Override
-    public CompletableFuture<Void> scalePartitions(int[] partitions) {
-        return raftClient.scalePartitions(partitions);
+    public CompletableFuture scalePartitions(int[] partitions) {
+        return adminClient.scalePartitions(partitions);
     }
 
     @Override

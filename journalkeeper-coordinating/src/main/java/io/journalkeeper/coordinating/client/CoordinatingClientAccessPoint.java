@@ -19,7 +19,7 @@ import io.journalkeeper.coordinating.state.domain.ReadResponse;
 import io.journalkeeper.coordinating.state.domain.WriteRequest;
 import io.journalkeeper.coordinating.state.domain.WriteResponse;
 import io.journalkeeper.coordinating.state.serializer.KryoSerializer;
-import io.journalkeeper.core.client.Client;
+import io.journalkeeper.core.client.DefaultRaftClient;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.utils.spi.ServiceSupport;
@@ -65,7 +65,7 @@ public class CoordinatingClientAccessPoint {
     public CoordinatingClient createClient(List<URI> servers) {
         RpcAccessPointFactory rpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class);
         ClientServerRpcAccessPoint clientServerRpcAccessPoint = rpcAccessPoint.createClientServerRpcAccessPoint(servers, config);
-        Client<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client = new Client<>(clientServerRpcAccessPoint, entrySerializer, entryResultSerializer, querySerializer, resultSerializer, config);
+        DefaultRaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client = new DefaultRaftClient<>(clientServerRpcAccessPoint, entrySerializer, entryResultSerializer, querySerializer, resultSerializer, config);
         return new CoordinatingClient(servers, config, client);
     }
 }

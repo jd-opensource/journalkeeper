@@ -53,6 +53,10 @@ public class SQLClient {
         this.client = client;
     }
 
+    public CompletableFuture waitClusterReady(long maxWaitMs) {
+        return this.client.waitClusterReady(maxWaitMs);
+    }
+
     public CompletableFuture<ResultSet> query(String id, String sql, String... params) {
         return doQuery(new ReadRequest(OperationTypes.QUERY.getType(), id, sql, params))
                 .exceptionally(cause -> {
@@ -144,14 +148,6 @@ public class SQLClient {
 
     public void unwatch(byte[] key, SQLEventListener listener) {
         client.unWatch(new EventWatcherAdapter(key, listener));
-    }
-
-    public URI getLeader() {
-        try {
-            return client.getServers().get().getLeader();
-        } catch (Exception e) {
-            throw new SQLClientException(e);
-        }
     }
 
     public void stop() {

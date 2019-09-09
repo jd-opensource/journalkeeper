@@ -69,7 +69,7 @@ public class JournalStoreServer implements StateServer {
     }
 
     public JournalStoreClient createClient() {
-        return new JournalStoreClient(bootStrap.getClient());
+        return new JournalStoreClient(bootStrap.getClient(), bootStrap.getAdminClient());
     }
 
     public URI serverUri() {

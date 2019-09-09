@@ -64,24 +64,6 @@ public class CoordinatingServer implements StateServer {
         this.bootStrap = new BootStrap<>(role, stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer, config);
     }
 
-    public boolean waitForLeaderReady(int timeout, TimeUnit unit) {
-        long timeoutLine = System.currentTimeMillis() + unit.toMillis(timeout);
-
-        while (timeoutLine > System.currentTimeMillis()) {
-            URI leader = getLeader();
-
-            if (leader != null) {
-                return true;
-            }
-
-            try {
-                Thread.sleep(10);
-            } catch (InterruptedException e) {
-            }
-        }
-
-        return false;
-    }
 
     public URI getCurrent() {
         return current;
@@ -93,10 +75,6 @@ public class CoordinatingServer implements StateServer {
 
     public RaftServer.Roll getRole() {
         return role;
-    }
-
-    public URI getLeader() {
-        return getClient().getLeader();
     }
 
     public CoordinatingClient getClient() {

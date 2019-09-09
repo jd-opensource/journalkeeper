@@ -242,7 +242,7 @@ watchId | 监控唯一ID。
 -- | -- | --
 onWatch | watchId：监控唯一ID<br/> keyAndValues[]：变更键值数组，数组每个元素包括 {key, oldValue, newValue} | watch: 监控的key发生变化时<br/> watchAndSet: 监控的key等于期望值时
 
-# Journal Keeper Configuration API（JK-C API）
+# JournalKeeper Admin API（JK-A API）
 集群配置相关的接口和事件。
 ## 接口
 方法 | 说明

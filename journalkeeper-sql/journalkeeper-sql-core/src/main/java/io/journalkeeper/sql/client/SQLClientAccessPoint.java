@@ -14,7 +14,7 @@
 package io.journalkeeper.sql.client;
 
 import io.journalkeeper.base.Serializer;
-import io.journalkeeper.core.client.Client;
+import io.journalkeeper.core.client.DefaultRaftClient;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.sql.client.domain.ReadRequest;
@@ -65,7 +65,7 @@ public class SQLClientAccessPoint {
     public SQLClient createClient(List<URI> servers) {
         RpcAccessPointFactory rpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class);
         ClientServerRpcAccessPoint clientServerRpcAccessPoint = rpcAccessPoint.createClientServerRpcAccessPoint(servers, config);
-        Client<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client = new Client<>(clientServerRpcAccessPoint, writeRequestSerializer,
+        DefaultRaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client = new DefaultRaftClient<>(clientServerRpcAccessPoint, writeRequestSerializer,
                 writeResponseSerializer, readRequestSerializer, readResponseSerializer, config);
         return new SQLClient(servers, config, client);
     }

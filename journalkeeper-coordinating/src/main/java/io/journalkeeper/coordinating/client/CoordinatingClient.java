@@ -117,14 +117,9 @@ public class CoordinatingClient {
         client.unWatch(new EventWatcherAdapter(key, listener));
     }
 
-    public URI getLeader() {
-        try {
-            return client.getServers().get().getLeader();
-        } catch (Exception e) {
-            throw new CoordinatingClientException(e);
-        }
+    public CompletableFuture waitClusterReady(long maxWaitMs) {
+        return this.client.waitClusterReady(maxWaitMs);
     }
-
     public void stop() {
         client.stop();
     }
