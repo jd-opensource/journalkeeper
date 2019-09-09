@@ -16,9 +16,10 @@ package io.journalkeeper.coordinating.server;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.base.VoidSerializer;
 import io.journalkeeper.coordinating.state.CoordinatorStateFactory;
-import io.journalkeeper.coordinating.state.domain.StateReadRequest;
-import io.journalkeeper.coordinating.state.domain.StateResponse;
-import io.journalkeeper.coordinating.state.domain.StateWriteRequest;
+import io.journalkeeper.coordinating.state.domain.ReadRequest;
+import io.journalkeeper.coordinating.state.domain.ReadResponse;
+import io.journalkeeper.coordinating.state.domain.WriteRequest;
+import io.journalkeeper.coordinating.state.domain.WriteResponse;
 import io.journalkeeper.coordinating.state.serializer.KryoSerializer;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
@@ -36,38 +37,38 @@ import java.util.Properties;
 public class CoordinatingServerAccessPoint {
 
     private Properties config;
-    private StateFactory<StateWriteRequest, Void, StateReadRequest, StateResponse> stateFactory;
-    private Serializer<StateWriteRequest> entrySerializer;
-    private Serializer<Void> entryResultSerializer;
-    private Serializer<StateReadRequest> querySerializer;
-    private Serializer<StateResponse> resultSerializer;
+    private StateFactory<WriteRequest, WriteResponse, ReadRequest, ReadResponse> stateFactory;
+    private Serializer<WriteRequest> entrySerializer;
+    private Serializer<WriteResponse> entryResultSerializer;
+    private Serializer<ReadRequest> querySerializer;
+    private Serializer<ReadResponse> resultSerializer;
 
     public CoordinatingServerAccessPoint(Properties config) {
         this(config,
                 new CoordinatorStateFactory(),
-                new KryoSerializer<>(StateWriteRequest.class),
-                new VoidSerializer(),
-                new KryoSerializer<>(StateReadRequest.class),
-                new KryoSerializer<>(StateResponse.class));
+                new KryoSerializer<>(WriteRequest.class),
+                new KryoSerializer<>(WriteResponse.class),
+                new KryoSerializer<>(ReadRequest.class),
+                new KryoSerializer<>(ReadResponse.class));
     }
 
     public CoordinatingServerAccessPoint(Properties config,
-                                         StateFactory<StateWriteRequest, Void, StateReadRequest, StateResponse> stateFactory) {
+                                         StateFactory<WriteRequest, WriteResponse, ReadRequest, ReadResponse> stateFactory) {
         this(config,
                 stateFactory,
-                new KryoSerializer<>(StateWriteRequest.class),
-                new VoidSerializer(),
-                new KryoSerializer<>(StateReadRequest.class),
-                new KryoSerializer<>(StateResponse.class));
+                new KryoSerializer<>(WriteRequest.class),
+                new KryoSerializer<>(WriteResponse.class),
+                new KryoSerializer<>(ReadRequest.class),
+                new KryoSerializer<>(ReadResponse.class));
     }
 
     public CoordinatingServerAccessPoint(Properties config,
-                                         StateFactory<StateWriteRequest, Void, StateReadRequest, StateResponse> stateFactory,
+                                         StateFactory<WriteRequest, WriteResponse, ReadRequest, ReadResponse> stateFactory,
 
-                                         Serializer<StateWriteRequest> entrySerializer,
-                                         Serializer<Void> entryResultSerializer,
-                                         Serializer<StateReadRequest> querySerializer,
-                                         Serializer<StateResponse> resultSerializer) {
+                                         Serializer<WriteRequest> entrySerializer,
+                                         Serializer<WriteResponse> entryResultSerializer,
+                                         Serializer<ReadRequest> querySerializer,
+                                         Serializer<ReadResponse> resultSerializer) {
         this.config = config;
         this.stateFactory = stateFactory;
         this.entrySerializer = entrySerializer;

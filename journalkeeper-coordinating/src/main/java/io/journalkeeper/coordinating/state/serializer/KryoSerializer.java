@@ -18,6 +18,7 @@ import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import com.esotericsoftware.kryo.pool.KryoPool;
 import io.journalkeeper.base.Serializer;
+import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -36,7 +37,6 @@ public class KryoSerializer<T> implements Serializer<T> {
 
     private Class<T> type;
 
-
     public KryoSerializer(Class<T> type) {
         this.type = type;
         this.kryoPool = new KryoPool.Builder(() -> {
@@ -48,9 +48,12 @@ public class KryoSerializer<T> implements Serializer<T> {
         }).build();
     }
 
-
     @Override
     public byte[] serialize(Object entry) {
+        if (entry == null) {
+            return ArrayUtils.EMPTY_BYTE_ARRAY;
+        }
+
         Kryo kryo = kryoPool.borrow();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream(BUFFER_SIZE);
         Output output = new Output(outputStream);
@@ -69,6 +72,10 @@ public class KryoSerializer<T> implements Serializer<T> {
 
     @Override
     public T parse(byte[] bytes) {
+        if (ArrayUtils.isEmpty(bytes)) {
+            return null;
+        }
+
         Kryo kryo = kryoPool.borrow();
         ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
         Input input = new Input(inputStream);

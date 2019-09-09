@@ -16,9 +16,10 @@ package io.journalkeeper.coordinating.server;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.coordinating.client.CoordinatingClient;
 import io.journalkeeper.coordinating.exception.CoordinatingException;
-import io.journalkeeper.coordinating.state.domain.StateReadRequest;
-import io.journalkeeper.coordinating.state.domain.StateResponse;
-import io.journalkeeper.coordinating.state.domain.StateWriteRequest;
+import io.journalkeeper.coordinating.state.domain.ReadRequest;
+import io.journalkeeper.coordinating.state.domain.ReadResponse;
+import io.journalkeeper.coordinating.state.domain.WriteRequest;
+import io.journalkeeper.coordinating.state.domain.WriteResponse;
 import io.journalkeeper.core.BootStrap;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
@@ -46,16 +47,16 @@ public class CoordinatingServer implements StateServer {
     private RaftServer.Roll role;
     private Properties config;
 
-    private BootStrap<StateWriteRequest, Void, StateReadRequest, StateResponse> bootStrap;
+    private BootStrap<WriteRequest, WriteResponse, ReadRequest, ReadResponse> bootStrap;
     private volatile CoordinatingClient client;
 
     public CoordinatingServer(URI current, List<URI> servers, Properties config,
                               RaftServer.Roll role,
-                              StateFactory<StateWriteRequest, Void, StateReadRequest, StateResponse> stateFactory,
-                              Serializer<StateWriteRequest> entrySerializer,
-                              Serializer<Void> entryResultSerializer,
-                              Serializer<StateReadRequest> querySerializer,
-                              Serializer<StateResponse> resultSerializer) {
+                              StateFactory<WriteRequest, WriteResponse, ReadRequest, ReadResponse> stateFactory,
+                              Serializer<WriteRequest> entrySerializer,
+                              Serializer<WriteResponse> entryResultSerializer,
+                              Serializer<ReadRequest> querySerializer,
+                              Serializer<ReadResponse> resultSerializer) {
         this.current = current;
         this.servers = servers;
         this.role = role;

@@ -14,31 +14,39 @@
 package io.journalkeeper.coordinating.state.domain;
 
 import java.util.Arrays;
-import java.util.List;
 
 /**
- * StateReadRequest
+ * WriteRequest
  * author: gaohaoxiang
  *
  * date: 2019/5/30
  */
-public class StateReadRequest extends StateRequest {
+public class WriteRequest extends StateRequest {
 
     private byte[] key;
-    private List<byte[]> keys;
+    private byte[] expect;
+    private byte[] value;
 
-    public StateReadRequest() {
+    public WriteRequest() {
 
     }
 
-    public StateReadRequest(int type, byte[] key) {
+    public WriteRequest(int type, byte[] key) {
         super(type);
         this.key = key;
     }
 
-    public StateReadRequest(int type, List<byte[]> keys) {
+    public WriteRequest(int type, byte[] key, byte[] value) {
         super(type);
-        this.keys = keys;
+        this.key = key;
+        this.value = value;
+    }
+
+    public WriteRequest(int type, byte[] key, byte[] expect, byte[] value) {
+        super(type);
+        this.key = key;
+        this.expect = expect;
+        this.value = value;
     }
 
     public byte[] getKey() {
@@ -49,20 +57,29 @@ public class StateReadRequest extends StateRequest {
         this.key = key;
     }
 
-    public void setKeys(List<byte[]> keys) {
-        this.keys = keys;
+    public void setExpect(byte[] expect) {
+        this.expect = expect;
     }
 
-    public List<byte[]> getKeys() {
-        return keys;
+    public byte[] getExpect() {
+        return expect;
+    }
+
+    public byte[] getValue() {
+        return value;
+    }
+
+    public void setValue(byte[] value) {
+        this.value = value;
     }
 
     @Override
     public String toString() {
-        return "StateReadRequest{" +
+        return "WriteRequest{" +
                 "type=" + getType() +
                 "key=" + Arrays.toString(key) +
-                ", keys=" + keys +
+                ", expect=" + Arrays.toString(expect) +
+                ", value=" + Arrays.toString(value) +
                 '}';
     }
 }

@@ -53,8 +53,6 @@
             <artifactId>rocksdbjni</artifactId>
             <version>${rocksdb.version}</version>
         </dependency>
-
-
     </dependencies>
 
 </project>

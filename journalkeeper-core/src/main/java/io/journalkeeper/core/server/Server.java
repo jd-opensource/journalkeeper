@@ -30,8 +30,6 @@ import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
 import io.journalkeeper.rpc.server.ServerRpc;
 import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
-import io.journalkeeper.utils.event.Event;
-import io.journalkeeper.utils.event.EventType;
 import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.utils.spi.ServiceSupport;
 import io.journalkeeper.utils.state.StateServer;
