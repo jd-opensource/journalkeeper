@@ -21,11 +21,9 @@ import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.entry.Entry;
 import io.journalkeeper.core.entry.EntryHeader;
-import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
 import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ReservedEntry;
-import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS2Entry;
 import io.journalkeeper.core.exception.UpdateConfigurationException;
@@ -1000,7 +998,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
             // Leader announcement
             threads.wakeupThread(LEADER_REPLICATION_THREAD);
             fireOnLeaderChangeEvent();
-
+            leaderShipDeadLineMs.set(System.currentTimeMillis() + config.getHeartbeatIntervalMs());
             logger.info("Convert to LEADER, {}.", voterInfo());
         }
 
@@ -1079,7 +1077,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
             logger.debug("Update lastHeartbeat, {}.", voterInfo());
         }
 
-        if (!request.getLeader().equals(leader)) {
+        if (null != request.getLeader() && !request.getLeader().equals(leader)) {
             leader = request.getLeader();
         }
 

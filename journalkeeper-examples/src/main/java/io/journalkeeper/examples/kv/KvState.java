@@ -87,7 +87,10 @@ public class KvState extends LocalState<KvEntry, Void, KvQuery, KvResult> {
             try {
                 switch (query.getCmd()) {
                     case KvQuery.CMD_GET:
-                        return new KvResult(stateMap.get(query.getKey()), null);
+                        logger.info("Query: {}", query.getKey());
+                        KvResult result = new KvResult(stateMap.get(query.getKey()), null);
+                        logger.info("Result: {}", result.getValue());
+                        return result;
                     case KvQuery.CMD_LIST_KEYS:
                         return new KvResult(null, new ArrayList<>(stateMap.keySet()));
                     default:

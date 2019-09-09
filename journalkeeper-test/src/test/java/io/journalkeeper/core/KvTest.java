@@ -301,6 +301,150 @@ public class KvTest {
 
     }
 
+    // 替换节点
+
+    @Test
+    public void replaceVotersTest() throws IOException, InterruptedException, ExecutionException {
+        final int serverCount = 3;
+        final int replaceServerCount = 1;
+
+        // 初始化并启动一个3个节点的集群
+        Path path = TestPathUtils.prepareBaseDir("AddVotersTest");
+        List<KvServer> oldServers = createServers(serverCount, path);
+
+        KvClient kvClient = oldServers.get(0).createClient();
+
+        // 写入一些数据
+        for (int i = 0; i < 10; i++) {
+            kvClient.set("key" + i, String.valueOf(i));
+        }
+
+        // 初始化另外2个新节点，先以OBSERVER方式启动
+        List<KvServer> newServers = new ArrayList<>(replaceServerCount);
+        List<URI> oldConfig = oldServers.stream().map(KvServer::serverUri).collect(Collectors.toList());
+        List<URI> newConfig = new ArrayList<>(serverCount);
+
+        newConfig.addAll(oldConfig);
+
+        for (int i = 0; i < replaceServerCount; i++) {
+            newConfig.remove(0);
+        }
+
+
+        logger.info("Create {} observers", replaceServerCount);
+        List<URI> newServerUris = new ArrayList<>(serverCount);
+        for (int i = oldConfig.size(); i < oldConfig.size() + replaceServerCount; i++) {
+            URI uri = URI.create("jk://localhost:" + NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces());
+            Path workingDir = path.resolve("server" + i);
+            Properties properties = new Properties();
+            properties.setProperty("working_dir", workingDir.toString());
+            properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
+            properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
+//            properties.setProperty("enable_metric", "true");
+//            properties.setProperty("print_metric_interval_sec", "3");
+            KvServer kvServer = new KvServer(RaftServer.Roll.OBSERVER, properties);
+            kvServer.getParents().addAll(newConfig);
+            newServers.add(kvServer);
+            newServerUris.add(uri);
+        }
+        newConfig.addAll(newServerUris);
+
+        for (int i = 0; i < replaceServerCount; i++) {
+            KvServer newServer = newServers.get(i);
+            URI uri = newServerUris.get(i);
+            newServer.init(uri, newConfig);
+            newServer.recover();
+            newServer.start();
+        }
+
+        URI leaderUri = kvClient.leaderUri();
+        while (null == leaderUri) {
+            leaderUri = kvClient.leaderUri();
+            Thread.sleep(100L);
+        }
+        long leaderApplied = kvClient.serverStatus(leaderUri).getLastApplied();
+
+        // 等待新节点拉取数据直到与现有集群同步
+        logger.info("Wait for observers to catch up the cluster.");
+        boolean synced = false;
+        while (!synced) {
+            synced = newServerUris.stream().allMatch(uri -> kvClient.serverStatus(uri).getLastApplied() == leaderApplied);
+            Thread.sleep(100L);
+        }
+
+        // 转换成VOTER
+        logger.info("Convert roll to voter of new servers.");
+
+        for (URI uri : newServerUris) {
+            kvClient.convertRoll(uri, RaftServer.Roll.VOTER);
+            Assert.assertEquals(RaftServer.Roll.VOTER, kvClient.serverStatus(uri).getRoll());
+        }
+
+        // 更新集群配置
+        logger.info("Update cluster config...");
+        boolean success = kvClient.updateVoters(oldConfig, newConfig);
+
+        // 验证集群配置
+        Assert.assertTrue(success);
+
+        // 等待2阶段变更都提交了
+        synced = false;
+        long newApplied = leaderApplied + 2;
+        while (synced) {
+            synced = newConfig.stream().allMatch(uri -> (kvClient.serverStatus(uri).getLastApplied() == newApplied));
+            Thread.sleep(100L);
+        }
+
+
+        // 停止已不在集群内的节点
+
+        for (KvServer server : oldServers) {
+            if(!newConfig.contains(server.serverUri())) {
+                if(kvClient.serverStatus(server.serverUri()).getVoterState() == VoterState.LEADER) {
+                    // 如果是LEADER，等着它执行完变更自行停止
+                    logger.info("Waiting for leader stopped");
+                    while (server.serverState() != StateServer.ServerState.STOPPED) {
+                        Thread.sleep(100L);
+                    }
+                } else {
+
+                    logger.info("Stop server: {}.", server.serverUri());
+                    server.stop();
+                }
+            }
+        }
+
+        // 可能发生选举，需要等待选举完成。
+        Thread.sleep(5000L);
+
+        KvClient newClient = newServers.get(0).createClient();
+        boolean leaderExists = newClient.waitForLeader(5000L);
+        leaderUri = newClient.leaderUri();
+        Assert.assertTrue(leaderExists);
+
+
+        // 验证所有节点都成功完成了配置变更
+        for (URI uri : newConfig) {
+            Assert.assertEquals(newConfig, newClient.getVoters(uri));
+            ServerStatus serverStatus = newClient.serverStatus(uri);
+            Assert.assertEquals(RaftServer.Roll.VOTER, serverStatus.getRoll());
+            if (leaderUri.equals(uri)) {
+                Assert.assertEquals(VoterState.LEADER, serverStatus.getVoterState());
+            } else {
+                Assert.assertEquals(VoterState.FOLLOWER, serverStatus.getVoterState());
+            }
+
+        }
+
+
+        // 读取数据，验证是否正确
+        for (int i = 0; i < 10; i++) {
+            logger.info("Query {}...", "key" + i);
+            Assert.assertEquals(String.valueOf(i), newClient.get("key" + i));
+        }
+
+    }
+
     // 减少节点
 
     @Test
@@ -353,7 +497,7 @@ public class KvTest {
         }
         // 验证所有节点都成功完成了配置变更
         for (URI uri : newConfig) {
-                Assert.assertEquals(newConfig, kvClient.getVoters(uri));
+            Assert.assertEquals(newConfig, kvClient.getVoters(uri));
         }
 
         KvClient newClient = oldServers.get(0).createClient();

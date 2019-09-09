@@ -52,6 +52,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeoutException;
@@ -132,7 +133,13 @@ public class Client<E, ER, Q, QR> implements RaftClient<E, ER, Q, QR> {
     public CompletableFuture<QR> query(Q query) {
         return invokeLeaderRpc(
                 leaderRpc -> leaderRpc.queryClusterState(new QueryStateRequest(querySerializer.serialize(query))))
-                .thenApply(QueryStateResponse::getResult)
+                .thenApply(response -> {
+                    if(response.getStatusCode() == StatusCode.SUCCESS) {
+                        return response.getResult();
+                    } else {
+                        throw new RpcException(response.errorString());
+                    }
+                })
                 .thenApply(resultSerializer::parse);
     }
 
