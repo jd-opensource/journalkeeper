@@ -118,7 +118,7 @@ public class CoordinatingClient {
     }
 
     public CompletableFuture waitClusterReady(long maxWaitMs) {
-        return this.client.waitClusterReady(maxWaitMs);
+        return this.client.whenClusterReady(maxWaitMs);
     }
     public void stop() {
         client.stop();

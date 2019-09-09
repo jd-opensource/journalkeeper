@@ -20,16 +20,13 @@ import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
-import io.journalkeeper.utils.event.EventType;
 import io.journalkeeper.utils.event.EventWatcher;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -110,7 +107,7 @@ public class JournalStoreClient implements PartitionedJournalStore {
 
     public void waitForLeader(long timeoutMs) throws InterruptedException, ExecutionException {
 
-        adminClient.waitClusterReady(timeoutMs).get();
+        adminClient.whenClusterReady(timeoutMs).get();
     }
 
     @Override

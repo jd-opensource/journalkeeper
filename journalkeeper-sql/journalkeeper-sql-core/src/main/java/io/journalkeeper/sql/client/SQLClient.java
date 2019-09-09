@@ -54,7 +54,7 @@ public class SQLClient {
     }
 
     public CompletableFuture waitClusterReady(long maxWaitMs) {
-        return this.client.waitClusterReady(maxWaitMs);
+        return this.client.whenClusterReady(maxWaitMs);
     }
 
     public CompletableFuture<ResultSet> query(String id, String sql, String... params) {

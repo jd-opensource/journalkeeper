@@ -57,7 +57,7 @@ public class KvExampleApplicationMain {
         }
 
         AdminClient adminClient = kvServers.get(0).getAdminClient();
-        adminClient.waitClusterReady(0).get();
+        adminClient.whenClusterReady(0).get();
 
         List<KvClient> kvClients = kvServers.stream().map(KvServer::createClient).collect(Collectors.toList());
 

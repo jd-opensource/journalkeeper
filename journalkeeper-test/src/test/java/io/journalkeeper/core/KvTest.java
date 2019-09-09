@@ -24,7 +24,6 @@ import io.journalkeeper.utils.net.NetworkingUtils;
 import io.journalkeeper.utils.state.StateServer;
 import io.journalkeeper.utils.test.TestPathUtils;
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,7 +69,7 @@ public class KvTest {
         kvServer.stop();
 
         kvServer = recoverServer("server0", path);
-        kvServer.getAdminClient().waitClusterReady(0L).get();
+        kvServer.getAdminClient().whenClusterReady(0L).get();
         kvClient = kvServer.createClient();
 
         Assert.assertEquals("value", kvClient.get("key"));
@@ -452,7 +451,7 @@ public class KvTest {
         }
 
         // 可能发生选举，需要等待选举完成。
-        newAdminClient.waitClusterReady(0L).get();
+        newAdminClient.whenClusterReady(0L).get();
 
         KvClient newClient = newServers.get(0).createClient();
         leaderUri = newAdminClient.getClusterConfiguration().get().getLeader();
@@ -550,7 +549,7 @@ public class KvTest {
         }
 
         // 可能发生选举，需要等待选举完成。
-        newAdminClient.waitClusterReady(0L).get();
+        newAdminClient.whenClusterReady(0L).get();
 
         // 验证所有节点都成功完成了配置变更
         for (URI uri : newConfig) {
@@ -617,7 +616,7 @@ public class KvTest {
             kvServer.start();
         }
         if(waitForLeader) {
-            kvServers.get(0).getAdminClient().waitClusterReady(0).get();
+            kvServers.get(0).getAdminClient().whenClusterReady(0).get();
         }
         return kvServers;
     }

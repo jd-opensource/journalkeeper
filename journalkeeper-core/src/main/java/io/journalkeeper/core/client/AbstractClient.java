@@ -142,7 +142,7 @@ public class AbstractClient implements Watchable, ClusterReadyAware, ServerConfi
 
 
     @Override
-    public CompletableFuture waitClusterReady(long maxWaitMs) {
+    public CompletableFuture whenClusterReady(long maxWaitMs) {
 
         return CompletableFuture.runAsync(() -> {
             long t0 = System.currentTimeMillis();
