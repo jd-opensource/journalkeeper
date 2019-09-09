@@ -950,6 +950,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
     private void convertToCandidate() {
         synchronized (voterState) {
+            VoterState oldState = voterState.getState();
             voterState.convertToCandidate();
             resetAppendEntriesRpcMetricMap();
             this.followers.clear();
@@ -957,7 +958,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
             currentTerm.incrementAndGet();
             votedFor = uri;
             electionTimeoutMs = randomInterval(config.electionTimeoutMs);
-            logger.info("Convert to CANDIDATE, electionTimeout: {}, {}.", electionTimeoutMs, voterInfo());
+            logger.info("Convert voter state from {} to CANDIDATE, electionTimeout: {}, {}.", oldState, electionTimeoutMs, voterInfo());
         }
     }
 
@@ -1030,13 +1031,14 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
     private void convertToFollower() {
         synchronized (voterState) {
+            VoterState oldState = voterState.getState();
             voterState.convertToFollower();
             resetAppendEntriesRpcMetricMap();
             this.votedFor = null;
             this.followers.clear();
             this.electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
             this.lastHeartbeat = System.currentTimeMillis();
-            logger.info("Convert to FOLLOWER, electionTimeout: {}, {}.", electionTimeoutMs, voterInfo());
+            logger.info("Convert voter state from {} to FOLLOWER, electionTimeout: {}, {}.", oldState, electionTimeoutMs, voterInfo());
         }
     }
 
@@ -1168,6 +1170,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     private void checkTerm(int term) {
         synchronized (currentTerm) {
             if (term > currentTerm.get()) {
+                logger.info("Set current term from {} to {}, {}.", currentTerm.get(), term, voterInfo());
                 currentTerm.set(term);
                 convertToFollower();
             }
