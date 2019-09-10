@@ -15,6 +15,8 @@ package io.journalkeeper.core.entry.reserved;
 
 import io.journalkeeper.base.Serializer;
 
+import java.nio.ByteBuffer;
+
 /**
  * @author LiYue
  * Date: 2019-05-09
@@ -23,11 +25,17 @@ public class LeaderAnnouncementEntrySerializer implements Serializer<LeaderAnnou
 
     @Override
     public byte[] serialize(LeaderAnnouncementEntry entry) {
-        return new byte [] {LeaderAnnouncementEntry.TYPE_LEADER_ANNOUNCEMENT};
+        byte [] buffer = new byte[Byte.BYTES + Integer.BYTES];
+        ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
+        byteBuffer.put((byte) LeaderAnnouncementEntry.TYPE_LEADER_ANNOUNCEMENT);
+        byteBuffer.putInt(entry.getTerm());
+        return buffer;
     }
 
     @Override
     public LeaderAnnouncementEntry parse(byte[] bytes) {
-        return new LeaderAnnouncementEntry();
+        ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
+        int term =  byteBuffer.getInt(Byte.BYTES);
+        return new LeaderAnnouncementEntry(term);
     }
 }

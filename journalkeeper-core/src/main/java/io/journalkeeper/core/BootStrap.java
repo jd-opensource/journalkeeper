@@ -152,7 +152,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
     }
 
     @Override
-    public RaftServer<E, ER, Q, QR> getServer() {
+    public RaftServer getServer() {
         return server;
     }
 

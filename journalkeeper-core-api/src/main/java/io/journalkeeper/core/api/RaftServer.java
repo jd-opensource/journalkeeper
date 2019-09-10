@@ -25,29 +25,15 @@ import java.util.Properties;
  * @author LiYue
  * Date: 2019-03-14
  */
-public abstract class RaftServer<E, ER, Q, QR> implements StateServer {
 
-    protected final StateFactory<E, ER, Q, QR> stateFactory;
-    /**
-     * 属性集
-     */
-    protected final Properties properties;
-    public RaftServer(StateFactory<E, ER, Q, QR> stateFactory, Properties properties){
-        this.stateFactory = stateFactory;
-        this.properties = properties;
-    }
-    public Properties properties() {
-        return properties;
-    }
-    public abstract Roll roll();
+// TODO 改为接口
+public interface RaftServer extends StateServer {
 
-    public List<URI> getParents(){
-        return null;
-    }
+    Roll roll();
 
-    public abstract void init(URI uri, List<URI> voters) throws IOException;
-    public abstract void recover() throws IOException;
-    public abstract URI serverUri();
-    public enum Roll {VOTER, OBSERVER}
+    void init(URI uri, List<URI> voters) throws IOException;
+    void recover() throws IOException;
+    URI serverUri();
+    enum Roll {VOTER, OBSERVER}
 
 }

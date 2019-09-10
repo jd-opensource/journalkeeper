@@ -9,4 +9,5 @@ interface CallbackBelt<R> {
     void callbackBefore(long position);
     void put(Callback<R> callback);
     boolean setResult(long position, R result);
+    void failAll();
 }

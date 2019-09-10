@@ -26,7 +26,7 @@ public interface StateServer {
     void stop();
     ServerState serverState();
 
-    enum ServerState {CREATED, STARTING, RUNNING, STOPPING, STOPPED}
+    enum ServerState {CREATED, STARTING, RUNNING, STOPPING, STOPPED, START_FAILED, STOP_FAILED}
 
     default CompletableFuture<Void> startAsync(){
         return CompletableFuture.runAsync(this::start);

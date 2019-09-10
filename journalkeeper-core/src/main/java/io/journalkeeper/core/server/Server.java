@@ -47,8 +47,7 @@ import java.util.concurrent.ScheduledExecutorService;
  * Date: 2019-09-03
  */
 public class Server<E, ER, Q, QR>
-        extends RaftServer<E, ER, Q, QR>
-        implements ServerRpc {
+        implements ServerRpc, RaftServer {
     private AbstractServer<E, ER, Q, QR> server;
     private StateServer rpcServer = null;
     private ServerState serverState = ServerState.CREATED;
@@ -61,13 +60,14 @@ public class Server<E, ER, Q, QR>
     private final ScheduledExecutorService scheduledExecutor;
     private final ExecutorService asyncExecutor;
     private final Properties properties;
+    private final StateFactory<E, ER, Q, QR> stateFactory;
     private ServerRpcAccessPoint serverRpcAccessPoint;
+
 
     public Server(Roll roll, StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
                   Serializer<Q> querySerializer, Serializer<QR> resultSerializer,
                   ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
 
-        super(stateFactory, properties);
         rpcAccessPointFactory = ServiceSupport.load(RpcAccessPointFactory.class);
         this.entrySerializer = entrySerializer;
         this.entryResultSerializer = entryResultSerializer;
@@ -75,6 +75,7 @@ public class Server<E, ER, Q, QR>
         this.resultSerializer = resultSerializer;
         this.scheduledExecutor = scheduledExecutor;
         this.asyncExecutor = asyncExecutor;
+        this.stateFactory = stateFactory;
         this.properties = properties;
         this.serverRpcAccessPoint = rpcAccessPointFactory.createServerRpcAccessPoint(properties);
         this.server = createServer(roll);
@@ -85,15 +86,7 @@ public class Server<E, ER, Q, QR>
             case VOTER:
                 return new Voter<>(stateFactory, entrySerializer,entryResultSerializer, querySerializer, resultSerializer,scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
             default:
-                return new Observer<>(stateFactory, entrySerializer,entryResultSerializer, querySerializer, resultSerializer,scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
-        }
-    }
-
-    public List<URI> getParents() {
-        if(null != server && server instanceof Observer) {
-            return server.getParents();
-        } else {
-            return null;
+                return new Observer<>(stateFactory, entrySerializer,entryResultSerializer, querySerializer, resultSerializer,scheduledExecutor, asyncExecutor, serverRpcAccessPoint,  properties);
         }
     }
 

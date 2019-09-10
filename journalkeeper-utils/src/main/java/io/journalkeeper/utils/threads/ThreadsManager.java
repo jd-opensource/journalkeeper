@@ -65,8 +65,18 @@ public class ThreadsManager implements Threads {
     }
 
     @Override
+    public void removeThread(String name) {
+        threadMap.remove(name);
+    }
+
+    @Override
     public ServerState getTreadState(String name) {
         return getThread(name).serverState();
+    }
+
+    @Override
+    public boolean exists(String name) {
+        return threadMap.containsKey(name);
     }
 
     @Override

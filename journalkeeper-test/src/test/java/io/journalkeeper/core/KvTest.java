@@ -230,8 +230,8 @@ public class KvTest {
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
             properties.setProperty("enable_metric", "true");
             properties.setProperty("print_metric_interval_sec", "3");
+            properties.setProperty("observer.parents", String.join(",", oldConfig.stream().map(URI::toString).toArray(String[]::new)));
             KvServer kvServer = new KvServer(RaftServer.Roll.OBSERVER, properties);
-            kvServer.getParents().addAll(oldConfig);
             newServers.add(kvServer);
             newServerUris.add(uri);
         }
@@ -359,10 +359,11 @@ public class KvTest {
             properties.setProperty("working_dir", workingDir.toString());
             properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
+            properties.setProperty("observer.parents", String.join(",", newConfig.stream().map(URI::toString).toArray(String[]::new)));
+
 //            properties.setProperty("enable_metric", "true");
 //            properties.setProperty("print_metric_interval_sec", "3");
             KvServer kvServer = new KvServer(RaftServer.Roll.OBSERVER, properties);
-            kvServer.getParents().addAll(newConfig);
             newServers.add(kvServer);
             newServerUris.add(uri);
         }

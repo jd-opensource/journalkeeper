@@ -48,10 +48,14 @@ import org.slf4j.LoggerFactory;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
+
+import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
 
 /**
  * @author LiYue
@@ -63,10 +67,8 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
     private static final String METRIC_OBSERVER_REPLICATION = "OBSERVER_REPLICATION";
     private final JMetric replicationMetric;
-    /**
-     * 父节点
-     */
-    private final List<URI> parents;
+    private final VoterConfigManager voterConfigManager = new VoterConfigManager();
+
 
     private ServerRpc currentServer = null;
 
@@ -81,7 +83,6 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                     ServerRpcAccessPoint serverRpcAccessPoint,
                     Properties properties) {
         super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
-        this.parents = new ArrayList<>();
         this.config = toConfig(properties);
         this.replicationMetric = getMetric(METRIC_OBSERVER_REPLICATION);
         threads.createThread(buildReplicationThread());
@@ -93,6 +94,17 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 properties.getProperty(
                         Config.PULL_BATCH_SIZE_KEY,
                         String.valueOf(Config.DEFAULT_PULL_BATCH_SIZE))));
+
+        String parentsString = properties.getProperty(
+                Config.PARENTS_KEY,
+                null);
+        if(null != parentsString) {
+            config.setParents(Arrays.stream(parentsString.split(","))
+                    .map(String::trim)
+                    .map(URI::create).collect(Collectors.toList()));
+        } else {
+            logger.warn("Empty config {} in properties!", Config.PARENTS_KEY);
+        }
         return config;
     }
     private AsyncLoopThread buildReplicationThread() {
@@ -104,10 +116,6 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 .onException(e -> logger.warn("{} Exception: ", OBSERVER_REPLICATION_THREAD, e))
                 .daemon(true)
                 .build();
-    }
-
-    public List<URI> getParents(){
-        return parents;
     }
 
     @Override
@@ -126,7 +134,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
             journal.appendBatchRaw(response.getEntries());
 
-            maybeUpdateConfigOnReplication(response.getEntries());
+            voterConfigManager.maybeUpdateNonLeaderConfig(response.getEntries(), votersConfigStateMachine);
 //            commitIndex.addAndGet(response.getEntries().size());
             journal.commit(journal.maxIndex());
             // 唤醒状态机线程
@@ -206,7 +214,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 currentServer.stop();
             }
             logger.info("Connecting server {}", uri);
-            URI uri = parents.get(ThreadLocalRandom.current().nextInt(parents.size()));
+            URI uri = config.getParents().get(ThreadLocalRandom.current().nextInt(config.getParents().size()));
             currentServer = serverRpcAccessPoint.getServerRpcAgent(uri);
             sleep += sleep + 100L;
         }
@@ -222,8 +230,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     @Override
     protected void onMetadataRecovered(ServerMetadata metadata) {
         super.onMetadataRecovered(metadata);
-        this.parents.clear();
-        this.parents.addAll(metadata.getParents());
+        config.setParents(metadata.getParents());
     }
 
     @Override
@@ -239,17 +246,17 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
     @Override
     public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
-        return CompletableFuture.supplyAsync(() -> new UpdateClusterStateResponse(new NotLeaderException(leader)), asyncExecutor);
+        return CompletableFuture.supplyAsync(() -> new UpdateClusterStateResponse(new NotLeaderException(leaderUri)), asyncExecutor);
     }
 
     @Override
     public CompletableFuture<QueryStateResponse> queryClusterState(QueryStateRequest request) {
-        return CompletableFuture.supplyAsync(() -> new QueryStateResponse(new NotLeaderException(leader)), asyncExecutor);
+        return CompletableFuture.supplyAsync(() -> new QueryStateResponse(new NotLeaderException(leaderUri)), asyncExecutor);
     }
 
     @Override
     public CompletableFuture<LastAppliedResponse> lastApplied() {
-        return CompletableFuture.supplyAsync(() -> new LastAppliedResponse(new NotLeaderException(leader)), asyncExecutor);
+        return CompletableFuture.supplyAsync(() -> new LastAppliedResponse(new NotLeaderException(leaderUri)), asyncExecutor);
     }
 
     @Override
@@ -266,7 +273,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
     @Override
     public CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request) {
-        return CompletableFuture.supplyAsync(() -> new UpdateVotersResponse(new NotLeaderException(leader)), asyncExecutor);
+        return CompletableFuture.supplyAsync(() -> new UpdateVotersResponse(new NotLeaderException(leaderUri)), asyncExecutor);
     }
 
     @Override
@@ -282,13 +289,17 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     @Override
     protected ServerMetadata createServerMetadata() {
         ServerMetadata serverMetadata = super.createServerMetadata();
-        serverMetadata.setParents(parents);
+        serverMetadata.setParents(config.getParents());
         return serverMetadata;
     }
 
     private static class Config {
         private final static int DEFAULT_PULL_BATCH_SIZE = 4 * 1024 * 1024;
         private final static String PULL_BATCH_SIZE_KEY = "observer.pull_batch_size";
+
+        private final static String PARENTS_KEY = "observer.parents";
+
+        private List<URI> parents = Collections.emptyList();
 
         private int pullBatchSize = DEFAULT_PULL_BATCH_SIZE;
 
@@ -298,6 +309,14 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
         private void setPullBatchSize(int pullBatchSize) {
             this.pullBatchSize = pullBatchSize;
+        }
+
+        public List<URI> getParents() {
+            return parents;
+        }
+
+        public void setParents(List<URI> parents) {
+            this.parents = parents;
         }
     }
 }

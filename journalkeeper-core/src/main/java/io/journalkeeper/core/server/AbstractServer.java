@@ -13,19 +13,18 @@
  */
 package io.journalkeeper.core.server;
 
-import com.sun.istack.internal.NotNull;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
-import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.Entry;
 import io.journalkeeper.core.entry.EntryHeader;
 import io.journalkeeper.core.entry.JournalEntryParser;
 import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
+import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ReservedEntry;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
@@ -43,7 +42,6 @@ import io.journalkeeper.persistence.BufferPool;
 import io.journalkeeper.persistence.MetadataPersistence;
 import io.journalkeeper.persistence.PersistenceFactory;
 import io.journalkeeper.persistence.ServerMetadata;
-import io.journalkeeper.rpc.RpcAccessPointFactory;
 import io.journalkeeper.rpc.client.AddPullWatchResponse;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
 import io.journalkeeper.rpc.client.ConvertRollResponse;
@@ -54,7 +52,6 @@ import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
 import io.journalkeeper.rpc.client.RemovePullWatchRequest;
 import io.journalkeeper.rpc.client.RemovePullWatchResponse;
-import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.server.GetServerEntriesRequest;
 import io.journalkeeper.rpc.server.GetServerEntriesResponse;
 import io.journalkeeper.rpc.server.GetServerStateRequest;
@@ -66,7 +63,6 @@ import io.journalkeeper.utils.event.EventBus;
 import io.journalkeeper.utils.event.EventType;
 import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.utils.spi.ServiceSupport;
-import io.journalkeeper.utils.state.StateServer;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
 import io.journalkeeper.utils.threads.Threads;
@@ -84,7 +80,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -116,6 +111,9 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
+import static io.journalkeeper.core.server.ThreadNames.FLUSH_JOURNAL_THREAD;
+import static io.journalkeeper.core.server.ThreadNames.PRINT_METRIC_THREAD;
+import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
 
 // TODO: Add an UUID for each server instance,
 //  so multiple server instance of one process
@@ -127,22 +125,8 @@ import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
  * Date: 2019-03-14
  */
 public abstract class AbstractServer<E, ER, Q, QR>
-        extends RaftServer<E, ER, Q, QR>
-        implements ServerRpc {
+        implements ServerRpc, RaftServer, ServerRpcProvider, MetricProvider {
     private static final Logger logger = LoggerFactory.getLogger(AbstractServer.class);
-    /**
-     * 每个Server模块中需要运行一个用于执行日志更新状态，保存Snapshot的状态机线程，
-     */
-    protected final static String STATE_MACHINE_THREAD = "StateMachineThread";
-    /**
-     * 刷盘Journal线程
-     */
-    protected final static String FLUSH_JOURNAL_THREAD = "FlushJournalThread";
-    /**
-     * 打印Metric线程
-     */
-    protected final static String PRINT_METRIC_THREAD = "PrintMetricThread";
-
     /**
      * 当前集群配置
      */
@@ -192,7 +176,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     /**
      * 当前LEADER节点地址
      */
-    protected URI leader;
+    protected URI leaderUri;
 
     /**
      * 观察者节点
@@ -202,7 +186,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
 
     //TODO: Log Compaction, install snapshot rpc
-    protected ScheduledFuture flushFuture, compactionFuture;
+    protected ScheduledFuture flushStateFuture, compactionFuture;
 
     /**
      * 可用状态
@@ -271,11 +255,13 @@ public abstract class AbstractServer<E, ER, Q, QR>
     private final JMetric execStateMachineMetric;
     private final JMetric applyEntriesMetric;
 
+    private final Properties properties;
+    private final StateFactory<E, ER, Q, QR> stateFactory;
+
     public AbstractServer(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer,
                           Serializer<ER> entryResultSerializer, Serializer<Q> querySerializer,
                           Serializer<QR> resultSerializer, ScheduledExecutorService scheduledExecutor,
                           ExecutorService asyncExecutor, ServerRpcAccessPoint serverRpcAccessPoint, Properties properties){
-        super(stateFactory, properties);
         this.scheduledExecutor = scheduledExecutor;
         this.asyncExecutor = asyncExecutor;
         this.config = toConfig(properties);
@@ -287,7 +273,8 @@ public abstract class AbstractServer<E, ER, Q, QR>
         this.resultSerializer = resultSerializer;
         this.entryResultSerializer = entryResultSerializer;
         this.serverRpcAccessPoint = serverRpcAccessPoint;
-
+        this.properties = properties;
+        this.stateFactory = stateFactory;
         // init metrics
         if(config.isEnableMetric()) {
             this.metricFactory = ServiceSupport.load(JMetricFactory.class);
@@ -316,7 +303,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
     private AsyncLoopThread buildStateMachineThread() {
         return ThreadBuilder.builder()
                 .name(STATE_MACHINE_THREAD)
-                .condition(() ->this.serverState() == ServerState.RUNNING)
                 .doWork(this::applyEntries)
                 .sleepTime(50,100)
                 .onException(e -> logger.warn("{} Exception: ", STATE_MACHINE_THREAD, e))
@@ -328,7 +314,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
     private AsyncLoopThread buildFlushJournalThread() {
         return ThreadBuilder.builder()
                 .name(FLUSH_JOURNAL_THREAD)
-                .condition(() ->this.serverState() == ServerState.RUNNING)
                 .doWork(this::flushJournal)
                 .sleepTime(config.getFlushIntervalMs(), config.getFlushIntervalMs())
                 .onException(e -> logger.warn("{} Exception: ", FLUSH_JOURNAL_THREAD, e))
@@ -473,13 +458,22 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 break;
             case ReservedEntry.TYPE_UPDATE_VOTERS_S1:
             case ReservedEntry.TYPE_UPDATE_VOTERS_S2:
+                break;
             case ReservedEntry.TYPE_LEADER_ANNOUNCEMENT:
+                LeaderAnnouncementEntry leaderAnnouncementEntry = ReservedEntriesSerializeSupport.parse(reservedEntry);
+                fireOnLeaderChangeEvent(leaderAnnouncementEntry.getTerm());
                 break;
             default:
                 logger.warn("Invalid reserved entry type: {}.", type);
         }
     }
 
+    private void fireOnLeaderChangeEvent(int term) {
+        Map<String, String> eventData = new HashMap<>();
+        eventData.put("leader", this.leaderUri.toString());
+        eventData.put("term", String.valueOf(term));
+        fireEvent(EventType.ON_LEADER_CHANGE, eventData);
+    }
     protected void maybeUpdateConfigOnReplication(List<byte []> entries) throws Exception {
         for (byte[] rawEntry : entries) {
             ByteBuffer entryBuffer = ByteBuffer.wrap(rawEntry);
@@ -709,7 +703,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     public CompletableFuture<GetServersResponse> getServers() {
         return CompletableFuture.supplyAsync(() ->
                 new GetServersResponse(
-                        new ClusterConfiguration(leader, votersConfigStateMachine.voters(), observers)),
+                        new ClusterConfiguration(leaderUri, votersConfigStateMachine.voters(), observers)),
                 asyncExecutor);
     }
 
@@ -748,8 +742,12 @@ public abstract class AbstractServer<E, ER, Q, QR>
         }
         this.serverState = ServerState.STARTING;
         doStart();
-        threads.start();
-        flushFuture = scheduledExecutor.scheduleAtFixedRate(this::flushState,
+        threads.startThread(STATE_MACHINE_THREAD);
+        threads.startThread(FLUSH_JOURNAL_THREAD);
+        if(threads.exists(PRINT_METRIC_THREAD)) {
+            threads.startThread(PRINT_METRIC_THREAD);
+        }
+        flushStateFuture = scheduledExecutor.scheduleAtFixedRate(this::flushState,
                 ThreadLocalRandom.current().nextLong(10L, 50L),
                 config.getFlushIntervalMs(), TimeUnit.MILLISECONDS);
         this.serverState = ServerState.RUNNING;
@@ -790,8 +788,10 @@ public abstract class AbstractServer<E, ER, Q, QR>
         }
     }
 
-    protected ServerRpc getServerRpc(URI uri) {
-        return remoteServers.computeIfAbsent(uri, uri1 -> serverRpcAccessPoint.getServerRpcAgent(uri1));
+    public CompletableFuture<ServerRpc> getServerRpc(URI uri) {
+        return CompletableFuture.supplyAsync(
+                () -> remoteServers.computeIfAbsent(uri, uri1 -> serverRpcAccessPoint.getServerRpcAgent(uri1)),
+                asyncExecutor);
     }
 
     @Override
@@ -800,8 +800,14 @@ public abstract class AbstractServer<E, ER, Q, QR>
             this.serverState = ServerState.STOPPING;
             doStop();
             remoteServers.values().forEach(ServerRpc::stop);
-            threads.stop();
-            stopAndWaitScheduledFeature(flushFuture, 1000L);
+            waitJournalApplied();
+            threads.stopThread(STATE_MACHINE_THREAD);
+            threads.stopThread(FLUSH_JOURNAL_THREAD);
+            if(threads.exists(PRINT_METRIC_THREAD)) {
+                threads.stopThread(PRINT_METRIC_THREAD);
+            }
+
+            stopAndWaitScheduledFeature(flushStateFuture, 1000L);
             if(persistenceFactory instanceof Closeable) {
                 ((Closeable) persistenceFactory).close();
             }
@@ -812,6 +818,13 @@ public abstract class AbstractServer<E, ER, Q, QR>
             logger.warn("Exception: ", t);
         }
     }
+
+    private void waitJournalApplied() throws InterruptedException {
+        while (journal.commitIndex() < state.lastApplied()) {
+            Thread.sleep(50L);
+        }
+    }
+
     protected abstract void doStop();
     protected void stopAndWaitScheduledFeature(ScheduledFuture scheduledFuture, long timeout) throws TimeoutException {
         if (scheduledFuture != null) {
@@ -1017,16 +1030,18 @@ public abstract class AbstractServer<E, ER, Q, QR>
      * @param name name of the metric
      * @return the metric instance of given name.
      */
-    @NotNull
-    protected JMetric getMetric(String name) {
+    @Override
+    public JMetric getMetric(String name) {
         if(config.isEnableMetric()) {
             return metricMap.computeIfAbsent(name, metricFactory::create);
         } else {
             return DUMMY_METRIC;
         }
     }
-    protected boolean isMetricEnabled() {return config.isEnableMetric();}
-    protected void removeMetric(String name) {
+    @Override
+    public boolean isMetricEnabled() {return config.isEnableMetric();}
+    @Override
+    public void removeMetric(String name) {
         if(config.isEnableMetric()) {
             metricMap.remove(name);
         }

@@ -20,9 +20,14 @@ import java.io.Serializable;
  * Date: 2019-05-09
  */
 public class LeaderAnnouncementEntry extends ReservedEntry implements Serializable {
-    private static final long serialVersionUID = 1L;
-
-    public LeaderAnnouncementEntry() {
+    private static final long serialVersionUID = 2L;
+    private final int term;
+    public LeaderAnnouncementEntry(int term) {
         super(TYPE_LEADER_ANNOUNCEMENT);
+        this.term = term;
+    }
+
+    public int getTerm() {
+        return term;
     }
 }

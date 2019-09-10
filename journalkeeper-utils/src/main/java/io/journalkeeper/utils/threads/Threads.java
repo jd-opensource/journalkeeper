@@ -25,5 +25,8 @@ public interface Threads extends StateServer {
     void wakeupThread(String name);
     void stopThread(String name);
     void startThread(String name);
+    void removeThread(String name);
     ServerState getTreadState(String name);
+
+    boolean exists(String name);
 }

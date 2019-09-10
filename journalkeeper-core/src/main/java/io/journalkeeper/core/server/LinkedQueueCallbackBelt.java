@@ -1,6 +1,7 @@
 package io.journalkeeper.core.server;
 
 import io.journalkeeper.base.Serializer;
+import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 
 import java.util.NoSuchElementException;
@@ -75,6 +76,16 @@ class LinkedQueueCallbackBelt<ER> implements CallbackBelt<ER> {
         } else {
             return false;
         }
+    }
+
+    @Override
+    public void failAll() {
+        try {
+            while (true) {
+                removeFirst().getCompletableFuture()
+                        .complete(new UpdateClusterStateResponse(new IllegalStateException()));
+            }
+        } catch (NoSuchElementException ignored){}
     }
 
     private Callback<ER> get(long position) {
