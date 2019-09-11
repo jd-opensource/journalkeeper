@@ -123,7 +123,8 @@ public class KvTest {
             if (kvServers.size() > nodes / 2) {
                 // 等待新的Leader选出来
                 logger.info("Wait for new leader...");
-                Thread.sleep(5000L);
+                AdminClient adminClient = kvServers.get(0).getAdminClient();
+                adminClient.waitForClusterReady(0L);
                 Assert.assertEquals("value" + keyNum, kvServers.get(0).createClient().get("key" + keyNum));
                 keyNum++;
             }
@@ -136,7 +137,8 @@ public class KvTest {
             if(kvServers.size() > nodes / 2) {
                 // 等待新的Leader选出来
                 logger.info("Wait for new leader...");
-                Thread.sleep(5000L);
+                AdminClient adminClient = kvServers.get(0).getAdminClient();
+                adminClient.waitForClusterReady(0L);
                 for (int i = 0; i < keyNum; i++) {
                     Assert.assertEquals("value" + i, kvServers.get(0).createClient().get("key" + i));
                 }
