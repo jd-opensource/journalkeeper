@@ -63,6 +63,15 @@ public interface AdminClient extends Watchable, ClusterReadyAware, ServerConfigA
      */
     CompletableFuture<ServerStatus> getServerStatus(URI uri);
 
+    /**
+     * 设置集群推荐Leader。当集群状态正常并且推荐的Leader节点上的日志
+     * 与当前Leader节点日志保持同步后，
+     * 集群会自动将Leader节点切换为推荐的Leader节点。
+     *
+     * @param preferredLeader 推荐的Leader
+     */
+    CompletableFuture setPreferredLeader(URI preferredLeader);
+
     void stop();
 
 }

@@ -24,6 +24,7 @@ public abstract class ReservedEntry {
     public final static int TYPE_UPDATE_VOTERS_S1 = 3;
     public final static int TYPE_UPDATE_VOTERS_S2 = 4;
     public final static int TYPE_UPDATE_OBSERVERS = 5;
+    public final static int TYPE_SET_PREFERRED_LEADER = 6;
     private final int type;
 
     protected ReservedEntry(int type) {

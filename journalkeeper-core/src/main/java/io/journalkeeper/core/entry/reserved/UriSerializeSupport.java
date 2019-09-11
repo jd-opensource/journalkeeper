@@ -20,27 +20,35 @@ public class UriSerializeSupport {
         }
         buffer.putShort((short) config.size());
         for (URI uri : config) {
-            byte [] asciiBytes = uri.toASCIIString().getBytes(StandardCharsets.US_ASCII);
-            if(asciiBytes.length >= Short.MAX_VALUE) {
-                throw new SerializeException(String.format("URI length too large! Max: %d, actual: %d, uri: %s. ",
-                        Short.MAX_VALUE, config.size(), uri));
-            }
-            buffer.putShort((short) asciiBytes.length);
-            buffer.put(asciiBytes);
+            serializerUri(buffer, uri);
         }
+    }
+
+    public static void serializerUri(ByteBuffer buffer, URI uri) {
+        byte [] asciiBytes = uri.toASCIIString().getBytes(StandardCharsets.US_ASCII);
+        if(asciiBytes.length >= Short.MAX_VALUE) {
+            throw new SerializeException(String.format("URI length too large! Max: %d, actual: %d, uri: %s. ",
+                    Short.MAX_VALUE, asciiBytes.length, uri));
+        }
+        buffer.putShort((short) asciiBytes.length);
+        buffer.put(asciiBytes);
     }
 
     public static List<URI> parseUriList(ByteBuffer buffer) {
         int sizeOfList = buffer.getShort();
         List<URI> config = new ArrayList<>(sizeOfList);
         for (int i = 0; i < sizeOfList; i++) {
-            int length = buffer.getShort();
-            byte [] asciiBytes = new byte[length];
-            buffer.get(asciiBytes);
-            URI uri = URI.create(new String(asciiBytes, StandardCharsets.US_ASCII));
+            URI uri = parseUri(buffer);
             config.add(uri);
         }
         return config;
+    }
+
+    public static URI parseUri(ByteBuffer buffer) {
+        int length = buffer.getShort();
+        byte [] asciiBytes = new byte[length];
+        buffer.get(asciiBytes);
+        return URI.create(new String(asciiBytes, StandardCharsets.US_ASCII));
     }
 
 }

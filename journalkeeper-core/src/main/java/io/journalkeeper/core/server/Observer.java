@@ -118,11 +118,6 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 .build();
     }
 
-    @Override
-    public synchronized void init(URI uri, List<URI> voters) throws IOException {
-        super.init(uri, voters);
-    }
-
     private void pullEntries() throws Throwable {
 
         replicationMetric.start();
@@ -300,7 +295,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
         private final static String PULL_BATCH_SIZE_KEY = "observer.pull_batch_size";
 
         private final static String PARENTS_KEY = "observer.parents";
-
+        // TODO: 动态变更parents
         private List<URI> parents = Collections.emptyList();
 
         private int pullBatchSize = DEFAULT_PULL_BATCH_SIZE;

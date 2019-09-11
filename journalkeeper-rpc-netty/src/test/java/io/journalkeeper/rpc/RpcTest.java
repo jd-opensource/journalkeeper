@@ -435,8 +435,8 @@ public class RpcTest {
                 838472234228L,
                 87,
                 ByteUtils.createRandomSizeByteList(1024, 1000),
-                6666666L
-        );
+                6666666L,
+                6666688L);
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         AsyncAppendEntriesResponse response, serverResponse;
         serverResponse = new AsyncAppendEntriesResponse(false, 8837222L, 74,request.getEntries().size());
@@ -457,6 +457,7 @@ public class RpcTest {
                                 r.getPrevLogIndex() == request.getPrevLogIndex() &&
                                 r.getPrevLogTerm() == request.getPrevLogTerm() &&
                                 r.getLeaderCommit() == request.getLeaderCommit() &&
+                                r.getMaxIndex() == request.getMaxIndex() &&
                                 testListOfBytesEquals(r.getEntries(), request.getEntries())
                         ));
 

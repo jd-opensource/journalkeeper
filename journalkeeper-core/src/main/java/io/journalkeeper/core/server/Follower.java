@@ -50,6 +50,11 @@ class Follower extends ServerStateMachine implements StateServer {
      */
     private final BlockingQueue<ReplicationRequestResponse> pendingAppendEntriesRequests;
 
+    /**
+     * Leader 日志当前的最大位置
+     */
+    private long leaderMaxIndex = -1L;
+
     private final long heartbeatIntervalMs;
     Follower(Journal journal, State state, URI serverUri, int currentTerm, VoterConfigManager voterConfigManager, AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine, Threads threads, int cachedRequests, long heartbeatIntervalMs) {
         super(true);
@@ -117,6 +122,10 @@ class Follower extends ServerStateMachine implements StateServer {
 
                             response = new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
                                     currentTerm, request.getEntries().size());
+
+                            if(leaderMaxIndex < request.getMaxIndex()) {
+                                leaderMaxIndex = request.getMaxIndex();
+                            }
                         } catch (Throwable t) {
                             logger.warn("Handle replication request exception! {}", voterInfo(), t);
                             response = new AsyncAppendEntriesResponse(t);
@@ -185,6 +194,10 @@ class Follower extends ServerStateMachine implements StateServer {
         }
 
         return requestResponse.getResponseFuture();
+    }
+
+    long getLeaderMaxIndex() {
+        return leaderMaxIndex;
     }
 
     @Override

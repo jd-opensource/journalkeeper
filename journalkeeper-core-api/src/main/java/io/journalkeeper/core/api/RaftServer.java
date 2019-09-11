@@ -26,7 +26,6 @@ import java.util.Properties;
  * Date: 2019-03-14
  */
 
-// TODO 改为接口
 public interface RaftServer extends StateServer {
 
     Roll roll();

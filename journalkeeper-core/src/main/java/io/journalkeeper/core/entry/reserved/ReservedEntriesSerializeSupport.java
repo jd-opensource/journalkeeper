@@ -20,6 +20,7 @@ public class ReservedEntriesSerializeSupport {
         registerType(ReservedEntry.TYPE_SCALE_PARTITIONS, ScalePartitionsEntry.class, new ScalePartitionsEntrySerializer());
         registerType(ReservedEntry.TYPE_UPDATE_VOTERS_S1, UpdateVotersS1Entry.class, new UpdateVotersS1EntrySerializer());
         registerType(ReservedEntry.TYPE_UPDATE_VOTERS_S2, UpdateVotersS2Entry.class, new UpdateVotersS2EntrySerializer());
+        registerType(ReservedEntry.TYPE_SET_PREFERRED_LEADER, SetPreferredLeaderEntry.class, new SetPreferredLeaderEntrySerializer());
     }
 
     @SuppressWarnings("unchecked")

@@ -44,11 +44,11 @@ public class MetadataStoreTest {
         // voters is not set
 
         MetadataStore writeStore = new MetadataStore();
-        writeStore.recover(path,new Properties());
+        writeStore.recover(path);
         writeStore.save(writeMetadata);
 
         MetadataStore readStore = new MetadataStore();
-        ServerMetadata readMetadata = readStore.recover(path, new Properties());
+        ServerMetadata readMetadata = readStore.recover(path);
 
         checkServerMetadataEquals(writeMetadata, readMetadata);
 
@@ -68,7 +68,7 @@ public class MetadataStoreTest {
         ServerMetadata writeMetadata = createServerMetadata();
 
         MetadataStore writeStore = new MetadataStore();
-        writeStore.recover(path,new Properties());
+        writeStore.recover(path);
         writeStore.save(writeMetadata);
 
         try(RandomAccessFile raf = new RandomAccessFile(path.resolve(MetadataStore.FIRST_COPY).toFile(),"rw"); FileChannel fileChannel = raf.getChannel()) {
@@ -76,7 +76,7 @@ public class MetadataStoreTest {
         }
 
         MetadataStore readStore = new MetadataStore();
-        ServerMetadata readMetadata = readStore.recover(path, new Properties());
+        ServerMetadata readMetadata = readStore.recover(path);
 
         checkServerMetadataEquals(writeMetadata, readMetadata);
 
@@ -87,7 +87,7 @@ public class MetadataStoreTest {
         }
 
         readStore = new MetadataStore();
-        readMetadata = readStore.recover(path, new Properties());
+        readMetadata = readStore.recover(path);
 
         checkServerMetadataEquals(writeMetadata, readMetadata);
 

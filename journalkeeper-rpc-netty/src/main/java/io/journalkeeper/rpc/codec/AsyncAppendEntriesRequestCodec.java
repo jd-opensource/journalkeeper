@@ -33,6 +33,7 @@ public class AsyncAppendEntriesRequestCodec extends GenericPayloadCodec<AsyncApp
         CodecSupport.encodeList(buffer, request.getEntries(),
                 (obj, buffer1) -> CodecSupport.encodeBytes(buffer1, (byte []) obj));
         CodecSupport.encodeLong(buffer, request.getLeaderCommit());
+        CodecSupport.encodeLong(buffer, request.getMaxIndex());
 
     }
 
@@ -44,8 +45,8 @@ public class AsyncAppendEntriesRequestCodec extends GenericPayloadCodec<AsyncApp
                 CodecSupport.decodeLong(buffer),
                 CodecSupport.decodeInt(buffer),
                 CodecSupport.decodeList(buffer, CodecSupport::decodeBytes),
-                CodecSupport.decodeLong(buffer)
-        );
+                CodecSupport.decodeLong(buffer),
+                CodecSupport.decodeLong(buffer));
     }
 
     @Override

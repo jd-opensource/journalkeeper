@@ -19,7 +19,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * @author LiYue
@@ -36,16 +35,14 @@ public class ServerMetadata {
 
     private List<URI> oldVoters;
     private boolean jointConsensus = false;
+    private URI preferredLeader;
 
-    private AtomicLong savedVersion = new AtomicLong(0L);
-    private AtomicLong version = new AtomicLong(0L);
 
     public long getCommitIndex() {
         return commitIndex;
     }
 
     public synchronized void setCommitIndex(long commitIndex) {
-        version.incrementAndGet();
         this.commitIndex = commitIndex;
     }
 
@@ -54,7 +51,6 @@ public class ServerMetadata {
     }
 
     public synchronized void setVoters(List<URI> voters) {
-        version.incrementAndGet();
         this.voters = voters;
     }
 
@@ -63,7 +59,6 @@ public class ServerMetadata {
     }
 
     public synchronized void setParents(List<URI> parents) {
-        version.incrementAndGet();
         this.parents = parents;
     }
 
@@ -72,7 +67,6 @@ public class ServerMetadata {
     }
 
     public synchronized void setCurrentTerm(int currentTerm) {
-        version.incrementAndGet();
         this.currentTerm = currentTerm;
     }
 
@@ -81,7 +75,6 @@ public class ServerMetadata {
     }
 
     public synchronized void setVotedFor(URI votedFor) {
-        version.incrementAndGet();
         this.votedFor = votedFor;
     }
 
@@ -90,7 +83,6 @@ public class ServerMetadata {
     }
 
     public synchronized void setThisServer(URI thisServer) {
-        version.incrementAndGet();
         this.thisServer = thisServer;
     }
 
@@ -100,7 +92,6 @@ public class ServerMetadata {
     }
 
     public synchronized void setPartitions(Set<Integer> partitions) {
-        version.incrementAndGet();
         this.partitions = partitions;
     }
 
@@ -109,7 +100,6 @@ public class ServerMetadata {
     }
 
     public synchronized void setOldVoters(List<URI> oldVoters) {
-        version.incrementAndGet();
         this.oldVoters = oldVoters;
     }
 
@@ -118,8 +108,15 @@ public class ServerMetadata {
     }
 
     public synchronized void setJointConsensus(boolean jointConsensus) {
-        version.incrementAndGet();
         this.jointConsensus = jointConsensus;
+    }
+
+    public URI getPreferredLeader() {
+        return preferredLeader;
+    }
+
+    public void setPreferredLeader(URI preferredLeader) {
+        this.preferredLeader = preferredLeader;
     }
 
     @Override
@@ -134,8 +131,7 @@ public class ServerMetadata {
         clone.partitions = new HashSet<>(this.partitions);
         clone.oldVoters = new ArrayList<>(this.oldVoters);
         clone.jointConsensus = this.jointConsensus;
-        clone.version = new AtomicLong(version.get());
-        clone.savedVersion = new AtomicLong(savedVersion.get());
+        clone.preferredLeader = this.preferredLeader;
         return clone;
     }
 
@@ -152,23 +148,14 @@ public class ServerMetadata {
                 Objects.equals(votedFor, that.votedFor) &&
                 Objects.equals(thisServer, that.thisServer) &&
                 Objects.equals(partitions, that.partitions) &&
-                Objects.equals(oldVoters, that.oldVoters);
+                Objects.equals(oldVoters, that.oldVoters) &&
+                Objects.equals(preferredLeader, that.preferredLeader);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(commitIndex, voters, parents, currentTerm, votedFor, thisServer, partitions, oldVoters, jointConsensus);
+        return Objects.hash(commitIndex, voters, parents, currentTerm, votedFor, thisServer, partitions, oldVoters, jointConsensus, preferredLeader);
     }
 
-    public boolean isDirty() {
-        return savedVersion.get() < version.get();
-    }
 
-    public void setSavedPoint(long savePoint) {
-        savedVersion.set(savePoint);
-    }
-
-    public long getVersion() {
-        return version.get();
-    }
 }

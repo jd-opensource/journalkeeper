@@ -271,7 +271,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                     AsyncAppendEntriesRequest request =
                             new AsyncAppendEntriesRequest(currentTerm, serverUri,
                                     follower.getNextIndex() - 1, getPreLogTerm(follower.getNextIndex()),
-                                    entries, journal.commitIndex());
+                                    entries, journal.commitIndex(), maxIndex);
                     sendAppendEntriesRequest(follower, request);
                     follower.setNextIndex(follower.getNextIndex() + entries.size());
                     hasData = true;
@@ -281,7 +281,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                         AsyncAppendEntriesRequest request =
                                 new AsyncAppendEntriesRequest(currentTerm, serverUri,
                                         follower.getNextIndex() - 1, getPreLogTerm(follower.getNextIndex()),
-                                        Collections.emptyList(), journal.commitIndex());
+                                        Collections.emptyList(), journal.commitIndex(), maxIndex);
                         sendAppendEntriesRequest(follower, request);
                     }
                 }
@@ -532,13 +532,13 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                                         follower.repStartIndex - 1,
                                         journal.getTerm(follower.repStartIndex - 1),
                                         journal.readRaw(follower.repStartIndex, rollbackSize),
-                                        journal.commitIndex()));
+                                        journal.commitIndex(), journal.maxIndex()));
                     }
                     delaySendAsyncAppendEntriesRpc(follower, new AsyncAppendEntriesRequest(currentTerm, serverUri,
                             response.getJournalIndex() - 1,
                             journal.getTerm(response.getJournalIndex() - 1),
                             journal.readRaw(response.getJournalIndex(), response.getEntryCount()),
-                            journal.commitIndex()));
+                            journal.commitIndex(), journal.maxIndex()));
                 }
             }
         }

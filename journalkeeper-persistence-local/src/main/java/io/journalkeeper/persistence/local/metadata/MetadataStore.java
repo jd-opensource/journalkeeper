@@ -42,7 +42,7 @@ public class MetadataStore implements MetadataPersistence {
     }
 
     @Override
-    public ServerMetadata recover(Path path, Properties properties) throws IOException {
+    public ServerMetadata recover(Path path) throws IOException {
 
         this.path = path;
         if (!Files.isDirectory(path)) {

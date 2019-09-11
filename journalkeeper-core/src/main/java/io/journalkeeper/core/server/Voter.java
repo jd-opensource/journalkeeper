@@ -23,6 +23,8 @@ import io.journalkeeper.core.entry.Entry;
 import io.journalkeeper.core.entry.EntryHeader;
 import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
+import io.journalkeeper.core.entry.reserved.ReservedEntry;
+import io.journalkeeper.core.entry.reserved.SetPreferredLeaderEntry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
 import io.journalkeeper.core.exception.UpdateConfigurationException;
 import io.journalkeeper.core.journal.Journal;
@@ -70,6 +72,10 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     private static final Logger logger = LoggerFactory.getLogger(Voter.class);
 
     /**
+     * 触发切换指定Leader的门限值
+     */
+    private static final long PREFERRED_LEADER_IN_SYNC_THRESHOLD = 128L;
+    /**
      * Voter最后知道的任期号（从 0 开始递增）
      */
     private final AtomicInteger currentTerm = new AtomicInteger(0);
@@ -101,12 +107,21 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
      */
     private long lastHeartbeat = 0L;
 
+    /**
+     * 检查选举超时定时任务
+     */
     private ScheduledFuture checkElectionTimeoutFuture;
+    /**
+     * 检查推荐Leader的定时任务
+     */
+    private ScheduledFuture preferedLeaderFuture;
 
     private final VoterConfigManager voterConfigManager = new VoterConfigManager();
 
     private Leader<E, ER, Q, QR> leader;
     private Follower follower;
+
+    private URI preferredLeader = null;
 
 
     Voter(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
@@ -122,8 +137,23 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     @Override
     protected void applyReservedEntry(byte [] reservedEntry) {
         super.applyReservedEntry(reservedEntry);
-        voterConfigManager.applyReservedEntry(reservedEntry, voterState(), votersConfigStateMachine,
-                this, serverUri(), this);
+        int type = ReservedEntriesSerializeSupport.parseEntryType(reservedEntry);
+        switch (type) {
+            case ReservedEntry.TYPE_UPDATE_VOTERS_S1:
+            case ReservedEntry.TYPE_UPDATE_VOTERS_S2:
+                voterConfigManager.applyReservedEntry(type, reservedEntry, voterState(), votersConfigStateMachine,
+                        this, serverUri(), this);
+                break;
+            case ReservedEntry.TYPE_SET_PREFERRED_LEADER:
+                SetPreferredLeaderEntry setPreferredLeaderEntry = ReservedEntriesSerializeSupport.parse(reservedEntry);
+                URI old = preferredLeader;
+                preferredLeader = setPreferredLeaderEntry.getPreferredLeader();
+                logger.info("Set preferred leader from {} to {}, {}.", old, preferredLeader, voterInfo());
+                break;
+            default:
+        }
+
+
     }
 
 
@@ -622,6 +652,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         ServerMetadata serverMetadata = super.createServerMetadata();
         serverMetadata.setCurrentTerm(currentTerm.get());
         serverMetadata.setVotedFor(votedFor);
+        serverMetadata.setPreferredLeader(preferredLeader);
         return serverMetadata;
     }
 
@@ -630,6 +661,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         super.onMetadataRecovered(metadata);
         this.currentTerm.set(metadata.getCurrentTerm());
         this.votedFor = metadata.getVotedFor();
+        this.preferredLeader = metadata.getPreferredLeader();
 
     }
 
@@ -638,6 +670,16 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                         "maxIndex: %d, commitIndex: %d, lastApplied: %d, uri: %s",
                 voterState.getState(), currentTerm.get(), journal.minIndex(),
                 journal.maxIndex(), journal.commitIndex(), state.lastApplied(), uri.toString());
+    }
+
+    private void checkPreferredLeader() {
+        if(voterState().equals(VoterState.FOLLOWER) && serverUri().equals(preferredLeader)
+                && null != follower && follower.getLeaderMaxIndex() - journal.maxIndex() < PREFERRED_LEADER_IN_SYNC_THRESHOLD
+                && follower.getLeaderMaxIndex() > 0) {
+            // 给当前LEADER发RPC，停服。
+            // 等待数据完全同步
+            // 发起选举，等待赢得足够的选票，成功新的LEADER
+        }
     }
 
 
