@@ -115,6 +115,15 @@ abstract class LoopThread implements AsyncLoopThread {
                 if(condition()) {
                     doWork();
                 }
+
+            } catch (InterruptedException i) {
+                Thread.currentThread().interrupt();
+            } catch (Throwable t) {
+                if (!handleException(t)) {
+                    break;
+                }
+            }
+            try {
                 long t1 = System.nanoTime();
 
                 // 为了避免空转CPU高，如果执行时间过短，等一会儿再进行下一次循环
@@ -129,14 +138,10 @@ abstract class LoopThread implements AsyncLoopThread {
                         wakeupLock.unlock();
                     }
                 }
-
-            } catch (InterruptedException i) {
+            } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-            } catch (Throwable t) {
-                if (!handleException(t)) {
-                    break;
-                }
             }
+
         }
         serverState = ServerState.STOPPED;
     }

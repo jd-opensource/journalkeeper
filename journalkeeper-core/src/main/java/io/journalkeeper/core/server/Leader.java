@@ -113,6 +113,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private final ExecutorService asyncExecutor;
     private final VoterConfigManager voterConfigManager;
     private final MetricProvider metricProvider;
+    private final CheckTermInterceptor checkTermInterceptor;
     Leader(Journal journal, State state, Map<Long, State<E, ER, Q, QR>> immutableSnapshots,
            int currentTerm,
            AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine,
@@ -122,10 +123,10 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
            Threads threads,
            ServerRpcProvider serverRpcProvider,
            ExecutorService asyncExecutor,
-           VoterConfigManager voterConfigManager, MetricProvider metricProvider) {
+           VoterConfigManager voterConfigManager, MetricProvider metricProvider, CheckTermInterceptor checkTermInterceptor) {
 
         super(true);
-        pendingUpdateStateRequests = new LinkedBlockingQueue<>(cacheRequests);
+        this.pendingUpdateStateRequests = new LinkedBlockingQueue<>(cacheRequests);
         this.state = state;
         this.votersConfigStateMachine = votersConfigStateMachine;
         this.serverUri = serverUri;
@@ -139,8 +140,9 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.asyncExecutor = asyncExecutor;
         this.voterConfigManager = voterConfigManager;
         this.metricProvider = metricProvider;
-        replicationCallbacks = new LinkedQueueCallbackBelt<>(rpcTimeoutMs, entryResultSerializer);
-        flushCallbacks = new LinkedQueueCallbackBelt<>(rpcTimeoutMs, entryResultSerializer);
+        this.checkTermInterceptor = checkTermInterceptor;
+        this.replicationCallbacks = new LinkedQueueCallbackBelt<>(rpcTimeoutMs, entryResultSerializer);
+        this.flushCallbacks = new LinkedQueueCallbackBelt<>(rpcTimeoutMs, entryResultSerializer);
         this.appendEntriesRpcMetricMap = new HashMap<>(2);
 
         this.journal = journal;
@@ -317,7 +319,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         follower.setLastHeartbeatRequestTime(System.currentTimeMillis());
 
         serverRpcProvider.getServerRpc(follower.getUri())
-                .thenCompose(serverRpc -> serverRpc.asyncAppendEntries(request))
+                .thenComposeAsync(serverRpc -> serverRpc.asyncAppendEntries(request), asyncExecutor)
                 .exceptionally(AsyncAppendEntriesResponse::new)
                 .thenAccept(response -> leaderOnAppendEntriesResponse(follower, request, response));
 
@@ -326,6 +328,10 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
 
     private void leaderOnAppendEntriesResponse(ReplicationDestination follower, AsyncAppendEntriesRequest request, AsyncAppendEntriesResponse response) {
+        if(checkTermInterceptor.checkTerm(response.getTerm())) {
+            return;
+        }
+
         if (response.success()) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Update lastHeartbeatResponseTime of {}, {}.", follower.getUri(), voterInfo());
@@ -338,8 +344,9 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
             leaderShipDeadLineMs.set(
                     (sortedHeartbeatResponseTimes[sortedHeartbeatResponseTimes.length / 2]) + heartbeatIntervalMs) ;
-            // TODO: 拦截所有raft request response 统一检查term
-            //checkTerm(response.getTerm());
+
+
+
             if (response.getTerm() == currentTerm) {
                 if (response.getEntryCount() > 0) {
                     if (logger.isDebugEnabled()) {
@@ -361,7 +368,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                 logger.warn("Drop outdated AsyncAppendEntries Response: follower: {}, term: {}, index: {}, {}.",
                         follower.getUri(), response.getTerm(), response.getJournalIndex(), voterInfo());
             }
-        } else {
+        } else if(request.getEntries().size() > 0 ){ // 心跳不重试
             logger.warn("Replication response error: {}", response.errorString());
             delaySendAsyncAppendEntriesRpc(follower, request);
         }
@@ -556,6 +563,9 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         UpdateStateRequestResponse requestResponse = new UpdateStateRequestResponse(request, updateClusterStateMetric);
 
         try {
+            if(serverState() != ServerState.RUNNING) {
+                throw new IllegalStateException(String.format("Leader is not RUNNING, state: %s.", serverState().toString()));
+            }
             pendingUpdateStateRequests.put(requestResponse);
             if (request.getResponseConfig() == ResponseConfig.RECEIVE) {
                 requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse());
@@ -597,6 +607,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     @Override
     protected void doStop() {
         super.doStop();
+        mayBeWaitingForAppendJournals();
         this.threads.stopThread(LEADER_APPEND_ENTRY_THREAD);
         this.threads.stopThread(LEADER_CALLBACK_THREAD);
         failAllPendingCallbacks();
@@ -611,8 +622,19 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         metricProvider.removeMetric(MetricNames.METRIC_UPDATE_CLUSTER_STATE);
     }
 
+    private void mayBeWaitingForAppendJournals() {
+        while (!pendingUpdateStateRequests.isEmpty()) {
+            try {
+                Thread.sleep(50L);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
     // 给所有没来及处理的请求返回失败响应
     private void failAllPendingCallbacks() {
+
         replicationCallbacks.failAll();
         flushCallbacks.failAll();
     }
@@ -647,8 +669,10 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     void onJournalFlushed() {
 
         journalFlushIndex.set(journal.maxIndex());
-        threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
-        threads.wakeupThread(LEADER_CALLBACK_THREAD);
+        if(serverState() == ServerState.RUNNING) {
+            threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
+            threads.wakeupThread(LEADER_CALLBACK_THREAD);
+        }
 
     }
     /**

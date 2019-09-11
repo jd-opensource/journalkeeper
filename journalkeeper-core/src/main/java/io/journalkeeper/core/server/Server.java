@@ -33,6 +33,8 @@ import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
 import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.utils.spi.ServiceSupport;
 import io.journalkeeper.utils.state.StateServer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
@@ -48,6 +50,8 @@ import java.util.concurrent.ScheduledExecutorService;
  */
 public class Server<E, ER, Q, QR>
         implements ServerRpc, RaftServer {
+    private static final Logger logger = LoggerFactory.getLogger(Server.class);
+
     private AbstractServer<E, ER, Q, QR> server;
     private StateServer rpcServer = null;
     private ServerState serverState = ServerState.CREATED;
@@ -62,7 +66,6 @@ public class Server<E, ER, Q, QR>
     private final Properties properties;
     private final StateFactory<E, ER, Q, QR> stateFactory;
     private ServerRpcAccessPoint serverRpcAccessPoint;
-
 
     public Server(Roll roll, StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
                   Serializer<Q> querySerializer, Serializer<QR> resultSerializer,
@@ -107,7 +110,7 @@ public class Server<E, ER, Q, QR>
 
     @Override
     public URI serverUri() {
-        return server.serverUri();
+        return null == server ? null : server.serverUri();
     }
 
     @Override
@@ -243,6 +246,7 @@ public class Server<E, ER, Q, QR>
         server.stop();
         serverRpcAccessPoint.stop();
         this.serverState = ServerState.STOPPED;
+        logger.info("Server {} stopped.", serverUri());
     }
 
     @Override

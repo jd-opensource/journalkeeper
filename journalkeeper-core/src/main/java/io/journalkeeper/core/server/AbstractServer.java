@@ -153,7 +153,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     /**
      * 心跳间隔、选举超时等随机时间的随机范围
      */
-    public final static float RAND_INTERVAL_RANGE = 0.25F;
+    public final static float RAND_INTERVAL_RANGE = 0.5F;
 
 //    /**
 //     * 所有选民节点地址，包含LEADER
@@ -470,7 +470,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     private void fireOnLeaderChangeEvent(int term) {
         Map<String, String> eventData = new HashMap<>();
-        eventData.put("leader", this.leaderUri.toString());
+        eventData.put("leader", String.valueOf(this.leaderUri));
         eventData.put("term", String.valueOf(term));
         fireEvent(EventType.ON_LEADER_CHANGE, eventData);
     }

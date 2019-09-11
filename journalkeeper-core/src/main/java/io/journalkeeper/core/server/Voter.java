@@ -45,6 +45,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
@@ -65,7 +66,7 @@ import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
  * @author LiYue
  * Date: 2019-03-18
  */
-class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
+class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckTermInterceptor{
     private static final Logger logger = LoggerFactory.getLogger(Voter.class);
 
     /**
@@ -98,7 +99,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     /**
      * 上次从LEADER收到心跳（asyncAppendEntries）的时间戳
      */
-    private long lastHeartbeat;
+    private long lastHeartbeat = 0L;
 
     private ScheduledFuture checkElectionTimeoutFuture;
 
@@ -159,10 +160,18 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
         return config;
     }
 
+    // 下次发起选举的时间
+    private long nextEletctionTime = 0L;
 
     private void checkElectionTimeout() {
         try {
-            if (voterState() != VoterState.LEADER && System.currentTimeMillis() - lastHeartbeat > electionTimeoutMs) {
+            if (voterState() == VoterState.FOLLOWER && System.currentTimeMillis() - lastHeartbeat > electionTimeoutMs) {
+                convertToCandidate();
+                electionTimeoutMs = randomInterval(config.electionTimeoutMs);
+                nextEletctionTime = System.currentTimeMillis() + electionTimeoutMs;
+            }
+
+            if(voterState() == VoterState.CANDIDATE && System.currentTimeMillis() > nextEletctionTime) {
                 startElection();
             }
         } catch (Throwable t) {
@@ -181,12 +190,14 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
      * 4.2. 如果收到了来自新领导人的asyncAppendEntries请求（heartbeat）：转换状态为FOLLOWER
      * 4.3. 如果选举超时：开始新一轮的选举
      */
-    private void startElection() {
+    private void startElection() throws InterruptedException {
+
+
+        votedFor = uri;
+        currentTerm.incrementAndGet();
+        nextEletctionTime = System.currentTimeMillis() + electionTimeoutMs;
         logger.info("Start election, {}", voterInfo());
-        convertToCandidate();
 
-
-        lastHeartbeat = System.currentTimeMillis();
         long lastLogIndex = journal.maxIndex() - 1;
         int lastLogTerm = journal.getTerm(lastLogIndex);
 
@@ -207,9 +218,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 try {
                     logger.info("Request vote, dest uri: {}, {}...", serverRpc.serverUri(), voterInfo());
                     response = serverRpc.requestVote(request).get();
-                    if(response.success()) {
-                        checkTerm(response.getTerm());
-                    }
+
                     logger.info("Request vote result {}, dest uri: {}, {}...",
                             response.isVoteGranted(),
                             serverRpc.serverUri(),
@@ -223,26 +232,29 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 return response;
             }).collect(Collectors.toList());
 
-        long votesGrantedInNewConfig = responses.stream()
-            .filter(response -> votersConfigStateMachine.getConfigNew().contains(response.getUri()))
-                .filter(RequestVoteResponse::isVoteGranted)
-                .filter(response -> response.getTerm() == currentTerm.get())
-                .count() + 1;
-        boolean winsTheElection;
-        if(votersConfigStateMachine.isJointConsensus()) {
-            long votesGrantedInOldConfig = responses.stream()
-                    .filter(response -> votersConfigStateMachine.getConfigOld().contains(response.getUri()))
+        int maxTermOfResponses = responses.stream().mapToInt(RequestVoteResponse::getTerm).max().orElse(0);
+        if (!checkTerm(maxTermOfResponses)) {
+            long votesGrantedInNewConfig = responses.stream()
+                    .filter(response -> votersConfigStateMachine.getConfigNew().contains(response.getUri()))
                     .filter(RequestVoteResponse::isVoteGranted)
                     .filter(response -> response.getTerm() == currentTerm.get())
                     .count() + 1;
-            winsTheElection = votesGrantedInNewConfig >= votersConfigStateMachine.getConfigNew().size() / 2 + 1 &&
-                    votesGrantedInOldConfig >= votersConfigStateMachine.getConfigOld().size() / 2 + 1 ;
-        } else {
-            winsTheElection = votesGrantedInNewConfig >= votersConfigStateMachine.getConfigNew().size() / 2 + 1;
-        }
+            boolean winsTheElection;
+            if (votersConfigStateMachine.isJointConsensus()) {
+                long votesGrantedInOldConfig = responses.stream()
+                        .filter(response -> votersConfigStateMachine.getConfigOld().contains(response.getUri()))
+                        .filter(RequestVoteResponse::isVoteGranted)
+                        .filter(response -> response.getTerm() == currentTerm.get())
+                        .count() + 1;
+                winsTheElection = votesGrantedInNewConfig >= votersConfigStateMachine.getConfigNew().size() / 2 + 1 &&
+                        votesGrantedInOldConfig >= votersConfigStateMachine.getConfigOld().size() / 2 + 1;
+            } else {
+                winsTheElection = votesGrantedInNewConfig >= votersConfigStateMachine.getConfigNew().size() / 2 + 1;
+            }
 
-        if(winsTheElection) {
-            convertToLeader();
+            if (winsTheElection) {
+                convertToLeader();
+            }
         }
     }
 
@@ -255,9 +267,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 follower = null;
             }
             voterState.convertToCandidate();
-            currentTerm.incrementAndGet();
-            votedFor = uri;
-            electionTimeoutMs = randomInterval(config.electionTimeoutMs);
             logger.info("Convert voter state from {} to CANDIDATE, electionTimeout: {}, {}.", oldState, electionTimeoutMs, voterInfo());
         }
     }
@@ -269,18 +278,19 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     private void convertToLeader() {
         synchronized (voterState) {
             voterState.convertToLeader();
+            logger.info("Convert to LEADER, {}.", voterInfo());
+
             this.leader = new Leader<>(journal, state, snapshots,currentTerm.get(), votersConfigStateMachine,
                     uri, config.getCacheRequests(), config.getHeartbeatIntervalMs(), config.getRpcTimeoutMs(),
                     config.getReplicationParallelism(),config.getReplicationBatchSize(),
                     entryResultSerializer,threads,
-                    this, asyncExecutor, voterConfigManager, this);
+                    this, asyncExecutor, voterConfigManager, this, this);
             leader.start();
             this.leaderUri = this.uri;
             // Leader announcement
             journal.append(new Entry(
                     ReservedEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(currentTerm.get())),
                     currentTerm.get(), RESERVED_PARTITION));
-            logger.info("Convert to LEADER, {}.", voterInfo());
         }
 
     }
@@ -324,7 +334,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
             this.votedFor = null;
             this.electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
-            this.lastHeartbeat = System.currentTimeMillis();
             logger.info("Convert voter state from {} to FOLLOWER, electionTimeout: {}, {}.", oldState, electionTimeoutMs, voterInfo());
         }
     }
@@ -383,15 +392,23 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     @Override
     public CompletableFuture<RequestVoteResponse> requestVote(RequestVoteRequest request) {
         return CompletableFuture.supplyAsync(() -> {
-
-            // 如果当前是LEADER或者上次收到心跳的至今小于最小选举超时，那直接拒绝投票
-            if(voterState() == VoterState.LEADER || System.currentTimeMillis() - lastHeartbeat < config.getElectionTimeoutMs()) {
-                return new RequestVoteResponse(request.getTerm(), false);
-            }
             logger.info("RequestVoteRpc received: term: {}, candidate: {}, " +
                             "lastLogIndex: {}, lastLogTerm: {}, {}.",
                     request.getTerm(), request.getCandidate(),
                     request.getLastLogIndex(), request.getLastLogTerm(), voterInfo());
+            // 如果当前是LEADER或者上次收到心跳的至今小于最小选举超时，那直接拒绝投票
+            if(voterState() == VoterState.LEADER ||
+                    System.currentTimeMillis() - lastHeartbeat < config.getElectionTimeoutMs() ||
+                    request.getTerm() < currentTerm.get()) {
+                SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS");
+                logger.info("Reject RequestVoteRpc, lastHeartbeat : {}. Request term: {}, candidate: {}, " +
+                                "lastLogIndex: {}, lastLogTerm: {}, {}.",
+                        sdf.format(lastHeartbeat),
+                        request.getTerm(), request.getCandidate(),
+                        request.getLastLogIndex(), request.getLastLogTerm(), voterInfo());
+                return new RequestVoteResponse(request.getTerm(), false);
+            }
+
 
             checkTerm(request.getTerm());
 
@@ -399,6 +416,8 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 if (request.getTerm() < currentTerm.get()) {
                     return new RequestVoteResponse(request.getTerm(), false);
                 }
+                // 重置选举超时
+                nextEletctionTime = System.currentTimeMillis() + electionTimeoutMs;
                 int lastLogTerm;
                 if ((votedFor == null || votedFor.equals(request.getCandidate())) // If votedFor is null or candidateId
                         && (request.getLastLogTerm() > (lastLogTerm = journal.getTerm(journal.maxIndex() - 1))
@@ -435,14 +454,16 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 });
     }
 
-    // TODO : 统一检查term
-    private void checkTerm(int term) {
+    @Override
+    public boolean checkTerm(int term) {
         synchronized (currentTerm) {
             if (term > currentTerm.get()) {
                 logger.info("Set current term from {} to {}, {}.", currentTerm.get(), term, voterInfo());
                 currentTerm.set(term);
                 convertToFollower();
+                return true;
             }
+            return false;
         }
     }
 
@@ -650,10 +671,10 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     }
 
 
-
+    //TODO: 继承AbstractServer.Config的属性没有解析
     public static class Config extends AbstractServer.Config {
         public final static long DEFAULT_HEARTBEAT_INTERVAL_MS = 100L;
-        public final static long DEFAULT_ELECTION_TIMEOUT_MS = 500L;
+        public final static long DEFAULT_ELECTION_TIMEOUT_MS = 300L;
         public final static int DEFAULT_REPLICATION_BATCH_SIZE = 128;
         public final static int DEFAULT_REPLICATION_PARALLELISM = 16;
         public final static int DEFAULT_CACHE_REQUESTS = 1024;

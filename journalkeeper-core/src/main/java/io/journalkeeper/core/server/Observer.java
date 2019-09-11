@@ -55,6 +55,8 @@ import java.util.Properties;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
+import static io.journalkeeper.core.server.MetricNames.METRIC_OBSERVER_REPLICATION;
+import static io.journalkeeper.core.server.ThreadNames.OBSERVER_REPLICATION_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
 
 /**
@@ -63,9 +65,7 @@ import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
  */
 class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     private static final Logger logger = LoggerFactory.getLogger(Observer.class);
-    private static final String OBSERVER_REPLICATION_THREAD = "ObserverReplicationThread";
 
-    private static final String METRIC_OBSERVER_REPLICATION = "OBSERVER_REPLICATION";
     private final JMetric replicationMetric;
     private final VoterConfigManager voterConfigManager = new VoterConfigManager();
 
@@ -235,10 +235,12 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
     @Override
     public void doStart() {
+        threads.startThread(OBSERVER_REPLICATION_THREAD);
     }
 
     @Override
     public void doStop() {
+        threads.stopThread(OBSERVER_REPLICATION_THREAD);
         if(null != currentServer) {
             currentServer.stop();
         }

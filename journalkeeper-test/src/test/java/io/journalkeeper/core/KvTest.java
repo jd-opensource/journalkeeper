@@ -202,7 +202,7 @@ public class KvTest {
         final int oldServerCount = 3;
 
         // 初始化并启动一个3个节点的集群
-        Path path = TestPathUtils.prepareBaseDir("AddVotersTest");
+        Path path = TestPathUtils.prepareBaseDir("AddVotersTest-");
         List<KvServer> oldServers = createServers(oldServerCount, path);
 
         KvClient kvClient = oldServers.get(0).createClient();
@@ -261,7 +261,7 @@ public class KvTest {
         while (!synced) {
             synced = newServerUris.stream().allMatch(uri -> {
                 try {
-                    return newAdminClient.getServerStatus(uri).get().getLastApplied() == leaderApplied;
+                    return newAdminClient.getServerStatus(uri).get().getLastApplied() >= leaderApplied;
                 } catch (Throwable e) {
                     return false;
                 }
@@ -290,7 +290,7 @@ public class KvTest {
         while (!synced) {
             synced = newServerUris.stream().allMatch(uri -> {
                 try {
-                    return newAdminClient.getServerStatus(uri).get().getLastApplied() == newApplied;
+                    return newAdminClient.getServerStatus(uri).get().getLastApplied() >= newApplied;
                 } catch (Throwable e) {
                     return false;
                 }
@@ -317,7 +317,9 @@ public class KvTest {
 
         oldAdminClient.stop();
         newAdminClient.stop();
-
+        stopServers(newServers);
+        stopServers(oldServers);
+        TestPathUtils.destroyBaseDir(path.toFile());
     }
 
     // 替换节点
@@ -328,7 +330,7 @@ public class KvTest {
         final int replaceServerCount = 1;
 
         // 初始化并启动一个3个节点的集群
-        Path path = TestPathUtils.prepareBaseDir("AddVotersTest");
+        Path path = TestPathUtils.prepareBaseDir("ReplaceVotersTest-");
         List<KvServer> oldServers = createServers(serverCount, path);
 
         KvClient kvClient = oldServers.get(0).createClient();
@@ -396,7 +398,7 @@ public class KvTest {
         while (!synced) {
             synced = newServerUris.stream().allMatch(uri -> {
                 try {
-                    return newAdminClient.getServerStatus(uri).get().getLastApplied() == leaderApplied;
+                    return newAdminClient.getServerStatus(uri).get().getLastApplied() >= leaderApplied;
                 } catch (Throwable e) {
                     return false;
                 }
@@ -424,7 +426,7 @@ public class KvTest {
         while (!synced) {
             synced = newServerUris.stream().allMatch(uri -> {
                 try {
-                    return newAdminClient.getServerStatus(uri).get().getLastApplied() == newApplied;
+                    return newAdminClient.getServerStatus(uri).get().getLastApplied() >= newApplied;
                 } catch (Throwable e) {
                     return false;
                 }
@@ -435,21 +437,16 @@ public class KvTest {
 
         // 停止已不在集群内的节点
 
-        for (KvServer server : oldServers) {
+        oldServers.removeIf(server -> {
             if(!newConfig.contains(server.serverUri())) {
-                if(oldAdminClient.getServerStatus(server.serverUri()).get().getVoterState() == VoterState.LEADER) {
-                    // 如果是LEADER，等着它执行完变更自行停止
-                    logger.info("Waiting for leader stopped");
-                    while (server.serverState() != StateServer.ServerState.STOPPED) {
-                        Thread.sleep(100L);
-                    }
-                } else {
-
-                    logger.info("Stop server: {}.", server.serverUri());
-                    server.stop();
-                }
+                logger.info("Stop server: {}.", server.serverUri());
+                server.stop();
+                return true;
+            } else {
+                return false;
             }
-        }
+        });
+
 
         // 可能发生选举，需要等待选举完成。
         newAdminClient.whenClusterReady(0L).get();
@@ -480,6 +477,9 @@ public class KvTest {
 
         oldAdminClient.stop();
         newAdminClient.stop();
+        stopServers(newServers);
+        stopServers(oldServers);
+        TestPathUtils.destroyBaseDir(path.toFile());
 
     }
 
@@ -522,7 +522,7 @@ public class KvTest {
         while (!synced) {
             synced = newConfig.stream().allMatch(uri -> {
                 try {
-                    return newAdminClient.getServerStatus(uri).get().getLastApplied() == newApplied;
+                    return newAdminClient.getServerStatus(uri).get().getLastApplied() >= newApplied;
                 } catch (Throwable e) {
                     return false;
                 }
@@ -533,21 +533,15 @@ public class KvTest {
 
         // 停止已不在集群内的节点
 
-        for (KvServer server : oldServers) {
+        oldServers.removeIf(server -> {
             if(!newConfig.contains(server.serverUri())) {
-                if(oldAdminClient.getServerStatus(server.serverUri()).get().getVoterState() == VoterState.LEADER) {
-                    // 如果是LEADER，等着它执行完变更自行停止
-                    logger.info("Waiting for leader stopped");
-                    while (server.serverState() != StateServer.ServerState.STOPPED) {
-                        Thread.sleep(100L);
-                    }
-                } else {
-
-                    logger.info("Stop server: {}.", server.serverUri());
-                    server.stop();
-                }
+                logger.info("Stop server: {}.", server.serverUri());
+                server.stop();
+                return true;
+            } else {
+                return false;
             }
-        }
+        });
 
         // 可能发生选举，需要等待选举完成。
         newAdminClient.whenClusterReady(0L).get();
@@ -562,6 +556,10 @@ public class KvTest {
         for (int i = 0; i < 10; i++) {
             Assert.assertEquals(String.valueOf(i), kvClient.get("key" + i));
         }
+        oldAdminClient.stop();
+        newAdminClient.stop();
+        stopServers(oldServers);
+        TestPathUtils.destroyBaseDir(path.toFile());
 
     }
 
