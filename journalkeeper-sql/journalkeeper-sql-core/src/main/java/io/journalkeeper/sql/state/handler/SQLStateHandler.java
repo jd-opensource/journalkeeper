@@ -16,24 +16,19 @@ package io.journalkeeper.sql.state.handler;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.metric.JMetricFactory;
 import io.journalkeeper.metric.JMetricFactoryManager;
-import io.journalkeeper.metric.JMetricSupport;
 import io.journalkeeper.sql.client.domain.Codes;
 import io.journalkeeper.sql.client.domain.OperationTypes;
 import io.journalkeeper.sql.client.domain.ReadRequest;
 import io.journalkeeper.sql.client.domain.ReadResponse;
 import io.journalkeeper.sql.client.domain.WriteRequest;
 import io.journalkeeper.sql.client.domain.WriteResponse;
-import io.journalkeeper.sql.client.support.TransactionIdGenerator;
 import io.journalkeeper.sql.state.SQLExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 /**
  * SQLStateHandler
@@ -46,7 +41,6 @@ public class SQLStateHandler {
 
     private Properties properties;
     private SQLExecutor sqlExecutor;
-    private TransactionIdGenerator transactionIdGenerator;
     private SQLStateReadHandler readHandler;
     private SQLStateWriteHandler writeHandler;
 
@@ -56,19 +50,18 @@ public class SQLStateHandler {
     public SQLStateHandler(Properties properties, SQLExecutor sqlExecutor) {
         this.properties = properties;
         this.sqlExecutor = sqlExecutor;
-        this.transactionIdGenerator = new TransactionIdGenerator();
         this.readHandler = new SQLStateReadHandler(properties, sqlExecutor);
-        this.writeHandler = new SQLStateWriteHandler(properties, sqlExecutor, transactionIdGenerator);
+        this.writeHandler = new SQLStateWriteHandler(properties, sqlExecutor);
         this.metricFactory = JMetricFactoryManager.getFactory();
 
         // TODO 临时代码
-        Executors.newScheduledThreadPool(1).scheduleWithFixedDelay(() -> {
-            for (Map.Entry<String, JMetric> entry : metricMap.entrySet()) {
-                logger.info("sql: {}, metric: {}", entry.getKey(), JMetricSupport.format(entry.getValue().get(), TimeUnit.MILLISECONDS));
-            }
-        }, Integer.valueOf(properties.getProperty("sql.metric.interval", String.valueOf(1000 * 10))),
-                Integer.valueOf(properties.getProperty("sql.metric.interval", String.valueOf(1000 * 10))),
-                TimeUnit.MILLISECONDS);
+//        Executors.newScheduledThreadPool(1).scheduleWithFixedDelay(() -> {
+//            for (Map.Entry<String, JMetric> entry : metricMap.entrySet()) {
+//                logger.info("sql: {}, metric: {}", entry.getKey(), JMetricSupport.format(entry.getValue().get(), TimeUnit.MILLISECONDS));
+//            }
+//        }, Integer.valueOf(properties.getProperty("sql.metric.interval", String.valueOf(1000 * 10))),
+//                Integer.valueOf(properties.getProperty("sql.metric.interval", String.valueOf(1000 * 10))),
+//                TimeUnit.MILLISECONDS);
     }
 
     public WriteResponse handleWrite(WriteRequest request) {
@@ -84,7 +77,7 @@ public class SQLStateHandler {
 
         try {
             return writeHandler.handle(request);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             logger.error("sql write exception, request: {}", request, e);
             return new WriteResponse(Codes.ERROR.getCode(), e.toString());
         } finally {
@@ -100,7 +93,7 @@ public class SQLStateHandler {
 
         try {
             return readHandler.handle(request);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             logger.error("sql read exception, request: {}", request, e);
             return new ReadResponse(Codes.ERROR.getCode(), e.toString());
         } finally {

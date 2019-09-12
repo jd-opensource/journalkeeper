@@ -107,8 +107,8 @@ public class SQLClient {
         return delete(null, sql, params);
     }
 
-    public CompletableFuture<String> beginTransaction() {
-        return doUpdate(new WriteRequest(OperationTypes.TRANSACTION_BEGIN.getType()))
+    public CompletableFuture<String> beginTransaction(String id) {
+        return doUpdate(new WriteRequest(OperationTypes.TRANSACTION_BEGIN.getType(), id))
                 .exceptionally(cause -> {
                     throw convertException(cause);
                 }).thenApply(response -> {

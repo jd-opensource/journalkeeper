@@ -13,10 +13,6 @@
  */
 package io.journalkeeper.rpc.remoting.transport.support;
 
-import io.journalkeeper.rpc.remoting.transport.command.Direction;
-import io.journalkeeper.rpc.remoting.transport.command.Type;
-import io.journalkeeper.rpc.remoting.transport.config.TransportConfig;
-import io.journalkeeper.rpc.remoting.transport.exception.TransportException;
 import io.journalkeeper.rpc.remoting.transport.ChannelTransport;
 import io.journalkeeper.rpc.remoting.transport.IpUtil;
 import io.journalkeeper.rpc.remoting.transport.RequestBarrier;
@@ -25,7 +21,11 @@ import io.journalkeeper.rpc.remoting.transport.TransportAttribute;
 import io.journalkeeper.rpc.remoting.transport.TransportState;
 import io.journalkeeper.rpc.remoting.transport.command.Command;
 import io.journalkeeper.rpc.remoting.transport.command.CommandCallback;
+import io.journalkeeper.rpc.remoting.transport.command.Direction;
 import io.journalkeeper.rpc.remoting.transport.command.Header;
+import io.journalkeeper.rpc.remoting.transport.command.Type;
+import io.journalkeeper.rpc.remoting.transport.config.TransportConfig;
+import io.journalkeeper.rpc.remoting.transport.exception.TransportException;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -48,15 +48,30 @@ public class DefaultChannelTransport implements ChannelTransport {
     protected static final Logger logger = LoggerFactory.getLogger(DefaultChannelTransport.class);
 
     private Channel channel;
-    private TransportAttribute attribute;
+    private TransportAttribute attribute = new DefaultTransportAttribute();
     private RequestBarrier barrier;
     private TransportConfig config;
+    private SocketAddress address;
 
-    public DefaultChannelTransport(Channel channel, TransportAttribute attribute, RequestBarrier barrier) {
+    public DefaultChannelTransport(Channel channel, RequestBarrier barrier) {
+        this.channel = channel;
+        this.barrier = barrier;
+        this.config = barrier.getConfig();
+    }
+
+    public DefaultChannelTransport(Channel channel, RequestBarrier barrier, SocketAddress address) {
+        this.channel = channel;
+        this.barrier = barrier;
+        this.config = barrier.getConfig();
+        this.address = address;
+    }
+
+    public DefaultChannelTransport(Channel channel, TransportAttribute attribute, RequestBarrier barrier, SocketAddress address) {
         this.channel = channel;
         this.attribute = attribute;
         this.barrier = barrier;
         this.config = barrier.getConfig();
+        this.address = address;
     }
 
     @Override
@@ -87,14 +102,14 @@ public class DefaultChannelTransport implements ChannelTransport {
             if (null == response) {
                 // 发送请求成功，等待应答超时
                 if (future.isSuccess()) {
-                    throw TransportException.RequestTimeoutException.build(IpUtil.toAddress(channel.remoteAddress()));
+                    throw TransportException.RequestTimeoutException.build(IpUtil.toAddress(address));
                 } else {
                     // 发送请求失败
                     Throwable cause = future.getCause();
                     if (cause != null) {
                         throw cause;
                     }
-                    throw TransportException.RequestErrorException.build(IpUtil.toAddress(channel.remoteAddress()));
+                    throw TransportException.RequestErrorException.build(IpUtil.toAddress(address));
                 }
             }
 
@@ -108,7 +123,7 @@ public class DefaultChannelTransport implements ChannelTransport {
             } else if (e instanceof InterruptedException) {
                 throw TransportException.InterruptedException.build();
             } else {
-                throw TransportException.RequestErrorException.build("请求错误, " + channel.remoteAddress(), e);
+                throw TransportException.RequestErrorException.build("请求错误, " + address, e);
             }
         }
     }
@@ -306,7 +321,11 @@ public class DefaultChannelTransport implements ChannelTransport {
 
     @Override
     public SocketAddress remoteAddress() {
-        return channel.remoteAddress();
+        if (address == null) {
+            return channel.remoteAddress();
+        } else {
+            return address;
+        }
     }
 
     @Override

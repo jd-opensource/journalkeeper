@@ -18,6 +18,10 @@ import io.journalkeeper.rpc.remoting.concurrent.EventListener;
 import io.journalkeeper.rpc.remoting.event.TransportEvent;
 import io.journalkeeper.rpc.remoting.event.TransportEventHandler;
 import io.journalkeeper.rpc.remoting.handler.ClientConnectionHandler;
+import io.journalkeeper.rpc.remoting.transport.RequestBarrier;
+import io.journalkeeper.rpc.remoting.transport.Transport;
+import io.journalkeeper.rpc.remoting.transport.TransportClient;
+import io.journalkeeper.rpc.remoting.transport.TransportClientSupport;
 import io.journalkeeper.rpc.remoting.transport.codec.Codec;
 import io.journalkeeper.rpc.remoting.transport.codec.support.NettyDecoder;
 import io.journalkeeper.rpc.remoting.transport.codec.support.NettyEncoder;
@@ -28,11 +32,6 @@ import io.journalkeeper.rpc.remoting.transport.command.support.ResponseHandler;
 import io.journalkeeper.rpc.remoting.transport.config.ClientConfig;
 import io.journalkeeper.rpc.remoting.transport.exception.TransportException;
 import io.journalkeeper.rpc.remoting.transport.handler.CommandInvocation;
-import io.journalkeeper.rpc.remoting.transport.RequestBarrier;
-import io.journalkeeper.rpc.remoting.transport.Transport;
-import io.journalkeeper.rpc.remoting.transport.TransportClient;
-import io.journalkeeper.rpc.remoting.transport.TransportClientSupport;
-import io.journalkeeper.rpc.remoting.transport.TransportHelper;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelInitializer;
@@ -102,7 +101,7 @@ public class DefaultTransportClient extends TransportClientSupport implements Tr
     @Override
     public Transport createTransport(SocketAddress address, long connectionTimeout) throws TransportException {
         Channel channel = createChannel(address, connectionTimeout);
-        return TransportHelper.newTransport(channel, requestBarrier);
+        return new DefaultChannelTransport(channel, requestBarrier, address);
     }
 
     @Override
