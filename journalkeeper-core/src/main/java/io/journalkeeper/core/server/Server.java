@@ -22,6 +22,8 @@ import io.journalkeeper.rpc.client.UpdateVotersRequest;
 import io.journalkeeper.rpc.client.UpdateVotersResponse;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
+import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
+import io.journalkeeper.rpc.server.DisableLeaderWriteResponse;
 import io.journalkeeper.rpc.server.GetServerEntriesRequest;
 import io.journalkeeper.rpc.server.GetServerEntriesResponse;
 import io.journalkeeper.rpc.server.GetServerStateRequest;
@@ -217,6 +219,11 @@ public class Server<E, ER, Q, QR>
     @Override
     public CompletableFuture<GetServerStateResponse> getServerState(GetServerStateRequest request) {
         return server.getServerState(request);
+    }
+
+    @Override
+    public CompletableFuture<DisableLeaderWriteResponse> disableLeaderWrite(DisableLeaderWriteRequest request) {
+        return server.disableLeaderWrite(request);
     }
 
     @Override

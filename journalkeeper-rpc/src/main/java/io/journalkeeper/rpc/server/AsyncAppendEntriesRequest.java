@@ -28,14 +28,16 @@ public class AsyncAppendEntriesRequest implements Termed{
     private final int prevLogTerm;
     private final List<byte []> entries;
     private final long leaderCommit;
+    private final long maxIndex;
 
-    public AsyncAppendEntriesRequest(int term, URI leader, long prevLogIndex, int prevLogTerm, List<byte []> entries, long leaderCommit) {
+    public AsyncAppendEntriesRequest(int term, URI leader, long prevLogIndex, int prevLogTerm, List<byte[]> entries, long leaderCommit, long maxIndex) {
         this.term = term;
         this.leader = leader;
         this.prevLogIndex = prevLogIndex;
         this.prevLogTerm = prevLogTerm;
         this.entries = entries;
         this.leaderCommit = leaderCommit;
+        this.maxIndex = maxIndex;
     }
 
     public int getTerm() {
@@ -60,5 +62,9 @@ public class AsyncAppendEntriesRequest implements Termed{
 
     public long getLeaderCommit() {
         return leaderCommit;
+    }
+
+    public long getMaxIndex() {
+        return maxIndex;
     }
 }

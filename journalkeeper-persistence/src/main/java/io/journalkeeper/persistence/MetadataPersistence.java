@@ -24,5 +24,5 @@ import java.util.Properties;
  */
 public interface MetadataPersistence {
     void save(ServerMetadata serverMetadata) throws IOException;
-    ServerMetadata recover(Path path, Properties properties) throws IOException;
+    ServerMetadata recover(Path path) throws IOException;
 }

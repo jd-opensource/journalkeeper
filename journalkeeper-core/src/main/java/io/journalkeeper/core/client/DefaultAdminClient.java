@@ -10,6 +10,7 @@ import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
+import io.journalkeeper.core.entry.reserved.SetPreferredLeaderEntry;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
@@ -91,6 +92,12 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
                 .getClintServerRpc(uri)
                 .getServerStatus()
                 .thenApply(GetServerStatusResponse::getServerStatus);
+    }
+
+    @Override
+    public CompletableFuture setPreferredLeader(URI preferredLeader) {
+        return this.update(ReservedEntriesSerializeSupport.serialize(new SetPreferredLeaderEntry(preferredLeader)),
+                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance(), executor);
     }
 
     @Override

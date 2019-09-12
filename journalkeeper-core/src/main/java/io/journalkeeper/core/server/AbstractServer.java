@@ -134,7 +134,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     @Override
     public boolean isAlive() {
-        return true;
+        return serverState() == ServerState.RUNNING;
     }
 
     @Override
@@ -154,11 +154,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
      * 心跳间隔、选举超时等随机时间的随机范围
      */
     public final static float RAND_INTERVAL_RANGE = 0.5F;
-
-//    /**
-//     * 所有选民节点地址，包含LEADER
-//     */
-//    protected List<URI> voters;
 
     /**
      * 当前Server URI
@@ -337,7 +332,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         this.uri = uri;
         votersConfigStateMachine = new VoterConfigurationStateMachine(voters);
         createMissingDirectories();
-        metadataPersistence.recover(metadataPath(), properties);
+        metadataPersistence.recover(metadataPath());
         lastSavedServerMetadata = createServerMetadata();
         metadataPersistence.save(lastSavedServerMetadata);
 
@@ -451,21 +446,24 @@ public abstract class AbstractServer<E, ER, Q, QR>
         logger.info("Apply reserved entry, type: {}", type);
         switch (type) {
             case ReservedEntry.TYPE_COMPACT_JOURNAL:
+                // TODO: 删除日志之前需要找到一个快照
                 compactJournalAsync(ReservedEntriesSerializeSupport.parse(reservedEntry, CompactJournalEntry.class).getCompactIndices());
                 break;
             case ReservedEntry.TYPE_SCALE_PARTITIONS:
                 scalePartitions(ReservedEntriesSerializeSupport.parse(reservedEntry, ScalePartitionsEntry.class).getPartitions());
                 break;
-            case ReservedEntry.TYPE_UPDATE_VOTERS_S1:
-            case ReservedEntry.TYPE_UPDATE_VOTERS_S2:
-                break;
             case ReservedEntry.TYPE_LEADER_ANNOUNCEMENT:
                 LeaderAnnouncementEntry leaderAnnouncementEntry = ReservedEntriesSerializeSupport.parse(reservedEntry);
                 fireOnLeaderChangeEvent(leaderAnnouncementEntry.getTerm());
                 break;
+            case ReservedEntry.TYPE_UPDATE_VOTERS_S1:
+            case ReservedEntry.TYPE_UPDATE_VOTERS_S2:
+            case ReservedEntry.TYPE_SET_PREFERRED_LEADER:
+                break;
             default:
                 logger.warn("Invalid reserved entry type: {}.", type);
         }
+        flushState();
     }
 
     private void fireOnLeaderChangeEvent(int term) {
@@ -851,7 +849,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
      */
     @Override
     public synchronized void recover() throws IOException {
-        lastSavedServerMetadata = metadataPersistence.recover(metadataPath(), properties);
+        lastSavedServerMetadata = metadataPersistence.recover(metadataPath());
         onMetadataRecovered(lastSavedServerMetadata);
         recoverJournal(lastSavedServerMetadata.getPartitions(), lastSavedServerMetadata.getCommitIndex());
         onJournalRecovered(journal);

@@ -39,14 +39,14 @@ public abstract class LeaderResponse extends BaseResponse {
     }
 
     @Override
-    public void setException(Throwable throwable) {
+    protected void onSetException(Throwable throwable) {
         try {
             throw throwable;
         } catch (NotLeaderException e) {
             setStatusCode(StatusCode.NOT_LEADER);
             setLeader(e.getLeader());
         } catch (Throwable t) {
-            super.setException(throwable);
+            super.onSetException(throwable);
         }
     }
 

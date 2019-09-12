@@ -33,13 +33,15 @@ import java.util.Properties;
 public class KvServer implements StateServer {
     private static final Logger logger = LoggerFactory.getLogger(KvServer.class);
     private final BootStrap<KvEntry, Void, KvQuery, KvResult> bootStrap;
-
+    private final Properties properties;
     public KvServer(Properties properties) {
         this(RaftServer.Roll.VOTER, properties);
 
     }
 
     public KvServer(RaftServer.Roll roll, Properties properties) {
+        this.properties = properties;
+
         bootStrap =
                 new BootStrap<>(roll,
                         new KvStateFactory(),
@@ -92,5 +94,9 @@ public class KvServer implements StateServer {
 
     public URI serverUri() {
         return this.bootStrap.getServer().serverUri();
+    }
+
+    public Properties getProperties() {
+        return properties;
     }
 }

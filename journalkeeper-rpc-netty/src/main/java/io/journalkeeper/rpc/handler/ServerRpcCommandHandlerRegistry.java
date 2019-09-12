@@ -39,6 +39,7 @@ public class ServerRpcCommandHandlerRegistry {
         factory.register(new RequestVoteHandler(serverRpc));
         factory.register(new GetServerEntriesHandler(serverRpc));
         factory.register(new GetServerStateHandler(serverRpc));
+        factory.register(new DisableLeaderWriteRequestHandler(serverRpc));
 
     }
 }

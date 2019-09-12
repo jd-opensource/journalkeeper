@@ -32,6 +32,8 @@ import io.journalkeeper.rpc.client.UpdateVotersRequest;
 import io.journalkeeper.rpc.client.UpdateVotersResponse;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
+import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
+import io.journalkeeper.rpc.server.DisableLeaderWriteResponse;
 import io.journalkeeper.rpc.server.GetServerEntriesRequest;
 import io.journalkeeper.rpc.server.GetServerEntriesResponse;
 import io.journalkeeper.rpc.server.GetServerStateRequest;
@@ -116,11 +118,6 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 .onException(e -> logger.warn("{} Exception: ", OBSERVER_REPLICATION_THREAD, e))
                 .daemon(true)
                 .build();
-    }
-
-    @Override
-    public synchronized void init(URI uri, List<URI> voters) throws IOException {
-        super.init(uri, voters);
     }
 
     private void pullEntries() throws Throwable {
@@ -289,6 +286,11 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     }
 
     @Override
+    public CompletableFuture<DisableLeaderWriteResponse> disableLeaderWrite(DisableLeaderWriteRequest request) {
+        return CompletableFuture.supplyAsync(() -> new DisableLeaderWriteResponse(new NotVoterException()), asyncExecutor);
+    }
+
+    @Override
     protected ServerMetadata createServerMetadata() {
         ServerMetadata serverMetadata = super.createServerMetadata();
         serverMetadata.setParents(config.getParents());
@@ -300,7 +302,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
         private final static String PULL_BATCH_SIZE_KEY = "observer.pull_batch_size";
 
         private final static String PARENTS_KEY = "observer.parents";
-
+        // TODO: 动态变更parents
         private List<URI> parents = Collections.emptyList();
 
         private int pullBatchSize = DEFAULT_PULL_BATCH_SIZE;

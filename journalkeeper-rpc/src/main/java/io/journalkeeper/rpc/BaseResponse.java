@@ -18,6 +18,7 @@ import io.journalkeeper.exceptions.NotLeaderException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeoutException;
 
 /**
@@ -40,22 +41,25 @@ public abstract class BaseResponse {
     }
 
 
-    public void  setException(Throwable throwable) {
-
+    private void  setException(Throwable throwable) {
         try {
-            throw throwable;
+            throw throwable instanceof CompletionException ? throwable.getCause() : throwable ;
         } catch (TimeoutException e) {
             setStatusCode(StatusCode.TIMEOUT);
         } catch (Throwable t) {
-            StringWriter sw = new StringWriter();
-            sw.write("Remote stack trace:" + System.lineSeparator());
-            throwable.printStackTrace(new PrintWriter(sw));
-            sw.write("End of remote stack trace." + System.lineSeparator());
-
-            error = sw.toString();
+            onSetException(t);
         }
 
     }
+
+    protected void onSetException(Throwable throwable) {
+        StringWriter sw = new StringWriter();
+        sw.write("Remote stack trace:" + System.lineSeparator());
+        throwable.printStackTrace(new PrintWriter(sw));
+        sw.write("End of remote stack trace." + System.lineSeparator());
+
+        error = sw.toString();
+    };
 
     public StatusCode getStatusCode() {
         return statusCode;

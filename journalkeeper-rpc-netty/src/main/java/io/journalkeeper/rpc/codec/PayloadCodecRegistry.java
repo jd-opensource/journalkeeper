@@ -50,6 +50,8 @@ public class PayloadCodecRegistry {
         payloadCodecFactory.register(new GetServerEntriesResponseCodec());
         payloadCodecFactory.register(new GetServerStateRequestCodec());
         payloadCodecFactory.register(new GetServerStateResponseCodec());
+        payloadCodecFactory.register(new DisableLeaderWriteRequestCodec());
+        payloadCodecFactory.register(new DisableLeaderWriteResponseCodec());
 
     }
 }

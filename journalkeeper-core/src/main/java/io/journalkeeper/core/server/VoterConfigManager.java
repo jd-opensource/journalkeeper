@@ -138,10 +138,9 @@ class VoterConfigManager {
         }
     }
 
-    protected void applyReservedEntry(byte [] reservedEntry, VoterState voterState,
+    void applyReservedEntry(int type, byte [] reservedEntry, VoterState voterState,
                                       AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine,
                                       ClientServerRpc clientServerRpc, URI serverUri, StateServer server) {
-        int type = ReservedEntriesSerializeSupport.parseEntryType(reservedEntry);
         switch (type) {
             case ReservedEntry.TYPE_UPDATE_VOTERS_S1:
                 if(voterState == VoterState.LEADER) {

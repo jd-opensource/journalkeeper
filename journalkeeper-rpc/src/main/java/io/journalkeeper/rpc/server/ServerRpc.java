@@ -28,5 +28,5 @@ public interface ServerRpc extends ClientServerRpc, Detectable {
     CompletableFuture<RequestVoteResponse> requestVote(RequestVoteRequest request);
     CompletableFuture<GetServerEntriesResponse> getServerEntries(GetServerEntriesRequest request);
     CompletableFuture<GetServerStateResponse> getServerState(GetServerStateRequest request);
-
+    CompletableFuture<DisableLeaderWriteResponse> disableLeaderWrite(DisableLeaderWriteRequest request);
 }

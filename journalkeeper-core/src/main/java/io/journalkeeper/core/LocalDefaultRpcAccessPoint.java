@@ -19,6 +19,7 @@ import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 
 import java.net.URI;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -35,13 +36,13 @@ public class LocalDefaultRpcAccessPoint implements ClientServerRpcAccessPoint {
     }
 
     @Override
-    public void updateServers(List<URI> uriList) {
-        // nothing to do
+    public void updateServers(Collection<URI> uriList) {
+        clientServerRpcAccessPoint.updateServers(uriList);
     }
 
     @Override
     public ClientServerRpc defaultClientServerRpc() {
-        return server;
+        return server.isAlive() ? server : clientServerRpcAccessPoint.defaultClientServerRpc();
     }
 
     @Override

@@ -27,11 +27,13 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeoutException;
 
 /**
+ * TODO: 针对连不上服务端和服务端不是LEADER这两种情况，需要增加一个异步重试机制。
  * @author LiYue
  * Date: 2019-09-09
  */
@@ -88,6 +90,7 @@ public class AbstractClient implements Watchable, ClusterReadyAware, ServerConfi
                 .thenCompose(resp -> {
                     if (resp.getStatusCode() == StatusCode.NOT_LEADER) {
                         this.leaderUri = resp.getLeader();
+//                        return invokeLeaderRpc(invoke, executor);
                         return invoke.invokeLeader(clientServerRpcAccessPoint.getClintServerRpc(resp.getLeader()));
                     } else {
                         return CompletableFuture.supplyAsync(() -> resp);
@@ -95,10 +98,22 @@ public class AbstractClient implements Watchable, ClusterReadyAware, ServerConfi
                 });
     }
 
+    // 获取的Leader地址有可能是已经过时了，这时候可能有2种情况：
+    // 第一种： 连不上
+    // 第二种：能连上但是返回NOT_LEADER
+    // 这里面只处理连不上的情况
     private CompletableFuture<ClientServerRpc> getLeaderRpc(Executor executor) {
         return this.leaderUri == null ? queryLeaderRpc() :
                 CompletableFuture.supplyAsync(() ->
-                        this.clientServerRpcAccessPoint.getClintServerRpc(this.leaderUri), executor);
+                        this.clientServerRpcAccessPoint.getClintServerRpc(this.leaderUri), executor)
+                .exceptionally(e -> {
+                    logger.warn("Get leader rpc exception, leaderUri: {}, exception: {}, retry...", this.leaderUri, e.getMessage());
+                    try {
+                        return queryLeaderRpc().get();
+                    } catch (Throwable ex) {
+                        throw new RpcException(ex);
+                    }
+                });
     }
 
     private CompletableFuture<ClientServerRpc> queryLeaderRpc() {
@@ -109,8 +124,9 @@ public class AbstractClient implements Watchable, ClusterReadyAware, ServerConfi
         .thenApplyAsync(resp -> {
             if(resp.success()) {
                 if(resp.getClusterConfiguration() != null && resp.getClusterConfiguration().getLeader() != null) {
+                    leaderUri = resp.getClusterConfiguration().getLeader();
                     return clientServerRpcAccessPoint.getClintServerRpc(
-                            resp.getClusterConfiguration().getLeader());
+                            leaderUri);
                 } else {
                     throw new NoLeaderException();
                 }
