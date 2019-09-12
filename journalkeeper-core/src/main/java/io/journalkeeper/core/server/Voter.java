@@ -54,6 +54,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -450,6 +451,37 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 properties.getProperty(
                         Config.CACHE_REQUESTS_KEY,
                         String.valueOf(Config.DEFAULT_CACHE_REQUESTS))));
+        config.setSnapshotStep(Integer.parseInt(
+                properties.getProperty(
+                        AbstractServer.Config.SNAPSHOT_STEP_KEY,
+                        String.valueOf(AbstractServer.Config.DEFAULT_SNAPSHOT_STEP))));
+        config.setRpcTimeoutMs(Long.parseLong(
+                properties.getProperty(
+                        AbstractServer.Config.RPC_TIMEOUT_MS_KEY,
+                        String.valueOf(AbstractServer.Config.DEFAULT_RPC_TIMEOUT_MS))));
+        config.setFlushIntervalMs(Long.parseLong(
+                properties.getProperty(
+                        AbstractServer.Config.FLUSH_INTERVAL_MS_KEY,
+                        String.valueOf(AbstractServer.Config.DEFAULT_FLUSH_INTERVAL_MS))));
+
+        config.setWorkingDir(Paths.get(
+                properties.getProperty(AbstractServer.Config.WORKING_DIR_KEY,
+                        config.getWorkingDir().normalize().toString())));
+
+        config.setGetStateBatchSize(Integer.parseInt(
+                properties.getProperty(
+                        AbstractServer.Config.GET_STATE_BATCH_SIZE_KEY,
+                        String.valueOf(AbstractServer.Config.DEFAULT_GET_STATE_BATCH_SIZE))));
+
+        config.setEnableMetric(Boolean.parseBoolean(
+                properties.getProperty(
+                        AbstractServer.Config.ENABLE_METRIC_KEY,
+                        String.valueOf(AbstractServer.Config.DEFAULT_ENABLE_METRIC))));
+
+        config.setPrintMetricIntervalSec(Integer.parseInt(
+                properties.getProperty(
+                        AbstractServer.Config.PRINT_METRIC_INTERVAL_SEC_KEY,
+                        String.valueOf(AbstractServer.Config.DEFAULT_PRINT_METRIC_INTERVAL_SEC))));
         return config;
     }
 

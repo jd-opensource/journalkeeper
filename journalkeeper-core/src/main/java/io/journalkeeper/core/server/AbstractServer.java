@@ -19,7 +19,6 @@ import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
-import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.Entry;
@@ -43,7 +42,6 @@ import io.journalkeeper.persistence.BufferPool;
 import io.journalkeeper.persistence.MetadataPersistence;
 import io.journalkeeper.persistence.PersistenceFactory;
 import io.journalkeeper.persistence.ServerMetadata;
-import io.journalkeeper.rpc.RpcAccessPointFactory;
 import io.journalkeeper.rpc.client.AddPullWatchResponse;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
 import io.journalkeeper.rpc.client.ConvertRollResponse;
@@ -54,7 +52,6 @@ import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
 import io.journalkeeper.rpc.client.RemovePullWatchRequest;
 import io.journalkeeper.rpc.client.RemovePullWatchResponse;
-import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.server.GetServerEntriesRequest;
 import io.journalkeeper.rpc.server.GetServerEntriesResponse;
 import io.journalkeeper.rpc.server.GetServerStateRequest;
@@ -66,7 +63,6 @@ import io.journalkeeper.utils.event.EventBus;
 import io.journalkeeper.utils.event.EventType;
 import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.utils.spi.ServiceSupport;
-import io.journalkeeper.utils.state.StateServer;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
 import io.journalkeeper.utils.threads.Threads;
@@ -84,7 +80,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1221,21 +1216,21 @@ public abstract class AbstractServer<E, ER, Q, QR>
      * This method will be invoked when metric
      */
     protected void onPrintMetric() {}
-    static class Config {
-        final static int DEFAULT_SNAPSHOT_STEP = 0;
-        final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;
-        final static long DEFAULT_FLUSH_INTERVAL_MS = 50L;
-        final static int DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;
-        final static boolean DEFAULT_ENABLE_METRIC = false;
-        final static int DEFAULT_PRINT_METRIC_INTERVAL_SEC = 0;
+    public static class Config {
+        public final static int DEFAULT_SNAPSHOT_STEP = 0;
+        public final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;
+        public final static long DEFAULT_FLUSH_INTERVAL_MS = 50L;
+        public final static int DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;
+        public final static boolean DEFAULT_ENABLE_METRIC = false;
+        public final static int DEFAULT_PRINT_METRIC_INTERVAL_SEC = 0;
 
-        final static String SNAPSHOT_STEP_KEY = "snapshot_step";
-        final static String RPC_TIMEOUT_MS_KEY = "rpc_timeout_ms";
-        final static String FLUSH_INTERVAL_MS_KEY = "flush_interval_ms";
-        final static String WORKING_DIR_KEY = "working_dir";
-        final static String GET_STATE_BATCH_SIZE_KEY = "get_state_batch_size";
-        final static String ENABLE_METRIC_KEY = "enable_metric";
-        final static String PRINT_METRIC_INTERVAL_SEC_KEY = "print_metric_interval_sec";
+        public final static String SNAPSHOT_STEP_KEY = "snapshot_step";
+        public final static String RPC_TIMEOUT_MS_KEY = "rpc_timeout_ms";
+        public final static String FLUSH_INTERVAL_MS_KEY = "flush_interval_ms";
+        public final static String WORKING_DIR_KEY = "working_dir";
+        public final static String GET_STATE_BATCH_SIZE_KEY = "get_state_batch_size";
+        public final static String ENABLE_METRIC_KEY = "enable_metric";
+        public final static String PRINT_METRIC_INTERVAL_SEC_KEY = "print_metric_interval_sec";
 
         private int snapshotStep = DEFAULT_SNAPSHOT_STEP;
         private long rpcTimeoutMs = DEFAULT_RPC_TIMEOUT_MS;

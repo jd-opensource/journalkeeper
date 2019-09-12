@@ -30,9 +30,11 @@ import java.util.concurrent.ExecutionException;
 public class DefaultSQLOperator implements SQLOperator {
 
     private SQLClient client;
+    private TransactionIdGenerator transactionIdGenerator;
 
     public DefaultSQLOperator(SQLClient client) {
         this.client = client;
+        this.transactionIdGenerator = new TransactionIdGenerator();
     }
 
     @Override
@@ -74,7 +76,8 @@ public class DefaultSQLOperator implements SQLOperator {
     @Override
     public SQLTransactionOperator beginTransaction() {
         try {
-            String id = client.beginTransaction().get();
+            String id = transactionIdGenerator.generate();
+            client.beginTransaction(id).get();
             return new DefaultSQLTransactionOperator(id, client);
         } catch (Exception e) {
             throw convertException(e);
