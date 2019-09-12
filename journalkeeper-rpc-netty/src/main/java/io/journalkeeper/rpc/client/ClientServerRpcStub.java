@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.rpc.client;
 
+import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.codec.RpcTypes;
 import io.journalkeeper.rpc.remoting.transport.Transport;
@@ -27,6 +28,7 @@ import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
  * 客户端桩
@@ -41,6 +43,7 @@ public class ClientServerRpcStub implements ClientServerRpc {
     protected AsyncLoopThread pullEventThread = null;
     protected long pullWatchId = -1L;
     protected long ackSequence = -1L;
+
     public ClientServerRpcStub(Transport transport, URI uri) {
         this.transport = transport;
         this.uri = uri;
@@ -52,66 +55,77 @@ public class ClientServerRpcStub implements ClientServerRpc {
         return uri;
     }
 
+    protected  <Q, R extends BaseResponse> CompletableFuture<R> sendRequest(Q request, int rpcType) {
+        CompletableFuture<R> future = CommandSupport.sendRequest(request, rpcType, transport);
+        future.whenCompleteAsync((response, exception) -> {
+            if(null != exception) {
+                // 如果发生异常，
+                stop();
+            }
+        });
+        return future;
+
+    }
+
     @Override
     public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
-        return CommandSupport.sendRequest(request, RpcTypes.UPDATE_CLUSTER_STATE_REQUEST, transport);
+        return sendRequest(request, RpcTypes.UPDATE_CLUSTER_STATE_REQUEST);
     }
 
     @Override
     public CompletableFuture<QueryStateResponse> queryClusterState(QueryStateRequest request) {
-        return CommandSupport.sendRequest(request, RpcTypes.QUERY_CLUSTER_STATE_REQUEST, transport);
+        return sendRequest(request, RpcTypes.QUERY_CLUSTER_STATE_REQUEST);
     }
 
     @Override
     public CompletableFuture<QueryStateResponse> queryServerState(QueryStateRequest request) {
-        return CommandSupport.sendRequest(request, RpcTypes.QUERY_SERVER_STATE_REQUEST, transport);
+        return sendRequest(request, RpcTypes.QUERY_SERVER_STATE_REQUEST);
     }
 
     @Override
     public CompletableFuture<LastAppliedResponse> lastApplied() {
-        return CommandSupport.sendRequest(null, RpcTypes.LAST_APPLIED_REQUEST, transport);
+        return sendRequest(null, RpcTypes.LAST_APPLIED_REQUEST);
 
     }
 
     @Override
     public CompletableFuture<QueryStateResponse> querySnapshot(QueryStateRequest request) {
-        return CommandSupport
-                .sendRequest(request, RpcTypes.QUERY_SNAPSHOT_REQUEST, transport);
+        return sendRequest(request, RpcTypes.QUERY_SNAPSHOT_REQUEST);
     }
 
     @Override
     public CompletableFuture<GetServersResponse> getServers() {
-        return CommandSupport.sendRequest(null, RpcTypes.GET_SERVERS_REQUEST, transport);
+        return sendRequest(null, RpcTypes.GET_SERVERS_REQUEST);
     }
 
     @Override
     public CompletableFuture<GetServerStatusResponse> getServerStatus() {
-        return CommandSupport.sendRequest(null, RpcTypes.GET_SERVER_STATUS_REQUEST, transport);
+        return sendRequest(null, RpcTypes.GET_SERVER_STATUS_REQUEST);
     }
 
     @Override
     public CompletableFuture<AddPullWatchResponse> addPullWatch() {
-        return CommandSupport.sendRequest(null, RpcTypes.ADD_PULL_WATCH_REQUEST, transport);
+        return sendRequest(null, RpcTypes.ADD_PULL_WATCH_REQUEST);
     }
 
     @Override
     public CompletableFuture<RemovePullWatchResponse> removePullWatch(RemovePullWatchRequest request) {
-        return CommandSupport.sendRequest(request, RpcTypes.REMOVE_PULL_WATCH_REQUEST, transport);
+        return sendRequest(request, RpcTypes.REMOVE_PULL_WATCH_REQUEST);
     }
 
     @Override
     public CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request) {
-        return CommandSupport.sendRequest(request, RpcTypes.UPDATE_VOTERS_REQUEST, transport);
+        return sendRequest(request, RpcTypes.UPDATE_VOTERS_REQUEST);
     }
 
     @Override
     public CompletableFuture<PullEventsResponse> pullEvents(PullEventsRequest request) {
-        return CommandSupport.sendRequest(request, RpcTypes.PULL_EVENTS_REQUEST, transport);
+        return sendRequest(request, RpcTypes.PULL_EVENTS_REQUEST);
     }
 
     @Override
     public CompletableFuture<ConvertRollResponse> convertRoll(ConvertRollRequest request) {
-        return CommandSupport.sendRequest(request, RpcTypes.CONVERT_ROLL_REQUEST, transport);
+        return sendRequest(request, RpcTypes.CONVERT_ROLL_REQUEST);
     }
 
     @Override

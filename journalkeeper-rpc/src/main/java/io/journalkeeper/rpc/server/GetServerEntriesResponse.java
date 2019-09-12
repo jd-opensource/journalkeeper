@@ -57,7 +57,7 @@ public class GetServerEntriesResponse extends BaseResponse {
     }
 
     @Override
-    public void setException(Throwable throwable) {
+    public void onSetException(Throwable throwable) {
         try {
             throw throwable;
         } catch (IndexOverflowException e) {
@@ -65,7 +65,7 @@ public class GetServerEntriesResponse extends BaseResponse {
         } catch (IndexUnderflowException e) {
             setStatusCode(StatusCode.INDEX_UNDERFLOW);
         } catch (Throwable t) {
-            super.setException(throwable);
+            super.onSetException(throwable);
         }
     }
 }

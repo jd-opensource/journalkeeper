@@ -33,21 +33,26 @@ public class ServerRpcStub  extends ClientServerRpcStub implements ServerRpc {
 
     @Override
     public CompletableFuture<AsyncAppendEntriesResponse> asyncAppendEntries(AsyncAppendEntriesRequest request) {
-        return CommandSupport.sendRequest(request, RpcTypes.ASYNC_APPEND_ENTRIES_REQUEST, transport);
+        return sendRequest(request, RpcTypes.ASYNC_APPEND_ENTRIES_REQUEST);
     }
 
     @Override
     public CompletableFuture<RequestVoteResponse> requestVote(RequestVoteRequest request) {
-        return CommandSupport.sendRequest(request, RpcTypes.REQUEST_VOTE_REQUEST, transport);
+        return sendRequest(request, RpcTypes.REQUEST_VOTE_REQUEST);
     }
 
     @Override
     public CompletableFuture<GetServerEntriesResponse> getServerEntries(GetServerEntriesRequest request) {
-        return CommandSupport.sendRequest(request, RpcTypes.GET_SERVER_ENTRIES_REQUEST, transport);
+        return sendRequest(request, RpcTypes.GET_SERVER_ENTRIES_REQUEST);
     }
 
     @Override
     public CompletableFuture<GetServerStateResponse> getServerState(GetServerStateRequest request) {
-        return CommandSupport.sendRequest(request, RpcTypes.GET_SERVER_STATE_REQUEST, transport);
+        return sendRequest(request, RpcTypes.GET_SERVER_STATE_REQUEST);
+    }
+
+    @Override
+    public CompletableFuture<DisableLeaderWriteResponse> disableLeaderWrite(DisableLeaderWriteRequest request) {
+        return sendRequest(request, RpcTypes.DISABLE_LEADER_WRITE_REQUEST);
     }
 }

@@ -16,36 +16,31 @@ package io.journalkeeper.rpc.codec;
 import io.journalkeeper.rpc.header.JournalKeeperHeader;
 import io.journalkeeper.rpc.remoting.serialize.CodecSupport;
 import io.journalkeeper.rpc.remoting.transport.command.Type;
-import io.journalkeeper.rpc.server.RequestVoteRequest;
+import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
 import io.netty.buffer.ByteBuf;
 
 /**
  * @author LiYue
- * Date: 2019-04-02
+ * Date: 2019-03-29
  */
-public class RequestVoteRequestCodec extends GenericPayloadCodec<RequestVoteRequest> implements Type {
+public class DisableLeaderWriteRequestCodec extends GenericPayloadCodec<DisableLeaderWriteRequest> implements Type {
     @Override
-    protected void encodePayload(RequestVoteRequest request, ByteBuf buffer) throws Exception {
-//        int term, URI candidate, long lastLogIndex, int lastLogTerm
+    protected void encodePayload(DisableLeaderWriteRequest request, ByteBuf buffer) throws Exception {
+        CodecSupport.encodeLong(buffer, request.getTimeoutMs());
         CodecSupport.encodeInt(buffer, request.getTerm());
-        CodecSupport.encodeUri(buffer, request.getCandidate());
-        CodecSupport.encodeLong(buffer, request.getLastLogIndex());
-        CodecSupport.encodeInt(buffer, request.getLastLogTerm());
-        CodecSupport.encodeBoolean(buffer, request.isFromPreferredLeader());
+
     }
 
     @Override
-    protected RequestVoteRequest decodePayload(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
-        return new RequestVoteRequest(
-                CodecSupport.decodeInt(buffer),
-                CodecSupport.decodeUri(buffer),
+    protected DisableLeaderWriteRequest decodePayload(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
+        return new DisableLeaderWriteRequest(
                 CodecSupport.decodeLong(buffer),
-                CodecSupport.decodeInt(buffer),
-                CodecSupport.decodeBoolean(buffer));
+                CodecSupport.decodeInt(buffer)
+                );
     }
 
     @Override
     public int type() {
-        return RpcTypes.REQUEST_VOTE_REQUEST;
+        return RpcTypes.DISABLE_LEADER_WRITE_REQUEST;
     }
 }

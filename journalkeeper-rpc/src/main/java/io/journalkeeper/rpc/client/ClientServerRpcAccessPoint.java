@@ -14,6 +14,7 @@
 package io.journalkeeper.rpc.client;
 
 import java.net.URI;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -26,7 +27,7 @@ public interface ClientServerRpcAccessPoint  {
      * 客户端使用
      * 更新可供连接的server列表
      */
-    void updateServers(List<URI> servers);
+    void updateServers(Collection<URI> servers);
 
     /**
      * 客户端使用

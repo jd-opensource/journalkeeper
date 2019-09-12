@@ -5,6 +5,8 @@ import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.entry.Entry;
+import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
+import io.journalkeeper.core.entry.reserved.ReservedEntry;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.metric.JMetric;
@@ -39,10 +41,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
 import static io.journalkeeper.core.server.MetricNames.METRIC_APPEND_ENTRIES_RPC;
 import static io.journalkeeper.core.server.ThreadNames.LEADER_APPEND_ENTRY_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.LEADER_CALLBACK_THREAD;
@@ -111,9 +117,14 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     private final ServerRpcProvider serverRpcProvider;
     private final ExecutorService asyncExecutor;
+    private final ScheduledExecutorService scheduledExecutor;
+
     private final VoterConfigManager voterConfigManager;
     private final MetricProvider metricProvider;
     private final CheckTermInterceptor checkTermInterceptor;
+
+    private final AtomicBoolean writeEnabled = new AtomicBoolean(true);
+
     Leader(Journal journal, State state, Map<Long, State<E, ER, Q, QR>> immutableSnapshots,
            int currentTerm,
            AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine,
@@ -123,7 +134,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
            Threads threads,
            ServerRpcProvider serverRpcProvider,
            ExecutorService asyncExecutor,
-           VoterConfigManager voterConfigManager, MetricProvider metricProvider, CheckTermInterceptor checkTermInterceptor) {
+           ScheduledExecutorService scheduledExecutor, VoterConfigManager voterConfigManager, MetricProvider metricProvider, CheckTermInterceptor checkTermInterceptor) {
 
         super(true);
         this.pendingUpdateStateRequests = new LinkedBlockingQueue<>(cacheRequests);
@@ -138,6 +149,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.threads = threads;
         this.serverRpcProvider = serverRpcProvider;
         this.asyncExecutor = asyncExecutor;
+        this.scheduledExecutor = scheduledExecutor;
         this.voterConfigManager = voterConfigManager;
         this.metricProvider = metricProvider;
         this.checkTermInterceptor = checkTermInterceptor;
@@ -207,7 +219,9 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                     serverUri, followers, replicationParallelism, appendEntriesRpcMetricMap)) {
                 return;
             }
-
+            if(request.getPartition() == RESERVED_PARTITION && ReservedEntriesSerializeSupport.parseEntryType(request.getEntry()) == ReservedEntry.TYPE_SET_PREFERRED_LEADER) {
+                logger.info("================================adfadfasdfasdfasdf");
+            }
             doAppendJournalEntry(request, responseFuture);
 
         } catch (Throwable t) {
@@ -558,7 +572,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     }
 
 
-    public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
+    CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
 
         UpdateStateRequestResponse requestResponse = new UpdateStateRequestResponse(request, updateClusterStateMetric);
 
@@ -566,6 +580,11 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
             if(serverState() != ServerState.RUNNING) {
                 throw new IllegalStateException(String.format("Leader is not RUNNING, state: %s.", serverState().toString()));
             }
+
+            if(!writeEnabled.get()) {
+                throw new IllegalStateException("Server disabled temporarily.");
+            }
+
             pendingUpdateStateRequests.put(requestResponse);
             if (request.getResponseConfig() == ResponseConfig.RECEIVE) {
                 requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse());
@@ -576,6 +595,14 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         return requestResponse.getResponseFuture();
     }
 
+    void disableWrite(long timeoutMs, int term) {
+        if(currentTerm != term) {
+            throw new IllegalStateException(
+                    String.format("Term not matched! Term in leader: %d, term in request: %d", currentTerm, term));
+        }
+        writeEnabled.set(false);
+        scheduledExecutor.schedule(() -> writeEnabled.set(true), timeoutMs, TimeUnit.MILLISECONDS);
+    }
 
     @Override
     protected void doStart() {

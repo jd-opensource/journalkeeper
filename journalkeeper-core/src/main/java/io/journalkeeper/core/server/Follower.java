@@ -56,6 +56,8 @@ class Follower extends ServerStateMachine implements StateServer {
     private long leaderMaxIndex = -1L;
 
     private final long heartbeatIntervalMs;
+
+    private boolean readyForStartPreferredLeaderElection = false;
     Follower(Journal journal, State state, URI serverUri, int currentTerm, VoterConfigManager voterConfigManager, AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine, Threads threads, int cachedRequests, long heartbeatIntervalMs) {
         super(true);
         this.state = state;
@@ -221,6 +223,13 @@ class Follower extends ServerStateMachine implements StateServer {
         super.doStop();
     }
 
+    public boolean isReadyForStartPreferredLeaderElection() {
+        return readyForStartPreferredLeaderElection;
+    }
+
+    public void setReadyForStartPreferredLeaderElection(boolean readyForStartPreferredLeaderElection) {
+        this.readyForStartPreferredLeaderElection = readyForStartPreferredLeaderElection;
+    }
 
     static class ReplicationRequestResponse {
         private final AsyncAppendEntriesRequest request;

@@ -20,6 +20,9 @@ import io.journalkeeper.rpc.utils.UriUtils;
 
 import java.net.URI;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 /**
  * @author LiYue
@@ -28,9 +31,10 @@ import java.util.*;
 public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcAccessPoint {
     private final Properties properties;
     private final TransportClient transportClient;
-    private Map<URI, ClientServerRpcStub> serverInstances = new HashMap<>();
-    private URI defaultServerUri = null;
-    public JournalKeeperClientServerRpcAccessPoint(List<URI> servers, TransportClient transportClient, Properties properties) {
+    private Map<URI, ClientServerRpcStub> serverInstances = new ConcurrentHashMap<>();
+    private List<URI> servers = new ArrayList<>();
+    private ClientServerRpc defaultRpc = null;
+    public JournalKeeperClientServerRpcAccessPoint(Collection<URI> servers, TransportClient transportClient, Properties properties) {
         this.transportClient = transportClient;
         try {
             this.transportClient.start();
@@ -38,34 +42,52 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
             throw new RpcException(e);
         }
         if(null != servers) {
-            servers.forEach(server -> serverInstances.put(server, null));
+            this.servers.addAll(servers);
         }
         this.properties = properties;
     }
 
     @Override
-    public void updateServers(List<URI> uriList) {
+    public synchronized void updateServers(Collection<URI> uriList) {
         // 删除
         serverInstances.keySet().stream()
                 .filter(uri -> !uriList.contains(uri))
                 .map(serverInstances::remove)
                 .forEach(this::disconnect);
+        this.servers.removeIf(uri -> !uriList.contains(uri));
         // 增加
-        uriList.forEach(uri -> serverInstances.putIfAbsent(uri, null));
-
-        this.defaultServerUri = null;
+        this.servers.addAll(uriList.stream().filter(uri -> !servers.contains(uri)).collect(Collectors.toList()));
 
     }
 
     @Override
     public ClientServerRpc defaultClientServerRpc() {
-        return getClintServerRpc(selectServer());
+        return null != defaultRpc && defaultRpc.isAlive() ? defaultRpc: getClintServerRpc(selectServer());
     }
 
     @Override
     public ClientServerRpc getClintServerRpc(URI uri) {
         if(null == uri ) return null;
-        return serverInstances.computeIfAbsent(uri, this::connect);
+        ClientServerRpcStub clientServerRpc = serverInstances.get(uri);
+        if(null != clientServerRpc && clientServerRpc.isAlive()) {
+            return clientServerRpc;
+        } else {
+            if(null != clientServerRpc) {
+                serverInstances.remove(uri);
+                stopQuiet(clientServerRpc);
+            }
+            clientServerRpc = connect(uri);
+            serverInstances.put(uri, clientServerRpc);
+            return clientServerRpc;
+        }
+    }
+
+    private void stopQuiet(ClientServerRpc clientServerRpc) {
+        try {
+            if (null != clientServerRpc) {
+                clientServerRpc.stop();
+            }
+        } catch (Throwable ignored) {}// ignore stop exception of dead rpc instance
     }
 
     @Override
@@ -76,15 +98,7 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     }
 
     private URI selectServer() {
-        if(null == defaultServerUri) {
-            defaultServerUri = serverInstances.entrySet().stream()
-                    .filter(entry -> Objects.nonNull(entry.getValue()))
-                    .filter(entry -> entry.getValue().isAlive())
-                    .map(Map.Entry::getKey).findAny().
-                            orElse(serverInstances.keySet().stream().findAny().orElse(null));
-        }
-
-        return defaultServerUri;
+        return servers.get(ThreadLocalRandom.current().nextInt(servers.size()));
     }
 
     private ClientServerRpcStub connect(URI server) {

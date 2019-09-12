@@ -41,6 +41,8 @@ import io.journalkeeper.rpc.client.UpdateVotersRequest;
 import io.journalkeeper.rpc.client.UpdateVotersResponse;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
+import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
+import io.journalkeeper.rpc.server.DisableLeaderWriteResponse;
 import io.journalkeeper.rpc.server.GetServerEntriesRequest;
 import io.journalkeeper.rpc.server.GetServerEntriesResponse;
 import io.journalkeeper.rpc.server.GetServerStateRequest;
@@ -470,8 +472,8 @@ public class RpcTest {
                 88,
                 URI.create("jk://candidate.host:8888"),
                 6666666L,
-                87
-                );
+                87,
+                false);
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         RequestVoteResponse response, serverResponse;
         serverResponse = new RequestVoteResponse(88, false);
@@ -488,7 +490,8 @@ public class RpcTest {
                                 r.getTerm() == request.getTerm() &&
                                 r.getCandidate().equals(request.getCandidate()) &&
                                 r.getLastLogIndex() == request.getLastLogIndex() &&
-                                r.getLastLogTerm() == request.getLastLogTerm()
+                                r.getLastLogTerm() == request.getLastLogTerm() &&
+                                r.isFromPreferredLeader() == request.isFromPreferredLeader()
                         ));
 
     }
@@ -569,6 +572,28 @@ public class RpcTest {
                                 r.getOffset() == request.getOffset()
                 ));
 
+    }
+
+    @Test
+    public void testDisableLeaderWrite() throws ExecutionException, InterruptedException {
+        final long timeout = 666666L;
+        final int term = 666;
+        DisableLeaderWriteRequest request = new DisableLeaderWriteRequest(
+                timeout, term);
+        ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
+        DisableLeaderWriteResponse response, serverResponse;
+        serverResponse = new DisableLeaderWriteResponse(term);
+        // Test success response
+        when(serverRpcMock.disableLeaderWrite(any(DisableLeaderWriteRequest.class)))
+                .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
+        response = serverRpc.disableLeaderWrite(request).get();
+        Assert.assertTrue(response.success());
+
+        verify(serverRpcMock).disableLeaderWrite(
+                argThat((DisableLeaderWriteRequest r) ->
+                                r.getTimeoutMs() == request.getTimeoutMs() &&
+                                r.getTerm() == request.getTerm()
+                ));
     }
 
     @Test

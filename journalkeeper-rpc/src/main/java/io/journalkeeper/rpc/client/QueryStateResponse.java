@@ -64,7 +64,7 @@ public class QueryStateResponse  extends LeaderResponse {
     }
 
     @Override
-    public void setException(Throwable throwable) {
+    protected void onSetException(Throwable throwable) {
         try {
             throw throwable;
         } catch (IndexOverflowException e) {
@@ -72,7 +72,7 @@ public class QueryStateResponse  extends LeaderResponse {
         } catch (IndexUnderflowException e) {
             setStatusCode(StatusCode.INDEX_UNDERFLOW);
         } catch (Throwable t) {
-            super.setException(throwable);
+            super.onSetException(throwable);
         }
     }
 }

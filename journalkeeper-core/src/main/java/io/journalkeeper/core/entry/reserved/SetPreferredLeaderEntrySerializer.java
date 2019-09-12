@@ -39,6 +39,7 @@ public class SetPreferredLeaderEntrySerializer implements Serializer<SetPreferre
     public byte[] serialize(SetPreferredLeaderEntry entry) {
         byte [] bytes = new byte[sizeOf(entry)];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
+        buffer.put((byte) entry.getType());
         UriSerializeSupport.serializerUri(buffer, entry.getPreferredLeader());
         return bytes;
     }
@@ -47,7 +48,6 @@ public class SetPreferredLeaderEntrySerializer implements Serializer<SetPreferre
     @Override
     public SetPreferredLeaderEntry parse(byte[] bytes) {
         ByteBuffer buffer = ByteBuffer.wrap(bytes, Byte.BYTES, bytes.length - Byte.BYTES);
-
         return new SetPreferredLeaderEntry(UriSerializeSupport.parseUri(buffer));
     }
 

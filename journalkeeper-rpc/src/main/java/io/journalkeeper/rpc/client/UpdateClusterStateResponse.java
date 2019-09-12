@@ -47,13 +47,13 @@ public class UpdateClusterStateResponse extends LeaderResponse {
     }
 
     @Override
-    public void setException(Throwable throwable) {
+    protected void onSetException(Throwable throwable) {
         try {
             throw throwable;
         } catch (ServerBusyException e) {
             setStatusCode(StatusCode.SERVER_BUSY);
         } catch (Throwable t) {
-            super.setException(throwable);
+            super.onSetException(throwable);
         }
     }
 

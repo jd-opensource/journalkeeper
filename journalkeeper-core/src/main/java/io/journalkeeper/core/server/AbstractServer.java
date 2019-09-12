@@ -135,7 +135,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     @Override
     public boolean isAlive() {
-        return true;
+        return serverState() == ServerState.RUNNING;
     }
 
     @Override
@@ -459,6 +459,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 break;
             case ReservedEntry.TYPE_UPDATE_VOTERS_S1:
             case ReservedEntry.TYPE_UPDATE_VOTERS_S2:
+            case ReservedEntry.TYPE_SET_PREFERRED_LEADER:
                 break;
             default:
                 logger.warn("Invalid reserved entry type: {}.", type);

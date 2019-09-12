@@ -26,13 +26,13 @@ import java.net.URI;
  */
 public abstract class LeaderResponseCodec<R extends LeaderResponse> extends ResponseCodec<R> {
     @Override
-    protected void encodeResponse(R response, ByteBuf buffer) throws Exception {
+    protected final void encodeResponse(R response, ByteBuf buffer) throws Exception {
         encodeLeaderResponse(response, buffer);
         CodecSupport.encodeString(buffer,response.getLeader() == null ? null: response.getLeader().toString());
     }
 
     @Override
-    protected R decodeResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
+    protected final R decodeResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
         R response = decodeLeaderResponse(header, buffer);
         String leaderStr = CodecSupport.decodeString(buffer);
         if(leaderStr.length() > 0) {
