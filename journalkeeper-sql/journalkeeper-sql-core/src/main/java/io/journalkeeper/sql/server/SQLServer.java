@@ -77,6 +77,43 @@ public class SQLServer implements StateServer {
         return role;
     }
 
+    public boolean waitForLeaderReady(int timeout, TimeUnit unit) {
+        long timeoutLine = System.currentTimeMillis() + unit.toMillis(timeout);
+
+        while (timeoutLine > System.currentTimeMillis()) {
+            URI leader = getLeader();
+
+            if (leader != null) {
+                return true;
+            }
+
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+            }
+        }
+
+        return false;
+    }
+
+    public URI getLeader() {
+        try {
+            return bootStrap.getAdminClient().getClusterConfiguration().get().getLeader();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public SQLClient getClient() {
+        if (client == null) {
+            synchronized (this) {
+                if (client == null) {
+                    client = new SQLClient(servers, config, bootStrap.getClient());
+                }
+            }
+        }
+        return client;
+    }
 
     @Override
     public void start() {

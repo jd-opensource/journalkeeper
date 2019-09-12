@@ -90,8 +90,8 @@ public class SQLState extends LocalState<WriteRequest, WriteResponse, ReadReques
         WriteResponse response = handler.handleWrite(request);
 
         eventParams.put("type", String.valueOf(request.getType()));
-        eventParams.put("sql", request.getSql());
         // TODO 参数处理
+//        eventParams.put("sql", request.getSql());
 //        eventParams.put("params", request.getParams().toString());
         return response;
     }

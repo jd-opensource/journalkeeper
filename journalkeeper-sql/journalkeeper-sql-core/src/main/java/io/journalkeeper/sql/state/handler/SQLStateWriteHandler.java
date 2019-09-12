@@ -17,7 +17,6 @@ import io.journalkeeper.sql.client.domain.Codes;
 import io.journalkeeper.sql.client.domain.OperationTypes;
 import io.journalkeeper.sql.client.domain.WriteRequest;
 import io.journalkeeper.sql.client.domain.WriteResponse;
-import io.journalkeeper.sql.client.support.TransactionIdGenerator;
 import io.journalkeeper.sql.state.SQLExecutor;
 import io.journalkeeper.sql.state.SQLTransactionExecutor;
 import org.apache.commons.lang3.StringUtils;
@@ -37,12 +36,10 @@ public class SQLStateWriteHandler {
 
     private Properties properties;
     private SQLExecutor sqlExecutor;
-    private TransactionIdGenerator transactionIdGenerator;
 
-    public SQLStateWriteHandler(Properties properties, SQLExecutor sqlExecutor, TransactionIdGenerator transactionIdGenerator) {
+    public SQLStateWriteHandler(Properties properties, SQLExecutor sqlExecutor) {
         this.properties = properties;
         this.sqlExecutor = sqlExecutor;
-        this.transactionIdGenerator = transactionIdGenerator;
     }
 
     public WriteResponse handle(WriteRequest request) {
@@ -80,10 +77,10 @@ public class SQLStateWriteHandler {
                 logger.warn("transaction not exist, id: {}", request.getId());
                 return new WriteResponse(Codes.TRANSACTION_NOT_EXIST.getCode());
             }
-            String result = transaction.insert(request.getSql(), request.getParams());
+            String result = transaction.insert(request.getSql(), (Object[]) request.getParams());
             return new WriteResponse(Codes.SUCCESS.getCode(), result, null);
         } else {
-            String result = sqlExecutor.insert(request.getSql(), request.getParams());
+            String result = sqlExecutor.insert(request.getSql(), (Object[]) request.getParams());
             return new WriteResponse(Codes.SUCCESS.getCode(), result, null);
         }
     }
@@ -95,10 +92,10 @@ public class SQLStateWriteHandler {
                 logger.warn("transaction not exist, id: {}", request.getId());
                 return new WriteResponse(Codes.TRANSACTION_NOT_EXIST.getCode());
             }
-            int result = transaction.update(request.getSql(), request.getParams());
+            int result = transaction.update(request.getSql(), (Object[]) request.getParams());
             return new WriteResponse(Codes.SUCCESS.getCode(), String.valueOf(result), null);
         } else {
-            int result = sqlExecutor.update(request.getSql(), request.getParams());
+            int result = sqlExecutor.update(request.getSql(), (Object[]) request.getParams());
             return new WriteResponse(Codes.SUCCESS.getCode(), String.valueOf(result), null);
         }
     }
@@ -110,16 +107,19 @@ public class SQLStateWriteHandler {
                 logger.warn("transaction not exist, id: {}", request.getId());
                 return new WriteResponse(Codes.TRANSACTION_NOT_EXIST.getCode());
             }
-            int result = transaction.delete(request.getSql(), request.getParams());
+            int result = transaction.delete(request.getSql(), (Object[]) request.getParams());
             return new WriteResponse(Codes.SUCCESS.getCode(), String.valueOf(result), null);
         } else {
-            int result = sqlExecutor.delete(request.getSql(), request.getParams());
+            int result = sqlExecutor.delete(request.getSql(), (Object[]) request.getParams());
             return new WriteResponse(Codes.SUCCESS.getCode(), String.valueOf(result), null);
         }
     }
 
     protected WriteResponse doBeginTransaction(WriteRequest request) {
-        String id = transactionIdGenerator.generate();
+        if (StringUtils.isBlank(request.getId())) {
+            return new WriteResponse(Codes.TRANSACTION_NOT_EXIST.getCode());
+        }
+        String id = request.getId();
         SQLTransactionExecutor transaction = sqlExecutor.beginTransaction(id);
         return new WriteResponse(Codes.SUCCESS.getCode(), id, null);
     }
