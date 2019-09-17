@@ -51,9 +51,9 @@ public class JournalKeeperRpcAccessPointFactory implements RpcAccessPointFactory
     }
 
     @Override
-    public ClientServerRpcAccessPoint createClientServerRpcAccessPoint(List<URI> servers, Properties properties) {
+    public ClientServerRpcAccessPoint createClientServerRpcAccessPoint( Properties properties) {
         ClientConfig clientConfig = toClientConfig(properties);
-        return new JournalKeeperClientServerRpcAccessPoint(servers, transportClientFactory.create(clientConfig), properties);
+        return new JournalKeeperClientServerRpcAccessPoint(transportClientFactory.create(clientConfig), properties);
     }
 
     @Override

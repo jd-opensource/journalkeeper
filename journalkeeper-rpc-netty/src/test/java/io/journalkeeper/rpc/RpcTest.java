@@ -93,7 +93,7 @@ public class RpcTest {
         server = rpcAccessPointFactory.bindServerService(serverRpcMock);
         server.start();
 
-        clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(Collections.singletonList(serverRpcMock.serverUri()),new Properties());
+        clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(new Properties());
         serverRpcAccessPoint = rpcAccessPointFactory.createServerRpcAccessPoint(new Properties());
     }
 
@@ -101,7 +101,7 @@ public class RpcTest {
     public  void testException() throws ExecutionException, InterruptedException {
         // Test exception response
         LastAppliedResponse response;
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
 
         String errorMsg = "原谅他们是上帝的事，我们的任务是负责送他们见上帝。 --普京";
         Throwable t = new RuntimeException(errorMsg);
@@ -116,7 +116,7 @@ public class RpcTest {
     public  void testResponseException() throws ExecutionException, InterruptedException {
         // Test exception response
         LastAppliedResponse response;
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
 
         String errorMsg = "原谅他们是上帝的事，我们的任务是负责送他们见上帝。 --普京";
         Throwable t = new RuntimeException(errorMsg);
@@ -130,7 +130,7 @@ public class RpcTest {
     @Test
     public void testNotLeader() throws ExecutionException, InterruptedException {
         LastAppliedResponse response;
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
 
         String leaderUriStr = "jk://leader.host:8888";
         when(serverRpcMock.lastApplied())
@@ -150,7 +150,7 @@ public class RpcTest {
             entry[i] = (byte) i;
         }
         UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, 0, 1, ResponseConfig.RECEIVE);
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         UpdateClusterStateResponse response;
         // Test success response
         when(serverRpcMock.updateClusterState(any(UpdateClusterStateRequest.class)))
@@ -179,7 +179,7 @@ public class RpcTest {
                 );
 
         UpdateVotersRequest request = new UpdateVotersRequest(oldConfig, newConfig);
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         UpdateVotersResponse response;
         // Test success response
         when(serverRpcMock.updateVoters(any(UpdateVotersRequest.class)))
@@ -198,7 +198,7 @@ public class RpcTest {
         RaftServer.Roll roll = RaftServer.Roll.VOTER;
 
         ConvertRollRequest request = new ConvertRollRequest(roll);
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         ConvertRollResponse response;
         // Test success response
         when(serverRpcMock.convertRoll(any(ConvertRollRequest.class)))
@@ -224,7 +224,7 @@ public class RpcTest {
             result[i] = (byte) i;
         }
         QueryStateRequest request = new QueryStateRequest(query);
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         QueryStateResponse response;
         // Test success response
         when(serverRpcMock.queryClusterState(any(QueryStateRequest.class)))
@@ -253,7 +253,7 @@ public class RpcTest {
         }
         long lastApplied = -993L;
         QueryStateRequest request = new QueryStateRequest(query);
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         QueryStateResponse response;
         // Test success response
         when(serverRpcMock.queryServerState(any(QueryStateRequest.class)))
@@ -282,7 +282,7 @@ public class RpcTest {
         }
         long index = 23339L;
         QueryStateRequest request = new QueryStateRequest(query, index);
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         QueryStateResponse response;
         // Test success response
         when(serverRpcMock.queryServerState(any(QueryStateRequest.class)))
@@ -321,7 +321,7 @@ public class RpcTest {
                 URI.create("jk://leader_host:8888"),
                 URI.create("jk://192.168.8.8:8888"));
         ClusterConfiguration clusterConfiguration = new ClusterConfiguration(leader, voters, observers);
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         GetServersResponse response;
 
         when(serverRpcMock.getServers())
@@ -340,7 +340,7 @@ public class RpcTest {
 
         long pullWatchId = 666L;
         long pullIntervalMs =  10000L;
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         AddPullWatchResponse response;
 
         when(serverRpcMock.addPullWatch())
@@ -357,7 +357,7 @@ public class RpcTest {
     public void testRemovePullWatch() throws ExecutionException, InterruptedException {
 
         long pullWatchId = 666L;
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         RemovePullWatchResponse response;
 
         when(serverRpcMock.removePullWatch(any(RemovePullWatchRequest.class)))
@@ -378,7 +378,7 @@ public class RpcTest {
         List<PullEvent> pullEvents = Collections.singletonList(new PullEvent(23, 83999L, eventData));
 
 
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         PullEventsResponse response;
 
         when(serverRpcMock.pullEvents(any(PullEventsRequest.class)))
@@ -405,7 +405,7 @@ public class RpcTest {
         List<PullEvent> pullEvents = Collections.singletonList(new PullEvent(23, 83999L, eventData));
 
 
-        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.defaultClientServerRpc();
+        ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
 
         when(serverRpcMock.pullEvents(any(PullEventsRequest.class)))
                 .thenReturn(CompletableFuture.supplyAsync(() -> new PullEventsResponse(pullEvents)))

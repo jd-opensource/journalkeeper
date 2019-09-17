@@ -16,6 +16,7 @@ package io.journalkeeper.rpc.server;
 import io.journalkeeper.rpc.client.ClientServerRpcStub;
 import io.journalkeeper.rpc.codec.RpcTypes;
 import io.journalkeeper.rpc.remoting.transport.Transport;
+import io.journalkeeper.rpc.remoting.transport.TransportClient;
 import io.journalkeeper.rpc.utils.CommandSupport;
 
 import java.net.URI;
@@ -27,8 +28,8 @@ import java.util.concurrent.CompletableFuture;
  * Date: 2019-03-30
  */
 public class ServerRpcStub  extends ClientServerRpcStub implements ServerRpc {
-    public ServerRpcStub(Transport transport, URI uri) {
-        super(transport, uri);
+    public ServerRpcStub(TransportClient transportClient, URI uri) {
+        super(transportClient, uri);
     }
 
     @Override

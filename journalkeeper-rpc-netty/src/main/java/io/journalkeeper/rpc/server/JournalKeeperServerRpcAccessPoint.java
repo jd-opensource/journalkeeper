@@ -14,9 +14,7 @@
 package io.journalkeeper.rpc.server;
 
 import io.journalkeeper.rpc.RpcException;
-import io.journalkeeper.rpc.remoting.transport.Transport;
 import io.journalkeeper.rpc.remoting.transport.TransportClient;
-import io.journalkeeper.rpc.utils.UriUtils;
 
 import java.net.URI;
 import java.util.HashMap;
@@ -41,15 +39,14 @@ public class JournalKeeperServerRpcAccessPoint implements ServerRpcAccessPoint {
         this.properties = properties;
     }
 
-    private ServerRpcStub connect(URI server) {
-        Transport transport = transportClient.createTransport(UriUtils.toSockAddress(server));
-        return new ServerRpcStub(transport, server);
+    private ServerRpcStub createServerRpc(URI server) {
+        return new ServerRpcStub(transportClient, server);
     }
 
     @Override
     public ServerRpc getServerRpcAgent(URI uri) {
         if(null == uri ) return null;
-        return serverInstances.computeIfAbsent(uri, this::connect);
+        return serverInstances.computeIfAbsent(uri, this::createServerRpc);
     }
 
     @Override

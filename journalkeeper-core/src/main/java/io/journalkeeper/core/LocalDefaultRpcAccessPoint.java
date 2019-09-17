@@ -13,14 +13,11 @@
  */
 package io.journalkeeper.core;
 
-import io.journalkeeper.core.api.RaftServer;
-import io.journalkeeper.core.server.AbstractServer;
+import io.journalkeeper.core.server.Server;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 
 import java.net.URI;
-import java.util.Collection;
-import java.util.List;
 
 /**
  * 优先访问本地的ClientServerRpc接入点
@@ -28,21 +25,11 @@ import java.util.List;
  * Date: 2019-03-25
  */
 public class LocalDefaultRpcAccessPoint implements ClientServerRpcAccessPoint {
-    private final ClientServerRpc server;
+    private final Server server;
     private final ClientServerRpcAccessPoint clientServerRpcAccessPoint;
-    public LocalDefaultRpcAccessPoint(ClientServerRpc server, ClientServerRpcAccessPoint clientServerRpcAccessPoint) {
+    public LocalDefaultRpcAccessPoint(Server server, ClientServerRpcAccessPoint clientServerRpcAccessPoint) {
         this.server = server;
         this.clientServerRpcAccessPoint = clientServerRpcAccessPoint;
-    }
-
-    @Override
-    public void updateServers(Collection<URI> uriList) {
-        clientServerRpcAccessPoint.updateServers(uriList);
-    }
-
-    @Override
-    public ClientServerRpc defaultClientServerRpc() {
-        return server.isAlive() ? server : clientServerRpcAccessPoint.defaultClientServerRpc();
     }
 
     @Override

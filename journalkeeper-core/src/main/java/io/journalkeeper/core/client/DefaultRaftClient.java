@@ -20,20 +20,17 @@ import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.StatusCode;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
-import io.journalkeeper.rpc.client.GetServersResponse;
 import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.utils.threads.NamedThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeoutException;
 
 /**
  * 客户端实现
@@ -50,13 +47,13 @@ public class DefaultRaftClient<E, ER, Q, QR> extends AbstractClient implements R
     private final Config config;
 
 
-    public DefaultRaftClient(ClientServerRpcAccessPoint clientServerRpcAccessPoint,
+    public DefaultRaftClient(List<URI> servers, ClientServerRpcAccessPoint clientServerRpcAccessPoint,
                              Serializer<E> entrySerializer,
                              Serializer<ER> entryResultSerializer,
                              Serializer<Q> querySerializer,
                              Serializer<QR> queryResultSerializer,
                              Properties properties) {
-        super(clientServerRpcAccessPoint);
+        super(servers, clientServerRpcAccessPoint);
         this.entrySerializer = entrySerializer;
         this.entryResultSerializer = entryResultSerializer;
         this.querySerializer = querySerializer;
@@ -74,19 +71,18 @@ public class DefaultRaftClient<E, ER, Q, QR> extends AbstractClient implements R
 
     @Override
     public CompletableFuture<ER> update(E entry, int partition, int batchSize, ResponseConfig responseConfig) {
-        return update(entrySerializer.serialize(entry), partition, batchSize, responseConfig, entryResultSerializer, executor);
+        return update(entrySerializer.serialize(entry), partition, batchSize, responseConfig, entryResultSerializer);
     }
 
 
     @Override
     public CompletableFuture<QR> query(Q query) {
-        return invokeLeaderRpc(
-                leaderRpc -> leaderRpc.queryClusterState(new QueryStateRequest(querySerializer.serialize(query))), executor)
+        return invokeClientServerRpc(new QueryStateRequest(querySerializer.serialize(query)), (request, leaderRpc) -> leaderRpc.queryClusterState(request))
                 .thenApply(response -> {
                     if(response.getStatusCode() == StatusCode.SUCCESS) {
                         return response.getResult();
                     } else {
-                        throw new RpcException(response.errorString());
+                        throw new RpcException(response);
                     }
                 })
                 .thenApply(resultSerializer::parse);

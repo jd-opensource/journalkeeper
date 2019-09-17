@@ -11,21 +11,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.rpc.client;
-
-import java.net.URI;
+package io.journalkeeper.exceptions;
 
 /**
- * ClientServerRpc接入点，管理Client和Server的rpc远程连接。
+ *
  * @author LiYue
- * Date: 2019-03-14
+ * Date: 2019-03-25
  */
-public interface ClientServerRpcAccessPoint  {
+public class RequestTimeoutException extends RuntimeException {
+    public RequestTimeoutException(){
+        super();
+    }
+    public RequestTimeoutException(String msg) {
+        super(msg);
+    }
+    public RequestTimeoutException(Throwable throwable){ super(throwable);}
 
-    /**
-     * 客户端使用
-     * 指定URI获取一个ClientServerRpc实例，一般用于访问Leader
-     */
-    ClientServerRpc getClintServerRpc(URI uri);
-    void stop();
 }

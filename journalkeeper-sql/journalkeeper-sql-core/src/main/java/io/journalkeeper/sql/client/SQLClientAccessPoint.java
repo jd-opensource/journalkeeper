@@ -64,8 +64,8 @@ public class SQLClientAccessPoint {
 
     public SQLClient createClient(List<URI> servers) {
         RpcAccessPointFactory rpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class);
-        ClientServerRpcAccessPoint clientServerRpcAccessPoint = rpcAccessPoint.createClientServerRpcAccessPoint(servers, config);
-        DefaultRaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client = new DefaultRaftClient<>(clientServerRpcAccessPoint, writeRequestSerializer,
+        ClientServerRpcAccessPoint clientServerRpcAccessPoint = rpcAccessPoint.createClientServerRpcAccessPoint(config);
+        DefaultRaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client = new DefaultRaftClient<>(servers, clientServerRpcAccessPoint, writeRequestSerializer,
                 writeResponseSerializer, readRequestSerializer, readResponseSerializer, config);
         return new SQLClient(servers, config, client);
     }

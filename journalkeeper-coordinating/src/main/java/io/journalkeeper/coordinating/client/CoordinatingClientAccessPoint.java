@@ -64,8 +64,8 @@ public class CoordinatingClientAccessPoint {
 
     public CoordinatingClient createClient(List<URI> servers) {
         RpcAccessPointFactory rpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class);
-        ClientServerRpcAccessPoint clientServerRpcAccessPoint = rpcAccessPoint.createClientServerRpcAccessPoint(servers, config);
-        DefaultRaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client = new DefaultRaftClient<>(clientServerRpcAccessPoint, entrySerializer, entryResultSerializer, querySerializer, resultSerializer, config);
+        ClientServerRpcAccessPoint clientServerRpcAccessPoint = rpcAccessPoint.createClientServerRpcAccessPoint(config);
+        DefaultRaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client = new DefaultRaftClient<>(servers, clientServerRpcAccessPoint, entrySerializer, entryResultSerializer, querySerializer, resultSerializer, config);
         return new CoordinatingClient(servers, config, client);
     }
 }

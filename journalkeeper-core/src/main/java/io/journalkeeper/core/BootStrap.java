@@ -122,12 +122,12 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
     public RaftClient<E, ER, Q, QR> getClient() {
         if(null == client) {
             if (null == this.clientServerRpcAccessPoint) {
-                this.clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.servers, this.properties);
+                this.clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.properties);
             }
             if (this.server == null) {
-                client = new DefaultRaftClient<>(clientServerRpcAccessPoint, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
+                client = new DefaultRaftClient<>(servers, clientServerRpcAccessPoint, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
             } else {
-                client = new DefaultRaftClient<>(new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
+                client = new DefaultRaftClient<>(servers, new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
             }
         }
         return client;
@@ -164,9 +164,9 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
                 adminClient = new DefaultAdminClient(servers, properties);
             } else {
                 if (null == this.clientServerRpcAccessPoint) {
-                    this.clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.servers, this.properties);
+                    this.clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.properties);
                 }
-                adminClient = new DefaultAdminClient(new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), properties);
+                adminClient = new DefaultAdminClient(servers, new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), properties);
             }
         }
         return adminClient;

@@ -35,9 +35,8 @@ public interface RpcAccessPointFactory {
 
     /**
      * 创建一个ClientServerRpc接入点
-     * @param servers 可连接的服务器列表
      */
-    ClientServerRpcAccessPoint createClientServerRpcAccessPoint(List<URI> servers, Properties properties);
+    ClientServerRpcAccessPoint createClientServerRpcAccessPoint(Properties properties);
 
     StateServer bindServerService(ServerRpc serverRpc);
 

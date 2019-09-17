@@ -11,8 +11,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.rpc;
+package io.journalkeeper.exceptions;
 
-public interface Detectable {
-    boolean isAlive();
+/**
+ *
+ * @author LiYue
+ * Date: 2019-03-25
+ */
+public class TransportException extends RuntimeException {
+    public TransportException(){
+        super();
+    }
+    public TransportException(String msg) {
+        super(msg);
+    }
+    public TransportException(Throwable throwable){ super(throwable);}
+
 }

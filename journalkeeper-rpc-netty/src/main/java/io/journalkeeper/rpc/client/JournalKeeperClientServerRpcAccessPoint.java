@@ -14,15 +14,12 @@
 package io.journalkeeper.rpc.client;
 
 import io.journalkeeper.rpc.RpcException;
-import io.journalkeeper.rpc.remoting.transport.Transport;
 import io.journalkeeper.rpc.remoting.transport.TransportClient;
-import io.journalkeeper.rpc.utils.UriUtils;
 
 import java.net.URI;
-import java.util.*;
+import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
 
 /**
  * @author LiYue
@@ -32,62 +29,21 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     private final Properties properties;
     private final TransportClient transportClient;
     private Map<URI, ClientServerRpcStub> serverInstances = new ConcurrentHashMap<>();
-    private List<URI> servers = new ArrayList<>();
-    private ClientServerRpc defaultRpc = null;
-    public JournalKeeperClientServerRpcAccessPoint(Collection<URI> servers, TransportClient transportClient, Properties properties) {
+    public JournalKeeperClientServerRpcAccessPoint(TransportClient transportClient, Properties properties) {
         this.transportClient = transportClient;
         try {
             this.transportClient.start();
         } catch (Exception e) {
             throw new RpcException(e);
         }
-        if(null != servers) {
-            this.servers.addAll(servers);
-        }
         this.properties = properties;
     }
 
-    @Override
-    public synchronized void updateServers(Collection<URI> uriList) {
-        // 删除
-        serverInstances.keySet().stream()
-                .filter(uri -> !uriList.contains(uri))
-                .map(serverInstances::remove)
-                .forEach(this::disconnect);
-        this.servers.removeIf(uri -> !uriList.contains(uri));
-        // 增加
-        this.servers.addAll(uriList.stream().filter(uri -> !servers.contains(uri)).collect(Collectors.toList()));
-
-    }
-
-    @Override
-    public ClientServerRpc defaultClientServerRpc() {
-        return null != defaultRpc && defaultRpc.isAlive() ? defaultRpc: getClintServerRpc(selectServer());
-    }
 
     @Override
     public ClientServerRpc getClintServerRpc(URI uri) {
         if(null == uri ) return null;
-        ClientServerRpcStub clientServerRpc = serverInstances.get(uri);
-        if(null != clientServerRpc && clientServerRpc.isAlive()) {
-            return clientServerRpc;
-        } else {
-            if(null != clientServerRpc) {
-                serverInstances.remove(uri);
-                stopQuiet(clientServerRpc);
-            }
-            clientServerRpc = connect(uri);
-            serverInstances.put(uri, clientServerRpc);
-            return clientServerRpc;
-        }
-    }
-
-    private void stopQuiet(ClientServerRpc clientServerRpc) {
-        try {
-            if (null != clientServerRpc) {
-                clientServerRpc.stop();
-            }
-        } catch (Throwable ignored) {}// ignore stop exception of dead rpc instance
+        return serverInstances.computeIfAbsent(uri, this::createClientServerRpc);
     }
 
     @Override
@@ -97,13 +53,8 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
         transportClient.stop();
     }
 
-    private URI selectServer() {
-        return servers.get(ThreadLocalRandom.current().nextInt(servers.size()));
-    }
-
-    private ClientServerRpcStub connect(URI server) {
-        Transport transport = transportClient.createTransport(UriUtils.toSockAddress(server));
-        return new ClientServerRpcStub(transport, server);
+    private ClientServerRpcStub createClientServerRpc(URI server) {
+        return new ClientServerRpcStub(transportClient, server);
     }
 
     private void disconnect(ClientServerRpcStub clientServerRpc) {

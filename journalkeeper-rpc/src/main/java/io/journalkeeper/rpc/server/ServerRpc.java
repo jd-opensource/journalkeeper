@@ -13,7 +13,6 @@
  */
 package io.journalkeeper.rpc.server;
 
-import io.journalkeeper.rpc.Detectable;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 
 import java.util.concurrent.CompletableFuture;
@@ -23,7 +22,7 @@ import java.util.concurrent.CompletableFuture;
  * @author LiYue
  * Date: 2019-03-14
  */
-public interface ServerRpc extends ClientServerRpc, Detectable {
+public interface ServerRpc extends ClientServerRpc {
     CompletableFuture<AsyncAppendEntriesResponse> asyncAppendEntries(AsyncAppendEntriesRequest request);
     CompletableFuture<RequestVoteResponse> requestVote(RequestVoteRequest request);
     CompletableFuture<GetServerEntriesResponse> getServerEntries(GetServerEntriesRequest request);

@@ -21,6 +21,7 @@ import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.exceptions.NotVoterException;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.persistence.ServerMetadata;
+import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.StatusCode;
 import io.journalkeeper.rpc.client.GetServerStatusResponse;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
@@ -42,6 +43,9 @@ import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
 import io.journalkeeper.rpc.server.ServerRpc;
 import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
+import io.journalkeeper.utils.retry.CheckRetry;
+import io.journalkeeper.utils.retry.CompletableRetry;
+import io.journalkeeper.utils.retry.RandomDestinationSelector;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
@@ -54,7 +58,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.stream.Collectors;
 
 import static io.journalkeeper.core.server.MetricNames.METRIC_OBSERVER_REPLICATION;
@@ -71,9 +78,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     private final JMetric replicationMetric;
     private final VoterConfigManager voterConfigManager = new VoterConfigManager();
 
-
-    private ServerRpc currentServer = null;
-
+    private final CompletableRetry<URI> serverRpcRetry;
     private final Config config;
 
     public Observer(StateFactory<E, ER, Q, QR> stateFactory,
@@ -88,6 +93,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
         this.config = toConfig(properties);
         this.replicationMetric = getMetric(METRIC_OBSERVER_REPLICATION);
         threads.createThread(buildReplicationThread());
+        serverRpcRetry = new CompletableRetry<>(100L, 500L, 3, new RandomDestinationSelector<>(config.getParents()));
     }
 
     private Config toConfig(Properties properties) {
@@ -120,12 +126,28 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 .build();
     }
 
+    private <O extends BaseResponse, R> CompletableFuture<O> invokeParentsRpc(R request, CompletableRetry.RpcInvoke<O, ? super R, ServerRpc> invoke) {
+        return serverRpcRetry.retry(request, (r, uri) -> invoke.invoke(r, serverRpcAccessPoint.getServerRpcAgent(uri)), new CheckRetry<O>() {
+            @Override
+            public boolean checkException(Throwable exception) {
+                return true;
+            }
+
+            @Override
+            public boolean checkResult(O result) {
+                return !result.success();
+            }
+        });
+    }
+
     private void pullEntries() throws Throwable {
 
         replicationMetric.start();
         long traffic = 0L;
         GetServerEntriesResponse response =
-                selectServer().getServerEntries(new GetServerEntriesRequest(journal.commitIndex(),config.getPullBatchSize())).get();
+                invokeParentsRpc(
+                        new GetServerEntriesRequest(journal.commitIndex(),config.getPullBatchSize()),
+                        (request, rpc) -> rpc.getServerEntries(request)).get();
 
         if(response.success()){
 
@@ -178,8 +200,10 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
             long offset = 0;
             boolean done;
             do {
-                GetServerStateResponse r =
-                        selectServer().getServerState(new GetServerStateRequest(lastIncludedIndex, offset)).get();
+                GetServerStateResponse r = invokeParentsRpc(
+                        new GetServerStateRequest(lastIncludedIndex, offset),
+                        ((request, rpc) -> rpc.getServerState(request))
+                ).get();
                 state.installSerializedData(r.getData(), r.getOffset());
                 if(done = r.isDone()) {
 
@@ -196,27 +220,6 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
         } finally {
             enable();
         }
-    }
-
-    private ServerRpc selectServer() {
-        long sleep = 0L;
-        while (null == currentServer || !currentServer.isAlive()) {
-            if(sleep > 0) {
-                logger.info("Waiting {} ms to reconnect...", sleep);
-                try {
-                    Thread.sleep(sleep);
-                } catch (InterruptedException ignored) {}
-            }
-            if(null != currentServer) {
-                currentServer.stop();
-            }
-            logger.info("Connecting server {}", uri);
-            URI uri = config.getParents().get(ThreadLocalRandom.current().nextInt(config.getParents().size()));
-            currentServer = serverRpcAccessPoint.getServerRpcAgent(uri);
-            sleep += sleep + 100L;
-        }
-
-        return currentServer;
     }
 
     @Override
@@ -238,9 +241,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     @Override
     public void doStop() {
         threads.stopThread(OBSERVER_REPLICATION_THREAD);
-        if(null != currentServer) {
-            currentServer.stop();
-        }
+
     }
 
     @Override

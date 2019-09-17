@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,39 +13,47 @@
  */
 package io.journalkeeper.rpc.client;
 
+import io.journalkeeper.exceptions.RequestTimeoutException;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.codec.RpcTypes;
 import io.journalkeeper.rpc.remoting.transport.Transport;
+import io.journalkeeper.rpc.remoting.transport.TransportClient;
+import io.journalkeeper.rpc.remoting.transport.TransportState;
+import io.journalkeeper.rpc.remoting.transport.exception.TransportException;
 import io.journalkeeper.rpc.utils.CommandSupport;
+import io.journalkeeper.rpc.utils.UriUtils;
 import io.journalkeeper.utils.event.EventBus;
 import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
-import io.journalkeeper.rpc.remoting.transport.TransportState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 客户端桩
  * @author LiYue
  * Date: 2019-03-30
  */
+
 public class ClientServerRpcStub implements ClientServerRpc {
     private static final Logger logger = LoggerFactory.getLogger(ClientServerRpcStub.class);
-    protected final Transport transport;
+    protected Transport transport;
+    protected final TransportClient transportClient;
     protected final URI uri;
     protected EventBus eventBus = null;
     protected AsyncLoopThread pullEventThread = null;
     protected long pullWatchId = -1L;
     protected long ackSequence = -1L;
+    protected AtomicBoolean lastRequestSuccess = new AtomicBoolean(true);
 
-    public ClientServerRpcStub(Transport transport, URI uri) {
-        this.transport = transport;
+    public ClientServerRpcStub(TransportClient transportClient, URI uri) {
+        this.transportClient = transportClient;
         this.uri = uri;
     }
 
@@ -55,15 +63,39 @@ public class ClientServerRpcStub implements ClientServerRpc {
         return uri;
     }
 
-    protected  <Q, R extends BaseResponse> CompletableFuture<R> sendRequest(Q request, int rpcType) {
-        CompletableFuture<R> future = CommandSupport.sendRequest(request, rpcType, transport);
-        future.whenCompleteAsync((response, exception) -> {
-            if(null != exception) {
-                // 如果发生异常，
-                stop();
+    protected <Q, R extends BaseResponse> CompletableFuture<R> sendRequest(Q request, int rpcType) {
+        try {
+            if (!isAlive()) {
+                closeTransport();
+                transport = createTransport();
             }
-        });
-        return future;
+            CompletableFuture<R> future = CommandSupport.sendRequest(request, rpcType, transport);
+
+            future.whenCompleteAsync((response, exception) -> {
+                if (null != exception) {
+                    // 如果发生异常，
+                    stop();
+                    lastRequestSuccess.set(false);
+                } else {
+                    lastRequestSuccess.set(true);
+                }
+            });
+            return future.exceptionally(e -> {
+                try {
+                    throw e;
+                } catch (TransportException.RequestTimeoutException te) {
+                    throw new RequestTimeoutException(te);
+                } catch (TransportException e1) {
+                    throw new io.journalkeeper.exceptions.TransportException(e1);
+                } catch (Throwable t) {
+                    throw new CompletionException(t);
+                }
+            });
+        } catch (Throwable t) {
+            CompletableFuture<R> completableFuture = new CompletableFuture<>();
+            completableFuture.completeExceptionally(new io.journalkeeper.exceptions.TransportException(t));
+            return completableFuture;
+        }
 
     }
 
@@ -130,7 +162,7 @@ public class ClientServerRpcStub implements ClientServerRpc {
 
     @Override
     public void watch(EventWatcher eventWatcher) {
-        if(null == eventBus) {
+        if (null == eventBus) {
             initPullEvent();
         }
         eventBus.watch(eventWatcher);
@@ -168,8 +200,8 @@ public class ClientServerRpcStub implements ClientServerRpc {
     private void pullRemoteEvents() {
         pullEvents(new PullEventsRequest(pullWatchId, ackSequence))
                 .thenAccept(response -> {
-                    if(response.success()) {
-                        if(null != response.getPullEvents()) {
+                    if (response.success()) {
+                        if (null != response.getPullEvents()) {
                             response.getPullEvents().forEach(pullEvent -> {
                                 eventBus.fireEvent(pullEvent);
                                 ackSequence = pullEvent.getSequence();
@@ -183,9 +215,9 @@ public class ClientServerRpcStub implements ClientServerRpc {
 
     @Override
     public void unWatch(EventWatcher eventWatcher) {
-        if(null != eventBus) {
+        if (null != eventBus) {
             eventBus.unWatch(eventWatcher);
-            if(!eventBus.hasEventWatchers()) {
+            if (!eventBus.hasEventWatchers()) {
                 destroyPullEvent();
             }
         }
@@ -193,19 +225,19 @@ public class ClientServerRpcStub implements ClientServerRpc {
     }
 
     private void destroyPullEvent() {
-        if(null != eventBus) {
+        if (null != eventBus) {
             eventBus.shutdown();
             eventBus = null;
         }
-        if(null != pullEventThread) {
+        if (null != pullEventThread) {
             pullEventThread.stop();
             eventBus = null;
         }
-        if(pullWatchId >= 0) {
+        if (pullWatchId >= 0) {
             try {
                 RemovePullWatchResponse response = removePullWatch(new RemovePullWatchRequest(pullWatchId))
                         .get();
-                if(!response.success()) {
+                if (!response.success()) {
                     throw new RpcException(response);
                 }
             } catch (Throwable t) {
@@ -217,16 +249,24 @@ public class ClientServerRpcStub implements ClientServerRpc {
 
     }
 
-    @Override
-    public boolean isAlive() {
-        return null != transport  && transport.state() == TransportState.CONNECTED;
+    private synchronized Transport createTransport() {
+        return transportClient.createTransport(UriUtils.toSockAddress(uri));
+    }
+
+    private synchronized void closeTransport() {
+        if (null != transport ) {
+            transport.stop();
+            transport = null;
+        }
+    }
+
+    boolean isAlive() {
+        return null != transport && transport.state() == TransportState.CONNECTED;
     }
 
     @Override
     public void stop() {
-        if(null != transport) {
-            transport.stop();
-        }
+        closeTransport();
         destroyPullEvent();
     }
 }

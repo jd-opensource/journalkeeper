@@ -227,11 +227,6 @@ public class Server<E, ER, Q, QR>
     }
 
     @Override
-    public boolean isAlive() {
-        return server.isAlive();
-    }
-
-    @Override
     public void start() {
         if(this.serverState != ServerState.CREATED) {
             throw new IllegalStateException("Server can only start once!");
@@ -260,4 +255,5 @@ public class Server<E, ER, Q, QR>
     public ServerState serverState() {
         return server.serverState();
     }
+
 }

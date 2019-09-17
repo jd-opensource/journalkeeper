@@ -132,10 +132,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
      */
     protected VoterConfigurationStateMachine votersConfigStateMachine;
 
-    @Override
-    public boolean isAlive() {
-        return serverState() == ServerState.RUNNING;
-    }
 
     @Override
     public URI serverUri() {

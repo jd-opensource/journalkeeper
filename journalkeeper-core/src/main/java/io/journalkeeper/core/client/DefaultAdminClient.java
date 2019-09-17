@@ -12,6 +12,7 @@ import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.reserved.SetPreferredLeaderEntry;
 import io.journalkeeper.rpc.BaseResponse;
+import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
 import io.journalkeeper.rpc.client.GetServerStatusResponse;
@@ -37,8 +38,8 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
     private final Executor executor;
     private URI leaderUri = null;
 
-    public DefaultAdminClient(ClientServerRpcAccessPoint clientServerRpcAccessPoint, Properties properties) {
-        super(clientServerRpcAccessPoint);
+    public DefaultAdminClient(List<URI> servers, ClientServerRpcAccessPoint clientServerRpcAccessPoint, Properties properties) {
+        super(servers, clientServerRpcAccessPoint);
         this.config = toConfig(properties);
         this.executor = Executors.newFixedThreadPool(config.getThreads(), new NamedThreadFactory("Admin-Client-Executors"));
     }
@@ -51,8 +52,7 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
 
     @Override
     public CompletableFuture<ClusterConfiguration> getClusterConfiguration() {
-        return clientServerRpcAccessPoint.defaultClientServerRpc()
-                .getServers()
+        return invokeClientServerRpc(ClientServerRpc::getServers)
                 .thenApply(GetServersResponse::getClusterConfiguration);
     }
 
@@ -65,8 +65,7 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
 
     @Override
     public CompletableFuture<Boolean> updateVoters(List<URI> oldConfig, List<URI> newConfig) {
-        return invokeLeaderRpc(
-                leaderRpc -> leaderRpc.updateVoters(new UpdateVotersRequest(oldConfig, newConfig)), executor)
+        return  invokeClientServerRpc(new UpdateVotersRequest(oldConfig, newConfig), (request, leaderRpc) -> leaderRpc.updateVoters(request))
                 .thenApply(BaseResponse::success);
     }
 
@@ -78,12 +77,12 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
     @Override
     public CompletableFuture compact(Map<Integer, Long> toIndices) {
         return this.update(ReservedEntriesSerializeSupport.serialize(new CompactJournalEntry(toIndices)),
-                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance(), executor);
+                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
     }
     @Override
     public CompletableFuture scalePartitions(int[] partitions) {
         return this.update(ReservedEntriesSerializeSupport.serialize(new ScalePartitionsEntry(partitions)),
-                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance(), executor);
+                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
     }
 
     @Override
@@ -97,7 +96,7 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
     @Override
     public CompletableFuture setPreferredLeader(URI preferredLeader) {
         return this.update(ReservedEntriesSerializeSupport.serialize(new SetPreferredLeaderEntry(preferredLeader)),
-                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance(), executor);
+                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
     }
 
     @Override

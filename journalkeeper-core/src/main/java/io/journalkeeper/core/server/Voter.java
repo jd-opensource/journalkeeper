@@ -385,7 +385,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     private void convertToFollower() {
         synchronized (voterState) {
             VoterState oldState = voterState.getState();
-            // Fixme: What if leader.stop() failed ?!
             if(oldState == VoterState.LEADER && null != leader) {
                 leader.stop();
                 leader = null;

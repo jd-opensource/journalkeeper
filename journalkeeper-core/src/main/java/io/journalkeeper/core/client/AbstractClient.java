@@ -5,19 +5,24 @@ import io.journalkeeper.core.api.ClusterReadyAware;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.ServerConfigAware;
 import io.journalkeeper.core.exception.NoLeaderException;
+import io.journalkeeper.exceptions.NotLeaderException;
+import io.journalkeeper.exceptions.RequestTimeoutException;
 import io.journalkeeper.exceptions.ServerBusyException;
+import io.journalkeeper.exceptions.TransportException;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.LeaderResponse;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
-import io.journalkeeper.rpc.RpcException;
-import io.journalkeeper.rpc.StatusCode;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.client.GetServersResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
+import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import io.journalkeeper.utils.event.EventType;
 import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.utils.event.Watchable;
+import io.journalkeeper.utils.retry.CheckRetry;
+import io.journalkeeper.utils.retry.CompletableRetry;
+import io.journalkeeper.utils.retry.RandomDestinationSelector;
 import io.journalkeeper.utils.spi.ServiceSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,13 +32,10 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeoutException;
 
 /**
- * TODO: 针对连不上服务端和服务端不是LEADER这两种情况，需要增加一个异步重试机制。
  * @author LiYue
  * Date: 2019-09-09
  */
@@ -41,119 +43,57 @@ public class AbstractClient implements Watchable, ClusterReadyAware, ServerConfi
     private static final Logger logger = LoggerFactory.getLogger(AbstractClient.class);
     protected final ClientServerRpcAccessPoint clientServerRpcAccessPoint;
     protected URI leaderUri = null;
+    private long minRetryDelayMs = 100L;
+    private long maxRetryDelayMs = 300L;
+    private int maxRetries = 3;
 
-    public AbstractClient(ClientServerRpcAccessPoint clientServerRpcAccessPoint) {
+    private final CompletableRetry<URI> completableRetry;
+    private final RandomDestinationSelector<URI> randomDestinationSelector;
+    private final ClientCheckRetry clientCheckRetry = new ClientCheckRetry();
+    public AbstractClient(List<URI> servers, ClientServerRpcAccessPoint clientServerRpcAccessPoint) {
         this.clientServerRpcAccessPoint = clientServerRpcAccessPoint;
-        this.clientServerRpcAccessPoint.defaultClientServerRpc().watch(event -> {
+        // TODO: 考虑PullWatch不依赖某一个连接
+        this.clientServerRpcAccessPoint.getClintServerRpc(servers.get(0)).watch(event -> {
             if(event.getEventType() == EventType.ON_LEADER_CHANGE) {
                 this.leaderUri = URI.create(event.getEventData().get("leader"));
             }
         });
+        randomDestinationSelector = new RandomDestinationSelector<>(servers);
+        completableRetry = new CompletableRetry<>(minRetryDelayMs, maxRetryDelayMs, maxRetries, randomDestinationSelector);
     }
 
     public AbstractClient(List<URI> servers, Properties properties) {
-        RpcAccessPointFactory rpcAccessPointFactory = ServiceSupport.load(RpcAccessPointFactory.class);
-        clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(servers, properties);
+        this(servers, ServiceSupport.load(RpcAccessPointFactory.class).createClientServerRpcAccessPoint(properties));
     }
 
-    protected <R> CompletableFuture<R> update(byte[] entry, int partition, int batchSize, ResponseConfig responseConfig, Serializer<R> serializer, Executor executor) {
-        return invokeLeaderRpc(
-                leaderRpc -> leaderRpc.updateClusterState(new UpdateClusterStateRequest(entry, partition, batchSize, responseConfig)), executor)
-                .thenApply(resp -> {
-                    if(!resp.success()) {
-//                        logger.warn("Response failed: {}", resp.errorString());
-                        if(resp.getStatusCode() == StatusCode.SERVER_BUSY) {
-                            throw new CompletionException(new ServerBusyException());
-                        } else if (resp.getStatusCode() == StatusCode.TIMEOUT) {
-                            throw new CompletionException(new TimeoutException());
-                        } else {
-                            throw new CompletionException(new RpcException(resp));
-                        }
+    protected final  <O extends BaseResponse, R> CompletableFuture<O> invokeClientServerRpc(R request, CompletableRetry.RpcInvoke<O, ? super R, ClientServerRpc> invoke) {
+        return completableRetry.retry(request, (r, uri) -> invoke.invoke(r, clientServerRpcAccessPoint.getClintServerRpc(uri)), clientCheckRetry);
+    }
 
-                    } else {
-                        return resp.getResult();
-                    }
+    protected final  <O extends BaseResponse> CompletableFuture<O> invokeClientServerRpc(CompletableRetry.RpcInvokeNoRequest<O,  ClientServerRpc> invoke) {
+        return completableRetry.retry((uri) -> invoke.invoke(clientServerRpcAccessPoint.getClintServerRpc(uri)), clientCheckRetry);
+    }
 
-                })
+    protected <R> CompletableFuture<R> update(byte[] entry, int partition, int batchSize, ResponseConfig responseConfig, Serializer<R> serializer) {
+        return
+                invokeClientServerRpc(new UpdateClusterStateRequest(entry, partition, batchSize, responseConfig),(request, rpc) -> rpc.updateClusterState(request))
+                .thenApply(UpdateClusterStateResponse::getResult)
                 .thenApply(serializer::parse);
-    }
-
-    /**
-     * 去Leader上请求数据，如果返回NotLeaderException，更换Leader重试。
-     *
-     * @param invoke 真正去Leader要调用的方法
-     * @param <T> 返回的Response
-     */
-    protected <T extends LeaderResponse> CompletableFuture<T> invokeLeaderRpc(LeaderRpc<T> invoke, Executor executor) {
-        return getLeaderRpc(executor)
-                .thenCompose(invoke::invokeLeader)
-                .thenCompose(resp -> {
-                    if (resp.getStatusCode() == StatusCode.NOT_LEADER) {
-                        this.leaderUri = resp.getLeader();
-//                        return invokeLeaderRpc(invoke, executor);
-                        return invoke.invokeLeader(clientServerRpcAccessPoint.getClintServerRpc(resp.getLeader()));
-                    } else {
-                        return CompletableFuture.supplyAsync(() -> resp);
-                    }
-                });
-    }
-
-    // 获取的Leader地址有可能是已经过时了，这时候可能有2种情况：
-    // 第一种： 连不上
-    // 第二种：能连上但是返回NOT_LEADER
-    // 这里面只处理连不上的情况
-    private CompletableFuture<ClientServerRpc> getLeaderRpc(Executor executor) {
-        return this.leaderUri == null ? queryLeaderRpc() :
-                CompletableFuture.supplyAsync(() ->
-                        this.clientServerRpcAccessPoint.getClintServerRpc(this.leaderUri), executor)
-                .exceptionally(e -> {
-                    logger.warn("Get leader rpc exception, leaderUri: {}, exception: {}, retry...", this.leaderUri, e.getMessage());
-                    try {
-                        return queryLeaderRpc().get();
-                    } catch (Throwable ex) {
-                        throw new RpcException(ex);
-                    }
-                });
-    }
-
-    private CompletableFuture<ClientServerRpc> queryLeaderRpc() {
-        return clientServerRpcAccessPoint
-        .defaultClientServerRpc()
-        .getServers()
-        .exceptionally(GetServersResponse::new)
-        .thenApplyAsync(resp -> {
-            if(resp.success()) {
-                if(resp.getClusterConfiguration() != null && resp.getClusterConfiguration().getLeader() != null) {
-                    leaderUri = resp.getClusterConfiguration().getLeader();
-                    return clientServerRpcAccessPoint.getClintServerRpc(
-                            leaderUri);
-                } else {
-                    throw new NoLeaderException();
-                }
-            } else {
-                 throw new RpcException(resp);
-            }
-        });
     }
 
     @Override
     public void updateServers(List<URI> servers) {
-        clientServerRpcAccessPoint.updateServers(servers);
+        randomDestinationSelector.setAllDestinations(servers);
     }
-
-    public interface LeaderRpc<T extends BaseResponse> {
-        CompletableFuture<T> invokeLeader(ClientServerRpc leaderRpc);
-    }
-
 
     @Override
     public void watch(EventWatcher eventWatcher) {
-        clientServerRpcAccessPoint.defaultClientServerRpc().watch(eventWatcher);
+//        clientServerRpcAccessPoint.defaultClientServerRpc().watch(eventWatcher);
     }
 
     @Override
     public void unWatch(EventWatcher eventWatcher) {
-        clientServerRpcAccessPoint.defaultClientServerRpc().unWatch(eventWatcher);
+//        clientServerRpcAccessPoint.defaultClientServerRpc().unWatch(eventWatcher);
     }
 
 
@@ -164,9 +104,8 @@ public class AbstractClient implements Watchable, ClusterReadyAware, ServerConfi
             long t0 = System.currentTimeMillis();
             while (System.currentTimeMillis() - t0 < maxWaitMs || maxWaitMs <= 0) {
                 try {
-                    GetServersResponse response = clientServerRpcAccessPoint
-                            .defaultClientServerRpc()
-                            .getServers().get();
+                    GetServersResponse response =
+                            invokeClientServerRpc(ClientServerRpc::getServers).get();
                     if (response.success() && response.getClusterConfiguration() != null) {
                         URI leaderUri = response.getClusterConfiguration().getLeader();
                         if(null != leaderUri) {
@@ -191,5 +130,41 @@ public class AbstractClient implements Watchable, ClusterReadyAware, ServerConfi
             }
             throw new CompletionException(new TimeoutException());
         });
+    }
+
+    // TODO : 当网络异常时，当Leader不对时，都需要重试
+    private  class ClientCheckRetry implements CheckRetry<BaseResponse> {
+
+        @Override
+        public boolean checkException(Throwable exception) {
+            try {
+                throw exception instanceof CompletionException ? exception.getCause() : exception;
+            } catch (RequestTimeoutException | ServerBusyException | TransportException ne) {
+                return true;
+            } catch (NoLeaderException ne) {
+                leaderUri = null;
+                return true;
+            } catch (NotLeaderException ne) {
+                leaderUri = ne.getLeader();
+                return true;
+            }
+            catch (Throwable ignored) {}
+            return false;
+        }
+
+        @Override
+        public boolean checkResult(BaseResponse response) {
+            switch (response.getStatusCode()) {
+                case NOT_LEADER:
+                    leaderUri = ((LeaderResponse) response).getLeader();
+                    return true;
+                case TIMEOUT:
+                case SERVER_BUSY:
+                case TRANSPORT_FAILED:
+                    return true;
+                default:
+                    return false;
+            }
+        }
     }
 }

@@ -15,17 +15,17 @@ package io.journalkeeper.rpc.client;
 
 import io.journalkeeper.utils.event.EventBus;
 import io.journalkeeper.utils.event.EventWatcher;
-import io.journalkeeper.rpc.Detectable;
 
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
 
 /**
  * Client调用Server的RPC
+ *
  * @author LiYue
  * Date: 2019-03-14
  */
-public interface ClientServerRpc extends Detectable {
+public interface ClientServerRpc {
 
     /**
      * 获取当前连接Server的URI
@@ -40,6 +40,8 @@ public interface ClientServerRpc extends Detectable {
      *
      * @param request See {@link UpdateClusterStateRequest}
      * @return See {@link UpdateClusterStateResponse}
+     * @throws io.journalkeeper.exceptions.RequestTimeoutException 请求超时时抛出
+     * @throws io.journalkeeper.exceptions.TransportException 传输异常时抛出
      */
     CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request);
 
