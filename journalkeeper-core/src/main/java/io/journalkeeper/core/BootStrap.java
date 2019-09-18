@@ -23,6 +23,7 @@ import io.journalkeeper.core.client.DefaultAdminClient;
 import io.journalkeeper.core.client.DefaultRaftClient;
 import io.journalkeeper.core.server.Server;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
+import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.utils.spi.ServiceSupport;
 import io.journalkeeper.utils.threads.NamedThreadFactory;
@@ -30,6 +31,7 @@ import io.journalkeeper.utils.threads.NamedThreadFactory;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -73,7 +75,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
     }
 
     /**
-     * 初始化本地Server模式BootStrap，本地包含一个Server，模式请求本地Server通信。
+     * 初始化本地Server模式BootStrap，本地包含一个Server，请求本地Server通信。
      * @param roll 本地Server的角色。
      * @param properties 配置属性
      */
@@ -125,9 +127,9 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
                 this.clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.properties);
             }
             if (this.server == null) {
-                client = new DefaultRaftClient<>(servers, clientServerRpcAccessPoint, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
+                client = new DefaultRaftClient<>(getServersForClient(), clientServerRpcAccessPoint, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
             } else {
-                client = new DefaultRaftClient<>(servers, new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
+                client = new DefaultRaftClient<>(getServersForClient(), new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
             }
         }
         return client;
@@ -161,16 +163,27 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
         if(null == adminClient) {
 
             if (this.server == null) {
-                adminClient = new DefaultAdminClient(servers, properties);
+                adminClient = new DefaultAdminClient(getServersForClient(), properties);
             } else {
                 if (null == this.clientServerRpcAccessPoint) {
                     this.clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.properties);
                 }
-                adminClient = new DefaultAdminClient(servers, new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), properties);
+                adminClient = new DefaultAdminClient(getServersForClient(), new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), properties);
             }
         }
         return adminClient;
     }
 
 
+    private List<URI> getServersForClient() {
+        if(null == server) {
+            return servers;
+        } else {
+            try {
+                return server.getServers().get().getClusterConfiguration().getVoters();
+            } catch (Throwable e) {
+                throw new RpcException(e);
+            }
+        }
+    }
 }

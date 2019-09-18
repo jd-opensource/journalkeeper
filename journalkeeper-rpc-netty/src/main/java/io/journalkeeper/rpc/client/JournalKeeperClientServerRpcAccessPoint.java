@@ -42,7 +42,9 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
 
     @Override
     public ClientServerRpc getClintServerRpc(URI uri) {
-        if(null == uri ) return null;
+        if(null == uri ){
+            throw new IllegalArgumentException("URI can not be null!");
+        }
         return serverInstances.computeIfAbsent(uri, this::createClientServerRpc);
     }
 

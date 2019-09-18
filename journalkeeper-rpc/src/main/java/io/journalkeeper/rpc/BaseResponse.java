@@ -53,13 +53,14 @@ public abstract class BaseResponse {
     }
 
     protected void onSetException(Throwable throwable) {
-        StringWriter sw = new StringWriter();
-        sw.write("Remote stack trace:" + System.lineSeparator());
-        throwable.printStackTrace(new PrintWriter(sw));
-        sw.write("End of remote stack trace." + System.lineSeparator());
+//        StringWriter sw = new StringWriter();
+//        sw.write("Remote stack trace:" + System.lineSeparator());
+//        throwable.printStackTrace(new PrintWriter(sw));
+//        sw.write("End of remote stack trace." + System.lineSeparator());
 
-        error = sw.toString();
-    };
+//        error = sw.toString();
+        error = throwable.getMessage();
+    }
 
     public StatusCode getStatusCode() {
         return statusCode;

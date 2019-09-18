@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
@@ -33,34 +34,21 @@ public class CompletableRetry<D/* 对端地址类型 */> {
 
     private static final Logger logger = LoggerFactory.getLogger(CompletableRetry.class);
 
-    private <O, I> D getDestination(RpcInvokeWithRetryInfo<O, I, D> retryInvoke) {
+    private <O> D getDestination(RpcInvokeWithRetryInfo<O, D> retryInvoke) {
         destination.compareAndSet(null, destinationSelector.select(retryInvoke.getInvokedDestinations()));
+        logger.info("Using destination: {}", destination.get());
         return destination.get();
     }
-    public <O /* Response */> CompletableFuture<O> retry(RpcInvokeNoRequest<O, D> invoke, CheckRetry<? super O> checkRetry) {
-        return retry(invoke, checkRetry, null);
-    }
 
-    public <O /* Response */> CompletableFuture<O> retry(RpcInvokeNoRequest<O, D> invoke, CheckRetry<? super O> checkRetry, Executor executor) {
-        return retry(null, (request, destination) -> invoke.invoke(destination), checkRetry, executor);
-    }
+    public final <R /* Response */> CompletableFuture<R> retry(RpcInvoke<R, D> invoke, CheckRetry<? super R> checkRetry, Executor executor) {
 
-    public <O /* Response */, I /* Request */> CompletableFuture<O> retry(I request, RpcInvoke<O, I, D> invoke, CheckRetry<? super O> checkRetry) {
-        return retry(request, invoke, checkRetry, null);
-    }
-
-    public <O /* Response */, I /* Request */> CompletableFuture<O> retry(I request, RpcInvoke<O, I, D> invoke, CheckRetry<? super O> checkRetry, Executor executor) {
-
-        RpcInvokeWithRetryInfo<O, I, D> retryInvoke = invoke instanceof CompletableRetry.RpcInvokeWithRetryInfo ? (RpcInvokeWithRetryInfo<O, I, D>) invoke : new RpcInvokeWithRetryInfo<>(invoke);
+        RpcInvokeWithRetryInfo<R, D> retryInvoke = invoke instanceof CompletableRetry.RpcInvokeWithRetryInfo ? (RpcInvokeWithRetryInfo<R, D>) invoke : new RpcInvokeWithRetryInfo<>(invoke);
         CompletableFuture<D> destFuture = executor == null ?
                 CompletableFuture.completedFuture(getDestination(retryInvoke)) :
-                CompletableFuture.supplyAsync(() -> {
-                    destination.compareAndSet(null, destinationSelector.select(retryInvoke.getInvokedDestinations()));
-                    return destination.get();
-                }, executor);
+                CompletableFuture.supplyAsync(() -> getDestination(retryInvoke), executor);
 
         return destFuture
-                .thenCompose(destination -> retryInvoke.invoke(request, destination))
+                .thenCompose(retryInvoke::invoke)
                 .thenApply(ResultAndException::new)
                 .exceptionally(ResultAndException::new)
                 .thenCompose(r -> {
@@ -70,46 +58,52 @@ public class CompletableRetry<D/* 对端地址类型 */> {
                     } else {
                         retry = checkRetry.checkResult(r.getResult());
                     }
-                    if(retry && retryInvoke.getInvokeTimes() <= maxRetries) {
-                        logger.warn("Retry, invokes times: {}.", retryInvoke.getInvokeTimes());
-                        return retry(request, retryInvoke, checkRetry, executor);
-                    } else {
-                        return CompletableFuture.completedFuture(r.getResult());
+                    if(retry) {
+                        destination.set(null);
+                        if(retryInvoke.getInvokeTimes() <= maxRetries) {
+                            logger.warn("Retry, invokes times: {}.", retryInvoke.getInvokeTimes());
+                            return retry(retryInvoke, checkRetry, executor);
+                        }
                     }
+                    CompletableFuture<R> future = new CompletableFuture<>();
+                    if(r.getThrowable() != null) {
+                        future.completeExceptionally(r.getThrowable());
+                    } else {
+                        future.complete(r.getResult());
+                    }
+                    return future;
                 });
     }
 
-    public interface RpcInvoke<O /* Response */, I /* Request */, D /* Destination */> {
-        CompletableFuture<O> invoke(I request, D destination);
+    public interface RpcInvoke<R /* Response */,  D /* Destination */> {
+        CompletableFuture<R> invoke(D destination);
     }
 
-    public interface RpcInvokeNoRequest<O /* Response */,  D /* Destination */> {
-        CompletableFuture<O> invoke( D destination);
-    }
-
-    private class RpcInvokeWithRetryInfo<O /* Response */, I /* Request */, D /* Destination */> implements RpcInvoke<O, I, D> {
-        private final RpcInvoke<O, I, D> rpcInvoke;
+    private class RpcInvokeWithRetryInfo<R /* Response */,  D /* Destination */> implements RpcInvoke<R, D> {
+        private final RpcInvoke<R, D> rpcInvoke;
         private int invokeTimes = 0;
         private final Set<D> invokedDestinations = new HashSet<>(maxRetries);
 
-        public RpcInvokeWithRetryInfo(RpcInvoke<O, I, D> rpcInvoke) {
+        public RpcInvokeWithRetryInfo(RpcInvoke<R, D> rpcInvoke) {
             this.rpcInvoke = rpcInvoke;
         }
 
 
         @Override
-        public CompletableFuture<O> invoke(I request, D destination) {
-            if (invokeTimes++ > 0) {
-                try {
+        public CompletableFuture<R> invoke(D destination) {
+            try {
+                if (invokeTimes++ > 0) {
                     Thread.sleep(ThreadLocalRandom.current().nextLong(minRetryDelayMs, maxRetryDelayMs));
-                } catch (InterruptedException e) {
-                    throw new CompletionException(e);
                 }
-            }
 
-            CompletableFuture<O> future = rpcInvoke.invoke(request, destination);
-            invokedDestinations.add(destination);
-            return future;
+                CompletableFuture<R> future = rpcInvoke.invoke( destination);
+                invokedDestinations.add(destination);
+                return future;
+            } catch (Throwable throwable) {
+                CompletableFuture<R> future = new CompletableFuture<>();
+                future.completeExceptionally(throwable);
+                return future;
+            }
         }
 
         public int getInvokeTimes() {
@@ -153,7 +147,7 @@ public class CompletableRetry<D/* 对端地址类型 */> {
 
         ResultAndException(Throwable e) {
             this.result = null;
-            this.throwable = e;
+            this.throwable = getCause(e);
         }
         private final R result;
         private final Throwable throwable;
@@ -166,5 +160,12 @@ public class CompletableRetry<D/* 对端地址类型 */> {
             return throwable;
         }
 
+        private Throwable getCause(Throwable e) {
+            if((e instanceof CompletionException || e instanceof ExecutionException) && null != e.getCause()) {
+                return getCause(e.getCause());
+            } else {
+                return e;
+            }
+        }
     }
 }

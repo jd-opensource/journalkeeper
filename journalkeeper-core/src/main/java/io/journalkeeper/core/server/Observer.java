@@ -126,8 +126,8 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 .build();
     }
 
-    private <O extends BaseResponse, R> CompletableFuture<O> invokeParentsRpc(R request, CompletableRetry.RpcInvoke<O, ? super R, ServerRpc> invoke) {
-        return serverRpcRetry.retry(request, (r, uri) -> invoke.invoke(r, serverRpcAccessPoint.getServerRpcAgent(uri)), new CheckRetry<O>() {
+    private <O extends BaseResponse> CompletableFuture<O> invokeParentsRpc(CompletableRetry.RpcInvoke<O, ServerRpc> invoke) {
+        return serverRpcRetry.retry(uri -> invoke.invoke(serverRpcAccessPoint.getServerRpcAgent(uri)), new CheckRetry<O>() {
             @Override
             public boolean checkException(Throwable exception) {
                 return true;
@@ -137,7 +137,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
             public boolean checkResult(O result) {
                 return !result.success();
             }
-        });
+        }, asyncExecutor);
     }
 
     private void pullEntries() throws Throwable {
@@ -146,8 +146,8 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
         long traffic = 0L;
         GetServerEntriesResponse response =
                 invokeParentsRpc(
-                        new GetServerEntriesRequest(journal.commitIndex(),config.getPullBatchSize()),
-                        (request, rpc) -> rpc.getServerEntries(request)).get();
+                        rpc -> rpc.getServerEntries(new GetServerEntriesRequest(journal.commitIndex(),config.getPullBatchSize()))
+                ).get();
 
         if(response.success()){
 
@@ -201,8 +201,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
             boolean done;
             do {
                 GetServerStateResponse r = invokeParentsRpc(
-                        new GetServerStateRequest(lastIncludedIndex, offset),
-                        ((request, rpc) -> rpc.getServerState(request))
+                        rpc -> rpc.getServerState(new GetServerStateRequest(lastIncludedIndex, offset))
                 ).get();
                 state.installSerializedData(r.getData(), r.getOffset());
                 if(done = r.isDone()) {

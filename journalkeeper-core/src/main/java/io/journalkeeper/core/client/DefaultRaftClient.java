@@ -43,9 +43,8 @@ public class DefaultRaftClient<E, ER, Q, QR> extends AbstractClient implements R
     private final Serializer<ER> entryResultSerializer;
     private final Serializer<Q> querySerializer;
     private final Serializer<QR> resultSerializer;
-    private final Executor executor;
     private final Config config;
-
+    private final Executor executor;
 
     public DefaultRaftClient(List<URI> servers, ClientServerRpcAccessPoint clientServerRpcAccessPoint,
                              Serializer<E> entrySerializer,
@@ -59,7 +58,6 @@ public class DefaultRaftClient<E, ER, Q, QR> extends AbstractClient implements R
         this.querySerializer = querySerializer;
         this.resultSerializer = queryResultSerializer;
         this.config = toConfig(properties);
-
         this.executor = Executors.newFixedThreadPool(config.getThreads(), new NamedThreadFactory("Client-Executors"));
 
     }
@@ -77,7 +75,7 @@ public class DefaultRaftClient<E, ER, Q, QR> extends AbstractClient implements R
 
     @Override
     public CompletableFuture<QR> query(Q query) {
-        return invokeClientServerRpc(new QueryStateRequest(querySerializer.serialize(query)), (request, leaderRpc) -> leaderRpc.queryClusterState(request))
+        return invokeClientLeaderRpc(leaderRpc -> leaderRpc.queryClusterState(new QueryStateRequest(querySerializer.serialize(query))))
                 .thenApply(response -> {
                     if(response.getStatusCode() == StatusCode.SUCCESS) {
                         return response.getResult();
@@ -103,6 +101,11 @@ public class DefaultRaftClient<E, ER, Q, QR> extends AbstractClient implements R
                         String.valueOf(Config.DEFAULT_THREADS))));
 
         return config;
+    }
+
+    @Override
+    protected Executor getExecutor() {
+        return executor;
     }
 
     static class Config {

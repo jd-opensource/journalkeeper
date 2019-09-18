@@ -36,12 +36,15 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
 
     private final Config config;
     private final Executor executor;
-    private URI leaderUri = null;
-
     public DefaultAdminClient(List<URI> servers, ClientServerRpcAccessPoint clientServerRpcAccessPoint, Properties properties) {
         super(servers, clientServerRpcAccessPoint);
         this.config = toConfig(properties);
         this.executor = Executors.newFixedThreadPool(config.getThreads(), new NamedThreadFactory("Admin-Client-Executors"));
+    }
+
+    @Override
+    protected Executor getExecutor() {
+        return executor;
     }
 
     public DefaultAdminClient(List<URI> servers, Properties properties) {
@@ -52,7 +55,7 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
 
     @Override
     public CompletableFuture<ClusterConfiguration> getClusterConfiguration() {
-        return invokeClientServerRpc(ClientServerRpc::getServers)
+        return invokeClientLeaderRpc(ClientServerRpc::getServers)
                 .thenApply(GetServersResponse::getClusterConfiguration);
     }
 
@@ -65,7 +68,7 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
 
     @Override
     public CompletableFuture<Boolean> updateVoters(List<URI> oldConfig, List<URI> newConfig) {
-        return  invokeClientServerRpc(new UpdateVotersRequest(oldConfig, newConfig), (request, leaderRpc) -> leaderRpc.updateVoters(request))
+        return  invokeClientLeaderRpc(leaderRpc -> leaderRpc.updateVoters(new UpdateVotersRequest(oldConfig, newConfig)))
                 .thenApply(BaseResponse::success);
     }
 

@@ -42,7 +42,7 @@ public class RetryRpc {
                 .thenApply(this::checkStatusCode)
                 .exceptionally(e -> {
                     try {
-                        throw e instanceof CompletionException ? e.getCause() : e;
+                        throw e instanceof CompletionException || e instanceof ExecutionException ? e.getCause() : e;
                     } catch (RequestTimeoutException | ServerBusyException | TransportException ne) {
                         logger.warn("Retry client server rpc, invokes times: {}, cause: {}", retryInvoke.getInvokeTimes(), e.getMessage());
                         try {

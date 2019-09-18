@@ -570,7 +570,7 @@ public class KvTest {
     public void preferredLeaderTest() throws Exception{
         // 启动5个节点的集群
         int serverCount = 5;
-        long timeoutMs = 5000L;
+        long timeoutMs = 10000L;
         logger.info("Creating {} nodes cluster...", serverCount);
 
         Path path = TestPathUtils.prepareBaseDir("PreferredLeaderTest");

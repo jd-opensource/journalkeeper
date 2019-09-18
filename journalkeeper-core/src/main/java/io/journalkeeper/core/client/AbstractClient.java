@@ -1,6 +1,7 @@
 package io.journalkeeper.core.client;
 
 import io.journalkeeper.base.Serializer;
+import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.ClusterReadyAware;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.ServerConfigAware;
@@ -17,7 +18,6 @@ import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.client.GetServersResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
-import io.journalkeeper.utils.event.EventType;
 import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.utils.event.Watchable;
 import io.journalkeeper.utils.retry.CheckRetry;
@@ -32,6 +32,8 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeoutException;
 
@@ -39,7 +41,7 @@ import java.util.concurrent.TimeoutException;
  * @author LiYue
  * Date: 2019-09-09
  */
-public class AbstractClient implements Watchable, ClusterReadyAware, ServerConfigAware {
+public abstract class AbstractClient implements Watchable, ClusterReadyAware, ServerConfigAware {
     private static final Logger logger = LoggerFactory.getLogger(AbstractClient.class);
     protected final ClientServerRpcAccessPoint clientServerRpcAccessPoint;
     protected URI leaderUri = null;
@@ -51,32 +53,55 @@ public class AbstractClient implements Watchable, ClusterReadyAware, ServerConfi
     private final RandomDestinationSelector<URI> randomDestinationSelector;
     private final ClientCheckRetry clientCheckRetry = new ClientCheckRetry();
     public AbstractClient(List<URI> servers, ClientServerRpcAccessPoint clientServerRpcAccessPoint) {
+        if(servers == null || servers.isEmpty()) {
+            throw new IllegalArgumentException("Argument servers can not be empty!");
+        }
         this.clientServerRpcAccessPoint = clientServerRpcAccessPoint;
         // TODO: 考虑PullWatch不依赖某一个连接
-        this.clientServerRpcAccessPoint.getClintServerRpc(servers.get(0)).watch(event -> {
-            if(event.getEventType() == EventType.ON_LEADER_CHANGE) {
-                this.leaderUri = URI.create(event.getEventData().get("leader"));
-            }
-        });
+//        this.clientServerRpcAccessPoint.getClintServerRpc(servers.get(0)).watch(event -> {
+//            if(event.getEventType() == EventType.ON_LEADER_CHANGE) {
+//                this.leaderUri = URI.create(event.getEventData().get("leader"));
+//            }
+//        });
         randomDestinationSelector = new RandomDestinationSelector<>(servers);
         completableRetry = new CompletableRetry<>(minRetryDelayMs, maxRetryDelayMs, maxRetries, randomDestinationSelector);
     }
+
+    protected abstract Executor getExecutor();
 
     public AbstractClient(List<URI> servers, Properties properties) {
         this(servers, ServiceSupport.load(RpcAccessPointFactory.class).createClientServerRpcAccessPoint(properties));
     }
 
-    protected final  <O extends BaseResponse, R> CompletableFuture<O> invokeClientServerRpc(R request, CompletableRetry.RpcInvoke<O, ? super R, ClientServerRpc> invoke) {
-        return completableRetry.retry(request, (r, uri) -> invoke.invoke(r, clientServerRpcAccessPoint.getClintServerRpc(uri)), clientCheckRetry);
+
+    protected final  <O extends BaseResponse> CompletableFuture<O> invokeClientServerRpc(CompletableRetry.RpcInvoke<O,  ClientServerRpc> invoke) {
+        return completableRetry.retry((uri) -> invoke.invoke(clientServerRpcAccessPoint.getClintServerRpc(uri)), clientCheckRetry, getExecutor());
     }
 
-    protected final  <O extends BaseResponse> CompletableFuture<O> invokeClientServerRpc(CompletableRetry.RpcInvokeNoRequest<O,  ClientServerRpc> invoke) {
-        return completableRetry.retry((uri) -> invoke.invoke(clientServerRpcAccessPoint.getClintServerRpc(uri)), clientCheckRetry);
+    protected final  <O extends BaseResponse> CompletableFuture<O> invokeClientLeaderRpc(CompletableRetry.RpcInvoke<O,  ClientServerRpc> invoke) {
+        return invokeClientServerRpc((rpc) -> unSetLeaderUriWhenLeaderRpcFailed(
+                getCachedLeaderRpc(rpc)
+                .thenCompose(invoke::invoke)
+                )
+        );
     }
 
+
+    private <O extends BaseResponse> CompletableFuture<O> unSetLeaderUriWhenLeaderRpcFailed(CompletableFuture<O> future) {
+        return future
+                .exceptionally(e -> {
+                    this.leaderUri = null;
+                    throw new CompletionException(e);
+                }).thenApply(response -> {
+                    if(!response.success()) {
+                        this.leaderUri = null;
+                    }
+                    return response;
+                });
+    }
     protected <R> CompletableFuture<R> update(byte[] entry, int partition, int batchSize, ResponseConfig responseConfig, Serializer<R> serializer) {
         return
-                invokeClientServerRpc(new UpdateClusterStateRequest(entry, partition, batchSize, responseConfig),(request, rpc) -> rpc.updateClusterState(request))
+                invokeClientLeaderRpc(rpc -> rpc.updateClusterState(new UpdateClusterStateRequest(entry, partition, batchSize, responseConfig)))
                 .thenApply(UpdateClusterStateResponse::getResult)
                 .thenApply(serializer::parse);
     }
@@ -96,6 +121,34 @@ public class AbstractClient implements Watchable, ClusterReadyAware, ServerConfi
 //        clientServerRpcAccessPoint.defaultClientServerRpc().unWatch(eventWatcher);
     }
 
+    private CompletableFuture<ClientServerRpc> getCachedLeaderRpc(ClientServerRpc clientServerRpc) {
+        CompletableFuture<URI> leaderUriFuture = new CompletableFuture<>();
+        if(this.leaderUri == null) {
+            GetServersResponse getServersResponse = null;
+            try {
+                getServersResponse = clientServerRpc.getServers().get();
+            } catch (Throwable e) {
+                Throwable ex = e instanceof ExecutionException ? e.getCause(): e;
+                leaderUriFuture = new CompletableFuture<>();
+                leaderUriFuture.completeExceptionally(ex);
+            }
+            if(null != getServersResponse && getServersResponse.success()) {
+                ClusterConfiguration clusterConfiguration = getServersResponse.getClusterConfiguration();
+                if(null != clusterConfiguration) {
+                    this.leaderUri = clusterConfiguration.getLeader();
+                }
+            }
+
+        }
+
+        if(this.leaderUri != null) {
+            leaderUriFuture.complete(leaderUri);
+        } else if(!leaderUriFuture.isDone()){
+            leaderUriFuture.completeExceptionally(new NoLeaderException());
+        }
+        logger.info("Current leader in client: {}", leaderUri);
+        return leaderUriFuture.thenApply(clientServerRpcAccessPoint::getClintServerRpc);
+    }
 
     @Override
     public CompletableFuture whenClusterReady(long maxWaitMs) {
@@ -105,17 +158,14 @@ public class AbstractClient implements Watchable, ClusterReadyAware, ServerConfi
             while (System.currentTimeMillis() - t0 < maxWaitMs || maxWaitMs <= 0) {
                 try {
                     GetServersResponse response =
-                            invokeClientServerRpc(ClientServerRpc::getServers).get();
+                            invokeClientLeaderRpc(ClientServerRpc::getServers).get();
                     if (response.success() && response.getClusterConfiguration() != null) {
                         URI leaderUri = response.getClusterConfiguration().getLeader();
                         if(null != leaderUri) {
-                            response = clientServerRpcAccessPoint
-                                    .getClintServerRpc(leaderUri)
-                                    .getServers().get();
-                            if(response.success() &&
-                                    response.getClusterConfiguration() != null &&
-                                    leaderUri.equals(response.getClusterConfiguration().getLeader())){
-                                return ;
+                            if (leaderUri.equals(this.leaderUri)) {
+                                return;
+                            } else {
+                                this.leaderUri = leaderUri;
                             }
                         }
                     }
@@ -132,13 +182,15 @@ public class AbstractClient implements Watchable, ClusterReadyAware, ServerConfi
         });
     }
 
-    // TODO : 当网络异常时，当Leader不对时，都需要重试
+
     private  class ClientCheckRetry implements CheckRetry<BaseResponse> {
 
         @Override
         public boolean checkException(Throwable exception) {
             try {
-                throw exception instanceof CompletionException ? exception.getCause() : exception;
+
+                logger.warn("Rpc exception: {}", exception.getMessage());
+                throw exception;
             } catch (RequestTimeoutException | ServerBusyException | TransportException ne) {
                 return true;
             } catch (NoLeaderException ne) {
@@ -157,12 +209,17 @@ public class AbstractClient implements Watchable, ClusterReadyAware, ServerConfi
             switch (response.getStatusCode()) {
                 case NOT_LEADER:
                     leaderUri = ((LeaderResponse) response).getLeader();
+                    logger.warn(response.errorString());
                     return true;
                 case TIMEOUT:
                 case SERVER_BUSY:
                 case TRANSPORT_FAILED:
+                    logger.warn(response.errorString());
                     return true;
+                case SUCCESS:
+                    return false;
                 default:
+                    logger.warn(response.errorString());
                     return false;
             }
         }
