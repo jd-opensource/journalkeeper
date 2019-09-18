@@ -58,7 +58,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
     private final List<URI> servers;
     private final Server<E, ER, Q, QR> server;
     private DefaultRaftClient<E, ER, Q, QR> client = null;
-    private AdminClient adminClient = null;
+    private DefaultAdminClient adminClient = null;
 
     /**
      * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。
@@ -130,6 +130,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
                 client = new DefaultRaftClient<>(getServersForClient(), clientServerRpcAccessPoint, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
             } else {
                 client = new DefaultRaftClient<>(getServersForClient(), new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
+                client.setPreferredUri(server.serverUri());
             }
         }
         return client;
@@ -169,6 +170,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
                     this.clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.properties);
                 }
                 adminClient = new DefaultAdminClient(getServersForClient(), new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), properties);
+                adminClient.setPreferredUri(server.serverUri());
             }
         }
         return adminClient;

@@ -28,8 +28,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.util.Collection;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
@@ -50,21 +52,16 @@ public abstract class AbstractClient implements Watchable, ClusterReadyAware, Se
     private int maxRetries = 3;
 
     private final CompletableRetry<URI> completableRetry;
-    private final RandomDestinationSelector<URI> randomDestinationSelector;
+    private final RandomDestinationSelector<URI> uriSelector;
     private final ClientCheckRetry clientCheckRetry = new ClientCheckRetry();
+    private URI preferredUri = null;
     public AbstractClient(List<URI> servers, ClientServerRpcAccessPoint clientServerRpcAccessPoint) {
         if(servers == null || servers.isEmpty()) {
             throw new IllegalArgumentException("Argument servers can not be empty!");
         }
         this.clientServerRpcAccessPoint = clientServerRpcAccessPoint;
-        // TODO: 考虑PullWatch不依赖某一个连接
-//        this.clientServerRpcAccessPoint.getClintServerRpc(servers.get(0)).watch(event -> {
-//            if(event.getEventType() == EventType.ON_LEADER_CHANGE) {
-//                this.leaderUri = URI.create(event.getEventData().get("leader"));
-//            }
-//        });
-        randomDestinationSelector = new RandomDestinationSelector<>(servers);
-        completableRetry = new CompletableRetry<>(minRetryDelayMs, maxRetryDelayMs, maxRetries, randomDestinationSelector);
+        uriSelector = new RandomUriSelector(servers);
+        completableRetry = new CompletableRetry<>(minRetryDelayMs, maxRetryDelayMs, maxRetries, uriSelector);
     }
 
     protected abstract Executor getExecutor();
@@ -108,7 +105,7 @@ public abstract class AbstractClient implements Watchable, ClusterReadyAware, Se
 
     @Override
     public void updateServers(List<URI> servers) {
-        randomDestinationSelector.setAllDestinations(servers);
+        uriSelector.setAllDestinations(servers);
     }
 
     @Override
@@ -221,6 +218,31 @@ public abstract class AbstractClient implements Watchable, ClusterReadyAware, Se
                 default:
                     logger.warn(response.errorString());
                     return false;
+            }
+        }
+    }
+
+    public URI getPreferredUri() {
+        return preferredUri;
+    }
+
+    public void setPreferredUri(URI preferredUri) {
+        this.preferredUri = preferredUri;
+    }
+
+
+    private class RandomUriSelector extends RandomDestinationSelector<URI> {
+
+        public RandomUriSelector(Collection<URI> allDestinations) {
+            super(allDestinations);
+        }
+
+        @Override
+        public URI select(Set<URI> usedDestinations) {
+            if((null == usedDestinations || usedDestinations.isEmpty()) && null != preferredUri) {
+                return preferredUri;
+            } else {
+                return super.select(usedDestinations);
             }
         }
     }
