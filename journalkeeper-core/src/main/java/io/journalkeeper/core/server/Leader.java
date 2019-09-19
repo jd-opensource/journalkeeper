@@ -71,8 +71,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     /**
      * 保存异步响应的回调方法
      */
-    private final CallbackBelt<ER> replicationCallbacks;
-    private final CallbackBelt<ER> flushCallbacks;
+    private final CallbackResultBelt replicationCallbacks;
+    private final CallbackResultBelt flushCallbacks;
 
     /**
      * 当角色为LEADER时，记录所有FOLLOWER的位置等信息
@@ -124,6 +124,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private final CheckTermInterceptor checkTermInterceptor;
 
     private final AtomicBoolean writeEnabled = new AtomicBoolean(true);
+    private final Serializer<ER> entryResultSerializer;
 
     Leader(Journal journal, State state, Map<Long, State<E, ER, Q, QR>> immutableSnapshots,
            int currentTerm,
@@ -153,10 +154,10 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.voterConfigManager = voterConfigManager;
         this.metricProvider = metricProvider;
         this.checkTermInterceptor = checkTermInterceptor;
-        this.replicationCallbacks = new LinkedQueueCallbackBelt<>(rpcTimeoutMs, entryResultSerializer);
-        this.flushCallbacks = new LinkedQueueCallbackBelt<>(rpcTimeoutMs, entryResultSerializer);
+        this.replicationCallbacks = new RingBufferBelt(rpcTimeoutMs, cacheRequests);
+        this.flushCallbacks = new RingBufferBelt(rpcTimeoutMs, cacheRequests);
         this.appendEntriesRpcMetricMap = new HashMap<>(2);
-
+        this.entryResultSerializer = entryResultSerializer;
         this.journal = journal;
         this.heartbeatIntervalMs = heartbeatIntervalMs;
         this.cacheRequests = cacheRequests;
@@ -234,31 +235,18 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     }
 
     private void doAppendJournalEntry(UpdateClusterStateRequest request, CompletableFuture<UpdateClusterStateResponse> responseFuture) throws InterruptedException {
-        mayBeWaitingForApplyEntries();
         appendJournalMetric.start();
 
         long index = journal.append(new Entry(request.getEntry(), currentTerm, request.getPartition(), request.getBatchSize()));
         threads.wakeupThread(LEADER_REPLICATION_THREAD);
         threads.wakeupThread(ThreadNames.FLUSH_JOURNAL_THREAD);
         if (request.getResponseConfig() == ResponseConfig.PERSISTENCE) {
-            flushCallbacks.put(new Callback<>(index - 1, responseFuture));
+            flushCallbacks.put(new Callback(index, responseFuture));
         } else if (request.getResponseConfig() == ResponseConfig.REPLICATION) {
-            replicationCallbacks.put(new Callback<>(index - 1, responseFuture));
+            replicationCallbacks.put(new Callback(index, responseFuture));
         }
         appendJournalMetric.end(request.getEntry().length);
     }
-
-    private void mayBeWaitingForApplyEntries() throws InterruptedException {
-        long t0 = System.nanoTime();
-        while (journal.maxIndex() - state.lastApplied() > cacheRequests) {
-            if(System.nanoTime() - t0 < 10000000000L) {
-                Thread.yield();
-            } else {
-                Thread.sleep(10);
-            }
-        }
-    }
-
 
     /**
      * 反复检查每个FOLLOWER的下一条复制位置nextIndex和本地日志log[]的最大位置，
@@ -559,7 +547,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     }
 
     private void callback() {
-        replicationCallbacks.callbackBefore(state.lastApplied());
+//        replicationCallbacks.callbackBefore(state.lastApplied());
         flushCallbacks.callbackBefore(journalFlushIndex.get());
     }
 
@@ -679,16 +667,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     }
 
 
-    void setStateExecutionResult(ResponseConfig responseConfig, long lastApplied, ER result) {
-        switch (responseConfig) {
-            case REPLICATION:
-                replicationCallbacks.setResult(lastApplied, result);
-                break;
-            case PERSISTENCE:
-                flushCallbacks.setResult(lastApplied, result);
-                break;
-            default:
-        }
+    void callback(long lastApplied, ER result) throws InterruptedException {
+        replicationCallbacks.callback(lastApplied, entryResultSerializer.serialize(result));
     }
 
     void wakeupCallbackThread() {

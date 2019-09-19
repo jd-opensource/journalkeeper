@@ -8,11 +8,10 @@ import java.util.concurrent.CompletableFuture;
  * @author LiYue
  * Date: 2019-08-14
  */
-class Callback<R> {
+class Callback {
     private final long position;
     private final long timestamp;
     private final CompletableFuture<UpdateClusterStateResponse> completableFuture;
-    private R result;
 
     Callback(long position, CompletableFuture<UpdateClusterStateResponse> completableFuture) {
         this.position = position;
@@ -24,9 +23,6 @@ class Callback<R> {
         return position;
     }
 
-    R getResult() {
-        return result;
-    }
 
     long getTimestamp() {
         return timestamp;
@@ -36,7 +32,4 @@ class Callback<R> {
         return completableFuture;
     }
 
-    void setResult(R result) {
-        this.result = result;
-    }
 }

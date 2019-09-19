@@ -15,7 +15,6 @@ package io.journalkeeper.core.server;
 
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftEntry;
-import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;
@@ -715,18 +714,14 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     }
 
     @Override
-    protected void beforeStateChanged(ER updateResult) {
-        super.beforeStateChanged(updateResult);
-        if(null != updateResult &&  null != leader) {
-            leader.setStateExecutionResult(ResponseConfig.REPLICATION, state.lastApplied(), updateResult);
-        }
-    }
-
-    @Override
-    protected void afterStateChanged(ER result) {
-        super.afterStateChanged(result);
+    protected void afterStateChanged(ER updateResult) {
+        super.afterStateChanged(updateResult);
         if(null != leader) {
-            leader.wakeupCallbackThread();
+            try {
+                leader.callback(state.lastApplied(), updateResult);
+            } catch (Throwable e) {
+                logger.warn("Callback exception! {}", voterInfo(), e);
+            }
         }
     }
 

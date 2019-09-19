@@ -425,7 +425,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
             }
 
 
-            beforeStateChanged(result);
             state.next();
             afterStateChanged(result);
 
@@ -468,28 +467,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
         eventData.put("term", String.valueOf(term));
         fireEvent(EventType.ON_LEADER_CHANGE, eventData);
     }
-    protected void maybeUpdateConfigOnReplication(List<byte []> entries) throws Exception {
-        for (byte[] rawEntry : entries) {
-            ByteBuffer entryBuffer = ByteBuffer.wrap(rawEntry);
-            EntryHeader entryHeader = JournalEntryParser.parseHeader(entryBuffer);
-            if(entryHeader.getPartition() == RESERVED_PARTITION) {
-                byte [] payload = JournalEntryParser.getEntry(rawEntry);
-                int entryType = ReservedEntriesSerializeSupport.parseEntryType(payload);
-                if (entryType == ReservedEntry.TYPE_UPDATE_VOTERS_S1) {
-                    UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(payload);
-
-                    votersConfigStateMachine.toJointConsensus(updateVotersS1Entry.getConfigNew(),
-                            () -> null);
-                } else if (entryType == ReservedEntry.TYPE_UPDATE_VOTERS_S2) {
-                    votersConfigStateMachine.toNewConfig(() -> null);
-                    // Stop myself if I'm no longer a member of the cluster.
-                    if(roll() == Roll.VOTER && !votersConfigStateMachine.voters().contains(this.serverUri())) {
-                        this.stopAsync();
-                    }
-                }
-            }
-        }
-    }
 
     private void scalePartitions(int[] partitions) {
         try {
@@ -524,11 +501,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
      * 当状态变化后触发事件
      */
     protected void afterStateChanged(ER updateResult) {}
-    /**
-     * 当状态变化前触发事件
-     */
-    protected void beforeStateChanged(ER updateResult) {}
-
     /**
      * 如果需要，保存一次快照
      */
