@@ -113,10 +113,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
      * 检查选举超时定时任务
      */
     private ScheduledFuture checkElectionTimeoutFuture;
-    /**
-     * 检查推荐Leader的定时任务
-     */
-    private ScheduledFuture preferedLeaderFuture;
+
 
     private final VoterConfigManager voterConfigManager = new VoterConfigManager();
 
@@ -533,7 +530,15 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
 
     @Override
     public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
-        return ensureLeadership().thenComposeAsync(ignored -> leader.updateClusterState(request), asyncExecutor)
+        CompletableFuture<UpdateClusterStateResponse> future = new CompletableFuture<>();
+        Leader<E, ER, Q, QR> finalLeader = leader;
+        try {
+            ensureLeadership(finalLeader);
+        } catch (NotLeaderException nle) {
+            future.completeExceptionally(nle);
+            return future;
+        }
+        return finalLeader.updateClusterState(request)
                 .exceptionally(UpdateClusterStateResponse::new);
     }
 
@@ -569,7 +574,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         }
     }
 
-
+    // 改为同步方法，提升性能
     @Override
     public CompletableFuture<LastAppliedResponse> lastApplied() {
 
@@ -587,7 +592,15 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     }
 
     private CompletableFuture<Void> waitLeadership() {
-        return ensureLeadership().thenComposeAsync(ignored -> leader.waitLeadership(),asyncExecutor);
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        Leader<E, ER, Q, QR> finalLeader = leader;
+        try {
+            ensureLeadership(finalLeader);
+        } catch (NotLeaderException nle) {
+            future.completeExceptionally(nle);
+            return future;
+        }
+        return finalLeader.waitLeadership();
     }
     @Override
     public CompletableFuture<GetServerStatusResponse> getServerStatus() {
@@ -665,12 +678,10 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 .exceptionally(UpdateVotersResponse::new);
     }
 
-    private CompletableFuture<Void> ensureLeadership() {
-        return CompletableFuture.runAsync(() -> {
-            if(voterState() != VoterState.LEADER || leader == null) {
-                throw new NotLeaderException(leaderUri);
-            }
-        }, asyncExecutor);
+    private void ensureLeadership(Leader<E, ER, Q, QR> finalLeader) {
+        if(voterState() != VoterState.LEADER || finalLeader == null) {
+            throw new NotLeaderException(leaderUri);
+        }
     }
 
     private VoterState voterState() {

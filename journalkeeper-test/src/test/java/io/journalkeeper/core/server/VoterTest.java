@@ -16,6 +16,7 @@ package io.journalkeeper.core.server;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
+import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;

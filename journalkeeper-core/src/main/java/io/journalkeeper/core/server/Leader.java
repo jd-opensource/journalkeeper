@@ -238,6 +238,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         appendJournalMetric.start();
 
         long index = journal.append(new Entry(request.getEntry(), currentTerm, request.getPartition(), request.getBatchSize()));
+        threads.wakeupThread(LEADER_REPLICATION_THREAD);
+        threads.wakeupThread(ThreadNames.FLUSH_JOURNAL_THREAD);
         if (request.getResponseConfig() == ResponseConfig.PERSISTENCE) {
             flushCallbacks.put(new Callback<>(index - 1, responseFuture));
         } else if (request.getResponseConfig() == ResponseConfig.REPLICATION) {
@@ -574,6 +576,9 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         UpdateStateRequestResponse requestResponse = new UpdateStateRequestResponse(request, updateClusterStateMetric);
 
         try {
+
+
+
             if(serverState() != ServerState.RUNNING) {
                 throw new IllegalStateException(String.format("Leader is not RUNNING, state: %s.", serverState().toString()));
             }
@@ -753,9 +758,9 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         UpdateStateRequestResponse(UpdateClusterStateRequest request, JMetric metric) {
             this.request = request;
             responseFuture = new CompletableFuture<>();
-
+            final int length = request.getEntry().length;
             responseFuture
-                    .thenRun(() -> metric.mark(System.nanoTime() - start, request.getEntry().length));
+                    .thenRun(() -> metric.mark(System.nanoTime() - start, length));
 
         }
 
