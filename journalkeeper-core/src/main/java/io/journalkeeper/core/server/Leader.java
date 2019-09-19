@@ -50,6 +50,7 @@ import java.util.stream.Collectors;
 
 import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
 import static io.journalkeeper.core.server.MetricNames.METRIC_APPEND_ENTRIES_RPC;
+import static io.journalkeeper.core.server.ThreadNames.*;
 import static io.journalkeeper.core.server.ThreadNames.LEADER_APPEND_ENTRY_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.LEADER_CALLBACK_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.LEADER_REPLICATION_RESPONSES_HANDLER_THREAD;
@@ -239,7 +240,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
         long index = journal.append(new Entry(request.getEntry(), currentTerm, request.getPartition(), request.getBatchSize()));
         threads.wakeupThread(LEADER_REPLICATION_THREAD);
-        threads.wakeupThread(ThreadNames.FLUSH_JOURNAL_THREAD);
+        threads.wakeupThread(FLUSH_JOURNAL_THREAD);
         if (request.getResponseConfig() == ResponseConfig.PERSISTENCE) {
             flushCallbacks.put(new Callback(index, responseFuture));
         } else if (request.getResponseConfig() == ResponseConfig.REPLICATION) {
@@ -257,14 +258,13 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         // 如果是单节点，直接唤醒leaderReplicationResponseHandlerThread，减少响应时延。
         if (serverState() == ServerState.RUNNING && followers.isEmpty()) {
             threads.wakeupThread(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD);
+            leaderShipDeadLineMs.set(System.currentTimeMillis() + heartbeatIntervalMs);
         }
 
         boolean hasData;
         do {
             hasData = false;
-            if(followers.size() == 0) {
-                leaderShipDeadLineMs.set(System.currentTimeMillis() + heartbeatIntervalMs);
-            }
+
             for (ReplicationDestination follower : followers) {
                 long maxIndex = journal.maxIndex();
                 if (follower.nextIndex < maxIndex) {
@@ -320,7 +320,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         follower.setLastHeartbeatRequestTime(System.currentTimeMillis());
 
         serverRpcProvider.getServerRpc(follower.getUri())
-                .thenComposeAsync(serverRpc -> serverRpc.asyncAppendEntries(request), asyncExecutor)
+                .thenCompose(serverRpc -> serverRpc.asyncAppendEntries(request))
                 .exceptionally(AsyncAppendEntriesResponse::new)
                 .thenAccept(response -> leaderOnAppendEntriesResponse(follower, request, response));
 
@@ -419,48 +419,53 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
      */
     private void leaderUpdateCommitIndex() throws InterruptedException, ExecutionException, IOException {
         List<ReplicationDestination> finalFollowers = new ArrayList<>(followers);
-        long N = finalFollowers.isEmpty() ? journal.maxIndex() : 0L;
+        long N = 0L;
+        if (finalFollowers.isEmpty()) {
+            N = journal.maxIndex();
+        } else {
 
-        List<Callable<Boolean>> callables =
-                finalFollowers.stream()
-                        .map(follower -> (Callable<Boolean>) () -> leaderHandleAppendEntriesResponse(follower))
-                        .collect(Collectors.toList());
 
-        boolean isAnyFollowerMatchIndexUpdated = false;
-        for (Future<Boolean> future : asyncExecutor.invokeAll(callables)) {
-            if(future.get()) {
-                isAnyFollowerMatchIndexUpdated = true;
-                break;
-            }
-        }
+            List<Callable<Boolean>> callables =
+                    finalFollowers.stream()
+                            .map(follower -> (Callable<Boolean>) () -> leaderHandleAppendEntriesResponse(follower))
+                            .collect(Collectors.toList());
 
-        if(isAnyFollowerMatchIndexUpdated) {
-            if (votersConfigStateMachine.isJointConsensus()) {
-                long[] sortedMatchIndexInOldConfig = finalFollowers.stream()
-                        .filter(follower -> votersConfigStateMachine.getConfigOld().contains(follower.getUri()))
-                        .mapToLong(ReplicationDestination::getMatchIndex)
-                        .sorted().toArray();
-                long nInOldConfig = sortedMatchIndexInOldConfig.length > 0 ?
-                        sortedMatchIndexInOldConfig[sortedMatchIndexInOldConfig.length / 2] : journal.maxIndex();
-
-                long[] sortedMatchIndexInNewConfig = finalFollowers.stream()
-                        .filter(follower -> votersConfigStateMachine.getConfigNew().contains(follower.getUri()))
-                        .mapToLong(ReplicationDestination::getMatchIndex)
-                        .sorted().toArray();
-                long nInNewConfig = sortedMatchIndexInNewConfig.length > 0 ?
-                        sortedMatchIndexInNewConfig[sortedMatchIndexInNewConfig.length / 2] : journal.maxIndex();
-
-                N = Math.min(nInNewConfig, nInOldConfig);
-
-            } else {
-                long[] sortedMatchIndex = finalFollowers.stream()
-                        .mapToLong(ReplicationDestination::getMatchIndex)
-                        .sorted().toArray();
-                if (sortedMatchIndex.length > 0) {
-                    N = sortedMatchIndex[sortedMatchIndex.length / 2];
+            boolean isAnyFollowerMatchIndexUpdated = false;
+            for (Future<Boolean> future : asyncExecutor.invokeAll(callables)) {
+                if (future.get()) {
+                    isAnyFollowerMatchIndexUpdated = true;
+                    break;
                 }
             }
 
+            if (isAnyFollowerMatchIndexUpdated) {
+                if (votersConfigStateMachine.isJointConsensus()) {
+                    long[] sortedMatchIndexInOldConfig = finalFollowers.stream()
+                            .filter(follower -> votersConfigStateMachine.getConfigOld().contains(follower.getUri()))
+                            .mapToLong(ReplicationDestination::getMatchIndex)
+                            .sorted().toArray();
+                    long nInOldConfig = sortedMatchIndexInOldConfig.length > 0 ?
+                            sortedMatchIndexInOldConfig[sortedMatchIndexInOldConfig.length / 2] : journal.maxIndex();
+
+                    long[] sortedMatchIndexInNewConfig = finalFollowers.stream()
+                            .filter(follower -> votersConfigStateMachine.getConfigNew().contains(follower.getUri()))
+                            .mapToLong(ReplicationDestination::getMatchIndex)
+                            .sorted().toArray();
+                    long nInNewConfig = sortedMatchIndexInNewConfig.length > 0 ?
+                            sortedMatchIndexInNewConfig[sortedMatchIndexInNewConfig.length / 2] : journal.maxIndex();
+
+                    N = Math.min(nInNewConfig, nInOldConfig);
+
+                } else {
+                    long[] sortedMatchIndex = finalFollowers.stream()
+                            .mapToLong(ReplicationDestination::getMatchIndex)
+                            .sorted().toArray();
+                    if (sortedMatchIndex.length > 0) {
+                        N = sortedMatchIndex[sortedMatchIndex.length / 2];
+                    }
+                }
+
+            }
         }
         if (N > journal.commitIndex() && journal.getTerm(N - 1) == currentTerm) {
             if (logger.isDebugEnabled()) {
@@ -474,7 +479,6 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private void onCommitted() {
         // 唤醒状态机线程
         threads.wakeupThread(STATE_MACHINE_THREAD);
-        threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
         threads.wakeupThread(LEADER_REPLICATION_THREAD);
     }
 

@@ -27,7 +27,7 @@ public class RingBufferBelt implements CallbackResultBelt {
     @Override
     public void put(Callback callback) throws InterruptedException {
         while (!buffer.put(callback)) {
-            Thread.sleep(5L);
+            Thread.yield();
         }
     }
 
@@ -58,16 +58,14 @@ public class RingBufferBelt implements CallbackResultBelt {
     public void callback(long position, byte [] result) throws InterruptedException {
 
         Callback c ;
-        while ((c = buffer.get()) == null) {
-            Thread.sleep(5L);
+        while ((c = buffer.get()) == null || c.getPosition() < position) {
+            Thread.yield();
         }
         if (c.getPosition() == position) {
             c = buffer.remove();
             c.getCompletableFuture().complete(
                     new UpdateClusterStateResponse(result));
 
-        } else if (position > c.getPosition()) {
-            throw new IllegalArgumentException("Illegal callback position!");
         }
     }
 

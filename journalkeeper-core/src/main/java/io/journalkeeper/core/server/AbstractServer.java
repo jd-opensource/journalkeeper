@@ -755,9 +755,8 @@ public abstract class AbstractServer<E, ER, Q, QR>
     }
 
     public CompletableFuture<ServerRpc> getServerRpc(URI uri) {
-        return CompletableFuture.supplyAsync(
-                () -> remoteServers.computeIfAbsent(uri, uri1 -> serverRpcAccessPoint.getServerRpcAgent(uri1)),
-                asyncExecutor);
+        return CompletableFuture.completedFuture(
+                remoteServers.computeIfAbsent(uri, uri1 -> serverRpcAccessPoint.getServerRpcAgent(uri1)));
     }
 
     @Override
