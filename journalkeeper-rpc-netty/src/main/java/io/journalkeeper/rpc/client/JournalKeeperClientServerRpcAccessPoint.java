@@ -14,9 +14,14 @@
 package io.journalkeeper.rpc.client;
 
 import io.journalkeeper.rpc.RpcException;
+import io.journalkeeper.rpc.URIParser;
 import io.journalkeeper.rpc.remoting.transport.TransportClient;
 
+import java.net.InetSocketAddress;
 import java.net.URI;
+import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,6 +34,7 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     private final Properties properties;
     private final TransportClient transportClient;
     private Map<URI, ClientServerRpcStub> serverInstances = new ConcurrentHashMap<>();
+    private List<URIParser> uriParsers = new LinkedList<>();
     public JournalKeeperClientServerRpcAccessPoint(TransportClient transportClient, Properties properties) {
         this.transportClient = transportClient;
         try {
@@ -49,6 +55,11 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     }
 
     @Override
+    public void addUriParser(URIParser... uriParser) {
+        uriParsers.addAll(Arrays.asList(uriParser));
+    }
+
+    @Override
     public void stop() {
         serverInstances.values()
                 .forEach(this::disconnect);
@@ -56,7 +67,7 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     }
 
     private ClientServerRpcStub createClientServerRpc(URI server) {
-        return new ClientServerRpcStub(transportClient, server);
+        return new ClientServerRpcStub(transportClient, server, parseUri(server));
     }
 
     private void disconnect(ClientServerRpcStub clientServerRpc) {
@@ -65,5 +76,16 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
         }
     }
 
+    private InetSocketAddress parseUri(URI uri) {
+
+        for (URIParser uriParser : uriParsers) {
+            for (String scheme : uriParser.supportedSchemes()) {
+                if(scheme.equals(uri.getScheme())) {
+                    return uriParser.parse(uri);
+                }
+            }
+        }
+        return new InetSocketAddress(uri.getHost(), uri.getPort());
+    }
 
 }

@@ -22,7 +22,6 @@ import io.journalkeeper.rpc.remoting.transport.TransportClient;
 import io.journalkeeper.rpc.remoting.transport.TransportState;
 import io.journalkeeper.rpc.remoting.transport.exception.TransportException;
 import io.journalkeeper.rpc.utils.CommandSupport;
-import io.journalkeeper.rpc.utils.UriUtils;
 import io.journalkeeper.utils.event.EventBus;
 import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
@@ -30,6 +29,7 @@ import io.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -45,6 +45,7 @@ public class ClientServerRpcStub implements ClientServerRpc {
     private static final Logger logger = LoggerFactory.getLogger(ClientServerRpcStub.class);
     protected Transport transport;
     protected final TransportClient transportClient;
+    protected final InetSocketAddress inetSocketAddress;
     protected final URI uri;
     protected EventBus eventBus = null;
     protected AsyncLoopThread pullEventThread = null;
@@ -52,9 +53,10 @@ public class ClientServerRpcStub implements ClientServerRpc {
     protected long ackSequence = -1L;
     protected AtomicBoolean lastRequestSuccess = new AtomicBoolean(true);
 
-    public ClientServerRpcStub(TransportClient transportClient, URI uri) {
+    public ClientServerRpcStub(TransportClient transportClient, URI uri, InetSocketAddress inetSocketAddress) {
         this.transportClient = transportClient;
         this.uri = uri;
+        this.inetSocketAddress = inetSocketAddress;
     }
 
 
@@ -250,7 +252,7 @@ public class ClientServerRpcStub implements ClientServerRpc {
     }
 
     private synchronized Transport createTransport() {
-        return transportClient.createTransport(UriUtils.toSockAddress(uri));
+        return transportClient.createTransport(inetSocketAddress);
     }
 
     private synchronized void closeTransport() {

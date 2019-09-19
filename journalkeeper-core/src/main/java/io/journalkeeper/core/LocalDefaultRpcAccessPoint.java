@@ -14,6 +14,7 @@
 package io.journalkeeper.core;
 
 import io.journalkeeper.core.server.Server;
+import io.journalkeeper.rpc.URIParser;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 
@@ -39,6 +40,11 @@ public class LocalDefaultRpcAccessPoint implements ClientServerRpcAccessPoint {
         }
 
         return uri.equals(server.serverUri()) ?  server: clientServerRpcAccessPoint.getClintServerRpc(uri);
+    }
+
+    @Override
+    public void addUriParser(URIParser... uriParser) {
+        clientServerRpcAccessPoint.addUriParser(uriParser);
     }
 
     @Override
