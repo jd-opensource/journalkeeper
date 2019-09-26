@@ -73,17 +73,18 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
     }
 
     @Override
-    public CompletableFuture convertRoll(URI uri, RaftServer.Roll roll) {
-        return clientServerRpcAccessPoint.getClintServerRpc(uri).convertRoll(new ConvertRollRequest(roll));
+    public CompletableFuture<Void> convertRoll(URI uri, RaftServer.Roll roll) {
+        return clientServerRpcAccessPoint.getClintServerRpc(uri)
+                .convertRoll(new ConvertRollRequest(roll)).thenApply(r -> null);
     }
 
     @Override
-    public CompletableFuture compact(Map<Integer, Long> toIndices) {
+    public CompletableFuture<Void> compact(Map<Integer, Long> toIndices) {
         return this.update(ReservedEntriesSerializeSupport.serialize(new CompactJournalEntry(toIndices)),
                 RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
     }
     @Override
-    public CompletableFuture scalePartitions(int[] partitions) {
+    public CompletableFuture<Void> scalePartitions(int[] partitions) {
         return this.update(ReservedEntriesSerializeSupport.serialize(new ScalePartitionsEntry(partitions)),
                 RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
     }
@@ -97,7 +98,7 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
     }
 
     @Override
-    public CompletableFuture setPreferredLeader(URI preferredLeader) {
+    public CompletableFuture<Void> setPreferredLeader(URI preferredLeader) {
         return this.update(ReservedEntriesSerializeSupport.serialize(new SetPreferredLeaderEntry(preferredLeader)),
                 RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
     }

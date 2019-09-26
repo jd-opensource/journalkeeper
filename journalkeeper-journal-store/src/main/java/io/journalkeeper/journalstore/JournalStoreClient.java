@@ -89,16 +89,6 @@ public class JournalStoreClient implements PartitionedJournalStore {
     }
 
     @Override
-    public CompletableFuture compact(Map<Integer, Long> toIndices) {
-        return adminClient.compact(toIndices);
-    }
-
-    @Override
-    public CompletableFuture scalePartitions(int[] partitions) {
-        return adminClient.scalePartitions(partitions);
-    }
-
-    @Override
     public CompletableFuture<int[]> listPartitions() {
         return raftClient.query(JournalStoreQuery.createQueryPartitions())
                 .thenApply(JournalStoreQueryResult::getBoundaries)

@@ -72,23 +72,6 @@ public interface PartitionedJournalStore extends Watchable {
     CompletableFuture<Map<Integer, Long>> maxIndices();
 
     /**
-     * 删除旧日志，只允许删除最旧的部分日志（即增加minIndex，删除之前的日志）。
-     * 保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
-     * 在集群中复制到大多数节点都完成删除后返回。
-     *
-     * @param toIndices 所有分区删除日志索引位置，小于这个位置的日志将被删除。
-     * @return 所有分区当前最小已提交日志索引位置。
-     */
-    CompletableFuture compact(Map<Integer, Long> toIndices);
-
-
-    /**
-     * 变更分区。失败抛出异常。
-     * @param partitions 变更后的所有分区。
-     */
-    CompletableFuture scalePartitions(int [] partitions);
-
-    /**
      * 列出当前所有分区，由小到大排序。
      * @return 当前所有分区
      */
