@@ -26,6 +26,7 @@ public class UriRoutedCommandHandlerFactory implements CommandHandlerFactory {
         if(null != destination) {
             DefaultCommandHandlerFactory factory = handlerFactoryMap.get(destination);
             if(null != factory) {
+//                logger.info("Found request handler of uri: {}.", command.getHeader().getDestination());
                 return factory.getHandler(command);
             }
         }
