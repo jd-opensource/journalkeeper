@@ -73,4 +73,8 @@ public class DefaultTransportServerFactory implements TransportServerFactory {
         ResponseHandler responseHandler = new ResponseHandler(serverConfig, requestBarrier, exceptionHandler);
         return new DefaultTransportServer(serverConfig, host, port, codec, exceptionHandler, requestBarrier, requestHandler, responseHandler, eventBus);
     }
+
+    public CommandHandlerFactory getCommandHandlerFactory() {
+        return commandHandlerFactory;
+    }
 }

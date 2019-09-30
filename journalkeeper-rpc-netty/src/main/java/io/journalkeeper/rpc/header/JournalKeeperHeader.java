@@ -16,6 +16,7 @@ package io.journalkeeper.rpc.header;
 import io.journalkeeper.rpc.remoting.transport.command.Direction;
 import io.journalkeeper.rpc.remoting.transport.command.Header;
 
+import java.net.URI;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -35,15 +36,16 @@ public class JournalKeeperHeader implements Header {
     private int version;
     private int type;
     private long sendTime;
+    private URI destination;
 
     public JournalKeeperHeader(){}
-    public JournalKeeperHeader(Direction direction, int type) {
-        this(DEFAULT_VERSION, false, direction, nextRequestId(), type, System.currentTimeMillis(),  0, null);
+    public JournalKeeperHeader(Direction direction, int type,  URI destination) {
+        this(DEFAULT_VERSION, false, direction, nextRequestId(), type, System.currentTimeMillis(), destination,  0, null);
     }
-    public JournalKeeperHeader(Direction direction, int requestId,  int type) {
-        this(DEFAULT_VERSION, false, direction, requestId, type, System.currentTimeMillis(),  0, null);
+    public JournalKeeperHeader(Direction direction, int requestId,  int type, URI destination) {
+        this(DEFAULT_VERSION, false, direction, requestId, type, System.currentTimeMillis(), destination, 0, null);
     }
-    public JournalKeeperHeader(int version, boolean oneWay, Direction direction, int requestId, int type, long sendTime, int status, String error) {
+    public JournalKeeperHeader(int version, boolean oneWay, Direction direction, int requestId, int type, long sendTime, URI destination, int status, String error) {
         this.version = version;
         this.oneWay = oneWay;
         this.direction = direction;
@@ -52,6 +54,7 @@ public class JournalKeeperHeader implements Header {
         this.sendTime = sendTime;
         this.status = status;
         this.error = error;
+        this.destination = destination;
     }
 
     @Override
@@ -136,4 +139,13 @@ public class JournalKeeperHeader implements Header {
         return requestIdGenerator.incrementAndGet();
     }
 
+    @Override
+    public URI getDestination() {
+        return destination;
+    }
+
+    @Override
+    public void setDestination(URI destination) {
+        this.destination = destination;
+    }
 }

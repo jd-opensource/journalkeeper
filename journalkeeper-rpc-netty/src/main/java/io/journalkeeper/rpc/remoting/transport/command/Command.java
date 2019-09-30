@@ -90,7 +90,11 @@ public class Command {
 
     @Override
     public String toString() {
-        return String.format("Command:{header:{type:%s, version: %s}, payload: %s}", null!=header?header.getType():null, null!=header?header.getVersion():null, payload);
+        return String.format("Command:{header:{type:%s, version: %s, destination: %s}, payload: %s}",
+                null!=header?header.getType():null,
+                null!=header?header.getVersion():null,
+                null!=header?header.getDestination():null,
+                payload);
     }
 
     /**

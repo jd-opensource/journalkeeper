@@ -30,6 +30,5 @@ public interface ClientServerRpcAccessPoint  {
      */
     ClientServerRpc getClintServerRpc(URI uri);
 
-    void addUriParser(URIParser... uriParser);
     void stop();
 }

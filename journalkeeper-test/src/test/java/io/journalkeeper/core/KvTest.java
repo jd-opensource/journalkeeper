@@ -95,8 +95,9 @@ public class KvTest {
         Path path = TestPathUtils.prepareBaseDir("availabilityTest" + nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
         List<Properties> propertiesList = new ArrayList<>(nodes);
+        int port = NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces();
         for (int i = 0; i < nodes; i++) {
-            URI uri = URI.create("jk://localhost:" + NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces());
+            URI uri = URI.create("jk://localhost:" + port + "/server/" + i);
             serverURIs.add(uri);
             Path workingDir = path.resolve("server" + i);
             Properties properties = new Properties();
@@ -677,8 +678,9 @@ public class KvTest {
         logger.info("Create {} nodes servers", nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
         List<Properties> propertiesList = new ArrayList<>(nodes);
+        int port = NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces();
         for (int i = 0; i < nodes; i++) {
-            URI uri = URI.create("jk://localhost:" + NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces());
+            URI uri = URI.create("jk://localhost:" + port + "/server/" + i);
             serverURIs.add(uri);
             Path workingDir = path.resolve("server" + i);
             Properties properties = new Properties();

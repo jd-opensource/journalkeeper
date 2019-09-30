@@ -14,6 +14,8 @@
 package io.journalkeeper.rpc.remoting.transport.command;
 
 
+import java.net.URI;
+
 /**
  * @author hexiaofeng
  * @date 16-6-22.
@@ -105,4 +107,7 @@ public interface Header {
      * @return
      */
     int getType();
+
+    URI getDestination();
+    void setDestination(URI uri);
 }

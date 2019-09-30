@@ -43,11 +43,6 @@ public class LocalDefaultRpcAccessPoint implements ClientServerRpcAccessPoint {
     }
 
     @Override
-    public void addUriParser(URIParser... uriParser) {
-        clientServerRpcAccessPoint.addUriParser(uriParser);
-    }
-
-    @Override
     public void stop() {
         clientServerRpcAccessPoint.stop();
     }

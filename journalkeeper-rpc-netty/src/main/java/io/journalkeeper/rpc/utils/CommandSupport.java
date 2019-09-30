@@ -19,50 +19,52 @@ import io.journalkeeper.rpc.payload.GenericPayload;
 import io.journalkeeper.rpc.payload.VoidPayload;
 import io.journalkeeper.rpc.remoting.transport.Transport;
 import io.journalkeeper.rpc.remoting.transport.command.Command;
+import io.journalkeeper.rpc.remoting.transport.command.CommandCallback;
 import io.journalkeeper.rpc.remoting.transport.command.Direction;
 import io.journalkeeper.rpc.remoting.transport.command.Header;
 
+import java.net.URI;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 /**
  * @author LiYue
  * Date: 2019-04-01
  */
 public class CommandSupport {
-    public static <T> Command newRequestCommand(int type, T request){
-        JournalKeeperHeader header = new JournalKeeperHeader(Direction.REQUEST, type);
+    private static <T> Command newRequestCommand(int type, T request, URI destination){
+        JournalKeeperHeader header = new JournalKeeperHeader(Direction.REQUEST, type, destination);
         return new Command(header, new GenericPayload<>(request));
     }
 
-    public static Command newRequestCommand(int type){
-        JournalKeeperHeader header = new JournalKeeperHeader(Direction.REQUEST, type);
+    private static Command newRequestCommand(int type, URI destination){
+        JournalKeeperHeader header = new JournalKeeperHeader(Direction.REQUEST, type, destination);
         return new Command(header, new VoidPayload());
     }
 
-    // TODO 因为异步里还有其他RPC操作，临时改同步
-    public static <Q, R extends BaseResponse> CompletableFuture<R> sendRequest(Q request, int requestType, Transport transport) {
+    public static <Q, R extends BaseResponse> CompletableFuture<R> sendRequest(Q request, int requestType, Transport transport, URI destination) {
         CompletableFuture<R> future = new CompletableFuture<>();
-        try {
-            Command response = transport.sync(null == request ? newRequestCommand(requestType): newRequestCommand(requestType, request));
-            future.complete(GenericPayload.get(response.getPayload()));
-        } catch (Exception e) {
-            future.completeExceptionally(e);
-        }
-//        transport.async(
-//                null == request ? newRequestCommand(requestType): newRequestCommand(requestType, request),
-//                new CommandCallback() {
-//                    @Override
-//                    public void onSuccess(Command request, Command response) {
-//                        future.complete(GenericPayload.get(response.getPayload()));
-//                    }
-//
-//                    @Override
-//                    public void onException(Command request, Throwable cause) {
-//                        future.completeExceptionally(cause);
-//                    }
-//                });
-        return  future;
+//        try {
+//            Command response = transport.sync(null == request ? newRequestCommand(requestType, destination): newRequestCommand(requestType, request, destination));
+//            future.complete(GenericPayload.get(response.getPayload()));
+//        } catch (Exception e) {
+//            future.completeExceptionally(e);
+//        }
 
+        transport.async(
+                null == request ? newRequestCommand(requestType, destination): newRequestCommand(requestType, request, destination),
+                new CommandCallback() {
+                    @Override
+                    public void onSuccess(Command request, Command response) {
+                        future.complete(GenericPayload.get(response.getPayload()));
+                    }
+
+                    @Override
+                    public void onException(Command request, Throwable cause) {
+                        future.completeExceptionally(cause);
+                    }
+                });
+        return  future;
     }
 
     public static void sendResponse(BaseResponse response, int responseType,  Command requestCommand, Transport transport) {
@@ -72,7 +74,7 @@ public class CommandSupport {
 
     public static Command newResponseCommand(BaseResponse response, int responseType, Command requestCommand) {
         Header requestHeader = requestCommand.getHeader();
-        JournalKeeperHeader header = new JournalKeeperHeader(Direction.RESPONSE, requestHeader.getRequestId(), responseType);
+        JournalKeeperHeader header = new JournalKeeperHeader(Direction.RESPONSE, requestHeader.getRequestId(), responseType, null);
         header.setStatus(response.getStatusCode().getCode());
         header.setError(response.getError());
 
