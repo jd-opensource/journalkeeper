@@ -48,14 +48,12 @@ public abstract class AbstractClient implements Watchable, ClusterReadyAware, Se
     private static final Logger logger = LoggerFactory.getLogger(AbstractClient.class);
     protected final ClientServerRpcAccessPoint clientServerRpcAccessPoint;
     protected URI leaderUri = null;
-    private long minRetryDelayMs = 100L;
-    private long maxRetryDelayMs = 300L;
-    private int maxRetries = 30;
 
     private final CompletableRetry<URI> completableRetry;
     private final RandomDestinationSelector<URI> uriSelector;
     private final ClientCheckRetry clientCheckRetry = new ClientCheckRetry();
-    private URI preferredUri = null;
+
+    private URI preferredServer = null;
     public AbstractClient(List<URI> servers, ClientServerRpcAccessPoint clientServerRpcAccessPoint) {
         if(servers == null || servers.isEmpty()) {
             throw new IllegalArgumentException("Argument servers can not be empty!");
@@ -112,13 +110,18 @@ public abstract class AbstractClient implements Watchable, ClusterReadyAware, Se
 
     @Override
     public void watch(EventWatcher eventWatcher) {
-//        clientServerRpcAccessPoint.defaultClientServerRpc().watch(eventWatcher);
+        completableRetry.retry(uri -> {
+            clientServerRpcAccessPoint.getClintServerRpc(uri).watch(eventWatcher);
+            return CompletableFuture.completedFuture(null);
+        }, clientCheckRetry, getExecutor());
     }
 
     @Override
     public void unWatch(EventWatcher eventWatcher) {
-//        clientServerRpcAccessPoint.defaultClientServerRpc().unWatch(eventWatcher);
-    }
+        completableRetry.retry(uri -> {
+            clientServerRpcAccessPoint.getClintServerRpc(uri).unWatch(eventWatcher);
+            return CompletableFuture.completedFuture(null);
+        }, clientCheckRetry, getExecutor());    }
 
     private CompletableFuture<ClientServerRpc> getCachedLeaderRpc(ClientServerRpc clientServerRpc) {
         CompletableFuture<URI> leaderUriFuture = new CompletableFuture<>();
@@ -224,12 +227,12 @@ public abstract class AbstractClient implements Watchable, ClusterReadyAware, Se
         }
     }
 
-    public URI getPreferredUri() {
-        return preferredUri;
+    public URI getPreferredServer() {
+        return preferredServer;
     }
 
-    public void setPreferredUri(URI preferredUri) {
-        this.preferredUri = preferredUri;
+    public void setPreferredServer(URI preferredServer) {
+        this.preferredServer = preferredServer;
     }
 
 
@@ -241,8 +244,8 @@ public abstract class AbstractClient implements Watchable, ClusterReadyAware, Se
 
         @Override
         public URI select(Set<URI> usedDestinations) {
-            if((null == usedDestinations || usedDestinations.isEmpty()) && null != preferredUri) {
-                return preferredUri;
+            if((null == usedDestinations || usedDestinations.isEmpty()) && null != preferredServer) {
+                return preferredServer;
             } else {
                 return super.select(usedDestinations);
             }

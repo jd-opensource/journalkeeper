@@ -31,7 +31,6 @@ import io.journalkeeper.utils.threads.NamedThreadFactory;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -130,7 +129,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
                 client = new DefaultRaftClient<>(getServersForClient(), clientServerRpcAccessPoint, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
             } else {
                 client = new DefaultRaftClient<>(getServersForClient(), new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
-                client.setPreferredUri(server.serverUri());
+                client.setPreferredServer(server.serverUri());
             }
         }
         return client;
@@ -170,7 +169,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
                     this.clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.properties);
                 }
                 adminClient = new DefaultAdminClient(getServersForClient(), new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint), properties);
-                adminClient.setPreferredUri(server.serverUri());
+                adminClient.setPreferredServer(server.serverUri());
             }
         }
         return adminClient;
