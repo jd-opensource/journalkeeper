@@ -22,6 +22,7 @@ import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.utils.event.Watchable;
 import io.journalkeeper.utils.retry.CheckRetry;
 import io.journalkeeper.utils.retry.CompletableRetry;
+import io.journalkeeper.utils.retry.IncreasingRetryPolicy;
 import io.journalkeeper.utils.retry.RandomDestinationSelector;
 import io.journalkeeper.utils.spi.ServiceSupport;
 import org.slf4j.Logger;
@@ -49,7 +50,7 @@ public abstract class AbstractClient implements Watchable, ClusterReadyAware, Se
     protected URI leaderUri = null;
     private long minRetryDelayMs = 100L;
     private long maxRetryDelayMs = 300L;
-    private int maxRetries = 3;
+    private int maxRetries = 30;
 
     private final CompletableRetry<URI> completableRetry;
     private final RandomDestinationSelector<URI> uriSelector;
@@ -61,7 +62,8 @@ public abstract class AbstractClient implements Watchable, ClusterReadyAware, Se
         }
         this.clientServerRpcAccessPoint = clientServerRpcAccessPoint;
         uriSelector = new RandomUriSelector(servers);
-        completableRetry = new CompletableRetry<>(minRetryDelayMs, maxRetryDelayMs, maxRetries, uriSelector);
+        completableRetry = new CompletableRetry<>(new IncreasingRetryPolicy(new long [] {50, 100, 500, 1000, 3000, 10000, 30000}, 50),
+                uriSelector);
     }
 
     protected abstract Executor getExecutor();

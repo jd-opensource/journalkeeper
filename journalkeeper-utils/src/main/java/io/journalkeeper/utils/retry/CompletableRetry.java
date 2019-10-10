@@ -17,17 +17,13 @@ import java.util.concurrent.atomic.AtomicReference;
  * Date: 2019-09-17
  */
 public class CompletableRetry<D/* 对端地址类型 */> {
-    private long minRetryDelayMs;
-    private long maxRetryDelayMs;
-    private int maxRetries;
+    private final RetryPolicy retryPolicy;
 
     private AtomicReference<D> destination = new AtomicReference<>(null);
     private final DestinationSelector<D> destinationSelector;
 
-    public CompletableRetry(long minRetryDelayMs, long maxRetryDelayMs, int maxRetries, DestinationSelector<D> destinationSelector) {
-        this.minRetryDelayMs = minRetryDelayMs;
-        this.maxRetryDelayMs = maxRetryDelayMs;
-        this.maxRetries = maxRetries;
+    public CompletableRetry(RetryPolicy retryPolicy, DestinationSelector<D> destinationSelector) {
+        this.retryPolicy = retryPolicy;
         this.destinationSelector = destinationSelector;
     }
 
@@ -60,9 +56,17 @@ public class CompletableRetry<D/* 对端地址类型 */> {
                     }
                     if(retry) {
                         destination.set(null);
-                        if(retryInvoke.getInvokeTimes() <= maxRetries) {
-                            logger.warn("Retry, invokes times: {}.", retryInvoke.getInvokeTimes());
-                            return retry(retryInvoke, checkRetry, executor);
+                        long delay;
+                        if((delay = retryPolicy.getRetryDelayMs(retryInvoke.getInvokeTimes())) >= 0) {
+                            try {
+                                if (delay > 0) {
+                                    Thread.sleep(delay);
+                                    logger.warn("Retry, invokes times: {}.", retryInvoke.getInvokeTimes());
+                                }
+                                return retry(retryInvoke, checkRetry, executor);
+                            } catch (InterruptedException ignored) {
+                                logger.warn("Retry interrupted!");
+                            }
                         }
                     }
                     CompletableFuture<R> future = new CompletableFuture<>();
@@ -79,10 +83,10 @@ public class CompletableRetry<D/* 对端地址类型 */> {
         CompletableFuture<R> invoke(D destination);
     }
 
-    private class RpcInvokeWithRetryInfo<R /* Response */,  D /* Destination */> implements RpcInvoke<R, D> {
+    private static class RpcInvokeWithRetryInfo<R /* Response */,  D /* Destination */> implements RpcInvoke<R, D> {
         private final RpcInvoke<R, D> rpcInvoke;
         private int invokeTimes = 0;
-        private final Set<D> invokedDestinations = new HashSet<>(maxRetries);
+        private final Set<D> invokedDestinations = new HashSet<>();
 
         public RpcInvokeWithRetryInfo(RpcInvoke<R, D> rpcInvoke) {
             this.rpcInvoke = rpcInvoke;
@@ -92,10 +96,7 @@ public class CompletableRetry<D/* 对端地址类型 */> {
         @Override
         public CompletableFuture<R> invoke(D destination) {
             try {
-                if (invokeTimes++ > 0) {
-                    Thread.sleep(ThreadLocalRandom.current().nextLong(minRetryDelayMs, maxRetryDelayMs));
-                }
-
+                invokeTimes++;
                 CompletableFuture<R> future = rpcInvoke.invoke( destination);
                 invokedDestinations.add(destination);
                 return future;
@@ -113,30 +114,6 @@ public class CompletableRetry<D/* 对端地址类型 */> {
         public Set<D> getInvokedDestinations() {
             return invokedDestinations;
         }
-    }
-
-    public long getMinRetryDelayMs() {
-        return minRetryDelayMs;
-    }
-
-    public void setMinRetryDelayMs(long minRetryDelayMs) {
-        this.minRetryDelayMs = minRetryDelayMs;
-    }
-
-    public long getMaxRetryDelayMs() {
-        return maxRetryDelayMs;
-    }
-
-    public void setMaxRetryDelayMs(long maxRetryDelayMs) {
-        this.maxRetryDelayMs = maxRetryDelayMs;
-    }
-
-    public int getMaxRetries() {
-        return maxRetries;
-    }
-
-    public void setMaxRetries(int maxRetries) {
-        this.maxRetries = maxRetries;
     }
 
     private static class ResultAndException<R> {

@@ -103,7 +103,7 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
                     partitions.stream()
                     .collect(Collectors.toMap(
                             Integer::intValue,
-                            partition -> new JournalStoreQueryResult.Boundary(journal.minIndex(partition), appliedIndices.get(partition))
+                            partition -> new JournalStoreQueryResult.Boundary(journal.minIndex(partition), appliedIndices.getOrDefault(partition, 0L))
                     ))));
     }
 

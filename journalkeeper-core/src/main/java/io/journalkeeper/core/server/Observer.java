@@ -45,6 +45,7 @@ import io.journalkeeper.rpc.server.ServerRpc;
 import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
 import io.journalkeeper.utils.retry.CheckRetry;
 import io.journalkeeper.utils.retry.CompletableRetry;
+import io.journalkeeper.utils.retry.IncreasingRetryPolicy;
 import io.journalkeeper.utils.retry.RandomDestinationSelector;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
@@ -93,7 +94,8 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
         this.config = toConfig(properties);
         this.replicationMetric = getMetric(METRIC_OBSERVER_REPLICATION);
         threads.createThread(buildReplicationThread());
-        serverRpcRetry = new CompletableRetry<>(100L, 500L, 3, new RandomDestinationSelector<>(config.getParents()));
+        serverRpcRetry = new CompletableRetry<>(new IncreasingRetryPolicy(new long [] {100, 500, 3000, 10000}, 50),
+                new RandomDestinationSelector<>(config.getParents()));
     }
 
     private Config toConfig(Properties properties) {

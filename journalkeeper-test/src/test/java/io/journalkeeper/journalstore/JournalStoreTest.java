@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
@@ -71,6 +72,14 @@ public class JournalStoreTest {
     @Test
     public void writeReadTripleNodes() throws Exception{
         writeReadTest(3, new int [] {2, 3, 4, 5, 6}, 1024, 1024, 1024 , false);
+    }
+
+    @Test
+    public void maxPositionTest() throws IOException, ExecutionException, InterruptedException {
+        List<JournalStoreServer> servers = createServers(1, base);
+        JournalStoreClient client = servers.get(0).createClient();
+        Map<Integer, Long> maxIndices = client.maxIndices().get();
+        Assert.assertEquals(0L, (long) maxIndices.get(0));
     }
 
     /**
@@ -214,8 +223,8 @@ public class JournalStoreTest {
             properties.setProperty("snapshot_step", "0");
             properties.setProperty("rpc_timeout_ms", "600000");
             properties.setProperty("cache_requests", String.valueOf(1024L * 1024));
-            properties.setProperty("print_metric_interval_sec", String.valueOf(1));
-            properties.setProperty("enable_metric", String.valueOf(true));
+//            properties.setProperty("print_metric_interval_sec", String.valueOf(1));
+//            properties.setProperty("enable_metric", String.valueOf(true));
 //            properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
 //            properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
             propertiesList.add(properties);

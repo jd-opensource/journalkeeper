@@ -19,4 +19,8 @@ package io.journalkeeper.core.exception;
  * Date: 2019-04-03
  */
 public class NoLeaderException extends RuntimeException {
+    @Override
+    public String getMessage() {
+        return "No leader!";
+    }
 }
