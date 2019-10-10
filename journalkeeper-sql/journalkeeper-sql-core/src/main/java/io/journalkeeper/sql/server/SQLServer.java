@@ -116,15 +116,6 @@ public class SQLServer implements StateServer {
         return client;
     }
 
-    @Override
-    public void start() {
-        try {
-            bootStrap.getServer().start();
-        } catch (Exception e) {
-            throw new SQLException(e);
-        }
-    }
-
     public void init() {
         try {
             bootStrap.getServer().init(current, servers);
@@ -133,10 +124,12 @@ public class SQLServer implements StateServer {
         }
     }
 
-    public void recover() {
+    @Override
+    public void start() {
         try {
             bootStrap.getServer().recover();
-        } catch (IOException e) {
+            bootStrap.getServer().start();
+        } catch (Exception e) {
             throw new SQLException(e);
         }
     }

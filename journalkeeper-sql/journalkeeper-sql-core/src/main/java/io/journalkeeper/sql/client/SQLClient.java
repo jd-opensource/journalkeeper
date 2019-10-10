@@ -23,6 +23,7 @@ import io.journalkeeper.sql.client.domain.ResultSet;
 import io.journalkeeper.sql.client.domain.WriteRequest;
 import io.journalkeeper.sql.client.domain.WriteResponse;
 import io.journalkeeper.sql.client.exception.SQLClientException;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,10 +59,14 @@ public class SQLClient {
     }
 
     public CompletableFuture<ResultSet> query(String id, String sql, String... params) {
-        return doQuery(new ReadRequest(OperationTypes.QUERY.getType(), id, sql, params))
-                .exceptionally(cause -> {
-                    throw convertException(cause);
-                }).thenApply(ReadResponse::getResultSet);
+        try {
+            return doQuery(new ReadRequest(OperationTypes.QUERY.getType(), id, sql, params))
+                    .exceptionally(cause -> {
+                        throw convertException(cause);
+                    }).thenApply(ReadResponse::getResultSet);
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 
     public CompletableFuture<ResultSet> query(String sql, String... params) {
@@ -69,12 +74,16 @@ public class SQLClient {
     }
 
     public CompletableFuture<String> insert(String id, String sql, String... params) {
-        return doUpdate(new WriteRequest(OperationTypes.INSERT.getType(), id, sql, params))
-                .exceptionally(cause -> {
-                    throw convertException(cause);
-                }).thenApply(response -> {
-                    return response.getResult();
-                });
+        try {
+            return doUpdate(new WriteRequest(OperationTypes.INSERT.getType(), id, sql, params))
+                    .exceptionally(cause -> {
+                        throw convertException(cause);
+                    }).thenApply(response -> {
+                        return response.getResult();
+                    });
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 
     public CompletableFuture<String> insert(String sql, String... params) {
@@ -82,12 +91,16 @@ public class SQLClient {
     }
 
     public CompletableFuture<Integer> update(String id, String sql, String... params) {
-        return doUpdate(new WriteRequest(OperationTypes.UPDATE.getType(), id, sql, params))
-                .exceptionally(cause -> {
-                    throw convertException(cause);
-                }).thenApply(response -> {
-                    return Integer.valueOf(response.getResult());
-                });
+        try {
+            return doUpdate(new WriteRequest(OperationTypes.UPDATE.getType(), id, sql, params))
+                    .exceptionally(cause -> {
+                        throw convertException(cause);
+                    }).thenApply(response -> {
+                        return Integer.valueOf(response.getResult());
+                    });
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 
     public CompletableFuture<Integer> update(String sql, String... params) {
@@ -95,12 +108,16 @@ public class SQLClient {
     }
 
     public CompletableFuture<Integer> delete(String id, String sql, String... params) {
-        return doUpdate(new WriteRequest(OperationTypes.DELETE.getType(), id, sql, params))
-                .exceptionally(cause -> {
-                    throw convertException(cause);
-                }).thenApply(response -> {
-                    return Integer.valueOf(response.getResult());
-                });
+        try {
+            return doUpdate(new WriteRequest(OperationTypes.DELETE.getType(), id, sql, params))
+                    .exceptionally(cause -> {
+                        throw convertException(cause);
+                    }).thenApply(response -> {
+                        return Integer.valueOf(response.getResult());
+                    });
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 
     public CompletableFuture<Integer> delete(String sql, String... params) {
@@ -108,30 +125,42 @@ public class SQLClient {
     }
 
     public CompletableFuture<String> beginTransaction(String id) {
-        return doUpdate(new WriteRequest(OperationTypes.TRANSACTION_BEGIN.getType(), id))
-                .exceptionally(cause -> {
-                    throw convertException(cause);
-                }).thenApply(response -> {
-                    return response.getResult();
-                });
+        try {
+            return doUpdate(new WriteRequest(OperationTypes.TRANSACTION_BEGIN.getType(), id))
+                    .exceptionally(cause -> {
+                        throw convertException(cause);
+                    }).thenApply(response -> {
+                        return response.getResult();
+                    });
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 
     public CompletableFuture<Void> commitTransaction(String id) {
-        return doUpdate(new WriteRequest(OperationTypes.TRANSACTION_COMMIT.getType(), id))
-                .exceptionally(cause -> {
-                    throw convertException(cause);
-                }).thenApply(response -> {
-                    return null;
-                });
+        try {
+            return doUpdate(new WriteRequest(OperationTypes.TRANSACTION_COMMIT.getType(), id))
+                    .exceptionally(cause -> {
+                        throw convertException(cause);
+                    }).thenApply(response -> {
+                        return null;
+                    });
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 
     public CompletableFuture<Void> rollbackTransaction(String id) {
-        return doUpdate(new WriteRequest(OperationTypes.TRANSACTION_ROLLBACK.getType(), id))
-                .exceptionally(cause -> {
-                    throw convertException(cause);
-                }).thenApply(response -> {
-                    return null;
-                });
+        try {
+            return doUpdate(new WriteRequest(OperationTypes.TRANSACTION_ROLLBACK.getType(), id))
+                    .exceptionally(cause -> {
+                        throw convertException(cause);
+                    }).thenApply(response -> {
+                        return null;
+                    });
+        } catch (Exception e) {
+            throw convertException(e);
+        }
     }
 
     public void watch(SQLEventListener listener) {
@@ -156,7 +185,12 @@ public class SQLClient {
 
     protected SQLClientException convertException(Throwable cause) {
         if (cause instanceof SQLClientException) {
-            return (SQLClientException) cause;
+            SQLClientException sqlClientException = (SQLClientException) cause;
+            if (StringUtils.isBlank(sqlClientException.getMessage())) {
+                return sqlClientException;
+            } else {
+                return new SQLClientException(sqlClientException.getMessage());
+            }
         } else if (cause instanceof ExecutionException) {
             return new SQLClientException(cause.getCause());
         } else {
