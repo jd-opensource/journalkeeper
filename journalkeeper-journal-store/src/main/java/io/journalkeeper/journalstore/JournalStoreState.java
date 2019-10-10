@@ -77,8 +77,7 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
         eventData.put("partition", String.valueOf(partition));
         eventData.put("minIndex", String.valueOf(minIndex));
         eventData.put("maxIndex", String.valueOf(maxIndex));
-        return null;
-//        return partitionIndex;
+        return partitionIndex;
     }
 
     @Override

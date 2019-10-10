@@ -66,7 +66,7 @@ public class JournalStoreTest {
 
     @Test
     public void writeReadOneNode() throws Exception{
-        writeReadTest(1, new int [] {2}, 1024, 1,  1024 * 1024, true);
+        writeReadTest(1, new int [] {2}, 1024, 1,  1024 * 1024, false);
     }
 
     @Test
@@ -195,7 +195,8 @@ public class JournalStoreTest {
         // write
         for (int partition : partitions) {
             for (int i = 0; i < batchCount; i++) {
-                client.append(partition, batchSize, rawEntries,ResponseConfig.RECEIVE).get();
+                Long index = client.append(partition, batchSize, rawEntries,ResponseConfig.REPLICATION).get();
+                logger.info("Index: {}", index);
             }
         }
     }

@@ -22,6 +22,9 @@ public class LongSerializer implements Serializer<Long> {
 
     @Override
     public Long parse(byte[] bytes) {
+        if (null == bytes || bytes.length < Long.BYTES) {
+            return null;
+        }
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         Long value = buffer.getLong();
         if(value < 0) value = null;

@@ -10,6 +10,6 @@ interface CallbackResultBelt {
 
     void callbackBefore(long position);
 
-    void callback(long position, byte [] result) throws InterruptedException;
+    void callback(long position, byte [] result);
     void failAll();
 }

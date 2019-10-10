@@ -54,14 +54,12 @@ public class RingBufferBelt implements CallbackResultBelt {
             }
         }
     }
-    @Override
-    public void callback(long position, byte [] result) throws InterruptedException {
 
-        Callback c ;
-        while ((c = buffer.get()) == null || c.getPosition() < position) {
-            Thread.sleep(1);
-        }
-        if (c.getPosition() == position) {
+    @Override
+    public void callback(long position, byte [] result) {
+
+        Callback c = buffer.get();
+        if (null != c && c.getPosition() == position) {
             c = buffer.remove();
             c.getCompletableFuture().complete(
                     new UpdateClusterStateResponse(result));

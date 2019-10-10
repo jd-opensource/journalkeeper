@@ -239,13 +239,13 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         appendJournalMetric.start();
 
         long index = journal.append(new Entry(request.getEntry(), currentTerm, request.getPartition(), request.getBatchSize()));
-        threads.wakeupThread(LEADER_REPLICATION_THREAD);
-        threads.wakeupThread(FLUSH_JOURNAL_THREAD);
         if (request.getResponseConfig() == ResponseConfig.PERSISTENCE) {
             flushCallbacks.put(new Callback(index, responseFuture));
         } else if (request.getResponseConfig() == ResponseConfig.REPLICATION) {
             replicationCallbacks.put(new Callback(index, responseFuture));
         }
+        threads.wakeupThread(LEADER_REPLICATION_THREAD);
+        threads.wakeupThread(FLUSH_JOURNAL_THREAD);
         appendJournalMetric.end(request.getEntry().length);
     }
 
@@ -568,9 +568,6 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         UpdateStateRequestResponse requestResponse = new UpdateStateRequestResponse(request, updateClusterStateMetric);
 
         try {
-
-
-
             if(serverState() != ServerState.RUNNING) {
                 throw new IllegalStateException(String.format("Leader is not RUNNING, state: %s.", serverState().toString()));
             }
@@ -671,7 +668,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     }
 
 
-    void callback(long lastApplied, ER result) throws InterruptedException {
+    void callback(long lastApplied, ER result)  {
         replicationCallbacks.callback(lastApplied, entryResultSerializer.serialize(result));
     }
 
