@@ -36,7 +36,9 @@ public class CompletableRetry<D/* 对端地址类型 */> {
 
     private <O> D getDestination(RpcInvokeWithRetryInfo<O, D> retryInvoke) {
         destination.compareAndSet(null, destinationSelector.select(retryInvoke.getInvokedDestinations()));
-        logger.info("Using destination: {}", destination.get());
+        if (logger.isDebugEnabled()) {
+            logger.debug("Using destination: {}", destination.get());
+        }
         return destination.get();
     }
 

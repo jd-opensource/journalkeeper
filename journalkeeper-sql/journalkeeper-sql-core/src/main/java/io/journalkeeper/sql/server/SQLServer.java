@@ -27,6 +27,7 @@ import io.journalkeeper.utils.state.StateServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
@@ -115,10 +116,17 @@ public class SQLServer implements StateServer {
         return client;
     }
 
+    public void init() {
+        try {
+            bootStrap.getServer().init(current, servers);
+        } catch (IOException e) {
+            throw new SQLException(e);
+        }
+    }
+
     @Override
     public void start() {
         try {
-            bootStrap.getServer().init(current, servers);
             bootStrap.getServer().recover();
             bootStrap.getServer().start();
         } catch (Exception e) {

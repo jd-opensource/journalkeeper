@@ -143,7 +143,9 @@ public abstract class AbstractClient implements Watchable, ClusterReadyAware, Se
         } else if(!leaderUriFuture.isDone()){
             leaderUriFuture.completeExceptionally(new NoLeaderException());
         }
-        logger.info("Current leader in client: {}", leaderUri);
+        if (logger.isDebugEnabled()) {
+            logger.debug("Current leader in client: {}", leaderUri);
+        }
         return leaderUriFuture.thenApply(clientServerRpcAccessPoint::getClintServerRpc);
     }
 
