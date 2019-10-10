@@ -14,6 +14,7 @@
 package io.journalkeeper.journalstore;
 
 import io.journalkeeper.core.BootStrap;
+import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.utils.state.StateServer;
 import org.slf4j.Logger;
@@ -33,8 +34,12 @@ public class JournalStoreServer implements StateServer {
     private final BootStrap<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> bootStrap;
 
     public JournalStoreServer(Properties properties) {
+        this(RaftServer.Roll.VOTER, properties);
+    }
+
+    public JournalStoreServer(RaftServer.Roll roll, Properties properties) {
         bootStrap = new BootStrap<>(
-                RaftServer.Roll.VOTER,
+                roll,
                 new JournalStoreStateFactory(),
                 new ByteArraySerializer(),
                 new LongSerializer(),
@@ -70,6 +75,10 @@ public class JournalStoreServer implements StateServer {
 
     public JournalStoreClient createClient() {
         return new JournalStoreClient(bootStrap.getClient(), bootStrap.getAdminClient());
+    }
+
+    public AdminClient getAdminClient() {
+        return bootStrap.getAdminClient();
     }
 
     public URI serverUri() {

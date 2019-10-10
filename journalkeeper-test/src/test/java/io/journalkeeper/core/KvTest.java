@@ -95,8 +95,9 @@ public class KvTest {
         Path path = TestPathUtils.prepareBaseDir("availabilityTest" + nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
         List<Properties> propertiesList = new ArrayList<>(nodes);
+        int port = NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces();
         for (int i = 0; i < nodes; i++) {
-            URI uri = URI.create("jk://localhost:" + NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces());
+            URI uri = URI.create("jk://localhost:" + port + "/server/" + i);
             serverURIs.add(uri);
             Path workingDir = path.resolve("server" + i);
             Properties properties = new Properties();
@@ -570,7 +571,7 @@ public class KvTest {
     public void preferredLeaderTest() throws Exception{
         // 启动5个节点的集群
         int serverCount = 5;
-        long timeoutMs = 10000L;
+        long timeoutMs = 60000L;
         logger.info("Creating {} nodes cluster...", serverCount);
 
         Path path = TestPathUtils.prepareBaseDir("PreferredLeaderTest");
@@ -677,8 +678,9 @@ public class KvTest {
         logger.info("Create {} nodes servers", nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
         List<Properties> propertiesList = new ArrayList<>(nodes);
+        int port = NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces();
         for (int i = 0; i < nodes; i++) {
-            URI uri = URI.create("jk://localhost:" + NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces());
+            URI uri = URI.create("jk://localhost:" + port + "/server/" + i);
             serverURIs.add(uri);
             Path workingDir = path.resolve("server" + i);
             Properties properties = new Properties();

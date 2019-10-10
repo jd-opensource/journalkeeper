@@ -19,7 +19,7 @@ import io.journalkeeper.rpc.codec.JournalKeeperCodec;
 import io.journalkeeper.rpc.handler.ServerRpcCommandHandlerRegistry;
 import io.journalkeeper.rpc.remoting.transport.TransportClientFactory;
 import io.journalkeeper.rpc.remoting.transport.TransportServer;
-import io.journalkeeper.rpc.remoting.transport.command.support.DefaultCommandHandlerFactory;
+import io.journalkeeper.rpc.remoting.transport.command.support.UriRoutedCommandHandlerFactory;
 import io.journalkeeper.rpc.remoting.transport.config.ClientConfig;
 import io.journalkeeper.rpc.remoting.transport.config.ServerConfig;
 import io.journalkeeper.rpc.remoting.transport.support.DefaultTransportClientFactory;
@@ -27,22 +27,35 @@ import io.journalkeeper.rpc.remoting.transport.support.DefaultTransportServerFac
 import io.journalkeeper.rpc.server.JournalKeeperServerRpcAccessPoint;
 import io.journalkeeper.rpc.server.ServerRpc;
 import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
+import io.journalkeeper.utils.spi.Singleton;
+import io.journalkeeper.utils.state.ServerStateMachine;
 import io.journalkeeper.utils.state.StateServer;
 
-import java.net.URI;
-import java.util.List;
+import java.net.InetSocketAddress;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @author LiYue
  * Date: 2019-03-30
  */
+@Singleton
 public class JournalKeeperRpcAccessPointFactory implements RpcAccessPointFactory {
     private final TransportClientFactory transportClientFactory;
-
+    private final Map<InetSocketAddress /* server port */, TransportServerAndReferenceCount> transportServerMap =
+            new HashMap<>();
+    private final DefaultTransportServerFactory defaultTransportServerFactory;
+    private final UriRoutedCommandHandlerFactory handlerFactory;
     public JournalKeeperRpcAccessPointFactory() {
         JournalKeeperCodec journalKeeperCodec = new JournalKeeperCodec();
         transportClientFactory = new DefaultTransportClientFactory(journalKeeperCodec);
+        handlerFactory = new UriRoutedCommandHandlerFactory();
+
+        defaultTransportServerFactory = new DefaultTransportServerFactory(
+                new JournalKeeperCodec(), handlerFactory
+        );
     }
     @Override
     public ServerRpcAccessPoint createServerRpcAccessPoint(Properties properties) {
@@ -57,34 +70,39 @@ public class JournalKeeperRpcAccessPointFactory implements RpcAccessPointFactory
     }
 
     @Override
-    public StateServer bindServerService(ServerRpc serverRpc) {
-        DefaultCommandHandlerFactory handlerFactory = new DefaultCommandHandlerFactory();
-        ServerRpcCommandHandlerRegistry.register(handlerFactory, serverRpc);
-        DefaultTransportServerFactory defaultTransportServerFactory = new DefaultTransportServerFactory(
-                new JournalKeeperCodec(), handlerFactory
-        );
-        TransportServer server = defaultTransportServerFactory
-                .bind(new ServerConfig(), serverRpc.serverUri().getHost(), serverRpc.serverUri().getPort());
-        return new StateServer() {
-            @Override
-            public void start() {
+    public synchronized StateServer bindServerService(ServerRpc serverRpc) {
+
+            InetSocketAddress address = UriSupport.parseUri(serverRpc.serverUri());
+            TransportServerAndReferenceCount server = transportServerMap.computeIfAbsent(address, addr -> {
                 try {
-                    server.start();
-                } catch (Exception e) {
-                    throw new RpcException(e);
+                    TransportServer ts = defaultTransportServerFactory
+                            .bind(new ServerConfig(), addr.getHostName(), addr.getPort());
+                    ts.start();
+                    return new TransportServerAndReferenceCount(ts);
+                } catch (Throwable t) {
+                    throw new RpcException(t);
                 }
-            }
+            });
+            server.getReferenceCounter().incrementAndGet();
+            ServerRpcCommandHandlerRegistry.register(handlerFactory, serverRpc);
 
-            @Override
-            public void stop() {
-                server.stop();
-            }
+            return new ServerStateMachine(true) {
+                @Override
+                protected void doStop() {
+                    super.doStop();
+                    int ref = server.getReferenceCounter().decrementAndGet();
+                    handlerFactory.unRegister(serverRpc.serverUri());
+                    if(ref <= 0) {
+                        synchronized (JournalKeeperRpcAccessPointFactory.this) {
 
-            @Override
-            public ServerState serverState() {
-                return server.isStarted()? ServerState.RUNNING: ServerState.STOPPED;
-            }
-        };
+                            transportServerMap.remove(address);
+                            server.getTransportServer().stop();
+
+                        }
+                    }
+                }
+            };
+
     }
 
     private ClientConfig toClientConfig(Properties properties) {
@@ -93,4 +111,20 @@ public class JournalKeeperRpcAccessPointFactory implements RpcAccessPointFactory
     }
 
 
+    private static class TransportServerAndReferenceCount {
+        private final TransportServer transportServer;
+        private final AtomicInteger referenceCounter = new AtomicInteger(0);
+
+        public TransportServerAndReferenceCount(TransportServer transportServer) {
+            this.transportServer = transportServer;
+        }
+
+        public TransportServer getTransportServer() {
+            return transportServer;
+        }
+
+        public AtomicInteger getReferenceCounter() {
+            return referenceCounter;
+        }
+    }
 }

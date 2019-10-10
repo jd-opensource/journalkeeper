@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.journalstore;
 
+import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.exceptions.ServerBusyException;
@@ -85,8 +86,8 @@ public class JournalStoreTest {
         try {
             JournalStoreClient client = servers.get(0).createClient();
             client.waitForLeader(10000);
-
-            client.scalePartitions(partitions).get();
+            AdminClient adminClient = servers.get(0).getAdminClient();
+            adminClient.scalePartitions(partitions).get();
 
             // Wait for all node to finish scale partitions.
             Thread.sleep(1000L);

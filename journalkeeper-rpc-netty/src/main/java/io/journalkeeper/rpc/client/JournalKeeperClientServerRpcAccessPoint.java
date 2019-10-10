@@ -14,9 +14,15 @@
 package io.journalkeeper.rpc.client;
 
 import io.journalkeeper.rpc.RpcException;
+import io.journalkeeper.rpc.URIParser;
+import io.journalkeeper.rpc.UriSupport;
 import io.journalkeeper.rpc.remoting.transport.TransportClient;
 
+import java.net.InetSocketAddress;
 import java.net.URI;
+import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
@@ -56,7 +62,7 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     }
 
     private ClientServerRpcStub createClientServerRpc(URI server) {
-        return new ClientServerRpcStub(transportClient, server);
+        return new ClientServerRpcStub(transportClient, server, UriSupport.parseUri(server));
     }
 
     private void disconnect(ClientServerRpcStub clientServerRpc) {

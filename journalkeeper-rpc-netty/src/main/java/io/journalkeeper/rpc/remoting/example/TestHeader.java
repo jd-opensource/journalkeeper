@@ -16,6 +16,8 @@ package io.journalkeeper.rpc.remoting.example;
 import io.journalkeeper.rpc.remoting.transport.command.Direction;
 import io.journalkeeper.rpc.remoting.transport.command.Header;
 
+import java.net.URI;
+
 /**
  * @author LiYue
  * Date: 2019-03-28
@@ -31,6 +33,7 @@ public class TestHeader implements Header {
     private int version;
     private int type;
     private long sendTime;
+    private URI destination;
 
     public TestHeader(){}
 
@@ -108,6 +111,16 @@ public class TestHeader implements Header {
     @Override
     public int getType() {
         return type;
+    }
+
+    @Override
+    public URI getDestination() {
+        return destination;
+    }
+
+    @Override
+    public void setDestination(URI uri) {
+        this.destination = destination;
     }
 
     @Override

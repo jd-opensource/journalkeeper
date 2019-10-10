@@ -1,5 +1,6 @@
 package io.journalkeeper.core.api;
 
+import com.sun.org.apache.xpath.internal.operations.Bool;
 import io.journalkeeper.utils.event.Watchable;
 
 import java.net.URI;
@@ -42,19 +43,19 @@ public interface AdminClient extends Watchable, ClusterReadyAware, ServerConfigA
      * @param uri 节点URI
      * @param roll 新角色
      */
-    CompletableFuture convertRoll(URI uri, RaftServer.Roll roll);
+    CompletableFuture<Void> convertRoll(URI uri, RaftServer.Roll roll);
 
     /**
      * 压缩WAL。删除指定位置之前的WAL日志。
      * @param toIndices 每个分区的安全删除位置。
      */
-    CompletableFuture compact(Map<Integer, Long> toIndices);
+    CompletableFuture<Void> compact(Map<Integer, Long> toIndices);
 
     /**
      * 变更集群分区配置
      * @param partitions 新分区配置
      */
-    CompletableFuture scalePartitions(int[] partitions);
+    CompletableFuture<Void> scalePartitions(int[] partitions);
 
     /**
      * 获取节点当前状态
@@ -70,7 +71,7 @@ public interface AdminClient extends Watchable, ClusterReadyAware, ServerConfigA
      *
      * @param preferredLeader 推荐的Leader
      */
-    CompletableFuture setPreferredLeader(URI preferredLeader);
+    CompletableFuture<Void> setPreferredLeader(URI preferredLeader);
 
     void stop();
 

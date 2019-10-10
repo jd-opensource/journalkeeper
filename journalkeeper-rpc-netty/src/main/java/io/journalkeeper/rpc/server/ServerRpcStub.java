@@ -19,6 +19,7 @@ import io.journalkeeper.rpc.remoting.transport.Transport;
 import io.journalkeeper.rpc.remoting.transport.TransportClient;
 import io.journalkeeper.rpc.utils.CommandSupport;
 
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
 
@@ -28,8 +29,8 @@ import java.util.concurrent.CompletableFuture;
  * Date: 2019-03-30
  */
 public class ServerRpcStub  extends ClientServerRpcStub implements ServerRpc {
-    public ServerRpcStub(TransportClient transportClient, URI uri) {
-        super(transportClient, uri);
+    public ServerRpcStub(TransportClient transportClient, URI uri, InetSocketAddress inetSocketAddress) {
+        super(transportClient, uri, inetSocketAddress);
     }
 
     @Override

@@ -14,32 +14,36 @@
 package io.journalkeeper.rpc.handler;
 
 import io.journalkeeper.rpc.remoting.transport.command.support.DefaultCommandHandlerFactory;
+import io.journalkeeper.rpc.remoting.transport.command.support.UriRoutedCommandHandlerFactory;
 import io.journalkeeper.rpc.server.ServerRpc;
+
+import java.net.URI;
 
 /**
  * @author LiYue
  * Date: 2019-04-02
  */
 public class ServerRpcCommandHandlerRegistry {
-    public static void register(DefaultCommandHandlerFactory factory, ServerRpc serverRpc) {
-        factory.register(new UpdateClusterStateHandler(serverRpc));
-        factory.register(new LastAppliedHandler(serverRpc));
-        factory.register(new QueryClusterStateHandler(serverRpc));
-        factory.register(new QueryServerStateHandler(serverRpc));
-        factory.register(new QuerySnapshotHandler(serverRpc));
-        factory.register(new GetServersHandler(serverRpc));
-        factory.register(new AddPullWatchHandler(serverRpc));
-        factory.register(new RemovePullWatchHandler(serverRpc));
-        factory.register(new PullEventsHandler(serverRpc));
-        factory.register(new UpdateVotersHandler(serverRpc));
-        factory.register(new ConvertRollHandler(serverRpc));
-        factory.register(new GetServerStatusHandler(serverRpc));
+    public static void register(UriRoutedCommandHandlerFactory factory, ServerRpc serverRpc) {
+        URI uri = serverRpc.serverUri();
+        factory.register(uri, new UpdateClusterStateHandler(serverRpc));
+        factory.register(uri, new LastAppliedHandler(serverRpc));
+        factory.register(uri, new QueryClusterStateHandler(serverRpc));
+        factory.register(uri, new QueryServerStateHandler(serverRpc));
+        factory.register(uri, new QuerySnapshotHandler(serverRpc));
+        factory.register(uri, new GetServersHandler(serverRpc));
+        factory.register(uri, new AddPullWatchHandler(serverRpc));
+        factory.register(uri, new RemovePullWatchHandler(serverRpc));
+        factory.register(uri, new PullEventsHandler(serverRpc));
+        factory.register(uri, new UpdateVotersHandler(serverRpc));
+        factory.register(uri, new ConvertRollHandler(serverRpc));
+        factory.register(uri, new GetServerStatusHandler(serverRpc));
 
-        factory.register(new AsyncAppendEntriesHandler(serverRpc));
-        factory.register(new RequestVoteHandler(serverRpc));
-        factory.register(new GetServerEntriesHandler(serverRpc));
-        factory.register(new GetServerStateHandler(serverRpc));
-        factory.register(new DisableLeaderWriteRequestHandler(serverRpc));
+        factory.register(uri, new AsyncAppendEntriesHandler(serverRpc));
+        factory.register(uri, new RequestVoteHandler(serverRpc));
+        factory.register(uri, new GetServerEntriesHandler(serverRpc));
+        factory.register(uri, new GetServerStateHandler(serverRpc));
+        factory.register(uri, new DisableLeaderWriteRequestHandler(serverRpc));
 
     }
 }

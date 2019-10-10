@@ -49,16 +49,20 @@ import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -254,7 +258,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
      * 4.2. 如果收到了来自新领导人的asyncAppendEntries请求（heartbeat）：转换状态为FOLLOWER
      * 4.3. 如果选举超时：开始新一轮的选举
      */
-    private void startElection(boolean fromPreferredLeader) throws InterruptedException {
+    private void startElection(boolean fromPreferredLeader) {
 
 
         votedFor = uri;
@@ -265,63 +269,76 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         int lastLogTerm = journal.getTerm(lastLogIndex);
 
         RequestVoteRequest request = new RequestVoteRequest(currentTerm.get(), uri, lastLogIndex, lastLogTerm, fromPreferredLeader);
+        List<URI> destinations =  votersConfigStateMachine.voters().stream()
+                .filter(uri -> !uri.equals(this.uri)).collect(Collectors.toList());
 
-        List<RequestVoteResponse> responses =
-        votersConfigStateMachine.voters().stream()
-            .filter(uri -> !uri.equals(this.uri))
-            .map(uri -> {
-                try {
-                    return getServerRpc(uri).get();
-                } catch (Throwable t) {
-                    return null;
-                }
-            }).filter(Objects::nonNull)
-            .map(serverRpc -> {
-                RequestVoteResponse response;
-                try {
-                    logger.info("Request vote, dest uri: {}, {}...", serverRpc.serverUri(), voterInfo());
-                    response = serverRpc.requestVote(request).get();
+        final AtomicBoolean isWinTheElection = new AtomicBoolean(false);
+        final AtomicInteger votesGrantedInNewConfig = new AtomicInteger(0);
+        final AtomicInteger votesGrantedInOldConfig = new AtomicInteger(0);
 
-                    logger.info("Request vote result {}, dest uri: {}, {}...",
-                            response.isVoteGranted(),
-                            serverRpc.serverUri(),
-                            voterInfo());
-                } catch (Exception e) {
-                    logger.info("Request vote exception: {}, dest uri: {}, {}.",
-                            e.getCause(), serverRpc.serverUri(), voterInfo());
-                    response = new RequestVoteResponse(e);
-                }
-                response.setUri(serverRpc.serverUri());
-                return response;
-            }).collect(Collectors.toList());
+        updateVotes(isWinTheElection, votesGrantedInNewConfig, votesGrantedInOldConfig, this.uri);
 
-        int maxTermOfResponses = responses.stream().mapToInt(RequestVoteResponse::getTerm).max().orElse(0);
-        if (!checkTerm(maxTermOfResponses)) {
-            long votesGrantedInNewConfig = responses.stream()
-                    .filter(response -> votersConfigStateMachine.getConfigNew().contains(response.getUri()))
-                    .filter(RequestVoteResponse::isVoteGranted)
-                    .count() + 1;
-            boolean winsTheElection;
-            if (votersConfigStateMachine.isJointConsensus()) {
-                long votesGrantedInOldConfig = responses.stream()
-                        .filter(response -> votersConfigStateMachine.getConfigOld().contains(response.getUri()))
-                        .filter(RequestVoteResponse::isVoteGranted)
-                        .count() + 1;
-                winsTheElection = votesGrantedInNewConfig >= votersConfigStateMachine.getConfigNew().size() / 2 + 1 &&
-                        votesGrantedInOldConfig >= votersConfigStateMachine.getConfigOld().size() / 2 + 1;
-            } else {
-                winsTheElection = votesGrantedInNewConfig >= votersConfigStateMachine.getConfigNew().size() / 2 + 1;
-            }
-
-            if (winsTheElection) {
-                try {
-                    convertToLeader();
-                } catch (IllegalStateException ignored) {}
-            } else {
-                electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
-                nextElectionTime = System.currentTimeMillis() + electionTimeoutMs;
+        if (!isWinTheElection.get()) {
+            final AtomicInteger pendingRequests = new AtomicInteger(destinations.size());
+            for (URI destination : destinations) {
+                getServerRpc(destination)
+                        .thenComposeAsync(serverRpc -> {
+                            if (null != serverRpc) {
+                                logger.info("Request vote, dest uri: {}, {}...", serverRpc.serverUri(), voterInfo());
+                                return serverRpc.requestVote(request)
+                                        .thenApply(response -> {
+                                            response.setUri(serverRpc.serverUri());
+                                            return response;
+                                        });
+                            } else {
+                                return CompletableFuture.completedFuture(null);
+                            }
+                        }, asyncExecutor)
+                        .thenAccept(response -> {
+                            if (null != response) {
+                                logger.info("Request vote result {}, dest uri: {}, {}...",
+                                        response.isVoteGranted(),
+                                        response.getUri(),
+                                        voterInfo());
+                                if(response.isVoteGranted()) {
+                                    updateVotes(isWinTheElection, votesGrantedInNewConfig, votesGrantedInOldConfig, response.getUri());
+                                }
+                            }
+                        }).exceptionally(e -> {
+                            logger.warn("Request vote exception: {}!", e.getMessage());
+                            return null;
+                        }).thenRun(() -> {
+                            if(pendingRequests.decrementAndGet() == 0 && !isWinTheElection.get()) {
+                                electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
+                                nextElectionTime = System.currentTimeMillis() + electionTimeoutMs;
+                            }
+                });
             }
         }
+    }
+
+    private boolean updateVotes(AtomicBoolean isWinTheElection, AtomicInteger votesGrantedInNewConfig, AtomicInteger votesGrantedInOldConfig, URI destination) {
+        if(votersConfigStateMachine.getConfigNew().contains(destination)) {
+            votesGrantedInNewConfig.incrementAndGet();
+        }
+        if(votersConfigStateMachine.getConfigOld().contains(destination)) {
+            votesGrantedInOldConfig.incrementAndGet();
+        }
+
+        boolean win;
+
+        if (votersConfigStateMachine.isJointConsensus()) {
+            win  = votesGrantedInNewConfig.get() >= votersConfigStateMachine.getConfigNew().size() / 2 + 1 &&
+                    votesGrantedInOldConfig.get() >= votersConfigStateMachine.getConfigOld().size() / 2 + 1;
+        } else {
+            win = votesGrantedInNewConfig.get() >= votersConfigStateMachine.getConfigNew().size() / 2 + 1;
+        }
+        ;
+        if(isWinTheElection.compareAndSet(false, win) && win) {
+            convertToLeader();
+            return true;
+        }
+        return false;
     }
 
 

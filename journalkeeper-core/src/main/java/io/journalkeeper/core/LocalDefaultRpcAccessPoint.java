@@ -14,6 +14,7 @@
 package io.journalkeeper.core;
 
 import io.journalkeeper.core.server.Server;
+import io.journalkeeper.rpc.URIParser;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 

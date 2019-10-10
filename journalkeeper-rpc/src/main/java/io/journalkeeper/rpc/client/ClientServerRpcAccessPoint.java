@@ -13,6 +13,8 @@
  */
 package io.journalkeeper.rpc.client;
 
+import io.journalkeeper.rpc.URIParser;
+
 import java.net.URI;
 
 /**
@@ -27,5 +29,6 @@ public interface ClientServerRpcAccessPoint  {
      * 指定URI获取一个ClientServerRpc实例，一般用于访问Leader
      */
     ClientServerRpc getClintServerRpc(URI uri);
+
     void stop();
 }

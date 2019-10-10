@@ -20,6 +20,8 @@ import io.journalkeeper.rpc.remoting.transport.command.Direction;
 import io.journalkeeper.rpc.remoting.transport.exception.TransportException;
 import io.netty.buffer.ByteBuf;
 
+import java.net.URI;
+
 /**
  * JournalKeeper协议头编解码器
  *
@@ -40,7 +42,7 @@ import io.netty.buffer.ByteBuf;
  * TIMESTAMP: 8 bytes
  * STATUS(Response only): 2 bytes
  * ERROR(Response only): variable
- *
+ * DESTINATION: variable
  * author: gaohaoxiang
  *
  * date: 2018/8/21
@@ -81,8 +83,12 @@ public class JournalKeeperHeaderCodec implements Codec {
                 throw new TransportException.CodecException(e.getMessage());
             }
         }
+        URI destination = null;
+        if(direction.equals(Direction.REQUEST)) {
+            destination = URI.create(CodecSupport.decodeString(buffer));
+        }
 
-        return new JournalKeeperHeader(version, oneWay, direction, requestId, type, sendTime, status, error);
+        return new JournalKeeperHeader(version, oneWay, direction, requestId, type, sendTime, destination, status, error);
     }
 
     @Override
@@ -104,6 +110,9 @@ public class JournalKeeperHeaderCodec implements Codec {
             } catch (Exception e) {
                 throw new TransportException.CodecException(e.getMessage());
             }
+        }
+        if(header.getDirection().equals(Direction.REQUEST)) {
+            CodecSupport.encodeString(buffer, header.getDestination().toASCIIString());
         }
     }
 }
