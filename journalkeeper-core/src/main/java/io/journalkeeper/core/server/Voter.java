@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.core.server;
 
+import io.journalkeeper.base.FixedLengthSerializer;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.api.ServerStatus;
@@ -49,19 +50,15 @@ import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -117,9 +114,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
      */
     private ScheduledFuture checkElectionTimeoutFuture;
 
-
-    private final VoterConfigManager voterConfigManager = new VoterConfigManager();
-
     private Leader<E, ER, Q, QR> leader;
     private Follower follower;
 
@@ -128,8 +122,10 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
 
     Voter(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
                  Serializer<Q> querySerializer, Serializer<QR> resultSerializer,
+                FixedLengthSerializer<EntryHeader> entryHeaderSerializer,
                  ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, ServerRpcAccessPoint serverRpcAccessPoint, Properties properties) {
-        super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
+        super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer,
+                entryHeaderSerializer, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         this.config = toConfig(properties);
 
 

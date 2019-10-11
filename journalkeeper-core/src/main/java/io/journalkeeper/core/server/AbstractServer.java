@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.core.server;
 
+import io.journalkeeper.base.FixedLengthSerializer;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftEntry;
@@ -22,7 +23,6 @@ import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.entry.Entry;
 import io.journalkeeper.core.entry.EntryHeader;
-import io.journalkeeper.core.entry.JournalEntryParser;
 import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
 import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
@@ -74,7 +74,6 @@ import java.io.Closeable;
 import java.io.Flushable;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -248,10 +247,13 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     private final Properties properties;
     private final StateFactory<E, ER, Q, QR> stateFactory;
+    protected final FixedLengthSerializer<EntryHeader> entryHeaderSerializer;
+    protected final VoterConfigManager voterConfigManager;
 
-    public AbstractServer(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer,
+    protected AbstractServer(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer,
                           Serializer<ER> entryResultSerializer, Serializer<Q> querySerializer,
-                          Serializer<QR> resultSerializer, ScheduledExecutorService scheduledExecutor,
+                          Serializer<QR> resultSerializer, FixedLengthSerializer<EntryHeader> entryHeaderSerializer,
+                             ScheduledExecutorService scheduledExecutor,
                           ExecutorService asyncExecutor, ServerRpcAccessPoint serverRpcAccessPoint, Properties properties){
         this.scheduledExecutor = scheduledExecutor;
         this.asyncExecutor = asyncExecutor;
@@ -266,6 +268,8 @@ public abstract class AbstractServer<E, ER, Q, QR>
         this.serverRpcAccessPoint = serverRpcAccessPoint;
         this.properties = properties;
         this.stateFactory = stateFactory;
+        this.entryHeaderSerializer = entryHeaderSerializer;
+        this.voterConfigManager = new VoterConfigManager(entryHeaderSerializer);
         // init metrics
         if(config.isEnableMetric()) {
             this.metricFactory = ServiceSupport.load(JMetricFactory.class);
@@ -287,7 +291,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         bufferPool = ServiceSupport.load(BufferPool.class);
         journal = new Journal(
                 persistenceFactory,
-                bufferPool);
+                bufferPool, entryHeaderSerializer);
 
     }
 

@@ -13,10 +13,12 @@
  */
 package io.journalkeeper.core.server;
 
+import io.journalkeeper.base.FixedLengthSerializer;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
+import io.journalkeeper.core.entry.EntryHeader;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.exceptions.NotVoterException;
 import io.journalkeeper.metric.JMetric;
@@ -77,20 +79,21 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     private static final Logger logger = LoggerFactory.getLogger(Observer.class);
 
     private final JMetric replicationMetric;
-    private final VoterConfigManager voterConfigManager = new VoterConfigManager();
 
     private final CompletableRetry<URI> serverRpcRetry;
     private final Config config;
 
-    public Observer(StateFactory<E, ER, Q, QR> stateFactory,
+    Observer(StateFactory<E, ER, Q, QR> stateFactory,
                     Serializer<E> entrySerializer,
                     Serializer<ER> entryResultSerializer,
                     Serializer<Q> querySerializer,
                     Serializer<QR> queryResultSerializer,
+                    FixedLengthSerializer<EntryHeader> entryHeaderSerializer,
                     ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor,
                     ServerRpcAccessPoint serverRpcAccessPoint,
                     Properties properties) {
-        super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
+        super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer,
+                entryHeaderSerializer, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         this.config = toConfig(properties);
         this.replicationMetric = getMetric(METRIC_OBSERVER_REPLICATION);
         threads.createThread(buildReplicationThread());

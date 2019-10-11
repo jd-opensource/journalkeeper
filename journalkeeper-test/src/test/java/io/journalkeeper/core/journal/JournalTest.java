@@ -13,15 +13,14 @@
  */
 package io.journalkeeper.core.journal;
 
+import io.journalkeeper.base.FixedLengthSerializer;
 import io.journalkeeper.core.api.RaftEntry;
+import io.journalkeeper.core.entry.DefaultEntryHeaderSerializer;
 import io.journalkeeper.core.entry.Entry;
 import io.journalkeeper.core.entry.EntryHeader;
-import io.journalkeeper.core.entry.JournalEntryParser;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.metric.JMetricFactory;
-import io.journalkeeper.metric.JMetricReport;
 import io.journalkeeper.metric.JMetricSupport;
-import io.journalkeeper.metrics.dropwizard.MetricFactory;
 import io.journalkeeper.persistence.BufferPool;
 import io.journalkeeper.persistence.PersistenceFactory;
 import io.journalkeeper.utils.format.Format;
@@ -55,7 +54,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Collectors;
@@ -71,10 +69,11 @@ public class JournalTest {
     private Path path = null;
     private Journal journal = null;
     private Set<Integer> partitions = Stream.of(0, 4, 5, 6).collect(Collectors.toSet());
+    private FixedLengthSerializer<EntryHeader> headerSerializer;
     @Before
     public void before() throws IOException, InterruptedException {
        path = TestPathUtils.prepareBaseDir();
-
+       headerSerializer = new DefaultEntryHeaderSerializer();
        journal = createJournal();
     }
 
@@ -97,11 +96,7 @@ public class JournalTest {
         List<byte []> rawEntries =
                 entries.stream()
                         .map(entry -> new Entry(entry, term, partition))
-                        .map(storageEntry -> {
-                            ByteBuffer byteBuffer = ByteBuffer.allocate(storageEntry.getHeader().getPayloadLength() + JournalEntryParser.getHeaderLength());
-                            JournalEntryParser.serialize(byteBuffer, storageEntry);
-                            return byteBuffer.array();
-                        })
+                        .map(this::serialize)
                         .collect(Collectors.toList());
 
         // 启动刷盘线程
@@ -463,9 +458,11 @@ public class JournalTest {
     }
 
     private byte[] serialize(Entry storageEntry) {
-        byte[] serialized = new byte[storageEntry.getHeader().getPayloadLength() + JournalEntryParser.getHeaderLength()];
-        JournalEntryParser.serialize(ByteBuffer.wrap(serialized), storageEntry);
-        return serialized;
+        ByteBuffer byteBuffer = ByteBuffer.allocate(storageEntry.getHeader().getPayloadLength() + headerSerializer.serializedEntryLength());
+        byte [] serializedHeader = headerSerializer.serialize((EntryHeader )storageEntry.getHeader());
+        byteBuffer.put(serializedHeader);
+        byteBuffer.put(storageEntry.getEntry());
+        return byteBuffer.array();
     }
 
     @Test
@@ -564,7 +561,7 @@ public class JournalTest {
 
         journal.close();
         Properties properties = new Properties();
-        properties.setProperty("persistence.journal.file_data_size", String.valueOf((entrySize + JournalEntryParser.getHeaderLength()) * entriesPerFile));
+        properties.setProperty("persistence.journal.file_data_size", String.valueOf((entrySize + headerSerializer.serializedEntryLength()) * entriesPerFile));
         properties.setProperty("persistence.index.file_data_size", String.valueOf(Long.BYTES * entriesPerFile));
         journal = createJournal(properties);
 
@@ -647,7 +644,7 @@ public class JournalTest {
 
         journal.close();
         Properties properties = new Properties();
-        properties.setProperty("persistence.journal.file_data_size", String.valueOf((entrySize + JournalEntryParser.getHeaderLength()) * entriesPerFile));
+        properties.setProperty("persistence.journal.file_data_size", String.valueOf((entrySize + headerSerializer.serializedEntryLength()) * entriesPerFile));
         properties.setProperty("persistence.index.file_data_size", String.valueOf(Long.BYTES * entriesPerFile));
         journal = createJournal(properties);
 
@@ -720,7 +717,7 @@ public class JournalTest {
         BufferPool bufferPool = ServiceSupport.load(BufferPool.class);
         Journal journal = new Journal(
                 persistenceFactory,
-                bufferPool);
+                bufferPool, headerSerializer);
         journal.recover(path,commitIndex, properties);
         journal.rePartition(partitions);
         Thread.sleep(1000L);

@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.core;
 
+import io.journalkeeper.base.FixedLengthSerializer;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.ClusterAccessPoint;
@@ -21,6 +22,8 @@ import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.client.DefaultAdminClient;
 import io.journalkeeper.core.client.DefaultRaftClient;
+import io.journalkeeper.core.entry.DefaultEntryHeaderSerializer;
+import io.journalkeeper.core.entry.EntryHeader;
 import io.journalkeeper.core.server.Server;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
 import io.journalkeeper.rpc.RpcException;
@@ -56,6 +59,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
     private ClientServerRpcAccessPoint clientServerRpcAccessPoint = null;
     private final List<URI> servers;
     private final Server<E, ER, Q, QR> server;
+    private final FixedLengthSerializer<EntryHeader> entryHeaderSerializer;
     private DefaultRaftClient<E, ER, Q, QR> client = null;
     private DefaultAdminClient adminClient = null;
 
@@ -70,7 +74,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
                      Serializer<Q> querySerializer,
                      Serializer<QR> queryResultSerializer,
                      Properties properties) {
-        this(null, servers, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
+        this(null, servers, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, null,properties);
     }
 
     /**
@@ -84,7 +88,24 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
                      Serializer<Q> querySerializer,
                      Serializer<QR> queryResultSerializer,
                      Properties properties) {
-        this(roll, null, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
+        this(roll, null, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer,
+                new DefaultEntryHeaderSerializer(), properties);
+    }
+
+    /**
+     * 初始化本地Server模式BootStrap，本地包含一个Server，请求本地Server通信。
+     * @param roll 本地Server的角色。
+     * @param properties 配置属性
+     */
+    public BootStrap(RaftServer.Roll roll, StateFactory<E, ER, Q, QR> stateFactory,
+                     Serializer<E> entrySerializer,
+                     Serializer<ER> entryResultSerializer,
+                     Serializer<Q> querySerializer,
+                     Serializer<QR> queryResultSerializer,
+                     FixedLengthSerializer<EntryHeader> entryHeaderSerializer,
+                     Properties properties) {
+        this(roll, null, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer,
+                entryHeaderSerializer, properties);
     }
 
 
@@ -92,7 +113,9 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
                       Serializer<E> entrySerializer,
                       Serializer<ER> entryResultSerializer,
                       Serializer<Q> querySerializer,
-                      Serializer<QR> queryResultSerializer, Properties properties) {
+                      Serializer<QR> queryResultSerializer,
+                      FixedLengthSerializer<EntryHeader> entryHeaderSerializer,
+                      Properties properties) {
         this.stateFactory = stateFactory;
         this.entrySerializer = entrySerializer;
         this.entryResultSerializer = entryResultSerializer;
@@ -100,8 +123,9 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
         this.queryResultSerializer = queryResultSerializer;
         this.properties = properties;
         this.roll = roll;
-        this.server = createServer();
         this.rpcAccessPointFactory = ServiceSupport.load(RpcAccessPointFactory.class);
+        this.entryHeaderSerializer = entryHeaderSerializer;
+        this.server = createServer();
         this.servers = servers;
     }
 
@@ -114,7 +138,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
         }
 
         if(null != roll) {
-            return new Server<>(roll,stateFactory,entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, scheduledExecutorService, asyncExecutorService, properties);
+            return new Server<>(roll,stateFactory,entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, entryHeaderSerializer, scheduledExecutorService, asyncExecutorService, properties);
         }
         return null;
     }

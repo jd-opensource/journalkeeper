@@ -1,10 +1,10 @@
 package io.journalkeeper.core.server;
 
+import io.journalkeeper.base.FixedLengthSerializer;
 import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.entry.EntryHeader;
-import io.journalkeeper.core.entry.JournalEntryParser;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ReservedEntry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
@@ -18,7 +18,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -32,6 +31,12 @@ import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
  */
 class VoterConfigManager {
     private static final Logger logger = LoggerFactory.getLogger(VoterConfigManager.class);
+    private final FixedLengthSerializer<EntryHeader> entryHeaderSerializer;
+
+    VoterConfigManager(FixedLengthSerializer<EntryHeader> entryHeaderSerializer) {
+        this.entryHeaderSerializer = entryHeaderSerializer;
+    }
+
     boolean maybeUpdateLeaderConfig(UpdateClusterStateRequest request,
                                     AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine,
                                     Journal journal,
@@ -116,23 +121,17 @@ class VoterConfigManager {
     // 非Leader（Follower和Observer）复制日志到本地后，如果日志中包含配置变更，则立即变更配置
     void maybeUpdateNonLeaderConfig(List<byte []> entries, AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine) throws Exception {
         for (byte[] rawEntry : entries) {
-            ByteBuffer entryBuffer = ByteBuffer.wrap(rawEntry);
-            EntryHeader entryHeader = JournalEntryParser.parseHeader(entryBuffer);
+            EntryHeader entryHeader = entryHeaderSerializer.parse(rawEntry);
             if(entryHeader.getPartition() == RESERVED_PARTITION) {
-                byte [] payload = JournalEntryParser.getEntry(rawEntry);
-                int entryType = ReservedEntriesSerializeSupport.parseEntryType(payload);
+                int headerLength = entryHeaderSerializer.serializedEntryLength();
+                int entryType = ReservedEntriesSerializeSupport.parseEntryType(rawEntry, headerLength, rawEntry.length - headerLength);
                 if (entryType == ReservedEntry.TYPE_UPDATE_VOTERS_S1) {
-                    UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(payload);
+                    UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(rawEntry, headerLength, rawEntry.length - headerLength);
 
                     votersConfigStateMachine.toJointConsensus(updateVotersS1Entry.getConfigNew(),
                             () -> null);
                 } else if (entryType == ReservedEntry.TYPE_UPDATE_VOTERS_S2) {
                     votersConfigStateMachine.toNewConfig(() -> null);
-//                    // Stop myself if I'm no longer a member of the cluster.
-//                    if(roll == RaftServer.Roll.VOTER && !votersConfigStateMachine.voters().contains(serverUri)) {
-//                        server.stopAsync();
-//                        break;
-//                    }
                 }
             }
         }

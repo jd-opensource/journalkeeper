@@ -13,12 +13,12 @@
  */
 package io.journalkeeper.core.journal;
 
+import io.journalkeeper.base.FixedLengthSerializer;
 import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.api.RaftEntryHeader;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.entry.Entry;
 import io.journalkeeper.core.entry.EntryHeader;
-import io.journalkeeper.core.entry.JournalEntryParser;
 import io.journalkeeper.core.exception.JournalException;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
@@ -36,7 +36,6 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -74,9 +73,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     private final byte [] commitIndexBytes = new byte [INDEX_STORAGE_SIZE];
     private final ByteBuffer commitIndexBuffer = ByteBuffer.wrap(commitIndexBytes);
 
-    // 写入index时转换用的缓存
-    private final byte [] headerBytes = new byte [JournalEntryParser.getHeaderLength()];
-    private final ByteBuffer headerBuffer = ByteBuffer.wrap(headerBytes);
 
     static {
         DEFAULT_JOURNAL_PROPERTIES.put("file_data_size", String.valueOf(128 * 1024 * 1024));
@@ -93,16 +89,18 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     private final Map<Integer, JournalPersistence> partitionMap;
     private final PersistenceFactory persistenceFactory;
     private final BufferPool bufferPool;
+    private final FixedLengthSerializer<EntryHeader> headerSerializer;
     private Path basePath = null;
     private Properties indexProperties;
     private ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
-    public Journal(PersistenceFactory persistenceFactory, BufferPool bufferPool) {
+    public Journal(PersistenceFactory persistenceFactory, BufferPool bufferPool, FixedLengthSerializer<EntryHeader> headerSerializer) {
         this.indexPersistence = persistenceFactory.createJournalPersistenceInstance();
         this.journalPersistence = persistenceFactory.createJournalPersistenceInstance();
         this.persistenceFactory = persistenceFactory;
         this.partitionMap = new ConcurrentHashMap<>();
         this.bufferPool = bufferPool;
+        this.headerSerializer = headerSerializer;
     }
 
     /**
@@ -244,8 +242,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      */
     public long append(Entry storageEntry) {
         EntryHeader header = (EntryHeader) storageEntry.getHeader();
-        headerBuffer.clear();
-        JournalEntryParser.serializeHeader(headerBuffer, header);
+        byte [] headerBytes = headerSerializer.serialize(header);
 
         // 记录当前最大位置，也是写入的Journal的offset
         long offset = journalPersistence.max();
@@ -402,10 +399,10 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
 
             EntryHeader header = readEntryHeaderByOffset(journalOffset);
-
+            
             byte [] entryBytes = journalPersistence
                     .read(
-                            journalOffset + JournalEntryParser.getHeaderLength(),
+                            journalOffset + headerSerializer.serializedEntryLength(),
                             header.getPayloadLength());
 
             header.setOffset(relIndex);
@@ -454,7 +451,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
             byte [] entry = journalPersistence
                     .read(
-                            offset + JournalEntryParser.getHeaderLength(),
+                            offset + headerSerializer.serializedEntryLength(),
                             header.getPayloadLength());
 
 
@@ -473,7 +470,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
             EntryHeader header = readEntryHeaderByOffset(offset);
 
-            return journalPersistence.read(offset , header.getPayloadLength() + JournalEntryParser.getHeaderLength());
+            return journalPersistence.read(offset , header.getPayloadLength() + headerSerializer.serializedEntryLength());
         } catch (IOException e) {
             throw new JournalException(e);
         }
@@ -481,9 +478,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     private EntryHeader readEntryHeaderByOffset(long offset) {
         try {
-            byte [] headerBytes = journalPersistence.read(offset, JournalEntryParser.getHeaderLength());
+            byte [] headerBytes = journalPersistence.read(offset, headerSerializer.serializedEntryLength());
 
-            return JournalEntryParser.parseHeader(ByteBuffer.wrap(headerBytes));
+            return headerSerializer.parse(headerBytes);
         } catch (IOException e) {
             throw new JournalException(e);
         }
@@ -576,8 +573,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
 
         List<EntryHeader> entries = rawEntries.stream()
-                .map(ByteBuffer::wrap)
-                .map(JournalEntryParser::parseHeader)
+                .map(headerSerializer::parse)
                 .collect(Collectors.toList());
         try {
             long index = startIndex;
@@ -720,7 +716,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                 indexBuffer.putLong(offset);
                 appendPartitionIndex(indexBytes, header.getPartition(), header.getBatchSize());
             }
-            offset += header.getPayloadLength() + JournalEntryParser.getHeaderLength();
+            offset += header.getPayloadLength() + headerSerializer.serializedEntryLength();
         }
 
         // 删除未提交部分的分区索引
@@ -811,7 +807,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         if (indexPersistence.max() - INDEX_STORAGE_SIZE >= indexPersistence.min()) {
             long offset = readOffset(indexPersistence.max() / INDEX_STORAGE_SIZE - 1);
             EntryHeader header = readEntryHeaderByOffset(offset);
-            indexOffset = offset + header.getPayloadLength() + JournalEntryParser.getHeaderLength();
+            indexOffset = offset + header.getPayloadLength() + headerSerializer.serializedEntryLength();
         } else {
             indexOffset = journalPersistence.min();
         }
@@ -820,7 +816,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         List<Long> indices = new LinkedList<>();
         while (indexOffset < journalPersistence.max()) {
             indices.add(indexOffset);
-            indexOffset += readEntryHeaderByOffset(indexOffset).getPayloadLength() + JournalEntryParser.getHeaderLength();
+            indexOffset += readEntryHeaderByOffset(indexOffset).getPayloadLength() + headerSerializer.serializedEntryLength();
         }
 
         // 写入索引
@@ -845,7 +841,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
         // 找最后的连续2条记录
 
-        long position = journalPersistence.max() - JournalEntryParser.getHeaderLength();
+        long position = journalPersistence.max() - headerSerializer.serializedEntryLength();
         long lastEntryPosition = -1; // 最后连续2条记录中后面那条的位置
         EntryHeader lastEntryHeader = null;
         while (position >= journalPersistence.min()) {
@@ -863,7 +859,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                     }
                 } else {
                     // 这是倒数第二条
-                    if(position + header.getPayloadLength() + JournalEntryParser.getHeaderLength() == lastEntryPosition) {
+                    if(position + header.getPayloadLength() + headerSerializer.serializedEntryLength() == lastEntryPosition) {
                         // 找到最后2条中位置较小的那条，并且较小那条的位置+长度==较大那条的位置
                         truncatePartialEntry(lastEntryPosition, lastEntryHeader);
                         return;
@@ -882,9 +878,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     private void truncatePartialEntry(long lastEntryPosition, EntryHeader lastEntryHeader) throws IOException {
         // 判断最后一条是否完整
-        if(lastEntryPosition + lastEntryHeader.getPayloadLength() + JournalEntryParser.getHeaderLength() <= journalPersistence.max()) {
+        if(lastEntryPosition + lastEntryHeader.getPayloadLength() + headerSerializer.serializedEntryLength() <= journalPersistence.max()) {
             // 完整，截掉后面的部分
-            journalPersistence.truncate(lastEntryPosition + lastEntryHeader.getPayloadLength() + JournalEntryParser.getHeaderLength());
+            journalPersistence.truncate(lastEntryPosition + lastEntryHeader.getPayloadLength() + headerSerializer.serializedEntryLength());
         } else {
             // 不完整，直接截掉这条数据
             journalPersistence.truncate(lastEntryPosition);

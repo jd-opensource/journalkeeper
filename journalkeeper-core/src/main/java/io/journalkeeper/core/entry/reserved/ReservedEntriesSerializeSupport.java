@@ -3,6 +3,7 @@ package io.journalkeeper.core.entry.reserved;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.exception.SerializeException;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -33,6 +34,17 @@ public class ReservedEntriesSerializeSupport {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    public static  <E extends ReservedEntry> E parse(byte [] buffer, int offset, int length, Class<E> eClass) {
+        byte [] body = offset == 0 ? buffer : Arrays.copyOfRange(buffer, offset, offset + length);
+        Object entry =  serializerMap.get(eClass).parse(body);
+        if (eClass.isAssignableFrom(entry.getClass())) {
+            return (E) entry;
+        } else {
+            throw new SerializeException("Type mismatch!");
+        }
+    }
+
     public static  <E extends ReservedEntry> E parse(byte [] buffer) {
         int type = parseEntryType(buffer);
         @SuppressWarnings("unchecked")
@@ -41,6 +53,18 @@ public class ReservedEntriesSerializeSupport {
             throw new SerializeException(String.format("Unknown entry type: %d!", type));
         } else {
             return parse(buffer, eClass);
+        }
+
+    }
+
+    public static  <E extends ReservedEntry> E parse(byte [] buffer, int offset, int length) {
+        int type = parseEntryType(buffer, offset, length);
+        @SuppressWarnings("unchecked")
+        Class<E> eClass = (Class<E> )typeMap.get(type);
+        if(null == eClass) {
+            throw new SerializeException(String.format("Unknown entry type: %d!", type));
+        } else {
+            return parse(buffer, offset, length, eClass);
         }
 
     }
@@ -56,7 +80,11 @@ public class ReservedEntriesSerializeSupport {
     }
 
     public static int parseEntryType(byte [] buffer) {
-        return (int) buffer[0];
+        return buffer[0];
+    }
+
+    public static int parseEntryType(byte [] buffer, int offset, int length) {
+        return buffer[offset];
     }
 
     private static <E extends ReservedEntry> void registerType(int type, Class<E> eClass, Serializer<E> serializer) {

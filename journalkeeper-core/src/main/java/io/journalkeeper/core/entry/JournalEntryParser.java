@@ -26,12 +26,13 @@ import java.util.List;
  * @author LiYue
  * Date: 2019-01-15
  */
-public class JournalEntryParser extends EntryParser {
+class JournalEntryParser extends EntryParser {
+    private final static short MAGIC_CODE = ByteBuffer.wrap(new byte[] {(byte) 0XF4, (byte) 0X3C}).getShort();
 
-    public final static int VARIABLE_LENGTH = -1;
-    public final static int FIXED_LENGTH_1 = 1;
-    public final static int FIXED_LENGTH_2 = 2;
-    public final static int FIXED_LENGTH_4 = 4;
+    private final static int VARIABLE_LENGTH = -1;
+    private final static int FIXED_LENGTH_1 = 1;
+    private final static int FIXED_LENGTH_2 = 2;
+    private final static int FIXED_LENGTH_4 = 4;
     private static int offset = 0;
     // 第一个变长属性的偏移量
     private static int firstVarOffset = -1;
@@ -39,19 +40,18 @@ public class JournalEntryParser extends EntryParser {
     private static int firstVarIndex = -1;
     private final static List<Attribute> attributeList= new LinkedList<>();
 
-    public final static int LENGTH = createAttribute("LENGTH",FIXED_LENGTH_4);
-    public final static int MAGIC = createAttribute("MAGIC",FIXED_LENGTH_2);
-    public final static int TERM = createAttribute("TERM",FIXED_LENGTH_4);
-    public final static int PARTITION = createAttribute("PARTITION",FIXED_LENGTH_2);
-    public final static int BATCH_SIZE = createAttribute("BATCH_SIZE",FIXED_LENGTH_2);
-    public final static int ENTRY = createAttribute("ENTRY",VARIABLE_LENGTH);
+    private final static int LENGTH = createAttribute("LENGTH",FIXED_LENGTH_4);
+    private final static int MAGIC = createAttribute("MAGIC",FIXED_LENGTH_2);
+    private final static int TERM = createAttribute("TERM",FIXED_LENGTH_4);
+    private final static int PARTITION = createAttribute("PARTITION",FIXED_LENGTH_2);
+    private final static int BATCH_SIZE = createAttribute("BATCH_SIZE",FIXED_LENGTH_2);
+    private final static int ENTRY = createAttribute("ENTRY",VARIABLE_LENGTH);
 
 
-    private final static Attribute [] attributes = attributeList.toArray(new Attribute[0]);
 
     public static int getHeaderLength(){return firstVarOffset;}
 
-    public static ByteBuffer getByteBuffer(ByteBuffer messageBuffer, int relativeOffset) {
+    private static ByteBuffer getByteBuffer(ByteBuffer messageBuffer, int relativeOffset) {
         int offset = firstVarOffset;
         // 计算偏移量
 
@@ -72,89 +72,6 @@ public class JournalEntryParser extends EntryParser {
 
     public static byte [] getEntry(byte [] entryWithHeader) {
         return Arrays.copyOfRange(entryWithHeader, getHeaderLength(), entryWithHeader.length);
-    }
-
-
-    public static byte [] getBytes(ByteBuffer messageBuffer, int relativeOffset) {
-        ByteBuffer byteBuffer = getByteBuffer(messageBuffer, relativeOffset);
-
-        ByteBuffer arrayBuffer = ByteBuffer.allocate(byteBuffer.remaining());
-        arrayBuffer.put(byteBuffer);
-        return arrayBuffer.array();
-    }
-
-    public static String getString(ByteBuffer messageBuffer) {
-        StringBuilder stringBuilder = new StringBuilder();
-        for (Attribute attribute : attributes) {
-            stringBuilder.append(attribute.getName()).append("(");
-            if (attribute.getLength() >= 0) {
-                stringBuilder.append(attribute.getLength()).append("): ");
-            }
-            switch (attribute.getLength()) {
-                case FIXED_LENGTH_2:
-                    try {
-                        short s = getShort(messageBuffer, attribute.getOffset());
-                        stringBuilder.append(s).append("\n");
-                    } catch (Exception e) {
-                        stringBuilder.append("Exception:").append(e).append("\n");
-                    }
-                    break;
-                case FIXED_LENGTH_4:
-                    try {
-                        int ii = getInt(messageBuffer, attribute.getOffset());
-                        stringBuilder.append(ii);
-                        stringBuilder.append("\n");
-                    } catch (Exception e) {
-                        stringBuilder.append("Exception:").append(e).append("\n");
-                    }
-                    break;
-                default:
-                    appendBytes(messageBuffer, stringBuilder, attribute);
-            }
-
-
-        }
-
-
-        return stringBuilder.toString();
-    }
-
-    private static void appendBytes(ByteBuffer messageBuffer, StringBuilder stringBuilder, Attribute attribute) {
-        try {
-            byte [] bytes;
-
-            if(attribute.getLength() < 0) {
-                bytes = getBytes(messageBuffer, attribute.getOffset());
-                stringBuilder.append(bytes.length);
-                stringBuilder.append("): ");
-            } else {
-                bytes = getBytes(messageBuffer, attribute);
-            }
-            stringBuilder.append("\n\tHex: ");
-            for (int j = 0; j < bytes.length && j < 32; j++) {
-                stringBuilder.append(String.format("0x%02X ", bytes[j]));
-            }
-            if (bytes.length > 32) stringBuilder.append("...");
-            stringBuilder.append("\n\tString: ").append(new String(bytes, StandardCharsets.UTF_8));
-
-        } catch (Exception e) {
-            stringBuilder.append("Exception:").append(e);
-        }
-        stringBuilder.append("\n");
-
-    }
-
-    private static byte[] getBytes(ByteBuffer messageBuffer, Attribute attribute) {
-        byte[] bytes;
-        ByteBuffer byteBuffer = messageBuffer.slice();
-        byteBuffer.position(byteBuffer.position() + attribute.getOffset());
-        byteBuffer.limit(byteBuffer.position() + attribute.getLength());
-
-        ByteBuffer buffer = ByteBuffer.allocate(attribute.length);
-        buffer.put(byteBuffer);
-        buffer.flip();
-        bytes = buffer.array();
-        return bytes;
     }
 
 
@@ -190,7 +107,7 @@ public class JournalEntryParser extends EntryParser {
         return attribute.getOffset();
     }
 
-    static class Attribute {
+    private static class Attribute {
         private final int length;
         private final String name;
         private int offset = -1;
@@ -204,20 +121,20 @@ public class JournalEntryParser extends EntryParser {
             this.length = length;
         }
 
-        public int getLength() {
+        int getLength() {
 
             return length;
         }
 
-        public int getOffset() {
+        int getOffset() {
             return offset;
         }
 
-        public void setOffset(int offset) {
+        void setOffset(int offset) {
             this.offset = offset;
         }
 
-        public String getName() {
+        String getName() {
             return name;
         }
     }
@@ -234,20 +151,20 @@ public class JournalEntryParser extends EntryParser {
     }
 
     private static void checkMagic(ByteBuffer headerBuffer) {
-        if (Entry.MAGIC != getShort(headerBuffer, JournalEntryParser.MAGIC)) {
+        if (MAGIC_CODE != getShort(headerBuffer, MAGIC)) {
             throw new ParseJournalException("Check magic failed！");
         }
     }
 
-    public static  void serialize(ByteBuffer buffer, Entry storageEntry) {
+    public static void serialize(ByteBuffer buffer, Entry storageEntry) {
 
         serializeHeader(buffer, (EntryHeader )storageEntry.getHeader());
         buffer.put(storageEntry.getEntry());
     }
-    public static  void serializeHeader(ByteBuffer buffer, EntryHeader header) {
+    public static void serializeHeader(ByteBuffer buffer, EntryHeader header) {
 
         buffer.putInt(header.getPayloadLength());
-        buffer.putShort(Entry.MAGIC);
+        buffer.putShort(MAGIC_CODE);
         buffer.putInt(header.getTerm());
         buffer.putShort((short ) header.getPartition());
         buffer.putShort((short ) header.getBatchSize());
