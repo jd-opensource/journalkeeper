@@ -56,7 +56,7 @@ class DefaultJournalEntry implements JournalEntry {
     }
 
     public void setPartition(int partition) {
-        JournalEntryParseSupport.setShort(serializedBuffer(), JournalEntryParseSupport.BATCH_SIZE, (short) partition);
+        JournalEntryParseSupport.setShort(serializedBuffer(), JournalEntryParseSupport.PARTITION, (short) partition);
     }
 
     @Override

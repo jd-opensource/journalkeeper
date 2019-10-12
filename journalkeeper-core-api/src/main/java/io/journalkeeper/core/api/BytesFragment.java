@@ -21,11 +21,11 @@ public class BytesFragment {
     }
     public BytesFragment(byte[] bytes, int offset, int length) {
         if (bytes.length != 0 || offset != 0 || length != 0) {
-            if (offset < 0 || offset >= bytes.length) {
+            if (offset < 0 || offset > bytes.length) {
                 throw new IllegalArgumentException("Invalid offset!");
             }
 
-            if (length <= 0 || length + offset > bytes.length) {
+            if (length < 0 || length + offset > bytes.length) {
                 throw new IllegalArgumentException("Invalid length!");
             }
         }
