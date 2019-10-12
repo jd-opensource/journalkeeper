@@ -26,13 +26,14 @@ import java.util.List;
  * @author LiYue
  * Date: 2019-01-15
  */
-class JournalEntryParser extends EntryParser {
-    private final static short MAGIC_CODE = ByteBuffer.wrap(new byte[] {(byte) 0XF4, (byte) 0X3C}).getShort();
+class JournalEntryParseSupport extends EntryParser {
 
     private final static int VARIABLE_LENGTH = -1;
     private final static int FIXED_LENGTH_1 = 1;
     private final static int FIXED_LENGTH_2 = 2;
     private final static int FIXED_LENGTH_4 = 4;
+    public static final int FIXED_LENGTH_8 = 8;
+
     private static int offset = 0;
     // 第一个变长属性的偏移量
     private static int firstVarOffset = -1;
@@ -40,12 +41,12 @@ class JournalEntryParser extends EntryParser {
     private static int firstVarIndex = -1;
     private final static List<Attribute> attributeList= new LinkedList<>();
 
-    private final static int LENGTH = createAttribute("LENGTH",FIXED_LENGTH_4);
-    private final static int MAGIC = createAttribute("MAGIC",FIXED_LENGTH_2);
-    private final static int TERM = createAttribute("TERM",FIXED_LENGTH_4);
-    private final static int PARTITION = createAttribute("PARTITION",FIXED_LENGTH_2);
-    private final static int BATCH_SIZE = createAttribute("BATCH_SIZE",FIXED_LENGTH_2);
-    private final static int ENTRY = createAttribute("ENTRY",VARIABLE_LENGTH);
+    final static int LENGTH = createAttribute("LENGTH",FIXED_LENGTH_4);
+    final static int PARTITION = createAttribute("PARTITION",FIXED_LENGTH_2);
+    final static int TERM = createAttribute("TERM",FIXED_LENGTH_4);
+    final static int MAGIC = createAttribute("MAGIC",FIXED_LENGTH_2);
+    final static int BATCH_SIZE = createAttribute("BATCH_SIZE",FIXED_LENGTH_2);
+    final static int ENTRY = createAttribute("ENTRY",VARIABLE_LENGTH);
 
 
 
@@ -139,34 +140,7 @@ class JournalEntryParser extends EntryParser {
         }
     }
 
-    public static EntryHeader parseHeader(ByteBuffer headerBuffer) {
-        EntryHeader header = new EntryHeader();
-        checkMagic(headerBuffer);
-        header.setPayloadLength(getInt(headerBuffer, LENGTH));
-        header.setTerm(getInt(headerBuffer, TERM));
-        header.setPartition(getShort(headerBuffer, PARTITION));
-        header.setBatchSize(getShort(headerBuffer, BATCH_SIZE));
 
-        return header;
-    }
 
-    private static void checkMagic(ByteBuffer headerBuffer) {
-        if (MAGIC_CODE != getShort(headerBuffer, MAGIC)) {
-            throw new ParseJournalException("Check magic failed！");
-        }
-    }
 
-    public static void serialize(ByteBuffer buffer, Entry storageEntry) {
-
-        serializeHeader(buffer, (EntryHeader )storageEntry.getHeader());
-        buffer.put(storageEntry.getEntry());
-    }
-    public static void serializeHeader(ByteBuffer buffer, EntryHeader header) {
-
-        buffer.putInt(header.getPayloadLength());
-        buffer.putShort(MAGIC_CODE);
-        buffer.putInt(header.getTerm());
-        buffer.putShort((short ) header.getPartition());
-        buffer.putShort((short ) header.getBatchSize());
-    }
 }

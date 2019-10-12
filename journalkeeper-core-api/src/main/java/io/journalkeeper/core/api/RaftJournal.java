@@ -31,15 +31,13 @@ public interface RaftJournal {
 
     long maxIndex(int partition);
 
-    RaftEntry readByPartition(int partition, long index);
+    JournalEntry readByPartition(int partition, long index);
 
-    List<RaftEntry> readByPartition(int partition, long index, int maxSize);
+    List<JournalEntry> batchReadByPartition(int partition, long index, int maxSize);
 
-    RaftEntry read(long index);
+    JournalEntry read(long index);
 
-    List<RaftEntry> batchRead(long index, int size);
-
-    RaftEntryHeader readEntryHeader(long index);
+    List<JournalEntry> batchRead(long index, int size);
 
     Set<Integer> getPartitions();
 }

@@ -20,6 +20,7 @@ import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;
+import io.journalkeeper.core.entry.DefaultJournalEntryParser;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import io.journalkeeper.metric.JMetric;
@@ -219,7 +220,12 @@ public class VoterTest {
         properties.setProperty("print_metric_interval_sec", "3");
 //        properties.setProperty("cache_requests", String.valueOf(1024L * 1024 * 5));
 
-        Server<byte [], byte [], byte [], byte []>  voter = new Server<>(RaftServer.Roll.VOTER, stateFactory, bytesSerializer, bytesSerializer, bytesSerializer, bytesSerializer, scheduledExecutorService, asyncExecutorService, properties);
+        Server<byte [], byte [], byte [], byte []>  voter =
+                new Server<>(
+                        RaftServer.Roll.VOTER,
+                        stateFactory,
+                        bytesSerializer, bytesSerializer, bytesSerializer, bytesSerializer, new DefaultJournalEntryParser(),
+                        scheduledExecutorService, asyncExecutorService, properties);
         URI uri = URI.create("jk://localhost:8888");
         voter.init(uri, Collections.singletonList(uri));
         voter.recover();

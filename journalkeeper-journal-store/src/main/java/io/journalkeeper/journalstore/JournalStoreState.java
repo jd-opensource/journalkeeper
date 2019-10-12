@@ -22,7 +22,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -128,7 +127,7 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
                     } else {
                         safeSize = size;
                     }
-                    return journal.readByPartition(partition, index, safeSize);
+                    return journal.batchReadByPartition(partition, index, safeSize);
                 })
                 .thenApply(JournalStoreQueryResult::new)
                 .exceptionally(e -> new JournalStoreQueryResult(e.getCause(), JournalStoreQuery.CMQ_QUERY_ENTRIES));

@@ -13,12 +13,11 @@
  */
 package io.journalkeeper.core.server;
 
-import io.journalkeeper.base.FixedLengthSerializer;
 import io.journalkeeper.base.Serializer;
+import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
-import io.journalkeeper.core.entry.EntryHeader;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.exceptions.NotVoterException;
 import io.journalkeeper.metric.JMetric;
@@ -88,12 +87,12 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                     Serializer<ER> entryResultSerializer,
                     Serializer<Q> querySerializer,
                     Serializer<QR> queryResultSerializer,
-                    FixedLengthSerializer<EntryHeader> entryHeaderSerializer,
+                    JournalEntryParser journalEntryParser,
                     ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor,
                     ServerRpcAccessPoint serverRpcAccessPoint,
                     Properties properties) {
         super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer,
-                entryHeaderSerializer, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
+                journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         this.config = toConfig(properties);
         this.replicationMetric = getMetric(METRIC_OBSERVER_REPLICATION);
         threads.createThread(buildReplicationThread());

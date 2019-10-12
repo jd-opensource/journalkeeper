@@ -14,7 +14,7 @@
 package io.journalkeeper.journalstore;
 
 import io.journalkeeper.core.api.AdminClient;
-import io.journalkeeper.core.api.RaftEntry;
+import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.exceptions.ServerBusyException;
 import io.journalkeeper.utils.format.Format;
@@ -124,13 +124,13 @@ public class JournalStoreTest {
             t0 = System.nanoTime();
             for (int partition : partitions) {
                 for (int i = 0; i < batchCount; i++) {
-                    List<RaftEntry> raftEntries = client.get(partition, i * batchSize, batchSize).get();
+                    List<JournalEntry> raftEntries = client.get(partition, i * batchSize, batchSize).get();
                     Assert.assertEquals(raftEntries.size(), 1);
-                    RaftEntry entry = raftEntries.get(0);
-                    Assert.assertEquals(partition, entry.getHeader().getPartition());
-                    Assert.assertEquals(batchSize, entry.getHeader().getBatchSize());
-                    Assert.assertEquals(0, entry.getHeader().getOffset());
-                    Assert.assertArrayEquals(rawEntries, entry.getEntry());
+                    JournalEntry entry = raftEntries.get(0);
+                    Assert.assertEquals(partition, entry.getPartition());
+                    Assert.assertEquals(batchSize, entry.getBatchSize());
+                    Assert.assertEquals(0, entry.getOffset());
+                    Assert.assertArrayEquals(rawEntries, entry.getSerializedBytes());
                 }
             }
             t1 = System.nanoTime();

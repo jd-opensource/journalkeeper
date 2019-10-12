@@ -13,14 +13,12 @@
  */
 package io.journalkeeper.core.server;
 
-import io.journalkeeper.base.FixedLengthSerializer;
 import io.journalkeeper.base.Serializer;
-import io.journalkeeper.core.api.RaftEntry;
+import io.journalkeeper.core.api.JournalEntry;
+import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;
-import io.journalkeeper.core.entry.Entry;
-import io.journalkeeper.core.entry.EntryHeader;
 import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ReservedEntry;
@@ -122,10 +120,10 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
 
     Voter(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
                  Serializer<Q> querySerializer, Serializer<QR> resultSerializer,
-                FixedLengthSerializer<EntryHeader> entryHeaderSerializer,
+                 JournalEntryParser journalEntryParser,
                  ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, ServerRpcAccessPoint serverRpcAccessPoint, Properties properties) {
         super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer,
-                entryHeaderSerializer, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
+                journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         this.config = toConfig(properties);
 
 
@@ -313,7 +311,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         }
     }
 
-    private boolean updateVotes(AtomicBoolean isWinTheElection, AtomicInteger votesGrantedInNewConfig, AtomicInteger votesGrantedInOldConfig, URI destination) {
+    private void updateVotes(AtomicBoolean isWinTheElection, AtomicInteger votesGrantedInNewConfig, AtomicInteger votesGrantedInOldConfig, URI destination) {
         if(votersConfigStateMachine.getConfigNew().contains(destination)) {
             votesGrantedInNewConfig.incrementAndGet();
         }
@@ -329,12 +327,9 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         } else {
             win = votesGrantedInNewConfig.get() >= votersConfigStateMachine.getConfigNew().size() / 2 + 1;
         }
-        ;
         if(isWinTheElection.compareAndSet(false, win) && win) {
             convertToLeader();
-            return true;
         }
-        return false;
     }
 
 
@@ -363,13 +358,17 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                     uri, config.getCacheRequests(), config.getHeartbeatIntervalMs(), config.getRpcTimeoutMs(),
                     config.getReplicationParallelism(),config.getReplicationBatchSize(),
                     entryResultSerializer,threads,
-                    this, asyncExecutor, scheduledExecutor, voterConfigManager, this, this);
+                    this, asyncExecutor, scheduledExecutor, voterConfigManager, this, this,
+                    this.journalEntryParser);
             leader.start();
             this.leaderUri = this.uri;
             // Leader announcement
-            journal.append(new Entry(
-                    ReservedEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(currentTerm.get())),
-                    currentTerm.get(), RESERVED_PARTITION));
+            int term = currentTerm.get();
+            byte [] payload = ReservedEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(term));
+            JournalEntry journalEntry = journalEntryParser.createJournalEntry(payload);
+            journalEntry.setTerm(term);
+            journalEntry.setPartition(RESERVED_PARTITION);
+            journal.append(journalEntry);
         }
 
     }
@@ -382,9 +381,9 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
 
     private void maybeUpdateTermOnRecovery(Journal journal) {
         if(journal.minIndex() < journal.maxIndex()) {
-            RaftEntry lastEntry = journal.read(journal.maxIndex() - 1);
-            if(((EntryHeader) lastEntry.getHeader()).getTerm() > currentTerm.get()) {
-                currentTerm.set(((EntryHeader) lastEntry.getHeader()).getTerm());
+            JournalEntry lastEntry = journal.read(journal.maxIndex() - 1);
+            if(lastEntry.getTerm() > currentTerm.get()) {
+                currentTerm.set(lastEntry.getTerm());
                 logger.info("Set current term to {}, this is the term of the last entry in the journal.",
                         currentTerm.get());
             }

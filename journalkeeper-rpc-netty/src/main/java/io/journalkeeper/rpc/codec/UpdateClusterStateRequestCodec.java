@@ -30,6 +30,7 @@ public class UpdateClusterStateRequestCodec extends GenericPayloadCodec<UpdateCl
         CodecSupport.encodeBytes(buffer, request.getEntry());
         CodecSupport.encodeShort(buffer, (short )request.getPartition());
         CodecSupport.encodeShort(buffer, (short )request.getBatchSize());
+        CodecSupport.encodeBoolean(buffer, request.isIncludeHeader());
         CodecSupport.encodeByte(buffer, (byte) request.getResponseConfig().value());
     }
 
@@ -39,6 +40,7 @@ public class UpdateClusterStateRequestCodec extends GenericPayloadCodec<UpdateCl
                 CodecSupport.decodeBytes(buffer),
                 CodecSupport.decodeShort(buffer),
                 CodecSupport.decodeShort(buffer),
+                CodecSupport.decodeBoolean(buffer),
                 ResponseConfig.valueOf(CodecSupport.decodeByte(buffer)));
     }
 

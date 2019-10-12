@@ -1,12 +1,11 @@
 package io.journalkeeper.core.server;
 
 import io.journalkeeper.base.Serializer;
+import io.journalkeeper.core.api.JournalEntry;
+import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.VoterState;
-import io.journalkeeper.core.entry.Entry;
-import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
-import io.journalkeeper.core.entry.reserved.ReservedEntry;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.metric.JMetric;
@@ -48,9 +47,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
-import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
 import static io.journalkeeper.core.server.MetricNames.METRIC_APPEND_ENTRIES_RPC;
-import static io.journalkeeper.core.server.ThreadNames.*;
+import static io.journalkeeper.core.server.ThreadNames.FLUSH_JOURNAL_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.LEADER_APPEND_ENTRY_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.LEADER_CALLBACK_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.LEADER_REPLICATION_RESPONSES_HANDLER_THREAD;
@@ -92,7 +90,6 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     private final Threads threads;
     private final long heartbeatIntervalMs;
-    private final long cacheRequests;
     private final int replicationParallelism;
     private final int replicationBatchSize;
     private final long rpcTimeoutMs;
@@ -100,7 +97,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     /**
      * 存放节点上所有状态快照的稀疏数组，数组的索引（key）就是快照对应的日志位置的索引
      */
-    protected final Map<Long, State<E, ER, Q, QR>> immutableSnapshots;
+    private final Map<Long, State<E, ER, Q, QR>> immutableSnapshots;
 
     private final URI serverUri;
     private final int currentTerm;
@@ -126,7 +123,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     private final AtomicBoolean writeEnabled = new AtomicBoolean(true);
     private final Serializer<ER> entryResultSerializer;
-
+    private final JournalEntryParser journalEntryParser;
     Leader(Journal journal, State state, Map<Long, State<E, ER, Q, QR>> immutableSnapshots,
            int currentTerm,
            AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine,
@@ -136,7 +133,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
            Threads threads,
            ServerRpcProvider serverRpcProvider,
            ExecutorService asyncExecutor,
-           ScheduledExecutorService scheduledExecutor, VoterConfigManager voterConfigManager, MetricProvider metricProvider, CheckTermInterceptor checkTermInterceptor) {
+           ScheduledExecutorService scheduledExecutor, VoterConfigManager voterConfigManager, MetricProvider metricProvider, CheckTermInterceptor checkTermInterceptor, JournalEntryParser journalEntryParser) {
 
         super(true);
         this.pendingUpdateStateRequests = new LinkedBlockingQueue<>(cacheRequests);
@@ -155,14 +152,13 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.voterConfigManager = voterConfigManager;
         this.metricProvider = metricProvider;
         this.checkTermInterceptor = checkTermInterceptor;
+        this.journalEntryParser = journalEntryParser;
         this.replicationCallbacks = new RingBufferBelt(rpcTimeoutMs, cacheRequests);
         this.flushCallbacks = new RingBufferBelt(rpcTimeoutMs, cacheRequests);
         this.appendEntriesRpcMetricMap = new HashMap<>(2);
         this.entryResultSerializer = entryResultSerializer;
         this.journal = journal;
         this.heartbeatIntervalMs = heartbeatIntervalMs;
-        this.cacheRequests = cacheRequests;
-
 
     }
 
@@ -238,7 +234,16 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private void doAppendJournalEntry(UpdateClusterStateRequest request, CompletableFuture<UpdateClusterStateResponse> responseFuture) throws InterruptedException {
         appendJournalMetric.start();
 
-        long index = journal.append(new Entry(request.getEntry(), currentTerm, request.getPartition(), request.getBatchSize()));
+        JournalEntry entry ;
+
+        if(request.isIncludeHeader()) {
+            entry = journalEntryParser.parse(request.getEntry());
+        } else {
+            entry = journalEntryParser.createJournalEntry(request.getEntry());
+        }
+        entry.setPartition(request.getPartition());
+        entry.setBatchSize(request.getBatchSize());
+        long index = journal.append(entry);
         if (request.getResponseConfig() == ResponseConfig.PERSISTENCE) {
             flushCallbacks.put(new Callback(index, responseFuture));
         } else if (request.getResponseConfig() == ResponseConfig.REPLICATION) {
@@ -670,10 +675,6 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     void callback(long lastApplied, ER result)  {
         replicationCallbacks.callback(lastApplied, entryResultSerializer.serialize(result));
-    }
-
-    void wakeupCallbackThread() {
-        this.threads.wakeupThread(LEADER_CALLBACK_THREAD);
     }
 
     void onJournalFlushed() {

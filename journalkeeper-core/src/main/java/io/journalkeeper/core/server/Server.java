@@ -1,11 +1,9 @@
 package io.journalkeeper.core.server;
 
-import io.journalkeeper.base.FixedLengthSerializer;
 import io.journalkeeper.base.Serializer;
+import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
-import io.journalkeeper.core.entry.DefaultEntryHeaderSerializer;
-import io.journalkeeper.core.entry.EntryHeader;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
 import io.journalkeeper.rpc.client.AddPullWatchResponse;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
@@ -70,17 +68,12 @@ public class Server<E, ER, Q, QR>
     private final ExecutorService asyncExecutor;
     private final Properties properties;
     private final StateFactory<E, ER, Q, QR> stateFactory;
-    private final FixedLengthSerializer<EntryHeader> entryHeaderSerializer;
+    private final JournalEntryParser journalEntryParser;
     private ServerRpcAccessPoint serverRpcAccessPoint;
 
+
     public Server(Roll roll, StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
-                  Serializer<Q> querySerializer, Serializer<QR> resultSerializer,
-                  ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
-        this(roll, stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer,
-                new DefaultEntryHeaderSerializer(), scheduledExecutor, asyncExecutor, properties);
-    }
-    public Server(Roll roll, StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
-                  Serializer<Q> querySerializer, Serializer<QR> resultSerializer, FixedLengthSerializer<EntryHeader> entryHeaderSerializer,
+                  Serializer<Q> querySerializer, Serializer<QR> resultSerializer, JournalEntryParser journalEntryParser,
                   ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, Properties properties) {
 
         rpcAccessPointFactory = ServiceSupport.load(RpcAccessPointFactory.class);
@@ -93,19 +86,17 @@ public class Server<E, ER, Q, QR>
         this.stateFactory = stateFactory;
         this.properties = properties;
         this.serverRpcAccessPoint = rpcAccessPointFactory.createServerRpcAccessPoint(properties);
-        this.entryHeaderSerializer = entryHeaderSerializer;
+        this.journalEntryParser = journalEntryParser;
         this.server = createServer(roll);
     }
 
     private AbstractServer<E, ER, Q, QR> createServer(Roll roll) {
-        switch (roll) {
-            case VOTER:
-                return new Voter<>(stateFactory, entrySerializer,entryResultSerializer, querySerializer, resultSerializer,
-                        entryHeaderSerializer, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
-            default:
-                return new Observer<>(stateFactory, entrySerializer,entryResultSerializer, querySerializer, resultSerializer,
-                        entryHeaderSerializer, scheduledExecutor, asyncExecutor, serverRpcAccessPoint,  properties);
+        if (roll == Roll.VOTER) {
+            return new Voter<>(stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer,
+                    journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         }
+        return new Observer<>(stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer,
+                journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
     }
 
     @Override

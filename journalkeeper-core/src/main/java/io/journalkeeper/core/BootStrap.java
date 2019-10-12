@@ -13,17 +13,16 @@
  */
 package io.journalkeeper.core;
 
-import io.journalkeeper.base.FixedLengthSerializer;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.ClusterAccessPoint;
+import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.client.DefaultAdminClient;
 import io.journalkeeper.core.client.DefaultRaftClient;
-import io.journalkeeper.core.entry.DefaultEntryHeaderSerializer;
-import io.journalkeeper.core.entry.EntryHeader;
+import io.journalkeeper.core.entry.DefaultJournalEntryParser;
 import io.journalkeeper.core.server.Server;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
 import io.journalkeeper.rpc.RpcException;
@@ -59,10 +58,9 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
     private ClientServerRpcAccessPoint clientServerRpcAccessPoint = null;
     private final List<URI> servers;
     private final Server<E, ER, Q, QR> server;
-    private final FixedLengthSerializer<EntryHeader> entryHeaderSerializer;
     private DefaultRaftClient<E, ER, Q, QR> client = null;
     private DefaultAdminClient adminClient = null;
-
+    private final JournalEntryParser journalEntryParser;
     /**
      * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。
      * @param servers 远程Server 列表
@@ -88,8 +86,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
                      Serializer<Q> querySerializer,
                      Serializer<QR> queryResultSerializer,
                      Properties properties) {
-        this(roll, null, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer,
-                new DefaultEntryHeaderSerializer(), properties);
+        this(roll, null, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, new DefaultJournalEntryParser(), properties);
     }
 
     /**
@@ -102,10 +99,10 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
                      Serializer<ER> entryResultSerializer,
                      Serializer<Q> querySerializer,
                      Serializer<QR> queryResultSerializer,
-                     FixedLengthSerializer<EntryHeader> entryHeaderSerializer,
+                     JournalEntryParser journalEntryParser,
                      Properties properties) {
         this(roll, null, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer,
-                entryHeaderSerializer, properties);
+                journalEntryParser, properties);
     }
 
 
@@ -114,7 +111,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
                       Serializer<ER> entryResultSerializer,
                       Serializer<Q> querySerializer,
                       Serializer<QR> queryResultSerializer,
-                      FixedLengthSerializer<EntryHeader> entryHeaderSerializer,
+                      JournalEntryParser journalEntryParser,
                       Properties properties) {
         this.stateFactory = stateFactory;
         this.entrySerializer = entrySerializer;
@@ -124,7 +121,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
         this.properties = properties;
         this.roll = roll;
         this.rpcAccessPointFactory = ServiceSupport.load(RpcAccessPointFactory.class);
-        this.entryHeaderSerializer = entryHeaderSerializer;
+        this.journalEntryParser = journalEntryParser;
         this.server = createServer();
         this.servers = servers;
     }
@@ -138,7 +135,7 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
         }
 
         if(null != roll) {
-            return new Server<>(roll,stateFactory,entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, entryHeaderSerializer, scheduledExecutorService, asyncExecutorService, properties);
+            return new Server<>(roll,stateFactory,entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, journalEntryParser, scheduledExecutorService, asyncExecutorService, properties);
         }
         return null;
     }

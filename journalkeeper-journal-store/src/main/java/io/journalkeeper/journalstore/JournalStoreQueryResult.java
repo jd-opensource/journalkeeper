@@ -13,7 +13,7 @@
  */
 package io.journalkeeper.journalstore;
 
-import io.journalkeeper.core.api.RaftEntry;
+import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 
@@ -31,21 +31,21 @@ public class JournalStoreQueryResult{
     public static final int CODE_EXCEPTION = -3;
     private final int cmd;
     private final int code;
-    private final List<RaftEntry> entries;
+    private final List<JournalEntry> entries;
     private final Map<Integer, Boundary> boundaries;
 
-    public JournalStoreQueryResult(List<RaftEntry> entries, Map<Integer, Boundary> boundaries, int cmd) {
+    public JournalStoreQueryResult(List<JournalEntry> entries, Map<Integer, Boundary> boundaries, int cmd) {
         this(entries, boundaries, cmd, CODE_SUCCESS);
     }
 
-    public JournalStoreQueryResult(List<RaftEntry> entries, Map<Integer, Boundary> boundaries, int cmd, int code) {
+    public JournalStoreQueryResult(List<JournalEntry> entries, Map<Integer, Boundary> boundaries, int cmd, int code) {
         this.entries = entries;
         this.boundaries = boundaries;
         this.cmd = cmd;
         this.code = code;
     }
 
-    public JournalStoreQueryResult(List<RaftEntry> entries) {
+    public JournalStoreQueryResult(List<JournalEntry> entries) {
         this(entries, null, JournalStoreQuery.CMQ_QUERY_ENTRIES);
     }
 
@@ -92,7 +92,7 @@ public class JournalStoreQueryResult{
         return cmd;
     }
 
-    public List<RaftEntry> getEntries() {
+    public List<JournalEntry> getEntries() {
         return entries;
     }
 

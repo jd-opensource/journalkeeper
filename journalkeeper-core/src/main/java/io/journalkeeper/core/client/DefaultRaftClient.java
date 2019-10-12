@@ -63,13 +63,8 @@ public class DefaultRaftClient<E, ER, Q, QR> extends AbstractClient implements R
     }
 
     @Override
-    public CompletableFuture<ER> update(E entry) {
-        return update(entry, RaftJournal.DEFAULT_PARTITION, 1, ResponseConfig.REPLICATION);
-    }
-
-    @Override
-    public CompletableFuture<ER> update(E entry, int partition, int batchSize, ResponseConfig responseConfig) {
-        return update(entrySerializer.serialize(entry), partition, batchSize, responseConfig, entryResultSerializer);
+    public CompletableFuture<ER> update(E entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig) {
+        return update(entrySerializer.serialize(entry), partition, batchSize, includeHeader, responseConfig, entryResultSerializer);
     }
 
 

@@ -96,11 +96,15 @@ public abstract class AbstractClient implements Watchable, ClusterReadyAware, Se
                     return response;
                 });
     }
-    protected <R> CompletableFuture<R> update(byte[] entry, int partition, int batchSize, ResponseConfig responseConfig, Serializer<R> serializer) {
+    protected <R> CompletableFuture<R> update(byte[] entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig, Serializer<R> serializer) {
         return
-                invokeClientLeaderRpc(rpc -> rpc.updateClusterState(new UpdateClusterStateRequest(entry, partition, batchSize, responseConfig)))
+                invokeClientLeaderRpc(rpc -> rpc.updateClusterState(new UpdateClusterStateRequest(entry, partition, batchSize, includeHeader, responseConfig)))
                 .thenApply(UpdateClusterStateResponse::getResult)
                 .thenApply(serializer::parse);
+    }
+    protected <R> CompletableFuture<R> update(byte[] entry, int partition, int batchSize, ResponseConfig responseConfig, Serializer<R> serializer) {
+        return update(entry, partition, batchSize, false, responseConfig, serializer);
+
     }
 
     @Override

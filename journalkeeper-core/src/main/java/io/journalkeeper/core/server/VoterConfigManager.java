@@ -1,10 +1,9 @@
 package io.journalkeeper.core.server;
 
-import io.journalkeeper.base.FixedLengthSerializer;
-import io.journalkeeper.core.api.RaftEntry;
+import io.journalkeeper.core.api.JournalEntry;
+import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.VoterState;
-import io.journalkeeper.core.entry.EntryHeader;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ReservedEntry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
@@ -31,10 +30,11 @@ import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
  */
 class VoterConfigManager {
     private static final Logger logger = LoggerFactory.getLogger(VoterConfigManager.class);
-    private final FixedLengthSerializer<EntryHeader> entryHeaderSerializer;
 
-    VoterConfigManager(FixedLengthSerializer<EntryHeader> entryHeaderSerializer) {
-        this.entryHeaderSerializer = entryHeaderSerializer;
+    private final JournalEntryParser journalEntryParser;
+
+    VoterConfigManager(JournalEntryParser journalEntryParser) {
+        this.journalEntryParser = journalEntryParser;
     }
 
     boolean maybeUpdateLeaderConfig(UpdateClusterStateRequest request,
@@ -105,13 +105,13 @@ class VoterConfigManager {
         long index = journal.maxIndex(RESERVED_PARTITION);
         long startOffset = journal.readOffset(startIndex);
         while (--index >= journal.minIndex(RESERVED_PARTITION)) {
-            RaftEntry entry = journal.readByPartition(RESERVED_PARTITION, index);
-            if (entry.getHeader().getOffset() < startOffset) {
+            JournalEntry entry = journal.readByPartition(RESERVED_PARTITION, index);
+            if (entry.getOffset() < startOffset) {
                 break;
             }
-            int reservedEntryType = ReservedEntriesSerializeSupport.parseEntryType(entry.getEntry());
+            int reservedEntryType = ReservedEntriesSerializeSupport.parseEntryType(entry.getPayload().getBytes());
             if(reservedEntryType == ReservedEntry.TYPE_UPDATE_VOTERS_S2) {
-                UpdateVotersS2Entry updateVotersS2Entry = ReservedEntriesSerializeSupport.parse(entry.getEntry());
+                UpdateVotersS2Entry updateVotersS2Entry = ReservedEntriesSerializeSupport.parse(entry.getPayload().getBytes());
                 votersConfigStateMachine.rollbackToJointConsensus(updateVotersS2Entry.getConfigOld());
             } else if(reservedEntryType == ReservedEntry.TYPE_UPDATE_VOTERS_S1) {
                 votersConfigStateMachine.rollbackToOldConfig();
@@ -121,9 +121,9 @@ class VoterConfigManager {
     // 非Leader（Follower和Observer）复制日志到本地后，如果日志中包含配置变更，则立即变更配置
     void maybeUpdateNonLeaderConfig(List<byte []> entries, AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine) throws Exception {
         for (byte[] rawEntry : entries) {
-            EntryHeader entryHeader = entryHeaderSerializer.parse(rawEntry);
+            JournalEntry entryHeader = journalEntryParser.parseHeader(rawEntry);
             if(entryHeader.getPartition() == RESERVED_PARTITION) {
-                int headerLength = entryHeaderSerializer.serializedEntryLength();
+                int headerLength = journalEntryParser.headerLength();
                 int entryType = ReservedEntriesSerializeSupport.parseEntryType(rawEntry, headerLength, rawEntry.length - headerLength);
                 if (entryType == ReservedEntry.TYPE_UPDATE_VOTERS_S1) {
                     UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(rawEntry, headerLength, rawEntry.length - headerLength);
@@ -146,7 +146,7 @@ class VoterConfigManager {
                     byte[] s2Entry = ReservedEntriesSerializeSupport.serialize(new UpdateVotersS2Entry(votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew()));
                     try {
                         if (votersConfigStateMachine.isJointConsensus()) {
-                            clientServerRpc.updateClusterState(new UpdateClusterStateRequest(s2Entry, RESERVED_PARTITION, 1, ResponseConfig.ONE_WAY));
+                            clientServerRpc.updateClusterState(new UpdateClusterStateRequest(s2Entry, RESERVED_PARTITION, 1, false, ResponseConfig.ONE_WAY));
                         } else {
                             throw new IllegalStateException();
                         }

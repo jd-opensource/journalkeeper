@@ -14,8 +14,8 @@
 package io.journalkeeper.journalstore;
 
 import io.journalkeeper.base.Serializer;
-import io.journalkeeper.core.api.RaftEntry;
-import io.journalkeeper.core.api.RaftEntryHeader;
+import io.journalkeeper.core.api.JournalEntry;
+import io.journalkeeper.core.api.JournalEntryParser;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -32,18 +32,8 @@ import java.util.Map;
  * Code: 1 Byte
  * Entries: Variable
  *  Entries size: 2 Bytes
- *  RaftEntry: Variable
- *      Header
- *      -----------
- *      Payload length: 4 Bytes
- *      Partition: 2 Bytes
- *      BatchSize: 2 Bytes
- *      Offset: 2 Bytes
- *
- *      Data
- *      -----------
- *      Entry payload: Variable Bytes (Header.PayloadLength)
- *  RaftEntry: Variable
+ *  JournalEntry: Variable
+ *  JournalEntry: Variable
  *  ...
  *
  * Boundaries
@@ -58,8 +48,16 @@ import java.util.Map;
  *
  */
 public class JournalStoreQueryResultSerializer implements Serializer<JournalStoreQueryResult> {
-    private static final int FIXED_LENGTH = Byte.BYTES + Byte.BYTES + Short.BYTES + Short.BYTES;
-    private static final int ENTRY_HEADER_LENGTH = Integer.BYTES + Short.BYTES  + Short.BYTES + Short.BYTES;
+    private static final int FIXED_LENGTH =
+            Byte.BYTES + /* Cmd */
+                    Byte.BYTES + /* Code */
+                    Short.BYTES + /* Entries size */
+                    Short.BYTES; /* Boundaries size */
+    private final JournalEntryParser journalEntryParser;
+
+    public JournalStoreQueryResultSerializer(JournalEntryParser journalEntryParser) {
+        this.journalEntryParser = journalEntryParser;
+    }
 
     private int sizeOf(JournalStoreQueryResult journalStoreQueryResult) {
         return
@@ -67,8 +65,7 @@ public class JournalStoreQueryResultSerializer implements Serializer<JournalStor
                 (journalStoreQueryResult.getBoundaries() == null ? 0 :
                         journalStoreQueryResult.getBoundaries().size() * (Short.BYTES + Long.BYTES + Long.BYTES)) +
                 (journalStoreQueryResult.getEntries() == null ? 0 :
-                        journalStoreQueryResult.getEntries().stream().mapToInt(entry -> entry.getHeader().getPayloadLength()
-                                + ENTRY_HEADER_LENGTH)
+                        journalStoreQueryResult.getEntries().stream().mapToInt(JournalEntry::getLength)
                         .sum()) + FIXED_LENGTH;
 
     }
@@ -81,18 +78,12 @@ public class JournalStoreQueryResultSerializer implements Serializer<JournalStor
         buffer.put((byte) journalStoreQueryResult.getCmd());
         buffer.put((byte) journalStoreQueryResult.getCode());
 
-        List<RaftEntry> entries = journalStoreQueryResult.getEntries();
+        List<JournalEntry> entries = journalStoreQueryResult.getEntries();
         if(entries == null) {
             entries = Collections.emptyList();
         }
         buffer.putShort((short) entries.size());
-        entries.forEach(entry -> {
-            buffer.putInt(entry.getHeader().getPayloadLength());
-            buffer.putShort((short )entry.getHeader().getPartition());
-            buffer.putShort((short )entry.getHeader().getBatchSize());
-            buffer.putShort((short )entry.getHeader().getOffset());
-            buffer.put(entry.getEntry());
-        });
+        entries.forEach(entry -> buffer.put(entry.getSerializedBytes()));
 
         Map<Integer, JournalStoreQueryResult.Boundary> boundaryMap = journalStoreQueryResult.getBoundaries();
         if(boundaryMap == null) {
@@ -114,18 +105,17 @@ public class JournalStoreQueryResultSerializer implements Serializer<JournalStor
         int cmd = buffer.get();
         int code = buffer.get();
         int entriesSize = buffer.getShort();
-        List<RaftEntry> entries = new ArrayList<>(entriesSize);
+        List<JournalEntry> entries = new ArrayList<>(entriesSize);
+        byte [] headerBytes = new byte[journalEntryParser.headerLength()];
         for (int i = 0; i < entriesSize; i++) {
-            RaftEntry entry = new RaftEntry();
-            RaftEntryHeader header = new RaftEntryHeader();
-            entry.setHeader(header);
-            header.setPayloadLength(buffer.getInt());
-            header.setPartition(buffer.getShort());
-            header.setBatchSize(buffer.getShort());
-            header.setOffset(buffer.getShort());
-            byte[] entryBytes = new byte[header.getPayloadLength()];
-            buffer.get(entryBytes);
-            entry.setEntry(entryBytes);
+            buffer.mark();
+            buffer.get(headerBytes);
+            buffer.reset();
+            JournalEntry header = journalEntryParser.parseHeader(headerBytes);
+            int length = header.getLength();
+            byte [] raw = new byte[length];
+            buffer.get(raw);
+            JournalEntry entry = journalEntryParser.parse(raw);
             entries.add(entry);
         }
 

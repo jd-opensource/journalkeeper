@@ -26,17 +26,19 @@ public class UpdateClusterStateRequest {
     private final byte [] entry;
     private final int partition;
     private final int batchSize;
+    private final boolean includeHeader;
     private final ResponseConfig responseConfig;
 
     public UpdateClusterStateRequest(byte [] entry, int partition, int batchSize) {
-        this(entry, partition, batchSize, ResponseConfig.REPLICATION);
+        this(entry, partition, batchSize, false, ResponseConfig.REPLICATION);
     }
 
-    public UpdateClusterStateRequest(byte[] entry, int partition, int batchSize, ResponseConfig responseConfig) {
+    public UpdateClusterStateRequest(byte[] entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig) {
         this.batchSize = batchSize;
         this.responseConfig = responseConfig;
         this.entry = entry;
         this.partition = partition;
+        this.includeHeader = includeHeader;
     }
 
     /**
@@ -63,5 +65,9 @@ public class UpdateClusterStateRequest {
 
     public int getBatchSize() {
         return batchSize;
+    }
+
+    public boolean isIncludeHeader() {
+        return includeHeader;
     }
 }

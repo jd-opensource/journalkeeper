@@ -13,16 +13,14 @@
  */
 package io.journalkeeper.core.server;
 
-import io.journalkeeper.base.FixedLengthSerializer;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.ClusterConfiguration;
-import io.journalkeeper.core.api.RaftEntry;
+import io.journalkeeper.core.api.JournalEntry;
+import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
-import io.journalkeeper.core.entry.Entry;
-import io.journalkeeper.core.entry.EntryHeader;
 import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
 import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
@@ -247,14 +245,15 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     private final Properties properties;
     private final StateFactory<E, ER, Q, QR> stateFactory;
-    protected final FixedLengthSerializer<EntryHeader> entryHeaderSerializer;
+    protected final JournalEntryParser journalEntryParser;
     protected final VoterConfigManager voterConfigManager;
 
     protected AbstractServer(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer,
-                          Serializer<ER> entryResultSerializer, Serializer<Q> querySerializer,
-                          Serializer<QR> resultSerializer, FixedLengthSerializer<EntryHeader> entryHeaderSerializer,
-                             ScheduledExecutorService scheduledExecutor,
-                          ExecutorService asyncExecutor, ServerRpcAccessPoint serverRpcAccessPoint, Properties properties){
+                             Serializer<ER> entryResultSerializer, Serializer<Q> querySerializer,
+                             Serializer<QR> resultSerializer,
+                             JournalEntryParser journalEntryParser, ScheduledExecutorService scheduledExecutor,
+                             ExecutorService asyncExecutor, ServerRpcAccessPoint serverRpcAccessPoint, Properties properties){
+        this.journalEntryParser = journalEntryParser;
         this.scheduledExecutor = scheduledExecutor;
         this.asyncExecutor = asyncExecutor;
         this.config = toConfig(properties);
@@ -268,8 +267,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         this.serverRpcAccessPoint = serverRpcAccessPoint;
         this.properties = properties;
         this.stateFactory = stateFactory;
-        this.entryHeaderSerializer = entryHeaderSerializer;
-        this.voterConfigManager = new VoterConfigManager(entryHeaderSerializer);
+        this.voterConfigManager = new VoterConfigManager(journalEntryParser);
         // init metrics
         if(config.isEnableMetric()) {
             this.metricFactory = ServiceSupport.load(JMetricFactory.class);
@@ -291,7 +289,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         bufferPool = ServiceSupport.load(BufferPool.class);
         journal = new Journal(
                 persistenceFactory,
-                bufferPool, entryHeaderSerializer);
+                bufferPool, journalEntryParser);
 
     }
 
@@ -410,22 +408,22 @@ public abstract class AbstractServer<E, ER, Q, QR>
             applyEntriesMetric.start();
 
             takeASnapShotIfNeed();
-            Entry storageEntry = journal.read(state.lastApplied());
+            JournalEntry journalEntry = journal.read(state.lastApplied());
             Map<String, String> customizedEventData = new HashMap<>();
             ER result = null;
-            if(storageEntry.getHeader().getPartition() != RESERVED_PARTITION) {
-                E entry = entrySerializer.parse(storageEntry.getEntry());
+            if(journalEntry.getPartition() != RESERVED_PARTITION) {
+                E entry = entrySerializer.parse(journalEntry.getPayload().getBytes());
                 long stamp = stateLock.writeLock();
                 try {
                     execStateMachineMetric.start();
-                    result = state.execute(entry, storageEntry.getHeader().getPartition(),
-                            state.lastApplied(), storageEntry.getHeader().getBatchSize(), customizedEventData);
-                    execStateMachineMetric.end(storageEntry.getEntry().length);
+                    result = state.execute(entry, journalEntry.getPartition(),
+                            state.lastApplied(), journalEntry.getBatchSize(), customizedEventData);
+                    execStateMachineMetric.end(journalEntry.getLength());
                 } finally {
                     stateLock.unlockWrite(stamp);
                 }
             } else {
-                applyReservedEntry(storageEntry.getEntry());
+                applyReservedEntry(journalEntry.getPayload().getBytes());
             }
 
 
@@ -436,7 +434,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
             customizedEventData.forEach(parameters::put);
             parameters.put("lastApplied", String.valueOf(state.lastApplied()));
             fireEvent(EventType.ON_STATE_CHANGE, parameters);
-            applyEntriesMetric.end(storageEntry.getEntry().length);
+            applyEntriesMetric.end(journalEntry.getLength());
         }
     }
 
@@ -613,16 +611,16 @@ public abstract class AbstractServer<E, ER, Q, QR>
                         throw new IndexUnderflowException();
                     }
 
-                    List<RaftEntry> toBeExecutedEntries = new ArrayList<>(journal.batchRead(nearestSnapshot.getKey(), (int) (request.getIndex() - nearestSnapshot.getKey())));
+                    List<JournalEntry> toBeExecutedEntries = new ArrayList<>(journal.batchRead(nearestSnapshot.getKey(), (int) (request.getIndex() - nearestSnapshot.getKey())));
                     Path tempSnapshotPath = snapshotsPath().resolve(String.valueOf(request.getIndex()));
                     if(Files.exists(tempSnapshotPath)) {
                         throw new ConcurrentModificationException(String.format("A snapshot of position %d is creating, please retry later.", request.getIndex()));
                     }
                     requestState = state.takeASnapshot(tempSnapshotPath, journal);
                     for (int i = 0; i < toBeExecutedEntries.size(); i++) {
-                        RaftEntry entry = toBeExecutedEntries.get(i);
-                        requestState.execute(entrySerializer.parse(entry.getEntry()), entry.getHeader().getPartition(),
-                                nearestSnapshot.getKey() + i, entry.getHeader().getBatchSize(), new HashMap<>());
+                        JournalEntry entry = toBeExecutedEntries.get(i);
+                        requestState.execute(entrySerializer.parse(entry.getPayload().getBytes()), entry.getPartition(),
+                                nearestSnapshot.getKey() + i, entry.getBatchSize(), new HashMap<>());
                     }
                     if(requestState instanceof Flushable) {
                         ((Flushable ) requestState).flush();
@@ -842,17 +840,17 @@ public abstract class AbstractServer<E, ER, Q, QR>
         for(long index = journal.maxIndex(RESERVED_PARTITION) - 1;
             index >= journal.minIndex(RESERVED_PARTITION);
             index --) {
-            RaftEntry entry = journal.readByPartition(RESERVED_PARTITION, index);
-            int type = ReservedEntriesSerializeSupport.parseEntryType(entry.getEntry());
+            JournalEntry entry = journal.readByPartition(RESERVED_PARTITION, index);
+            int type = ReservedEntriesSerializeSupport.parseEntryType(entry.getPayload().getBytes());
 
             if(type == ReservedEntry.TYPE_UPDATE_VOTERS_S1) {
-                UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(entry.getEntry());
+                UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(entry.getPayload().getBytes());
                 votersConfigStateMachine = new VoterConfigurationStateMachine(
                         updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew());
                 isRecoveredFromJournal = true;
                 break;
             } else if(type == ReservedEntry.TYPE_UPDATE_VOTERS_S2) {
-                UpdateVotersS2Entry updateVotersS2Entry = ReservedEntriesSerializeSupport.parse(entry.getEntry());
+                UpdateVotersS2Entry updateVotersS2Entry = ReservedEntriesSerializeSupport.parse(entry.getPayload().getBytes());
                 votersConfigStateMachine = new VoterConfigurationStateMachine(updateVotersS2Entry.getConfigNew());
                 isRecoveredFromJournal = true;
                 break;

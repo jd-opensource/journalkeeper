@@ -14,9 +14,9 @@
 package io.journalkeeper.journalstore;
 
 import io.journalkeeper.core.api.AdminClient;
+import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.PartitionedJournalStore;
 import io.journalkeeper.core.api.RaftClient;
-import io.journalkeeper.core.api.RaftEntry;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
@@ -54,7 +54,7 @@ public class JournalStoreClient implements PartitionedJournalStore {
     }
 
     @Override
-    public CompletableFuture<List<RaftEntry>> get(int partition, long index, int size) {
+    public CompletableFuture<List<JournalEntry>> get(int partition, long index, int size) {
         return raftClient.query(JournalStoreQuery.createQueryEntries(partition, index, size))
                 .thenApply(result -> {
                     if(result.getCode() == JournalStoreQueryResult.CODE_SUCCESS) {

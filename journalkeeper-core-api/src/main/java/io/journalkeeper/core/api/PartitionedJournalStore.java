@@ -57,7 +57,7 @@ public interface PartitionedJournalStore extends Watchable {
      * @throws IndexOverflowException 参数index必须小于当前maxIndex。
      * @throws IndexUnderflowException 参数index不能小于当前minIndex。
      */
-    CompletableFuture<List<RaftEntry>> get(int partition, long index, int size);
+    CompletableFuture<List<JournalEntry>> get(int partition, long index, int size);
 
     /**
      * 查询每个分区当前最小已提交日志索引序号。
