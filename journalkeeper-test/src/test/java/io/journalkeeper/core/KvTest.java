@@ -687,8 +687,8 @@ public class KvTest {
             properties.setProperty("working_dir", workingDir.toString());
             properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
-            properties.setProperty("enable_metric", "true");
-            properties.setProperty("print_metric_interval_sec", "3");
+//            properties.setProperty("enable_metric", "true");
+//            properties.setProperty("print_metric_interval_sec", "3");
             propertiesList.add(properties);
         }
         return createServers(serverURIs, propertiesList, roll,waitForLeader);

@@ -243,6 +243,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         }
         entry.setPartition(request.getPartition());
         entry.setBatchSize(request.getBatchSize());
+        entry.setTerm(currentTerm);
         long index = journal.append(entry);
         if (request.getResponseConfig() == ResponseConfig.PERSISTENCE) {
             flushCallbacks.put(new Callback(index, responseFuture));
