@@ -11,34 +11,49 @@ import java.util.Arrays;
  * @author LiYue
  * Date: 2019/10/12
  */
-class DefaultJournalEntry implements JournalEntry {
-    private final static short MAGIC_CODE = ByteBuffer.wrap(new byte[] {(byte) 0XF4, (byte) 0X3C}).getShort();
-    private final static short MAGIC_CODE_NOT_SET = 0;
+public class DefaultJournalEntry implements JournalEntry {
+    public final static short MAGIC_CODE = ByteBuffer.wrap(new byte[] {(byte) 0XF4, (byte) 0X3C}).getShort();
 
     // 包含Header和Payload
-    protected final byte [] serializedBytes;
+    private final byte [] serializedBytes;
     private final ByteBuffer serializedBuffer;
 
-    DefaultJournalEntry(byte [] serializedBytes) {
+    DefaultJournalEntry(byte [] serializedBytes, boolean checkMagic, boolean checkLength) {
         this.serializedBytes = serializedBytes;
         this.serializedBuffer = ByteBuffer.wrap(serializedBytes);
-        checkOrSetMagic();
+        if(checkMagic) {
+            checkMagic();
+        }
+        if(checkLength) {
+            checkLength(serializedBytes);
+        }
+    }
+
+    private void checkLength(byte[] serializedBytes) {
+        if (serializedBytes.length != getLength()) {
+            throw new ParseJournalException(
+                    String.format("Declared length %d not equals actual length %d！",
+                            getLength(), serializedBytes.length));
+        }
     }
 
     private ByteBuffer serializedBuffer() {
-        return serializedBuffer.slice();
+        return serializedBuffer;
     }
     private int offset = 0;
-    protected void setLength(int length) {
+    private void setLength(int length) {
         JournalEntryParseSupport.setInt(serializedBuffer(), JournalEntryParseSupport.LENGTH, length);
     }
-    private void checkOrSetMagic() {
+    private void checkMagic() {
         short magic = JournalEntryParseSupport.getShort(serializedBuffer(), JournalEntryParseSupport.MAGIC);
-        if(magic == MAGIC_CODE_NOT_SET) {
-            JournalEntryParseSupport.setShort(serializedBuffer(), JournalEntryParseSupport.MAGIC, magicCode());
-        } else if (magicCode() != magic) {
+        if (magicCode() != magic) {
             throw new ParseJournalException("Check magic failed！");
         }
+//        if(magic == MAGIC_CODE_NOT_SET) {
+//            JournalEntryParseSupport.setShort(serializedBuffer(), JournalEntryParseSupport.MAGIC, magicCode());
+//        } else if (magicCode() != magic) {
+//            throw new ParseJournalException("Check magic failed！");
+//        }
     }
 
     @Override
@@ -88,10 +103,6 @@ class DefaultJournalEntry implements JournalEntry {
         return serializedBytes;
     }
 
-    public static int minHeaderLength() {
-        return JournalEntryParseSupport.getHeaderLength();
-    }
-
     @Override
     public int getLength() {
         return JournalEntryParseSupport.getInt(serializedBuffer(), JournalEntryParseSupport.LENGTH);
@@ -110,5 +121,5 @@ class DefaultJournalEntry implements JournalEntry {
         return Arrays.hashCode(serializedBytes);
     }
 
-    protected short magicCode() {return MAGIC_CODE;}
+    private short magicCode() {return MAGIC_CODE;}
 }

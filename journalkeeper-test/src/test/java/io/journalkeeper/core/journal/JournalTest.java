@@ -15,7 +15,9 @@ package io.journalkeeper.core.journal;
 
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
+import io.journalkeeper.core.entry.DefaultJournalEntry;
 import io.journalkeeper.core.entry.DefaultJournalEntryParser;
+import io.journalkeeper.core.entry.JournalEntryParseSupport;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.metric.JMetricFactory;
 import io.journalkeeper.metric.JMetricSupport;
@@ -27,7 +29,6 @@ import io.journalkeeper.utils.test.ByteUtils;
 import io.journalkeeper.utils.test.TestPathUtils;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
-import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -39,8 +40,8 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -588,7 +589,7 @@ public class JournalTest {
         // 测试多余数据是否能自动删除
 
         File lastFile = findLastFile(path.resolve("journal"));
-        FileUtils.write(lastFile, "Extra bytes", StandardCharsets.UTF_8, true);
+//        FileUtils.write(lastFile, "Extra bytes", StandardCharsets.UTF_8, true);
 
         journal = createJournal(properties);
         Assert.assertEquals(size, journal.maxIndex());

@@ -26,7 +26,7 @@ import java.util.List;
  * @author LiYue
  * Date: 2019-01-15
  */
-class JournalEntryParseSupport extends EntryParser {
+public class JournalEntryParseSupport extends EntryParser {
 
     private final static int VARIABLE_LENGTH = -1;
     private final static int FIXED_LENGTH_1 = 1;
@@ -41,40 +41,16 @@ class JournalEntryParseSupport extends EntryParser {
     private static int firstVarIndex = -1;
     private final static List<Attribute> attributeList= new LinkedList<>();
 
-    final static int LENGTH = createAttribute("LENGTH",FIXED_LENGTH_4);
+    public final static int LENGTH = createAttribute("LENGTH",FIXED_LENGTH_4);
     final static int PARTITION = createAttribute("PARTITION",FIXED_LENGTH_2);
     final static int TERM = createAttribute("TERM",FIXED_LENGTH_4);
-    final static int MAGIC = createAttribute("MAGIC",FIXED_LENGTH_2);
+    public final static int MAGIC = createAttribute("MAGIC",FIXED_LENGTH_2);
     final static int BATCH_SIZE = createAttribute("BATCH_SIZE",FIXED_LENGTH_2);
     final static int ENTRY = createAttribute("ENTRY",VARIABLE_LENGTH);
 
 
 
     public static int getHeaderLength(){return firstVarOffset;}
-
-    private static ByteBuffer getByteBuffer(ByteBuffer messageBuffer, int relativeOffset) {
-        int offset = firstVarOffset;
-        // 计算偏移量
-
-        int length;
-        for(int index = firstVarIndex; index < firstVarIndex - relativeOffset; index++) {
-            offset += getInt(messageBuffer, LENGTH) - getHeaderLength();
-        }
-
-        length = getInt(messageBuffer, LENGTH) - getHeaderLength();
-        if(length < 0) throw new ParseJournalException("Invalid offset: " + relativeOffset);
-
-        ByteBuffer byteBuffer = messageBuffer.slice();
-        byteBuffer.position(offset);
-        byteBuffer.limit(offset + length);
-        return byteBuffer;
-
-    }
-
-    public static byte [] getEntry(byte [] entryWithHeader) {
-        return Arrays.copyOfRange(entryWithHeader, getHeaderLength(), entryWithHeader.length);
-    }
-
 
     /**
      * 定长消息直接返回offset
