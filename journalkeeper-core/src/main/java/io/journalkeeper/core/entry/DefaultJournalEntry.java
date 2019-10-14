@@ -49,11 +49,6 @@ public class DefaultJournalEntry implements JournalEntry {
         if (magicCode() != magic) {
             throw new ParseJournalException("Check magic failed！");
         }
-//        if(magic == MAGIC_CODE_NOT_SET) {
-//            JournalEntryParseSupport.setShort(serializedBuffer(), JournalEntryParseSupport.MAGIC, magicCode());
-//        } else if (magicCode() != magic) {
-//            throw new ParseJournalException("Check magic failed！");
-//        }
     }
 
     @Override

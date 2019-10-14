@@ -41,16 +41,12 @@ public class JournalStoreClient implements PartitionedJournalStore {
         this.adminClient = adminClient;
     }
 
-    @Override
-    public CompletableFuture<Long> append(int partition, int batchSize, byte [] entries) {
-        return append(partition, batchSize, entries, ResponseConfig.REPLICATION);
-    }
 
     @Override
     public CompletableFuture<Long> append(int partition, int batchSize,
-                                          byte [] entries, ResponseConfig responseConfig) {
+                                          byte [] entries, boolean includeHeader, ResponseConfig responseConfig) {
         return raftClient.update(entries, partition,
-                batchSize, responseConfig);
+                batchSize, includeHeader, responseConfig);
     }
 
     @Override
