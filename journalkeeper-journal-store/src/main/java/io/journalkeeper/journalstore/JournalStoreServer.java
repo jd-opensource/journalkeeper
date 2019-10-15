@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 
 /**
  * @author LiYue
@@ -54,6 +55,10 @@ public class JournalStoreServer implements StateServer {
 
     public void init(URI uri, List<URI> voters) throws IOException {
         bootStrap.getServer().init(uri, voters);
+    }
+
+    public void init(URI uri, List<URI> voters, Set<Integer> partitions) throws IOException {
+        bootStrap.getServer().init(uri, voters, partitions);
     }
 
     public void recover() throws IOException {

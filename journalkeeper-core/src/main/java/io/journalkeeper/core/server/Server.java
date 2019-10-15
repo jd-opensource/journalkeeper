@@ -43,6 +43,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
@@ -105,8 +106,8 @@ public class Server<E, ER, Q, QR>
     }
 
     @Override
-    public void init(URI uri, List<URI> voters) throws IOException {
-        server.init(uri, voters);
+    public void init(URI uri, List<URI> voters, Set<Integer> partitions) throws IOException {
+        server.init(uri, voters, partitions);
     }
 
     @Override

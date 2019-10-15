@@ -32,17 +32,23 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import static io.journalkeeper.core.api.RaftJournal.DEFAULT_PARTITION;
 
 /**
  * @author LiYue
@@ -80,6 +86,30 @@ public class JournalStoreTest {
         JournalStoreClient client = servers.get(0).createClient();
         Map<Integer, Long> maxIndices = client.maxIndices().get();
         Assert.assertEquals(0L, (long) maxIndices.get(0));
+    }
+
+    @Test
+    public void scalePartitionTest() throws IOException, ExecutionException, InterruptedException {
+        List<JournalStoreServer> servers = createServers(1, base);
+        JournalStoreClient client = servers.get(0).createClient();
+        Set<Integer> readPartitions = Arrays.stream(client.listPartitions().get()).boxed().collect(Collectors.toSet());
+        Assert.assertEquals(Collections.singleton(DEFAULT_PARTITION), readPartitions);
+        stopServers(servers);
+
+
+        Set<Integer> partitions = Stream.of(2, 3, 4, 99, 8).collect(Collectors.toSet());
+        servers = createServers(1, base, partitions);
+
+        client = servers.get(0).createClient();
+        readPartitions = Arrays.stream(client.listPartitions().get()).boxed().collect(Collectors.toSet());
+        Assert.assertEquals(partitions, readPartitions);
+        int [] intPartitions = new int [] {2, 3, 7, 8};
+        AdminClient adminClient = servers.get(0).getAdminClient();
+        adminClient.scalePartitions(intPartitions).get();
+        int [] readIntPartitions = client.listPartitions().get();
+        Arrays.sort(readIntPartitions);
+        Assert.assertArrayEquals(intPartitions, readIntPartitions);
+        stopServers(servers);
     }
 
     /**
@@ -210,8 +240,11 @@ public class JournalStoreTest {
             }
         }
     }
-
     private List<JournalStoreServer> createServers(int nodes, Path path) throws IOException {
+        return createServers(nodes, path, Collections.singleton(0));
+    }
+
+    private List<JournalStoreServer> createServers(int nodes, Path path, Set<Integer> partitions) throws IOException {
         logger.info("Create {} nodes servers", nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
         List<Properties> propertiesList = new ArrayList<>(nodes);
@@ -230,15 +263,15 @@ public class JournalStoreTest {
 //            properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
             propertiesList.add(properties);
         }
-        return createServers(serverURIs, propertiesList);
+        return createServers(serverURIs, propertiesList, partitions);
     }
 
-    private List<JournalStoreServer> createServers(List<URI> serverURIs, List<Properties> propertiesList) throws IOException {
+    private List<JournalStoreServer> createServers(List<URI> serverURIs, List<Properties> propertiesList, Set<Integer> partitions) throws IOException {
         List<JournalStoreServer> journalStoreServers = new ArrayList<>(serverURIs.size());
         for (int i = 0; i < serverURIs.size(); i++) {
             JournalStoreServer journalStoreServer  = new JournalStoreServer(propertiesList.get(i));
             journalStoreServers.add(journalStoreServer);
-            journalStoreServer.init(serverURIs.get(i), serverURIs);
+            journalStoreServer.init(serverURIs.get(i), serverURIs, partitions);
             journalStoreServer.recover();
             journalStoreServer.start();
         }

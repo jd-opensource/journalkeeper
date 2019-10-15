@@ -28,6 +28,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
+
 /**
  * @author LiYue
  * Date: 2019-05-09
@@ -95,7 +97,7 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
 
     private CompletableFuture<JournalStoreQueryResult> queryPartitions() {
         Set<Integer> partitions = journal.getPartitions();
-        removePartitionsNotExistsAsync(partitions);
+        partitions.remove(RESERVED_PARTITION);
         return CompletableFuture.supplyAsync(() ->
             new JournalStoreQueryResult(
                     partitions.stream()
@@ -105,13 +107,7 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
                     ))));
     }
 
-    private void removePartitionsNotExistsAsync(Set<Integer> partitions) {
-        CompletableFuture.runAsync(() -> {
-            Set<Integer> tobeRemoved = appliedIndices.keySet().stream()
-                    .filter(k -> !partitions.contains(k)).collect(Collectors.toSet());
-            tobeRemoved.forEach(appliedIndices::remove);
-        });
-    }
+
 
     private CompletableFuture<JournalStoreQueryResult> queryEntries(int partition, long index, int size) {
         return CompletableFuture

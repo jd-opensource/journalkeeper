@@ -35,6 +35,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -630,8 +631,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         recoverPartitions(partitionPath, indexProperties);
 
         flush();
-        logger.info("Journal recovered, minIndex: {}, maxIndex: {}, path: {}.",
-                minIndex(), maxIndex(), journalPath.toAbsolutePath().toString());
+        logger.info("Journal recovered, minIndex: {}, maxIndex: {}, partitions: {}, path: {}.",
+                minIndex(), maxIndex(), partitionMap.keySet(), journalPath.toAbsolutePath().toString());
     }
 
     private void checkAndSetCommitIndex(long commitIndex) {
@@ -903,6 +904,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                 for (Integer partition : toBeRemoved) {
                     removePartition(partition);
                 }
+                logger.info("Journal repartitioned, partitions: {}, path: {}.",
+                        partitionMap.keySet(), basePath.toAbsolutePath().toString());
 
             }
         } catch (IOException e) {
@@ -912,7 +915,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     @Override
     public Set<Integer> getPartitions() {
-        return partitionMap.keySet();
+        return new HashSet<>(partitionMap.keySet());
     }
 
     private void addPartition(int partition) throws IOException {
@@ -929,6 +932,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         synchronized (partitionMap) {
             JournalPersistence removedPersistence;
             if ((removedPersistence = partitionMap.remove(partition)) != null) {
+                logger.info("Partition removed: {}, journal: {}.", partition, basePath.toAbsolutePath().toString());
                 removedPersistence.delete();
             }
         }

@@ -17,8 +17,10 @@ import io.journalkeeper.utils.state.StateServer;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 
 /**
  * Raft节点
@@ -30,7 +32,10 @@ public interface RaftServer extends StateServer {
 
     Roll roll();
 
-    void init(URI uri, List<URI> voters) throws IOException;
+    default void init(URI uri, List<URI> voters) throws IOException {
+        init(uri, voters, Collections.singleton(0));
+    }
+    void init(URI uri, List<URI> voters, Set<Integer> partitions) throws IOException;
     void recover() throws IOException;
     URI serverUri();
     enum Roll {VOTER, OBSERVER}

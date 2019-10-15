@@ -104,6 +104,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.StampedLock;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -325,13 +326,16 @@ public abstract class AbstractServer<E, ER, Q, QR>
     }
 
     @Override
-    public synchronized void init(URI uri, List<URI> voters) throws IOException {
+    public synchronized void init(URI uri, List<URI> voters, Set<Integer> partitions) throws IOException {
 
         this.uri = uri;
         votersConfigStateMachine = new VoterConfigurationStateMachine(voters);
         createMissingDirectories();
         metadataPersistence.recover(metadataPath());
         lastSavedServerMetadata = createServerMetadata();
+        Set<Integer> partitionsWithReserved = new HashSet<>(partitions);
+        partitionsWithReserved.add(RESERVED_PARTITION);
+        lastSavedServerMetadata.setPartitions(partitionsWithReserved);
         metadataPersistence.save(lastSavedServerMetadata);
 
     }
@@ -473,7 +477,11 @@ public abstract class AbstractServer<E, ER, Q, QR>
     private void scalePartitions(int[] partitions) {
         try {
             scalePartitionLock.lock();
-            journal.rePartition(Arrays.stream(partitions).boxed().collect(Collectors.toSet()));
+
+            journal.rePartition(
+                    Stream.concat(IntStream.of(RESERVED_PARTITION).boxed(),
+                            Arrays.stream(partitions).boxed())
+                            .collect(Collectors.toSet()));
         } finally {
             scalePartitionLock.unlock();
         }

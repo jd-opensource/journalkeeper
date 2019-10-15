@@ -195,7 +195,7 @@ public abstract class AbstractClient implements Watchable, ClusterReadyAware, Se
         public boolean checkException(Throwable exception) {
             try {
 
-                logger.warn("Rpc exception: {}", exception.getMessage());
+                logger.debug("Rpc exception: {}", exception.getMessage());
                 throw exception;
             } catch (RequestTimeoutException | ServerBusyException | TransportException ne) {
                 return true;
