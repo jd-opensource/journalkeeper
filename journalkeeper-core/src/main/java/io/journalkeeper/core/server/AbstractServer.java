@@ -880,7 +880,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     }
 
     private Path journalPath() {
-        return workingDir().resolve("journal");
+        return workingDir();
     }
     private void recoverSnapshots() throws IOException {
         if(!Files.isDirectory(snapshotsPath())) {

@@ -54,9 +54,8 @@ import java.util.stream.Stream;
  */
 public class Journal implements RaftJournal, Flushable, Closeable {
     private static final Logger logger = LoggerFactory.getLogger(Journal.class);
-    private static final String JOURNAL_PATH = "journal";
-    private static final String INDEX_PATH = "index";
-    private static final String PARTITIONS_PATH = "partitions";
+    private static final String PARTITION_PATH = "index";
+    private static final String INDEX_PATH = "index/all";
     private static final int INDEX_STORAGE_SIZE = Long.BYTES;
     private static final String JOURNAL_PROPERTIES_PATTERN = "^persistence\\.journal\\.(.*)$";
     private static final String INDEX_PROPERTIES_PATTERN = "^persistence\\.index\\.(.*)$";
@@ -603,9 +602,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      */
     public void recover(Path path, long commitIndex, Properties properties) throws IOException {
         this.basePath = path;
-        Path journalPath = path.resolve(JOURNAL_PATH);
+        Path journalPath = path;
         Path indexPath = path.resolve(INDEX_PATH);
-        Path partitionPath = path.resolve(PARTITIONS_PATH);
+        Path partitionPath = path.resolve(PARTITION_PATH);
         Properties journalProperties = replacePropertiesNames(properties,
                 JOURNAL_PROPERTIES_PATTERN, DEFAULT_JOURNAL_PROPERTIES);
 
@@ -922,7 +921,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         synchronized (partitionMap) {
             if (!partitionMap.containsKey(partition)) {
                 JournalPersistence partitionPersistence = persistenceFactory.createJournalPersistenceInstance();
-                partitionPersistence.recover(basePath.resolve(PARTITIONS_PATH).resolve(String.valueOf(partition)), indexProperties);
+                partitionPersistence.recover(basePath.resolve(PARTITION_PATH).resolve(String.valueOf(partition)), indexProperties);
                 partitionMap.put(partition, partitionPersistence);
             }
         }
