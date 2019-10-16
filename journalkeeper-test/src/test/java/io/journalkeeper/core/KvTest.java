@@ -248,8 +248,8 @@ public class KvTest {
             newServer.start();
         }
 
-        AdminClient oldAdminClient = new DefaultAdminClient(oldConfig, new Properties());
-        AdminClient newAdminClient = new DefaultAdminClient(newConfig, new Properties());
+        AdminClient oldAdminClient = new BootStrap(oldConfig, new Properties()).getAdminClient();
+        AdminClient newAdminClient = new BootStrap(newConfig, new Properties()).getAdminClient();
 
         URI leaderUri = oldAdminClient.getClusterConfiguration().get().getLeader();
         while (null == leaderUri) {
@@ -383,8 +383,8 @@ public class KvTest {
         }
 
 
-        AdminClient oldAdminClient = new DefaultAdminClient(oldConfig, new Properties());
-        AdminClient newAdminClient = new DefaultAdminClient(newConfig, new Properties());
+        AdminClient oldAdminClient = new BootStrap(oldConfig, new Properties()).getAdminClient();
+        AdminClient newAdminClient = new BootStrap(newConfig, new Properties()).getAdminClient();
 
 
 
@@ -508,8 +508,8 @@ public class KvTest {
         List<URI> newConfig = new ArrayList<>(newServerCount);
         newConfig.addAll(oldConfig.subList(0, newServerCount));
 
-        AdminClient oldAdminClient = new DefaultAdminClient(oldConfig, new Properties());
-        AdminClient newAdminClient = new DefaultAdminClient(newConfig, new Properties());
+        AdminClient oldAdminClient = new BootStrap(oldConfig, new Properties()).getAdminClient();
+        AdminClient newAdminClient = new BootStrap(newConfig, new Properties()).getAdminClient();
         URI leaderUri = oldAdminClient.getClusterConfiguration().get().getLeader();
         long leaderApplied = oldAdminClient.getServerStatus(leaderUri).get().getLastApplied();
         // 更新集群配置

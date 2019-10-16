@@ -16,6 +16,7 @@ package io.journalkeeper.core.api;
 import io.journalkeeper.base.Queryable;
 import io.journalkeeper.utils.event.Watchable;
 
+import java.io.Closeable;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -78,9 +79,5 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, C
     @Override
     CompletableFuture<QR> query(Q query);
 
-
-
-
     void stop();
-
 }
