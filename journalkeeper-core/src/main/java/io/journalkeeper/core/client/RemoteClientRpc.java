@@ -130,7 +130,7 @@ public class RemoteClientRpc implements ClientRpc {
         public boolean checkException(Throwable exception) {
             try {
 
-                logger.debug("Rpc exception: {}", exception.getMessage());
+                logger.debug("Rpc exception: {}-{}", exception.getClass().getCanonicalName(), exception.getMessage());
                 throw exception;
             } catch (RequestTimeoutException | ServerBusyException | TransportException ne) {
                 return true;
@@ -184,7 +184,8 @@ public class RemoteClientRpc implements ClientRpc {
     @Override
     public void watch(EventWatcher eventWatcher) {
         completableRetry.retry(uri -> {
-            clientServerRpcAccessPoint.getClintServerRpc(uri).watch(eventWatcher);
+            clientServerRpcAccessPoint.getClintServerRpc(uri)
+                    .watch(event -> executor.execute(() -> eventWatcher.onEvent(event)));
             return CompletableFuture.completedFuture(null);
         }, clientCheckRetry, executor);
     }

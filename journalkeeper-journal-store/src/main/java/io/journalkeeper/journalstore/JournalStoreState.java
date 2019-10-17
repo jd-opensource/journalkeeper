@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -74,7 +75,7 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
         long partitionIndex = appliedIndices.getOrDefault(partition, 0L) + batchSize;
         appliedIndices.put(partition, partitionIndex);
         long minIndex = journal.minIndex(partition);
-        long maxIndex = appliedIndices.get(partition);
+        long maxIndex = appliedIndices.getOrDefault(partition, 0L);
         eventData.put("partition", String.valueOf(partition));
         eventData.put("minIndex", String.valueOf(minIndex));
         eventData.put("maxIndex", String.valueOf(maxIndex));
@@ -113,10 +114,18 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
     private CompletableFuture<JournalStoreQueryResult> queryEntries(int partition, long index, int size) {
         return CompletableFuture.completedFuture(null)
                 .thenApply(ignored ->  {
-                    long maxAppliedIndex = appliedIndices.get(partition);
+                    long maxAppliedIndex = appliedIndices.getOrDefault(partition, 0L);
                     int safeSize;
-                    if(index >= maxAppliedIndex) {
-                        throw new IndexOverflowException();
+                    if(index > maxAppliedIndex || index > journal.maxIndex(partition)) {
+                        return new JournalStoreQueryResult(null, null, JournalStoreQuery.CMQ_QUERY_ENTRIES, JournalStoreQueryResult.CODE_OVERFLOW);
+                    }
+
+                    if(index < journal.minIndex(partition)) {
+                        return new JournalStoreQueryResult(null, null, JournalStoreQuery.CMQ_QUERY_ENTRIES, JournalStoreQueryResult.CODE_UNDERFLOW);
+                    }
+
+                    if(index == journal.maxIndex(partition)) {
+                        return new JournalStoreQueryResult(Collections.emptyList());
                     }
 
                     if(index + size >= maxAppliedIndex) {
@@ -124,9 +133,8 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
                     } else {
                         safeSize = size;
                     }
-                    return journal.batchReadByPartition(partition, index, safeSize);
+                    return new JournalStoreQueryResult(journal.batchReadByPartition(partition, index, safeSize));
                 })
-                .thenApply(JournalStoreQueryResult::new)
                 .exceptionally(e -> new JournalStoreQueryResult(e.getCause(), JournalStoreQuery.CMQ_QUERY_ENTRIES));
     }
 }

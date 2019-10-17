@@ -810,7 +810,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         JournalEntry lastEntryHeader = null;
         while (position >= journalPersistence.min()) {
             try {
-                JournalEntry header = readEntryHeaderByOffset(position);
+                JournalEntry header = readByOffset(position);
                 // 找到一条记录的开头位置
                 if(lastEntryPosition < 0) { // 之前是否已经找到一条？
                     // 这是倒数第一条，记录之
