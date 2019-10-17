@@ -98,7 +98,8 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
     private CompletableFuture<JournalStoreQueryResult> queryPartitions() {
         Set<Integer> partitions = journal.getPartitions();
         partitions.remove(RESERVED_PARTITION);
-        return CompletableFuture.supplyAsync(() ->
+        return CompletableFuture.completedFuture(null)
+                .thenApply(ignored ->
             new JournalStoreQueryResult(
                     partitions.stream()
                     .collect(Collectors.toMap(
@@ -110,8 +111,8 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
 
 
     private CompletableFuture<JournalStoreQueryResult> queryEntries(int partition, long index, int size) {
-        return CompletableFuture
-                .supplyAsync(() ->  {
+        return CompletableFuture.completedFuture(null)
+                .thenApply(ignored ->  {
                     long maxAppliedIndex = appliedIndices.get(partition);
                     int safeSize;
                     if(index >= maxAppliedIndex) {
