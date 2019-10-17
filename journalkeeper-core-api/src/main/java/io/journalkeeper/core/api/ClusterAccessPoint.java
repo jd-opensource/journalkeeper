@@ -27,10 +27,22 @@ public interface ClusterAccessPoint<E, ER, Q, QR> {
     /**
      * 获取Server实例，如果本地存在Server返回Server实例，否则返回null
      */
+    /**
+     * 获取客户端实例
+     */
+    RaftClient<E, ER, Q, QR> getLocalClient();
+
+    /**
+     * 获取Server实例，如果本地存在Server返回Server实例，否则返回null
+     */
     RaftServer getServer();
 
     /**
      * 获取管理端实例
      */
     AdminClient getAdminClient();
+    /**
+     * 获取管理端实例
+     */
+    AdminClient getLocalAdminClient();
 }

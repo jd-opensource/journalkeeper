@@ -196,6 +196,30 @@ public class KvTest {
         }
     }
 
+    @Test
+    public void localClientTest() throws IOException, ExecutionException, InterruptedException {
+
+        Path path = TestPathUtils.prepareBaseDir("LocalClientTest");
+        List<KvServer> kvServers = createServers(1, path);
+        try {
+            KvClient kvClient = kvServers.stream().findFirst().orElseThrow(RuntimeException::new).createLocalClient();
+
+
+            kvClient.set("key1", "hello!");
+            kvClient.set("key2", "world!");
+            Assert.assertEquals("hello!", kvClient.get("key1"));
+            Assert.assertEquals(new HashSet<>(Arrays.asList("key1", "key2")),
+                    new HashSet<>(kvClient.listKeys()));
+
+            kvClient.del("key2");
+            Assert.assertNull(kvClient.get("key2"));
+            Assert.assertEquals(Collections.singletonList("key1"), kvClient.listKeys());
+        } finally {
+            stopServers(kvServers);
+            TestPathUtils.destroyBaseDir(path.toFile());
+        }
+    }
+
 
     // 增加节点
 

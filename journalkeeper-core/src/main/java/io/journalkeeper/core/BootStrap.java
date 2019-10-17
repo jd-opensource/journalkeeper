@@ -23,6 +23,7 @@ import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.client.ClientRpc;
 import io.journalkeeper.core.client.DefaultAdminClient;
 import io.journalkeeper.core.client.DefaultRaftClient;
+import io.journalkeeper.core.client.LocalClientRpc;
 import io.journalkeeper.core.client.RemoteClientRpc;
 import io.journalkeeper.core.entry.DefaultJournalEntryParser;
 import io.journalkeeper.core.server.Server;
@@ -65,8 +66,10 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
     private final RpcAccessPointFactory rpcAccessPointFactory;
     private final List<URI> servers;
     private final Server<E, ER, Q, QR> server;
-    private DefaultRaftClient<E, ER, Q, QR> client = null;
-    private DefaultAdminClient adminClient = null;
+    private RaftClient<E, ER, Q, QR> client = null;
+    private AdminClient adminClient = null;
+    private RaftClient<E, ER, Q, QR> localClient = null;
+    private AdminClient localAdminClient = null;
     private final JournalEntryParser journalEntryParser;
     private final RetryPolicy remoteRetryPolicy = new IncreasingRetryPolicy(new long [] {50, 100, 500, 1000, 3000, 10000, 30000}, 50);
     /**
@@ -167,6 +170,24 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
         return client;
     }
 
+    @Override
+    public RaftClient<E, ER, Q, QR> getLocalClient() {
+        if(null == localClient) {
+            LocalClientRpc clientRpc = createLocalClientRpc();
+            localClient = new DefaultRaftClient<>(clientRpc, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
+        }
+        return localClient;
+    }
+
+    private LocalClientRpc createLocalClientRpc() {
+
+        if(this.server != null) {
+            return new LocalClientRpc(server, remoteRetryPolicy, asyncExecutorService);
+        } else {
+            throw new IllegalStateException("No local server!");
+        }
+    }
+
     private RemoteClientRpc createRemoteClientRpc() {
         ClientServerRpcAccessPoint clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.properties);
         RemoteClientRpc clientRpc;
@@ -210,6 +231,15 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
             adminClient = new DefaultAdminClient(clientRpc, properties);
         }
         return adminClient;
+    }
+
+    @Override
+    public AdminClient getLocalAdminClient() {
+        if(null == localAdminClient) {
+            ClientRpc clientRpc = createLocalClientRpc();
+            localAdminClient = new DefaultAdminClient(clientRpc, properties);
+        }
+        return localAdminClient;
     }
 
 
