@@ -482,6 +482,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
                     Stream.concat(IntStream.of(RESERVED_PARTITION).boxed(),
                             Arrays.stream(partitions).boxed())
                             .collect(Collectors.toSet()));
+            //TODO: request flush metadata
         } finally {
             scalePartitionLock.unlock();
         }
