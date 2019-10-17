@@ -940,6 +940,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         ServerMetadata serverMetadata = new ServerMetadata();
         serverMetadata.setThisServer(uri);
         VoterConfigurationStateMachine config = votersConfigStateMachine.clone();
+        serverMetadata.setPartitions(journal.getPartitions());
         serverMetadata.setVoters(config.configNew);
         serverMetadata.setOldVoters(config.configOld);
         serverMetadata.setJointConsensus(config.jointConsensus);

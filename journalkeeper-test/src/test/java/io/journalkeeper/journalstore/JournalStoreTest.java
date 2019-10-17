@@ -95,7 +95,8 @@ public class JournalStoreTest {
         Set<Integer> readPartitions = Arrays.stream(client.listPartitions().get()).boxed().collect(Collectors.toSet());
         Assert.assertEquals(Collections.singleton(DEFAULT_PARTITION), readPartitions);
         stopServers(servers);
-
+        after();
+        before();
 
         Set<Integer> partitions = Stream.of(2, 3, 4, 99, 8).collect(Collectors.toSet());
         servers = createServers(1, base, partitions);
@@ -110,6 +111,39 @@ public class JournalStoreTest {
         Arrays.sort(readIntPartitions);
         Assert.assertArrayEquals(intPartitions, readIntPartitions);
         stopServers(servers);
+
+        after();
+        before();
+
+        partitions = Stream.of(2, 3, 4, 99, 8).collect(Collectors.toSet());
+        URI uri = URI.create("jk://localhost:" + NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces());
+        Path workingDir = base.resolve("server-recover");
+        Properties properties = new Properties();
+        properties.setProperty("working_dir", workingDir.toString());
+        JournalStoreServer journalStoreServer  = new JournalStoreServer(properties);
+        journalStoreServer.init(uri, Collections.singletonList(uri), partitions);
+        journalStoreServer.recover();
+        journalStoreServer.start();
+
+        client = journalStoreServer.createLocalClient();
+        readPartitions = Arrays.stream(client.listPartitions().get()).boxed().collect(Collectors.toSet());
+        Assert.assertEquals(partitions, readPartitions);
+
+        journalStoreServer.stop();
+
+        journalStoreServer  = new JournalStoreServer(properties);
+        journalStoreServer.recover();
+        journalStoreServer.start();
+
+        client = journalStoreServer.createLocalClient();
+        readPartitions = Arrays.stream(client.listPartitions().get()).boxed().collect(Collectors.toSet());
+        Assert.assertEquals(partitions, readPartitions);
+
+        journalStoreServer.stop();
+
+
+
+
     }
 
     /**
