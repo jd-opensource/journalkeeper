@@ -17,7 +17,6 @@ import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.BootStrap;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
-import io.journalkeeper.core.server.AbstractServer;
 import io.journalkeeper.sql.client.SQLClient;
 import io.journalkeeper.sql.client.domain.ReadRequest;
 import io.journalkeeper.sql.client.domain.ReadResponse;
@@ -28,7 +27,6 @@ import io.journalkeeper.utils.state.StateServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
@@ -110,11 +108,12 @@ public class SQLServer implements StateServer {
     @Override
     public void start() {
         try {
-            if (!new File(config.getProperty(AbstractServer.Config.WORKING_DIR_KEY)).exists()) {
-                bootStrap.getServer().init(current, servers);
+            RaftServer server = bootStrap.getServer();
+            if (server.isInitialized()) {
+                server.init(current, servers);
             }
-            bootStrap.getServer().recover();
-            bootStrap.getServer().start();
+            server.recover();
+            server.start();
         } catch (Exception e) {
             throw new SQLException(e);
         }
