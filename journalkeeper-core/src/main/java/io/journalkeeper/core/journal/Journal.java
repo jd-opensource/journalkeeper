@@ -912,6 +912,67 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         }
     }
 
+
+    @Override
+    public long queryIndexByTimestamp(int partition, long timestamp) {
+        try {
+            if (partitionMap.containsKey(partition)) {
+                JournalPersistence indexStore = partitionMap.get(partition);
+                long searchedIndex = binarySearchByTimestamp(timestamp, indexStore, indexStore.min() / INDEX_STORAGE_SIZE, indexStore.max() / INDEX_STORAGE_SIZE - 1);
+
+                // 考虑到有可能出现连续n条消息时间相同，找到这n条消息的第一条
+                while (searchedIndex - 1 >= indexStore.min() && timestamp <= getStorageTimestamp(indexStore, searchedIndex - 1)) {
+                    searchedIndex--;
+                }
+                return searchedIndex;
+
+            }
+        } catch (Throwable e) {
+            logger.warn("Query index by timestamp exception: ", e);
+        }
+        return -1L;
+    }
+
+    // 折半查找
+    private long binarySearchByTimestamp(long timestamp,
+                                         JournalPersistence indexStore,
+                                         long leftIndexInclude,
+                                         long rightIndexInclude) {
+
+        if (rightIndexInclude <= leftIndexInclude) {
+            return -1L;
+        }
+
+        if (timestamp <= getStorageTimestamp(indexStore, leftIndexInclude)) {
+            return leftIndexInclude;
+        }
+
+        if (timestamp >= getStorageTimestamp(indexStore, rightIndexInclude)) {
+            return rightIndexInclude;
+        }
+
+        if (leftIndexInclude + 1 == rightIndexInclude) {
+            return leftIndexInclude;
+        }
+
+        long mid = leftIndexInclude + (rightIndexInclude - leftIndexInclude) / 2;
+
+        long midTimestamp = getStorageTimestamp(indexStore, mid);
+
+        if (timestamp < midTimestamp) {
+            return binarySearchByTimestamp(timestamp, indexStore, leftIndexInclude, mid);
+        } else {
+            return binarySearchByTimestamp(timestamp, indexStore, mid, rightIndexInclude);
+        }
+    }
+
+    private long getStorageTimestamp(
+            JournalPersistence indexStore,
+            long index) {
+        JournalEntry header = readEntryHeaderByOffset(readOffset(indexStore, index));
+        return header.getTimestamp();
+    }
+
     @Override
     public Set<Integer> getPartitions() {
         return new HashSet<>(partitionMap.keySet());

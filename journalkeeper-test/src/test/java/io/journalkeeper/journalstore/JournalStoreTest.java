@@ -15,7 +15,10 @@ package io.journalkeeper.journalstore;
 
 import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.JournalEntry;
+import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.entry.DefaultJournalEntryParser;
+import io.journalkeeper.core.entry.JournalEntryParseSupport;
 import io.journalkeeper.exceptions.ServerBusyException;
 import io.journalkeeper.utils.format.Format;
 import io.journalkeeper.utils.net.NetworkingUtils;
@@ -30,6 +33,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -141,7 +145,37 @@ public class JournalStoreTest {
 
         journalStoreServer.stop();
 
+    }
+    @Test
+    public void queryIndexTest() throws IOException, ExecutionException, InterruptedException {
+        JournalEntryParser journalEntryParser =new DefaultJournalEntryParser();
+        JournalStoreServer server = createServers(1, base).get(0);
 
+        JournalStoreClient client = server.createLocalClient();
+        client.waitForClusterReady(10000);
+
+        long [] timestamps = new long[] {10, 11, 12 , 100, 100, 101, 105, 110, 2000};
+        long [] indices = new long[timestamps.length];
+        for (int i = 0; i < timestamps.length; i++) {
+            long timestamp = timestamps[i];
+            byte[] payload = new byte[128];
+            JournalEntry entry = journalEntryParser.createJournalEntry(payload);
+            byte[] rawEntry = entry.getSerializedBytes();
+            JournalEntryParseSupport.setLong(ByteBuffer.wrap(rawEntry),
+                    JournalEntryParseSupport.TIMESTAMP, timestamp);
+
+            long index = client.append(0, 1, rawEntry, true, ResponseConfig.REPLICATION).get();
+            indices[i] = index;
+        }
+
+        Assert.assertEquals(indices[0], client.queryIndex(0, 8L).get().longValue());
+        Assert.assertEquals(indices[0], client.queryIndex(0, 10L).get().longValue());
+        Assert.assertEquals(indices[2], client.queryIndex(0, 80L).get().longValue());
+        Assert.assertEquals(indices[3], client.queryIndex(0, 100L).get().longValue());
+        Assert.assertEquals(indices[8], client.queryIndex(0, 2000L).get().longValue());
+        Assert.assertEquals(indices[8], client.queryIndex(0, 9000L).get().longValue());
+
+        server.stop();
 
 
     }
@@ -158,7 +192,7 @@ public class JournalStoreTest {
         List<JournalStoreServer> servers = createServers(nodes, base);
         try {
             JournalStoreClient client = servers.get(0).createClient();
-            client.waitForLeader(10000);
+            client.waitForClusterReady(10000);
             AdminClient adminClient = servers.get(0).getAdminClient();
             adminClient.scalePartitions(partitions).get();
 

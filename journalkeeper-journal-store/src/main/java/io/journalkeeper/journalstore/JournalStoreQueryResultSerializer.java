@@ -30,6 +30,7 @@ import java.util.Map;
  *
  * Cmd : 1 Byte
  * Code: 1 Byte
+ * Index: 8 Bytes
  * Entries: Variable
  *  Entries size: 2 Bytes
  *  JournalEntry: Variable
@@ -52,7 +53,8 @@ public class JournalStoreQueryResultSerializer implements Serializer<JournalStor
             Byte.BYTES + /* Cmd */
                     Byte.BYTES + /* Code */
                     Short.BYTES + /* Entries size */
-                    Short.BYTES; /* Boundaries size */
+                    Short.BYTES + /* Boundaries size */
+                    Long.BYTES; /* Index size */
     private final JournalEntryParser journalEntryParser;
 
     public JournalStoreQueryResultSerializer(JournalEntryParser journalEntryParser) {
@@ -77,7 +79,7 @@ public class JournalStoreQueryResultSerializer implements Serializer<JournalStor
 
         buffer.put((byte) journalStoreQueryResult.getCmd());
         buffer.put((byte) journalStoreQueryResult.getCode());
-
+        buffer.putLong(journalStoreQueryResult.getIndex());
         List<JournalEntry> entries = journalStoreQueryResult.getEntries();
         if(entries == null) {
             entries = Collections.emptyList();
@@ -104,6 +106,7 @@ public class JournalStoreQueryResultSerializer implements Serializer<JournalStor
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         int cmd = buffer.get();
         int code = buffer.get();
+        long index = buffer.getLong();
         int entriesSize = buffer.getShort();
         List<JournalEntry> entries = new ArrayList<>(entriesSize);
         byte [] headerBytes = new byte[journalEntryParser.headerLength()];
@@ -126,7 +129,7 @@ public class JournalStoreQueryResultSerializer implements Serializer<JournalStor
                     new JournalStoreQueryResult.Boundary(buffer.getLong(), buffer.getLong()));
         }
 
-        return new JournalStoreQueryResult(entries, boundaries, cmd, code);
+        return new JournalStoreQueryResult(entries, boundaries, cmd, index, code);
 
     }
 }

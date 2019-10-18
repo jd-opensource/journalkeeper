@@ -31,34 +31,40 @@ public class JournalStoreQueryResult{
     public static final int CODE_EXCEPTION = -3;
     private final int cmd;
     private final int code;
+    private final long index;
     private final List<JournalEntry> entries;
     private final Map<Integer, Boundary> boundaries;
 
-    public JournalStoreQueryResult(List<JournalEntry> entries, Map<Integer, Boundary> boundaries, int cmd) {
-        this(entries, boundaries, cmd, CODE_SUCCESS);
+    public JournalStoreQueryResult(List<JournalEntry> entries, Map<Integer, Boundary> boundaries, long index, int cmd) {
+        this(entries, boundaries, cmd, index, CODE_SUCCESS);
     }
 
-    public JournalStoreQueryResult(List<JournalEntry> entries, Map<Integer, Boundary> boundaries, int cmd, int code) {
+    public JournalStoreQueryResult(List<JournalEntry> entries, Map<Integer, Boundary> boundaries, int cmd, long index, int code) {
         this.entries = entries;
         this.boundaries = boundaries;
         this.cmd = cmd;
+        this.index = index;
         this.code = code;
     }
 
     public JournalStoreQueryResult(List<JournalEntry> entries) {
-        this(entries, null, JournalStoreQuery.CMQ_QUERY_ENTRIES);
+        this(entries, null, 0L, JournalStoreQuery.CMD_QUERY_ENTRIES);
     }
 
 
     public JournalStoreQueryResult( Map<Integer, Boundary> boundaries) {
-        this(null, boundaries, JournalStoreQuery.CMQ_QUERY_PARTITIONS);
+        this(null, boundaries, 0L, JournalStoreQuery.CMD_QUERY_PARTITIONS);
+    }
+
+    public JournalStoreQueryResult(long index) {
+        this(null, null, index, JournalStoreQuery.CMD_QUERY_INDEX);
     }
 
     public JournalStoreQueryResult(Throwable t, int cmd) {
         this.cmd = cmd;
         this.boundaries = null;
         this.entries = null;
-
+        this.index = 0L;
         try {
             throw t;
         } catch (IndexUnderflowException e) {
@@ -102,5 +108,9 @@ public class JournalStoreQueryResult{
 
     public int getCode() {
         return code;
+    }
+
+    public long getIndex() {
+        return index;
     }
 }

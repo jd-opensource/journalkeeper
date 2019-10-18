@@ -33,6 +33,7 @@ public class DefaultJournalEntryParser implements JournalEntryParser {
         ByteBuffer buffer = ByteBuffer.wrap(rawEntry);
         JournalEntryParseSupport.setInt(buffer, JournalEntryParseSupport.LENGTH, rawEntry.length);
         JournalEntryParseSupport.setShort(buffer, JournalEntryParseSupport.MAGIC, DefaultJournalEntry.MAGIC_CODE);
+        JournalEntryParseSupport.setLong(buffer, JournalEntryParseSupport.TIMESTAMP, System.currentTimeMillis());
 
         for (int i = 0; i < payload.length; i++) {
             rawEntry[headerLength + i] = payload[i];

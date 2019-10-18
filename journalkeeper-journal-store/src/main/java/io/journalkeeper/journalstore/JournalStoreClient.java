@@ -21,6 +21,8 @@ import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.utils.event.EventWatcher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -34,11 +36,10 @@ import java.util.stream.Collectors;
  * Date: 2019-05-09
  */
 public class JournalStoreClient implements PartitionedJournalStore {
+    private static final Logger logger = LoggerFactory.getLogger(JournalStoreClient.class);
     private final RaftClient<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient;
-    private final AdminClient adminClient;
-    public JournalStoreClient(RaftClient<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient, AdminClient adminClient) {
+    public JournalStoreClient(RaftClient<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient) {
         this.raftClient = raftClient;
-        this.adminClient = adminClient;
     }
 
 
@@ -91,9 +92,19 @@ public class JournalStoreClient implements PartitionedJournalStore {
                 .thenApply(boundaries -> boundaries.keySet().stream().mapToInt(Integer::intValue).toArray());
     }
 
-    public void waitForLeader(long timeoutMs) throws InterruptedException, ExecutionException {
+    @Override
+    public CompletableFuture<Long> queryIndex(int partition, long timestamp) {
+        return raftClient
+                .query(JournalStoreQuery.createQueryIndex(partition, timestamp))
+                .thenApply(result -> result.getCode() == JournalStoreQueryResult.CODE_SUCCESS ? result.getIndex(): -1L)
+                .exceptionally(e -> {
+                    logger.warn("Query index exception:", e);
+                    return -1L;
+                });
+    }
 
-        adminClient.whenClusterReady(timeoutMs).get();
+    public void waitForClusterReady(long timeoutMs) throws InterruptedException, ExecutionException {
+        raftClient.waitForClusterReady(timeoutMs);
     }
 
     @Override

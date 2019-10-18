@@ -18,7 +18,7 @@ import io.journalkeeper.base.Serializer;
 import java.nio.ByteBuffer;
 
 public class JournalStoreQuerySerializer implements Serializer<JournalStoreQuery> {
-    private static final int SIZE = Byte.BYTES + Short.BYTES + Integer.BYTES + Long.BYTES;
+    private static final int SIZE = Byte.BYTES + Short.BYTES + Long.BYTES + Integer.BYTES + Long.BYTES;
 
     @Override
     public byte[] serialize(JournalStoreQuery query) {
@@ -28,12 +28,13 @@ public class JournalStoreQuerySerializer implements Serializer<JournalStoreQuery
         buffer.putShort((short) query.getPartition());
         buffer.putLong(query.getIndex());
         buffer.putInt(query.getSize());
+        buffer.putLong(query.getTimestamp());
         return bytes;
     }
 
     @Override
     public JournalStoreQuery parse(byte[] bytes) {
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
-        return new JournalStoreQuery(buffer.get(), buffer.getShort(), buffer.getLong(), buffer.getInt());
+        return new JournalStoreQuery(buffer.get(), buffer.getShort(), buffer.getLong(), buffer.getInt(), buffer.getLong());
     }
 }

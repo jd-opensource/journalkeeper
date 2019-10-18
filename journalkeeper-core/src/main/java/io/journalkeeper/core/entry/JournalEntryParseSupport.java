@@ -41,11 +41,12 @@ public class JournalEntryParseSupport extends EntryParser {
     private static int firstVarIndex = -1;
     private final static List<Attribute> attributeList= new LinkedList<>();
 
-    public final static int LENGTH = createAttribute("LENGTH",FIXED_LENGTH_4);
+    final static int LENGTH = createAttribute("LENGTH",FIXED_LENGTH_4);
     final static int PARTITION = createAttribute("PARTITION",FIXED_LENGTH_2);
     final static int TERM = createAttribute("TERM",FIXED_LENGTH_4);
-    public final static int MAGIC = createAttribute("MAGIC",FIXED_LENGTH_2);
+    final static int MAGIC = createAttribute("MAGIC",FIXED_LENGTH_2);
     final static int BATCH_SIZE = createAttribute("BATCH_SIZE",FIXED_LENGTH_2);
+    public final static int TIMESTAMP = createAttribute("TIMESTAMP", FIXED_LENGTH_8);
     final static int ENTRY = createAttribute("ENTRY",VARIABLE_LENGTH);
 
 

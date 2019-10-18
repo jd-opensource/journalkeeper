@@ -16,7 +16,7 @@ package io.journalkeeper.journalstore;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.state.LocalState;
-import io.journalkeeper.exceptions.IndexOverflowException;
+import io.journalkeeper.utils.threads.NamedThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,9 +27,13 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
+import static io.journalkeeper.journalstore.JournalStoreQuery.CMD_QUERY_INDEX;
 
 /**
  * @author LiYue
@@ -40,7 +44,7 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
     private final static String STATE_FILE_NAME = "applied_indices";
     private RaftJournal journal;
     private AppliedIndicesFile appliedIndices;
-
+    private ExecutorService stateQueryExecutor = Executors.newSingleThreadExecutor(new NamedThreadFactory("JournalStoreQueryThread"));
     protected JournalStoreState(StateFactory<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> stateFactory) {
         super(stateFactory);
     }
@@ -72,28 +76,37 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
 
     @Override
     public Long execute(byte [] entry, int partition, long lastApplied, int batchSize, Map<String, String> eventData) {
-        long partitionIndex = appliedIndices.getOrDefault(partition, 0L) + batchSize;
-        appliedIndices.put(partition, partitionIndex);
+        long partitionIndex = appliedIndices.getOrDefault(partition, 0L) ;
+        appliedIndices.put(partition, partitionIndex + batchSize);
         long minIndex = journal.minIndex(partition);
         long maxIndex = appliedIndices.getOrDefault(partition, 0L);
         eventData.put("partition", String.valueOf(partition));
         eventData.put("minIndex", String.valueOf(minIndex));
         eventData.put("maxIndex", String.valueOf(maxIndex));
-        return partitionIndex;
+        return partitionIndex ;
     }
 
     @Override
     public CompletableFuture<JournalStoreQueryResult> query(JournalStoreQuery query) {
         switch (query.getCmd()) {
-            case JournalStoreQuery.CMQ_QUERY_ENTRIES:
+            case JournalStoreQuery.CMD_QUERY_ENTRIES:
                 return queryEntries(query.getPartition(), query.getIndex(), query.getSize());
-            case JournalStoreQuery.CMQ_QUERY_PARTITIONS:
+            case JournalStoreQuery.CMD_QUERY_PARTITIONS:
                 return queryPartitions();
+            case CMD_QUERY_INDEX:
+                return queryIndex(query.getPartition(), query.getTimestamp());
             default:
                 return CompletableFuture.supplyAsync(() -> {
                    throw new QueryJournalStoreException(String.format("Invalid command type: %d.", query.getCmd()));
                 });
         }
+    }
+
+    private CompletableFuture<JournalStoreQueryResult> queryIndex(int partition, long timestamp) {
+
+        return CompletableFuture.supplyAsync(() -> journal.queryIndexByTimestamp(partition, timestamp), stateQueryExecutor)
+                .thenApply(JournalStoreQueryResult::new)
+                .exceptionally(e -> new JournalStoreQueryResult(e, CMD_QUERY_INDEX));
     }
 
     private CompletableFuture<JournalStoreQueryResult> queryPartitions() {
@@ -117,11 +130,11 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
                     long maxAppliedIndex = appliedIndices.getOrDefault(partition, 0L);
                     int safeSize;
                     if(index > maxAppliedIndex || index > journal.maxIndex(partition)) {
-                        return new JournalStoreQueryResult(null, null, JournalStoreQuery.CMQ_QUERY_ENTRIES, JournalStoreQueryResult.CODE_OVERFLOW);
+                        return new JournalStoreQueryResult(null, null, JournalStoreQuery.CMD_QUERY_ENTRIES, index, JournalStoreQueryResult.CODE_OVERFLOW);
                     }
 
                     if(index < journal.minIndex(partition)) {
-                        return new JournalStoreQueryResult(null, null, JournalStoreQuery.CMQ_QUERY_ENTRIES, JournalStoreQueryResult.CODE_UNDERFLOW);
+                        return new JournalStoreQueryResult(null, null, JournalStoreQuery.CMD_QUERY_ENTRIES, index, JournalStoreQueryResult.CODE_UNDERFLOW);
                     }
 
                     if(index == journal.maxIndex(partition)) {
@@ -135,6 +148,6 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
                     }
                     return new JournalStoreQueryResult(journal.batchReadByPartition(partition, index, safeSize));
                 })
-                .exceptionally(e -> new JournalStoreQueryResult(e.getCause(), JournalStoreQuery.CMQ_QUERY_ENTRIES));
+                .exceptionally(e -> new JournalStoreQueryResult(e.getCause(), JournalStoreQuery.CMD_QUERY_ENTRIES));
     }
 }

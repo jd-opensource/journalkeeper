@@ -104,6 +104,11 @@ public class DefaultJournalEntry implements JournalEntry {
     }
 
     @Override
+    public long getTimestamp() {
+        return JournalEntryParseSupport.getLong(serializedBuffer(), JournalEntryParseSupport.TIMESTAMP);
+    }
+
+    @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
