@@ -15,65 +15,53 @@ package io.journalkeeper.sql.client.support;
 
 import io.journalkeeper.sql.client.BatchSQLOperator;
 import io.journalkeeper.sql.client.SQLClient;
-import io.journalkeeper.sql.client.SQLOperator;
-import io.journalkeeper.sql.client.domain.ResultSet;
 import io.journalkeeper.sql.client.helper.ParamHelper;
 import io.journalkeeper.sql.exception.SQLException;
 
+import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 
 /**
- * DefaultSQLOperator
+ * DefaultBatchSQLOperator
  * author: gaohaoxiang
  * date: 2019/8/7
  */
-public class DefaultSQLOperator implements SQLOperator {
+public class DefaultBatchSQLOperator implements BatchSQLOperator {
 
     private SQLClient client;
+    private List<String> sqlList = new LinkedList<>();
+    private List<List<Object>> paramList = new LinkedList<>();
 
-    public DefaultSQLOperator(SQLClient client) {
+    public DefaultBatchSQLOperator(SQLClient client) {
         this.client = client;
     }
 
     @Override
-    public Object insert(String sql, Object... params) {
-        try {
-            return client.insert(sql, ParamHelper.toList(params)).get();
-        } catch (Exception e) {
-            throw convertException(e);
-        }
+    public void insert(String sql, Object... params) {
+        sqlList.add(sql);
+        paramList.add(ParamHelper.toList(params));
     }
 
     @Override
-    public int update(String sql, Object... params) {
-        try {
-            return (int) client.update(sql, ParamHelper.toList(params)).get();
-        } catch (Exception e) {
-            throw convertException(e);
-        }
+    public void update(String sql, Object... params) {
+        sqlList.add(sql);
+        paramList.add(ParamHelper.toList(params));
     }
 
     @Override
-    public int delete(String sql, Object... params) {
-        try {
-            return (int) client.delete(sql, ParamHelper.toList(params)).get();
-        } catch (Exception e) {
-            throw convertException(e);
-        }
+    public void delete(String sql, Object... params) {
+        sqlList.add(sql);
+        paramList.add(ParamHelper.toList(params));
     }
 
     @Override
-    public ResultSet query(String sql, Object... params) {
+    public List<Object> commit() {
         try {
-            return client.query(sql, ParamHelper.toList(params)).get();
+            return client.batch(sqlList, paramList).get();
         } catch (Exception e) {
             throw convertException(e);
         }
-    }
-
-    @Override
-    public BatchSQLOperator beginBatch() {
-        return new DefaultBatchSQLOperator(client);
     }
 
     protected SQLException convertException(Throwable e) {

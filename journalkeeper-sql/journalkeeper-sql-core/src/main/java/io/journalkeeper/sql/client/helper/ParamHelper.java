@@ -13,7 +13,8 @@
  */
 package io.journalkeeper.sql.client.helper;
 
-import org.apache.commons.lang3.ArrayUtils;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * ParamHelper
@@ -22,17 +23,24 @@ import org.apache.commons.lang3.ArrayUtils;
  */
 public class ParamHelper {
 
-    public static String[] toString(Object... params) {
-        if (ArrayUtils.isEmpty(params)) {
+    public static List<Object> toList(Object... params) {
+        if (params == null || params.length == 0) {
             return null;
         }
-        String[] result = new String[params.length];
+        List<Object> result = new ArrayList<>(params.length);
         for (int i = 0; i < params.length; i++) {
-            Object param = params[i];
-            if (param == null) {
-                continue;
-            }
-            result[i] = param.toString();
+            result.add(params[i]);
+        }
+        return result;
+    }
+
+    public static Object[] toArray(List<Object> params) {
+        if (params == null || params.isEmpty()) {
+            return null;
+        }
+        Object[] result = new Object[params.size()];
+        for (int i = 0; i < params.size(); i++) {
+            result[i] = params.get(i);
         }
         return result;
     }

@@ -22,7 +22,7 @@ import io.journalkeeper.sql.client.domain.ResultSet;
  */
 public interface SQLOperator {
 
-    String insert(String sql, Object... params);
+    Object insert(String sql, Object... params);
 
     int update(String sql, Object... params);
 
@@ -30,5 +30,5 @@ public interface SQLOperator {
 
     ResultSet query(String sql, Object... params);
 
-    SQLTransactionOperator beginTransaction();
+    BatchSQLOperator beginBatch();
 }

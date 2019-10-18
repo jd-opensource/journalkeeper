@@ -78,7 +78,7 @@ public class SQLState extends LocalState<WriteRequest, WriteResponse, ReadReques
             }
 
             String sql = IOUtils.toString(initFileStream, Charset.forName("UTF-8"));
-            executor.update(sql);
+            executor.update(sql, null);
         } catch (Exception e) {
             logger.error("init exception", e);
             throw new SQLException(e);

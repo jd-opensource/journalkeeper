@@ -15,10 +15,10 @@ package io.journalkeeper.sql.test.h2;
 
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.server.AbstractServer;
+import io.journalkeeper.sql.client.BatchSQLOperator;
 import io.journalkeeper.sql.client.SQLClient;
 import io.journalkeeper.sql.client.SQLClientAccessPoint;
 import io.journalkeeper.sql.client.SQLOperator;
-import io.journalkeeper.sql.client.SQLTransactionOperator;
 import io.journalkeeper.sql.client.support.DefaultSQLOperator;
 import io.journalkeeper.sql.druid.config.DruidConfigs;
 import io.journalkeeper.sql.server.SQLServer;
@@ -26,7 +26,6 @@ import io.journalkeeper.sql.server.SQLServerAccessPoint;
 import io.journalkeeper.sql.state.config.SQLConfigs;
 import io.journalkeeper.sql.state.jdbc.config.JDBCConfigs;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.RandomUtils;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -88,7 +87,7 @@ public class H2Test {
             this.clients.add(client);
         }
 
-        this.servers.get(0).waitForLeaderReady(1000 * 30, TimeUnit.MILLISECONDS);
+        this.servers.get(0).waitClusterReady(1000 * 30, TimeUnit.MILLISECONDS);
         try {
             Thread.currentThread().sleep(1000 * 5);
         } catch (InterruptedException e) {
@@ -97,7 +96,7 @@ public class H2Test {
 
     @Test
     public void test() throws Exception {
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 1; i++) {
             int index = i;
             new Thread(() -> {
                 while (true) {
@@ -114,7 +113,6 @@ public class H2Test {
     }
 
     protected void doTest(int index) throws Exception {
-        long key = System.currentTimeMillis() + RandomUtils.nextInt(0, (int) System.currentTimeMillis());
         SQLOperator sqlOperator = new DefaultSQLOperator(clients.get(index % NODES));
         System.out.println(sqlOperator.query("SELECT NOW()"));
         System.out.println(sqlOperator.query("SHOW TABLES"));
@@ -132,18 +130,18 @@ public class H2Test {
             }
         }).start();
 
-//        sqlOperator.insert("INSERT INTO topic(id, code, namespace, partitions, priority_partitions, type) " +
-//                "VALUES(?,?,?,?,?,?)", "id_value_" + key, "code_value", "namespace_value", 10, 0, 0);
+        sqlOperator.insert("INSERT INTO topic(id, code, namespace, partitions, priority_partitions, type) " +
+                "VALUES(?,?,?,?,?,?)", "id_value_" + System.nanoTime(), "code_value", "namespace_value", 1 * index, 0, 0);
 
-        SQLTransactionOperator transactionOperator = sqlOperator.beginTransaction();
-        transactionOperator.insert("INSERT INTO topic(id, code, namespace, partitions, priority_partitions, type) " +
-                "VALUES(?,?,?,?,?,?)", "id_value_" + key, "code_value", "namespace_value", 10, 0, 0);
+        BatchSQLOperator batchOperator = sqlOperator.beginBatch();
+
+        batchOperator.insert("INSERT INTO topic(id, code, namespace, partitions, priority_partitions, type) " +
+                "VALUES(?,?,?,?,?,?)", "id_value_" + System.nanoTime(), "code_value", "namespace_value", 2 * index, 0, 0);
+        batchOperator.insert("INSERT INTO topic(id, code, namespace, partitions, priority_partitions, type) " +
+                "VALUES(?,?,?,?,?,?)", "id_value_" + System.nanoTime(), "code_value", "namespace_value", 3 * index, 0, 0);
         Thread.currentThread().sleep(1000 * 5);
-        System.out.println("transaction query:" + transactionOperator.query("SELECT * FROM topic WHERE code = 'code_value'"));
-        transactionOperator.commit();
-        System.out.println("commit transaction");
-//        transactionOperator.rollback();
-//        System.out.println("rollback");
+        batchOperator.commit();
+        System.out.println("commit batch");
         Thread.currentThread().sleep(1000 * 5);
     }
 }

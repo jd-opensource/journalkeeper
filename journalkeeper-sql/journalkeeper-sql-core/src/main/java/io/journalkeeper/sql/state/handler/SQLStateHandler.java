@@ -17,7 +17,6 @@ import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.metric.JMetricFactory;
 import io.journalkeeper.metric.JMetricFactoryManager;
 import io.journalkeeper.sql.client.domain.Codes;
-import io.journalkeeper.sql.client.domain.OperationTypes;
 import io.journalkeeper.sql.client.domain.ReadRequest;
 import io.journalkeeper.sql.client.domain.ReadResponse;
 import io.journalkeeper.sql.client.domain.WriteRequest;
@@ -26,6 +25,8 @@ import io.journalkeeper.sql.state.SQLExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -65,14 +66,17 @@ public class SQLStateHandler {
     }
 
     public WriteResponse handleWrite(WriteRequest request) {
-        JMetric jMetric = null;
+        List<JMetric> metricList = new LinkedList<>();
+        if (request.getSqlList() == null) {
+            metricList.add(getMetric(request.getSql()));
+        } else {
+            for (String sql : request.getSqlList()) {
+                metricList.add(getMetric(sql));
+            }
+        }
 
-        if (!(request.getType() == OperationTypes.TRANSACTION_BEGIN.getType() ||
-                request.getType() == OperationTypes.TRANSACTION_COMMIT.getType() ||
-                request.getType() == OperationTypes.TRANSACTION_ROLLBACK.getType())) {
-
-            jMetric = getJMetric(request.getSql(), (Object[]) request.getParams());
-            jMetric.start();
+        for (JMetric metric : metricList) {
+            metric.start();
         }
 
         try {
@@ -81,15 +85,15 @@ public class SQLStateHandler {
             logger.error("sql write exception, request: {}", request, e);
             return new WriteResponse(Codes.ERROR.getCode(), e.toString());
         } finally {
-            if (jMetric != null) {
-                jMetric.end();
+            for (JMetric metric : metricList) {
+                metric.end();
             }
         }
     }
 
     public ReadResponse handleRead(ReadRequest request) {
-        JMetric jMetric = getJMetric(request.getSql(), (Object[]) request.getParams());
-        jMetric.start();
+        JMetric metric = getMetric(request.getSql());
+        metric.start();
 
         try {
             return readHandler.handle(request);
@@ -97,24 +101,22 @@ public class SQLStateHandler {
             logger.error("sql read exception, request: {}", request, e);
             return new ReadResponse(Codes.ERROR.getCode(), e.toString());
         } finally {
-            if (jMetric != null) {
-                jMetric.end();
-            }
+            metric.end();
         }
     }
 
-    protected JMetric getJMetric(String sql, Object... params) {
-        JMetric jMetric = metricMap.get(sql);
-        if (jMetric != null) {
-            return jMetric;
+    protected JMetric getMetric(String sql) {
+        JMetric metric = metricMap.get(sql);
+        if (metric != null) {
+            return metric;
         }
 
-        jMetric = metricFactory.create(sql);
-        JMetric oldJMetric = metricMap.putIfAbsent(sql, jMetric);
+        metric = metricFactory.create(sql);
+        JMetric oldMetric = metricMap.putIfAbsent(sql, metric);
 
-        if (oldJMetric != null) {
-            return oldJMetric;
+        if (oldMetric != null) {
+            return oldMetric;
         }
-        return jMetric;
+        return metric;
     }
 }

@@ -36,7 +36,7 @@ public class KryoSerializer<T> implements Serializer<T> {
 
     private Class<T> type;
 
-    public KryoSerializer(Class<T> type) {
+    public KryoSerializer(Class<T>type) {
         this.type = type;
         this.kryoPool = new KryoPool.Builder(() -> {
             Kryo kryo = new Kryo();
