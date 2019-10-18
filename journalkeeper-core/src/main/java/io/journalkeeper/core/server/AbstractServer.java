@@ -28,6 +28,7 @@ import io.journalkeeper.core.entry.reserved.ReservedEntry;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS2Entry;
+import io.journalkeeper.core.exception.RecoverException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.metric.DummyMetric;
 import io.journalkeeper.exceptions.IndexOverflowException;
@@ -338,6 +339,16 @@ public abstract class AbstractServer<E, ER, Q, QR>
         lastSavedServerMetadata.setPartitions(partitionsWithReserved);
         metadataPersistence.save(lastSavedServerMetadata);
 
+    }
+
+    @Override
+    public boolean isInitialized() {
+        try {
+            ServerMetadata  metadata = metadataPersistence.recover(metadataPath());
+            return metadata != null && metadata.isInitialized();
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private void createMissingDirectories() throws IOException {
@@ -828,6 +839,11 @@ public abstract class AbstractServer<E, ER, Q, QR>
     @Override
     public synchronized void recover() throws IOException {
         lastSavedServerMetadata = metadataPersistence.recover(metadataPath());
+        if(lastSavedServerMetadata == null || !lastSavedServerMetadata.isInitialized()) {
+            throw new RecoverException(
+                    String.format("Recover failed! Cause: metadata is not initialized. Metadata path: %s.",
+                            metadataPath().toString()));
+        }
         onMetadataRecovered(lastSavedServerMetadata);
         recoverJournal(lastSavedServerMetadata.getPartitions(), lastSavedServerMetadata.getCommitIndex());
         onJournalRecovered(journal);
@@ -939,6 +955,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     protected ServerMetadata createServerMetadata() {
         ServerMetadata serverMetadata = new ServerMetadata();
+        serverMetadata.setInitialized(true);
         serverMetadata.setThisServer(uri);
         VoterConfigurationStateMachine config = votersConfigStateMachine.clone();
         serverMetadata.setPartitions(journal.getPartitions());

@@ -111,6 +111,11 @@ public class Server<E, ER, Q, QR>
     }
 
     @Override
+    public boolean isInitialized() {
+        return server.isInitialized();
+    }
+
+    @Override
     public void recover() throws IOException {
         server.recover();
     }

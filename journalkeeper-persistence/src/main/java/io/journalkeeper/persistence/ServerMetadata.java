@@ -36,7 +36,7 @@ public class ServerMetadata {
     private List<URI> oldVoters;
     private boolean jointConsensus = false;
     private URI preferredLeader;
-
+    private boolean initialized = false;
 
     public long getCommitIndex() {
         return commitIndex;
@@ -119,6 +119,14 @@ public class ServerMetadata {
         this.preferredLeader = preferredLeader;
     }
 
+    public boolean isInitialized() {
+        return initialized;
+    }
+
+    public void setInitialized(boolean initialized) {
+        this.initialized = initialized;
+    }
+
     @Override
     public synchronized ServerMetadata clone() {
         ServerMetadata clone = new ServerMetadata();
@@ -131,6 +139,7 @@ public class ServerMetadata {
         clone.partitions = new HashSet<>(this.partitions);
         clone.oldVoters = new ArrayList<>(this.oldVoters);
         clone.jointConsensus = this.jointConsensus;
+        clone.initialized = this.initialized;
         clone.preferredLeader = this.preferredLeader;
         return clone;
     }
@@ -143,6 +152,7 @@ public class ServerMetadata {
         return commitIndex == that.commitIndex &&
                 currentTerm == that.currentTerm &&
                 jointConsensus == that.jointConsensus &&
+                initialized == that.initialized &&
                 Objects.equals(voters, that.voters) &&
                 Objects.equals(parents, that.parents) &&
                 Objects.equals(votedFor, that.votedFor) &&
