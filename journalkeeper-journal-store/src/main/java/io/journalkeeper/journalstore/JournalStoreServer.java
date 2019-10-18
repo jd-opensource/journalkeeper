@@ -61,6 +61,10 @@ public class JournalStoreServer implements StateServer {
         bootStrap.getServer().init(uri, voters, partitions);
     }
 
+    public boolean isInitialized() {
+        return bootStrap.getServer().isInitialized();
+    }
+
     public void recover() throws IOException {
         bootStrap.getServer().recover();
     }
