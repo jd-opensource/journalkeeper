@@ -28,11 +28,7 @@ public enum OperationTypes {
 
     QUERY(3),
 
-    TRANSACTION_BEGIN(4),
-
-    TRANSACTION_COMMIT(5),
-
-    TRANSACTION_ROLLBACK(6),
+    BATCH(4),
 
     ;
 
@@ -57,11 +53,7 @@ public enum OperationTypes {
             case 3:
                 return QUERY;
             case 4:
-                return TRANSACTION_BEGIN;
-            case 5:
-                return TRANSACTION_COMMIT;
-            case 6:
-                return TRANSACTION_ROLLBACK;
+                return BATCH;
             default:
                 throw new UnsupportedOperationException(String.valueOf(type));
         }

@@ -14,6 +14,7 @@
 package io.journalkeeper.sql.client.domain;
 
 import java.io.Serializable;
+import java.util.List;
 
 /**
  * WriteResponse
@@ -24,7 +25,8 @@ public class WriteResponse implements Serializable {
 
     private int code;
     private String msg;
-    private String result;
+    private Object result;
+    private List<Object> resultList;
 
     public WriteResponse() {
 
@@ -39,9 +41,15 @@ public class WriteResponse implements Serializable {
         this.msg = msg;
     }
 
-    public WriteResponse(int code, String result, String msg) {
+    public WriteResponse(int code, Object result, String msg) {
         this.code = code;
         this.result = result;
+        this.msg = msg;
+    }
+
+    public WriteResponse(int code, List<Object> resultList, String msg) {
+        this.code = code;
+        this.resultList = resultList;
         this.msg = msg;
     }
 
@@ -61,11 +69,29 @@ public class WriteResponse implements Serializable {
         this.msg = msg;
     }
 
-    public void setResult(String result) {
+    public void setResult(Object result) {
         this.result = result;
     }
 
-    public String getResult() {
+    public Object getResult() {
         return result;
+    }
+
+    public List<Object> getResultList() {
+        return resultList;
+    }
+
+    public void setResultList(List<Object> resultList) {
+        this.resultList = resultList;
+    }
+
+    @Override
+    public String toString() {
+        return "WriteResponse{" +
+                "code=" + code +
+                ", msg='" + msg + '\'' +
+                ", result='" + result + '\'' +
+                ", resultList='" + resultList + '\'' +
+                '}';
     }
 }

@@ -13,8 +13,6 @@
  */
 package io.journalkeeper.sql.state.jdbc.utils;
 
-import org.apache.commons.lang3.ArrayUtils;
-
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -33,7 +31,7 @@ import java.util.Map;
  */
 public class DBUtils {
 
-    public static String insert(Connection connection, String sql, Object... params) throws SQLException {
+    public static String insert(Connection connection, String sql, List<Object> params) throws SQLException {
         PreparedStatement preparedStatement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
         fillParams(preparedStatement, params);
         preparedStatement.execute();
@@ -44,19 +42,19 @@ public class DBUtils {
         return null;
     }
 
-    public static int update(Connection connection, String sql, Object... params) throws SQLException {
+    public static int update(Connection connection, String sql, List<Object> params) throws SQLException {
         PreparedStatement preparedStatement = connection.prepareStatement(sql);
         fillParams(preparedStatement, params);
         return preparedStatement.executeUpdate();
     }
 
-    public static int delete(Connection connection, String sql, Object... params) throws SQLException {
+    public static int delete(Connection connection, String sql, List<Object> params) throws SQLException {
         PreparedStatement preparedStatement = connection.prepareStatement(sql);
         fillParams(preparedStatement, params);
         return preparedStatement.executeUpdate();
     }
 
-    public static List<Map<String, String>> query(Connection connection, String sql, Object... params) throws SQLException {
+    public static List<Map<String, String>> query(Connection connection, String sql, List<Object> params) throws SQLException {
         PreparedStatement preparedStatement = connection.prepareStatement(sql);
         fillParams(preparedStatement, params);
         ResultSet resultSet = preparedStatement.executeQuery();
@@ -73,12 +71,12 @@ public class DBUtils {
         return result;
     }
 
-    protected static void fillParams(PreparedStatement preparedStatement, Object... params) throws SQLException {
-        if (ArrayUtils.isEmpty(params)) {
+    protected static void fillParams(PreparedStatement preparedStatement, List<Object> params) throws SQLException {
+        if (params == null || params.isEmpty()) {
             return;
         }
-        for (int i = 0; i < params.length; i++) {
-            preparedStatement.setObject(i + 1, params[i]);
+        for (int i = 0; i < params.size(); i++) {
+            preparedStatement.setObject(i + 1, params.get(i));
         }
     }
 }

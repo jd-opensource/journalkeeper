@@ -16,7 +16,6 @@ package io.journalkeeper.sql.state.jdbc;
 import io.journalkeeper.sql.state.SQLExecutor;
 import io.journalkeeper.sql.state.SQLExecutorFactory;
 import io.journalkeeper.sql.state.jdbc.config.JDBCConfigs;
-import io.journalkeeper.sql.state.support.SQLTransactionExecutorManager;
 
 import java.nio.file.Path;
 import java.util.Properties;
@@ -36,8 +35,7 @@ public class JDBCSQLExecutorFactory implements SQLExecutorFactory {
         }
 
         JDBCExecutor jdbcExecutor = new JDBCExecutor();
-        SQLTransactionExecutorManager transactionExecutorManager = new SQLTransactionExecutorManager(properties);
-        return new JDBCSQLExecutor(path, properties, dataSourceFactory, jdbcExecutor, transactionExecutorManager);
+        return new JDBCSQLExecutor(path, properties, dataSourceFactory, jdbcExecutor);
     }
 
     @Override

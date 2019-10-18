@@ -27,7 +27,6 @@ import io.journalkeeper.utils.state.StateServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
@@ -78,23 +77,13 @@ public class SQLServer implements StateServer {
         return role;
     }
 
-    public boolean waitForLeaderReady(int timeout, TimeUnit unit) {
-        long timeoutLine = System.currentTimeMillis() + unit.toMillis(timeout);
-
-        while (timeoutLine > System.currentTimeMillis()) {
-            URI leader = getLeader();
-
-            if (leader != null) {
-                return true;
-            }
-
-            try {
-                Thread.sleep(10);
-            } catch (InterruptedException e) {
-            }
+    public boolean waitClusterReady(int timeout, TimeUnit unit) {
+        try {
+            bootStrap.getClient().waitForClusterReady(timeout);
+            return true;
+        } catch (Exception e) {
+            return false;
         }
-
-        return false;
     }
 
     public URI getLeader() {
@@ -116,19 +105,15 @@ public class SQLServer implements StateServer {
         return client;
     }
 
-    public void init() {
-        try {
-            bootStrap.getServer().init(current, servers);
-        } catch (IOException e) {
-            throw new SQLException(e);
-        }
-    }
-
     @Override
     public void start() {
         try {
-            bootStrap.getServer().recover();
-            bootStrap.getServer().start();
+            RaftServer server = bootStrap.getServer();
+            if (server.isInitialized()) {
+                server.init(current, servers);
+            }
+            server.recover();
+            server.start();
         } catch (Exception e) {
             throw new SQLException(e);
         }

@@ -16,11 +16,11 @@ package io.journalkeeper.sql.state.jdbc;
 import io.journalkeeper.sql.client.domain.ResultSet;
 import io.journalkeeper.sql.exception.SQLException;
 import io.journalkeeper.sql.state.SQLTransactionExecutor;
-import io.journalkeeper.sql.state.support.SQLTransactionExecutorManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
+import java.util.List;
 
 /**
  * JDBCSQLTransactionExecutor
@@ -31,36 +31,31 @@ public class JDBCSQLTransactionExecutor implements SQLTransactionExecutor {
 
     protected static final Logger logger = LoggerFactory.getLogger(JDBCSQLTransactionExecutor.class);
 
-    private String id;
     private Connection connection;
     private JDBCExecutor executor;
-    private SQLTransactionExecutorManager transactionExecutorManager;
 
-    public JDBCSQLTransactionExecutor(String id, Connection connection, JDBCExecutor executor,
-                                      SQLTransactionExecutorManager transactionExecutorManager) {
-        this.id = id;
+    public JDBCSQLTransactionExecutor(Connection connection, JDBCExecutor executor) {
         this.connection = connection;
         this.executor = executor;
-        this.transactionExecutorManager = transactionExecutorManager;
     }
 
     @Override
-    public String insert(String sql, Object... params) {
+    public String insert(String sql, List<Object> params) {
         return executor.insert(connection, sql, params);
     }
 
     @Override
-    public int update(String sql, Object... params) {
+    public int update(String sql, List<Object> params) {
         return executor.update(connection, sql, params);
     }
 
     @Override
-    public int delete(String sql, Object... params) {
+    public int delete(String sql, List<Object> params) {
         return executor.delete(connection, sql, params);
     }
 
     @Override
-    public ResultSet query(String sql, Object... params) {
+    public ResultSet query(String sql, List<Object> params) {
         return executor.query(connection, sql, params);
     }
 
@@ -70,15 +65,14 @@ public class JDBCSQLTransactionExecutor implements SQLTransactionExecutor {
             connection.commit();
             return true;
         } catch (java.sql.SQLException e) {
-            logger.error("commit transaction exception, id: {}", id, e);
+            logger.error("commit transaction exception", e);
             throw new SQLException(e);
         } finally {
             try {
                 connection.close();
             } catch (java.sql.SQLException e) {
-                logger.error("close transaction exception, id: {}", id, e);
+                logger.error("close transaction exception", e);
             }
-            transactionExecutorManager.commit(id);
         }
     }
 
@@ -88,15 +82,14 @@ public class JDBCSQLTransactionExecutor implements SQLTransactionExecutor {
             connection.rollback();
             return true;
         } catch (java.sql.SQLException e) {
-            logger.error("rollback transaction exception, id: {}", id, e);
+            logger.error("rollback transaction exception", e);
             throw new SQLException(e);
         } finally {
             try {
                 connection.close();
             } catch (java.sql.SQLException e) {
-                logger.error("close transaction exception, id: {}", id, e);
+                logger.error("close transaction exception", e);
             }
-            transactionExecutorManager.rollback(id);
         }
     }
 }

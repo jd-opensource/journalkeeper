@@ -11,18 +11,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.sql.client.support;
+package io.journalkeeper.sql.client;
 
-import java.util.UUID;
+import java.util.List;
 
 /**
- * TransactionIdGenerator
+ * BatchSQLOperator
  * author: gaohaoxiang
- * date: 2019/8/2
+ * date: 2019/8/1
  */
-public class TransactionIdGenerator {
+public interface BatchSQLOperator {
 
-    public String generate() {
-        return UUID.randomUUID().toString().replace("-", "");
-    }
+    void insert(String sql, Object... params);
+
+    void update(String sql, Object... params);
+
+    void delete(String sql, Object... params);
+
+    List<Object> commit();
 }

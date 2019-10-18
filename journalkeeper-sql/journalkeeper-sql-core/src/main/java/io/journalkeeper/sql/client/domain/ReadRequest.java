@@ -13,7 +13,7 @@
  */
 package io.journalkeeper.sql.client.domain;
 
-import java.util.Arrays;
+import java.util.List;
 
 /**
  * ReadRequest
@@ -22,33 +22,17 @@ import java.util.Arrays;
  */
 public class ReadRequest extends StateRequest {
 
-    private String id;
     private String sql;
-    private String[] params;
+    private List<Object> params;
 
     public ReadRequest() {
 
     }
 
-    public ReadRequest(int type, String id, String sql, String[] params) {
-        super(type);
-        this.id = id;
-        this.sql = sql;
-        this.params = params;
-    }
-
-    public ReadRequest(int type, String sql, String[] params) {
+    public ReadRequest(int type, String sql, List<Object> params) {
         super(type);
         this.sql = sql;
         this.params = params;
-    }
-
-    public String getId() {
-        return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
     }
 
     public String getSql() {
@@ -59,21 +43,20 @@ public class ReadRequest extends StateRequest {
         this.sql = sql;
     }
 
-    public String[] getParams() {
+    public List<Object> getParams() {
         return params;
     }
 
-    public void setParams(String[] params) {
+    public void setParams(List<Object> params) {
         this.params = params;
     }
 
     @Override
     public String toString() {
         return "ReadRequest{" +
-                "id='" + id + '\'' +
                 "type='" + getType() + '\'' +
                 ", sql='" + sql + '\'' +
-                ", params=" + Arrays.toString(params) +
+                ", params=" + params +
                 '}';
     }
 }

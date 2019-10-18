@@ -15,6 +15,8 @@ package io.journalkeeper.sql.state;
 
 import io.journalkeeper.sql.client.domain.ResultSet;
 
+import java.util.List;
+
 /**
  * SQLTransactionExecutor
  * author: gaohaoxiang
@@ -22,13 +24,13 @@ import io.journalkeeper.sql.client.domain.ResultSet;
  */
 public interface SQLTransactionExecutor {
 
-    String insert(String sql, Object... params);
+    String insert(String sql, List<Object> params);
 
-    int update(String sql, Object... params);
+    int update(String sql, List<Object> params);
 
-    int delete(String sql, Object... params);
+    int delete(String sql, List<Object> params);
 
-    ResultSet query(String sql, Object... params);
+    ResultSet query(String sql, List<Object> params);
 
     boolean commit();
 

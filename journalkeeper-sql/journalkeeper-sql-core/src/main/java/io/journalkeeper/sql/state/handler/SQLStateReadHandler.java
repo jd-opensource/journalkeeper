@@ -19,8 +19,6 @@ import io.journalkeeper.sql.client.domain.ReadRequest;
 import io.journalkeeper.sql.client.domain.ReadResponse;
 import io.journalkeeper.sql.client.domain.ResultSet;
 import io.journalkeeper.sql.state.SQLExecutor;
-import io.journalkeeper.sql.state.SQLTransactionExecutor;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,19 +53,8 @@ public class SQLStateReadHandler {
         }
     }
 
-    // TODO 简单写，需要重构
     protected ReadResponse doQuery(ReadRequest request) {
-        if (StringUtils.isNotBlank(request.getId())) {
-            SQLTransactionExecutor transaction = sqlExecutor.getTransaction(request.getId());
-            if (transaction == null) {
-                logger.warn("transaction not exist, id: {}", request.getId());
-                return new ReadResponse(Codes.TRANSACTION_NOT_EXIST.getCode());
-            }
-            ResultSet result = transaction.query(request.getSql(), request.getParams());
-            return new ReadResponse(Codes.SUCCESS.getCode(), result);
-        } else {
-            ResultSet result = sqlExecutor.query(request.getSql(), request.getParams());
-            return new ReadResponse(Codes.SUCCESS.getCode(), result);
-        }
+        ResultSet result = sqlExecutor.query(request.getSql(), request.getParams());
+        return new ReadResponse(Codes.SUCCESS.getCode(), result);
     }
 }

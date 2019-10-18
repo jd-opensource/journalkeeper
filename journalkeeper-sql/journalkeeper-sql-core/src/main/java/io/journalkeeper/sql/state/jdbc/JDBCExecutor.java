@@ -28,7 +28,7 @@ import java.util.Map;
  */
 public class JDBCExecutor {
 
-    public String insert(Connection connection, String sql, Object... params) {
+    public String insert(Connection connection, String sql, List<Object> params) {
         try {
             return DBUtils.insert(connection, sql, params);
         } catch (java.sql.SQLException e) {
@@ -36,7 +36,7 @@ public class JDBCExecutor {
         }
     }
 
-    public int update(Connection connection, String sql, Object... params) {
+    public int update(Connection connection, String sql, List<Object> params) {
         try {
             return DBUtils.update(connection, sql, params);
         } catch (java.sql.SQLException e) {
@@ -44,7 +44,7 @@ public class JDBCExecutor {
         }
     }
 
-    public int delete(Connection connection, String sql, Object... params) {
+    public int delete(Connection connection, String sql, List<Object> params) {
         try {
             return DBUtils.delete(connection, sql, params);
         } catch (java.sql.SQLException e) {
@@ -52,7 +52,7 @@ public class JDBCExecutor {
         }
     }
 
-    public ResultSet query(Connection connection, String sql, Object... params) {
+    public ResultSet query(Connection connection, String sql, List<Object> params) {
         try {
             List<Map<String, String>> rows = DBUtils.query(connection, sql, params);
             return new ResultSet(rows);

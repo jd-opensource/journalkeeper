@@ -17,11 +17,11 @@ import io.journalkeeper.sql.client.domain.ResultSet;
 import io.journalkeeper.sql.exception.SQLException;
 import io.journalkeeper.sql.state.SQLExecutor;
 import io.journalkeeper.sql.state.SQLTransactionExecutor;
-import io.journalkeeper.sql.state.support.SQLTransactionExecutorManager;
 
 import javax.sql.DataSource;
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -35,18 +35,16 @@ public class JDBCSQLExecutor implements SQLExecutor {
     private JDBCExecutor executor;
 
     private DataSource dataSource;
-    private SQLTransactionExecutorManager transactionExecutorManager;
 
     public JDBCSQLExecutor(Path path, Properties properties, DataSourceFactory dataSourceFactory,
-                           JDBCExecutor executor, SQLTransactionExecutorManager transactionExecutorManager) {
+                           JDBCExecutor executor) {
         this.dataSourceFactory = dataSourceFactory;
         this.executor = executor;
         this.dataSource = dataSourceFactory.createDataSource(path, properties);
-        this.transactionExecutorManager = transactionExecutorManager;
     }
 
     @Override
-    public String insert(String sql, Object... params) {
+    public String insert(String sql, List<Object> params) {
         Connection connection = getConnection();
         try {
             return executor.insert(connection, sql, params);
@@ -56,7 +54,7 @@ public class JDBCSQLExecutor implements SQLExecutor {
     }
 
     @Override
-    public int update(String sql, Object... params) {
+    public int update(String sql, List<Object> params) {
         Connection connection = getConnection();
         try {
             return executor.update(connection, sql, params);
@@ -66,7 +64,7 @@ public class JDBCSQLExecutor implements SQLExecutor {
     }
 
     @Override
-    public int delete(String sql, Object... params) {
+    public int delete(String sql, List<Object> params) {
         Connection connection = getConnection();
         try {
             return executor.delete(connection, sql, params);
@@ -76,7 +74,7 @@ public class JDBCSQLExecutor implements SQLExecutor {
     }
 
     @Override
-    public ResultSet query(String sql, Object... params) {
+    public ResultSet query(String sql, List<Object> params) {
         Connection connection = getConnection();
         try {
             return executor.query(connection, sql, params);
@@ -86,21 +84,10 @@ public class JDBCSQLExecutor implements SQLExecutor {
     }
 
     @Override
-    public SQLTransactionExecutor beginTransaction(String id) {
+    public SQLTransactionExecutor beginTransaction() {
         Connection connection = getTransactionConnection();
-        JDBCSQLTransactionExecutor transactionExecutor = new JDBCSQLTransactionExecutor(id, connection, executor, transactionExecutorManager);
-        try {
-            transactionExecutorManager.begin(id, transactionExecutor);
-        } catch (Exception e) {
-            releaseConnection(connection);
-            throw e;
-        }
+        JDBCSQLTransactionExecutor transactionExecutor = new JDBCSQLTransactionExecutor(connection, executor);
         return transactionExecutor;
-    }
-
-    @Override
-    public SQLTransactionExecutor getTransaction(String id) {
-        return transactionExecutorManager.get(id);
     }
 
     protected Connection getTransactionConnection() {
