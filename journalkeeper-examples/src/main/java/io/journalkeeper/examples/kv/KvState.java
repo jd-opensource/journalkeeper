@@ -83,7 +83,8 @@ public class KvState extends LocalState<KvEntry, Void, KvQuery, KvResult> {
 
     @Override
     public CompletableFuture<KvResult> query(KvQuery query) {
-        return CompletableFuture.supplyAsync(() -> {
+        return CompletableFuture.completedFuture(null)
+                .thenApply(ignored -> {
             try {
                 switch (query.getCmd()) {
                     case KvQuery.CMD_GET:

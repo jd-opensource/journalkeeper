@@ -18,5 +18,6 @@ public interface JournalEntry {
     byte[] getSerializedBytes();
 
     int getLength();
+    long getTimestamp();
 
 }

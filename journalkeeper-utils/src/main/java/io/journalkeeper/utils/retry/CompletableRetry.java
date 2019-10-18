@@ -61,7 +61,7 @@ public class CompletableRetry<D/* 对端地址类型 */> {
                             try {
                                 if (delay > 0) {
                                     Thread.sleep(delay);
-                                    logger.warn("Retry, invokes times: {}.", retryInvoke.getInvokeTimes());
+                                    logger.debug("Retry, invokes times: {}.", retryInvoke.getInvokeTimes());
                                 }
                                 return retry(retryInvoke, checkRetry, executor);
                             } catch (InterruptedException ignored) {

@@ -49,11 +49,6 @@ public class DefaultJournalEntry implements JournalEntry {
         if (magicCode() != magic) {
             throw new ParseJournalException("Check magic failed！");
         }
-//        if(magic == MAGIC_CODE_NOT_SET) {
-//            JournalEntryParseSupport.setShort(serializedBuffer(), JournalEntryParseSupport.MAGIC, magicCode());
-//        } else if (magicCode() != magic) {
-//            throw new ParseJournalException("Check magic failed！");
-//        }
     }
 
     @Override
@@ -106,6 +101,11 @@ public class DefaultJournalEntry implements JournalEntry {
     @Override
     public int getLength() {
         return JournalEntryParseSupport.getInt(serializedBuffer(), JournalEntryParseSupport.LENGTH);
+    }
+
+    @Override
+    public long getTimestamp() {
+        return JournalEntryParseSupport.getLong(serializedBuffer(), JournalEntryParseSupport.TIMESTAMP);
     }
 
     @Override

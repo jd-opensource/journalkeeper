@@ -46,13 +46,13 @@ public class DefaultRaftClient<E, ER, Q, QR> extends AbstractClient implements R
     private final Config config;
     private final Executor executor;
 
-    public DefaultRaftClient(List<URI> servers, ClientServerRpcAccessPoint clientServerRpcAccessPoint,
+    public DefaultRaftClient(ClientRpc clientRpc,
                              Serializer<E> entrySerializer,
                              Serializer<ER> entryResultSerializer,
                              Serializer<Q> querySerializer,
                              Serializer<QR> queryResultSerializer,
                              Properties properties) {
-        super(servers, clientServerRpcAccessPoint);
+        super(clientRpc);
         this.entrySerializer = entrySerializer;
         this.entryResultSerializer = entryResultSerializer;
         this.querySerializer = querySerializer;
@@ -70,7 +70,7 @@ public class DefaultRaftClient<E, ER, Q, QR> extends AbstractClient implements R
 
     @Override
     public CompletableFuture<QR> query(Q query) {
-        return invokeClientLeaderRpc(leaderRpc -> leaderRpc.queryClusterState(new QueryStateRequest(querySerializer.serialize(query))))
+        return clientRpc.invokeClientLeaderRpc(leaderRpc -> leaderRpc.queryClusterState(new QueryStateRequest(querySerializer.serialize(query))))
                 .thenApply(response -> {
                     if(response.getStatusCode() == StatusCode.SUCCESS) {
                         return response.getResult();
@@ -81,13 +81,6 @@ public class DefaultRaftClient<E, ER, Q, QR> extends AbstractClient implements R
                 .thenApply(resultSerializer::parse);
     }
 
-
-
-    public void stop() {
-        clientServerRpcAccessPoint.stop();
-    }
-
-
     private Config toConfig(Properties properties) {
         Config config = new Config();
         config.setThreads(Integer.parseInt(
@@ -96,11 +89,6 @@ public class DefaultRaftClient<E, ER, Q, QR> extends AbstractClient implements R
                         String.valueOf(Config.DEFAULT_THREADS))));
 
         return config;
-    }
-
-    @Override
-    protected Executor getExecutor() {
-        return executor;
     }
 
     static class Config {

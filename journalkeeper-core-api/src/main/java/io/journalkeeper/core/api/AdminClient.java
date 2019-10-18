@@ -3,6 +3,7 @@ package io.journalkeeper.core.api;
 import com.sun.org.apache.xpath.internal.operations.Bool;
 import io.journalkeeper.utils.event.Watchable;
 
+import java.io.Closeable;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;

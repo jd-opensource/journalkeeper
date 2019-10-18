@@ -88,6 +88,13 @@ public class KvServer implements StateServer {
         return bootStrap.getAdminClient();
     }
 
+    public KvClient createLocalClient() {
+        return new KvClient(bootStrap.getLocalClient());
+    }
+    public AdminClient createLoaclAdminClient() {
+        return bootStrap.getLocalAdminClient();
+    }
+
     public RaftServer.Roll roll() {
         return this.bootStrap.getServer().roll();
     }

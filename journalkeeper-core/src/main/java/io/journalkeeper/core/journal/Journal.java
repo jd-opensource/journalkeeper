@@ -35,6 +35,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -53,9 +54,8 @@ import java.util.stream.Stream;
  */
 public class Journal implements RaftJournal, Flushable, Closeable {
     private static final Logger logger = LoggerFactory.getLogger(Journal.class);
-    private static final String JOURNAL_PATH = "journal";
-    private static final String INDEX_PATH = "index";
-    private static final String PARTITIONS_PATH = "partitions";
+    private static final String PARTITION_PATH = "index";
+    private static final String INDEX_PATH = "index/all";
     private static final int INDEX_STORAGE_SIZE = Long.BYTES;
     private static final String JOURNAL_PROPERTIES_PATTERN = "^persistence\\.journal\\.(.*)$";
     private static final String INDEX_PROPERTIES_PATTERN = "^persistence\\.index\\.(.*)$";
@@ -602,9 +602,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      */
     public void recover(Path path, long commitIndex, Properties properties) throws IOException {
         this.basePath = path;
-        Path journalPath = path.resolve(JOURNAL_PATH);
+        Path journalPath = path;
         Path indexPath = path.resolve(INDEX_PATH);
-        Path partitionPath = path.resolve(PARTITIONS_PATH);
+        Path partitionPath = path.resolve(PARTITION_PATH);
         Properties journalProperties = replacePropertiesNames(properties,
                 JOURNAL_PROPERTIES_PATTERN, DEFAULT_JOURNAL_PROPERTIES);
 
@@ -630,8 +630,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         recoverPartitions(partitionPath, indexProperties);
 
         flush();
-        logger.info("Journal recovered, minIndex: {}, maxIndex: {}, path: {}.",
-                minIndex(), maxIndex(), journalPath.toAbsolutePath().toString());
+        logger.info("Journal recovered, minIndex: {}, maxIndex: {}, partitions: {}, path: {}.",
+                minIndex(), maxIndex(), partitionMap.keySet(), journalPath.toAbsolutePath().toString());
     }
 
     private void checkAndSetCommitIndex(long commitIndex) {
@@ -810,7 +810,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         JournalEntry lastEntryHeader = null;
         while (position >= journalPersistence.min()) {
             try {
-                JournalEntry header = readEntryHeaderByOffset(position);
+                JournalEntry header = readByOffset(position);
                 // 找到一条记录的开头位置
                 if(lastEntryPosition < 0) { // 之前是否已经找到一条？
                     // 这是倒数第一条，记录之
@@ -903,6 +903,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                 for (Integer partition : toBeRemoved) {
                     removePartition(partition);
                 }
+                logger.info("Journal repartitioned, partitions: {}, path: {}.",
+                        partitionMap.keySet(), basePath.toAbsolutePath().toString());
 
             }
         } catch (IOException e) {
@@ -910,16 +912,77 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         }
     }
 
+
+    @Override
+    public long queryIndexByTimestamp(int partition, long timestamp) {
+        try {
+            if (partitionMap.containsKey(partition)) {
+                JournalPersistence indexStore = partitionMap.get(partition);
+                long searchedIndex = binarySearchByTimestamp(timestamp, indexStore, indexStore.min() / INDEX_STORAGE_SIZE, indexStore.max() / INDEX_STORAGE_SIZE - 1);
+
+                // 考虑到有可能出现连续n条消息时间相同，找到这n条消息的第一条
+                while (searchedIndex - 1 >= indexStore.min() && timestamp <= getStorageTimestamp(indexStore, searchedIndex - 1)) {
+                    searchedIndex--;
+                }
+                return searchedIndex;
+
+            }
+        } catch (Throwable e) {
+            logger.warn("Query index by timestamp exception: ", e);
+        }
+        return -1L;
+    }
+
+    // 折半查找
+    private long binarySearchByTimestamp(long timestamp,
+                                         JournalPersistence indexStore,
+                                         long leftIndexInclude,
+                                         long rightIndexInclude) {
+
+        if (rightIndexInclude <= leftIndexInclude) {
+            return -1L;
+        }
+
+        if (timestamp <= getStorageTimestamp(indexStore, leftIndexInclude)) {
+            return leftIndexInclude;
+        }
+
+        if (timestamp >= getStorageTimestamp(indexStore, rightIndexInclude)) {
+            return rightIndexInclude;
+        }
+
+        if (leftIndexInclude + 1 == rightIndexInclude) {
+            return leftIndexInclude;
+        }
+
+        long mid = leftIndexInclude + (rightIndexInclude - leftIndexInclude) / 2;
+
+        long midTimestamp = getStorageTimestamp(indexStore, mid);
+
+        if (timestamp < midTimestamp) {
+            return binarySearchByTimestamp(timestamp, indexStore, leftIndexInclude, mid);
+        } else {
+            return binarySearchByTimestamp(timestamp, indexStore, mid, rightIndexInclude);
+        }
+    }
+
+    private long getStorageTimestamp(
+            JournalPersistence indexStore,
+            long index) {
+        JournalEntry header = readEntryHeaderByOffset(readOffset(indexStore, index));
+        return header.getTimestamp();
+    }
+
     @Override
     public Set<Integer> getPartitions() {
-        return partitionMap.keySet();
+        return new HashSet<>(partitionMap.keySet());
     }
 
     private void addPartition(int partition) throws IOException {
         synchronized (partitionMap) {
             if (!partitionMap.containsKey(partition)) {
                 JournalPersistence partitionPersistence = persistenceFactory.createJournalPersistenceInstance();
-                partitionPersistence.recover(basePath.resolve(PARTITIONS_PATH).resolve(String.valueOf(partition)), indexProperties);
+                partitionPersistence.recover(basePath.resolve(PARTITION_PATH).resolve(String.valueOf(partition)), indexProperties);
                 partitionMap.put(partition, partitionPersistence);
             }
         }
@@ -929,6 +992,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         synchronized (partitionMap) {
             JournalPersistence removedPersistence;
             if ((removedPersistence = partitionMap.remove(partition)) != null) {
+                logger.info("Partition removed: {}, journal: {}.", partition, basePath.toAbsolutePath().toString());
                 removedPersistence.delete();
             }
         }

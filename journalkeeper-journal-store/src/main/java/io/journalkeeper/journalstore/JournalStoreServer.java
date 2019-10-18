@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 
 /**
  * @author LiYue
@@ -56,6 +57,14 @@ public class JournalStoreServer implements StateServer {
         bootStrap.getServer().init(uri, voters);
     }
 
+    public void init(URI uri, List<URI> voters, Set<Integer> partitions) throws IOException {
+        bootStrap.getServer().init(uri, voters, partitions);
+    }
+
+    public boolean isInitialized() {
+        return bootStrap.getServer().isInitialized();
+    }
+
     public void recover() throws IOException {
         bootStrap.getServer().recover();
     }
@@ -77,10 +86,18 @@ public class JournalStoreServer implements StateServer {
     }
 
     public JournalStoreClient createClient() {
-        return new JournalStoreClient(bootStrap.getClient(), bootStrap.getAdminClient());
+        return new JournalStoreClient(bootStrap.getClient());
     }
 
     public AdminClient getAdminClient() {
+        return bootStrap.getAdminClient();
+    }
+
+    public JournalStoreClient createLocalClient() {
+        return new JournalStoreClient(bootStrap.getClient());
+    }
+
+    public AdminClient getLocalAdminClient() {
         return bootStrap.getAdminClient();
     }
 

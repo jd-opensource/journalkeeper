@@ -19,22 +19,29 @@ package io.journalkeeper.journalstore;
  */
 public class JournalStoreQuery {
 
-    public static final int CMQ_QUERY_ENTRIES = 0;
-    public static final int CMQ_QUERY_PARTITIONS = 1;
+    public static final int CMD_QUERY_ENTRIES = 0;
+    public static final int CMD_QUERY_PARTITIONS = 1;
+    public static final int CMD_QUERY_INDEX = 2;
     private final int cmd;
     private final int partition;
     private final long index;
     private final int size;
+    private final long timestamp;
 
 
-    JournalStoreQuery(int cmd, int partition, long index, int size) {
+    JournalStoreQuery(int cmd, int partition, long index, int size, long timestamp) {
         this.cmd = cmd;
         this.partition = partition;
         this.index = index;
         this.size = size;
+        this.timestamp = timestamp;
     }
     private JournalStoreQuery(int cmd) {
-        this(cmd, 0, 0, 0);
+        this(cmd, 0, 0, 0, 0L);
+    }
+
+    private JournalStoreQuery(int partition, long timestamp) {
+        this(CMD_QUERY_INDEX, partition, 0,0, timestamp);
     }
 
     public int getCmd() {
@@ -53,11 +60,19 @@ public class JournalStoreQuery {
         return partition;
     }
 
+    public long getTimestamp() {
+        return timestamp;
+    }
+
     public static JournalStoreQuery createQueryEntries(int partition, long index, int size) {
-        return new JournalStoreQuery(CMQ_QUERY_ENTRIES, partition, index, size);
+        return new JournalStoreQuery(CMD_QUERY_ENTRIES, partition, index, size, 0L);
     }
 
     public static JournalStoreQuery createQueryPartitions() {
-        return new JournalStoreQuery(CMQ_QUERY_PARTITIONS);
+        return new JournalStoreQuery(CMD_QUERY_PARTITIONS);
+    }
+
+    public static JournalStoreQuery createQueryIndex(int partition, long timestamp) {
+        return new JournalStoreQuery(partition, timestamp);
     }
 }

@@ -286,20 +286,14 @@ public class PositioningStore implements JournalPersistence,Closeable {
     public byte [] read(long position, int length) throws IOException{
         if(length == 0) return new byte [0];
         checkReadPosition(position);
-        try {
-
-            Map.Entry<Long, StoreFile> storeFileEntry = storeFileMap.floorEntry(position);
-            if (storeFileEntry == null) {
-                return null;
-            }
-
-            StoreFile storeFile = storeFileEntry.getValue();
-            int relPosition = (int )(position - storeFile.position());
-            return storeFile.read(relPosition, length).array();
-        } catch (Throwable t) {
-            logger.warn("Exception on read position {} of store {}.", position, base.getAbsolutePath(), t);
-            throw t;
+        Map.Entry<Long, StoreFile> storeFileEntry = storeFileMap.floorEntry(position);
+        if (storeFileEntry == null) {
+            return null;
         }
+
+        StoreFile storeFile = storeFileEntry.getValue();
+        int relPosition = (int )(position - storeFile.position());
+        return storeFile.read(relPosition, length).array();
     }
 
 

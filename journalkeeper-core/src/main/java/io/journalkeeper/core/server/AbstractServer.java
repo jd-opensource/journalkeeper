@@ -28,6 +28,7 @@ import io.journalkeeper.core.entry.reserved.ReservedEntry;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS2Entry;
+import io.journalkeeper.core.exception.RecoverException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.metric.DummyMetric;
 import io.journalkeeper.exceptions.IndexOverflowException;
@@ -104,6 +105,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.StampedLock;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -325,15 +327,28 @@ public abstract class AbstractServer<E, ER, Q, QR>
     }
 
     @Override
-    public synchronized void init(URI uri, List<URI> voters) throws IOException {
+    public synchronized void init(URI uri, List<URI> voters, Set<Integer> partitions) throws IOException {
 
         this.uri = uri;
         votersConfigStateMachine = new VoterConfigurationStateMachine(voters);
         createMissingDirectories();
         metadataPersistence.recover(metadataPath());
         lastSavedServerMetadata = createServerMetadata();
+        Set<Integer> partitionsWithReserved = new HashSet<>(partitions);
+        partitionsWithReserved.add(RESERVED_PARTITION);
+        lastSavedServerMetadata.setPartitions(partitionsWithReserved);
         metadataPersistence.save(lastSavedServerMetadata);
 
+    }
+
+    @Override
+    public boolean isInitialized() {
+        try {
+            ServerMetadata  metadata = metadataPersistence.recover(metadataPath());
+            return metadata != null && metadata.isInitialized();
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private void createMissingDirectories() throws IOException {
@@ -473,7 +488,12 @@ public abstract class AbstractServer<E, ER, Q, QR>
     private void scalePartitions(int[] partitions) {
         try {
             scalePartitionLock.lock();
-            journal.rePartition(Arrays.stream(partitions).boxed().collect(Collectors.toSet()));
+
+            journal.rePartition(
+                    Stream.concat(IntStream.of(RESERVED_PARTITION).boxed(),
+                            Arrays.stream(partitions).boxed())
+                            .collect(Collectors.toSet()));
+            //TODO: request flush metadata
         } finally {
             scalePartitionLock.unlock();
         }
@@ -819,6 +839,11 @@ public abstract class AbstractServer<E, ER, Q, QR>
     @Override
     public synchronized void recover() throws IOException {
         lastSavedServerMetadata = metadataPersistence.recover(metadataPath());
+        if(lastSavedServerMetadata == null || !lastSavedServerMetadata.isInitialized()) {
+            throw new RecoverException(
+                    String.format("Recover failed! Cause: metadata is not initialized. Metadata path: %s.",
+                            metadataPath().toString()));
+        }
         onMetadataRecovered(lastSavedServerMetadata);
         recoverJournal(lastSavedServerMetadata.getPartitions(), lastSavedServerMetadata.getCommitIndex());
         onJournalRecovered(journal);
@@ -872,7 +897,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     }
 
     private Path journalPath() {
-        return workingDir().resolve("journal");
+        return workingDir();
     }
     private void recoverSnapshots() throws IOException {
         if(!Files.isDirectory(snapshotsPath())) {
@@ -930,8 +955,10 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     protected ServerMetadata createServerMetadata() {
         ServerMetadata serverMetadata = new ServerMetadata();
+        serverMetadata.setInitialized(true);
         serverMetadata.setThisServer(uri);
         VoterConfigurationStateMachine config = votersConfigStateMachine.clone();
+        serverMetadata.setPartitions(journal.getPartitions());
         serverMetadata.setVoters(config.configNew);
         serverMetadata.setOldVoters(config.configOld);
         serverMetadata.setJointConsensus(config.jointConsensus);

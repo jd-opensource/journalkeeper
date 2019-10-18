@@ -36,46 +36,36 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
 
     private final Config config;
     private final Executor executor;
-    public DefaultAdminClient(List<URI> servers, ClientServerRpcAccessPoint clientServerRpcAccessPoint, Properties properties) {
-        super(servers, clientServerRpcAccessPoint);
-        this.config = toConfig(properties);
-        this.executor = Executors.newFixedThreadPool(config.getThreads(), new NamedThreadFactory("Admin-Client-Executors"));
-    }
 
-    @Override
-    protected Executor getExecutor() {
-        return executor;
-    }
 
-    public DefaultAdminClient(List<URI> servers, Properties properties) {
-        super(servers, properties);
+    public DefaultAdminClient(ClientRpc clientRpc, Properties properties) {
+        super(clientRpc);
         this.config = toConfig(properties);
         this.executor = Executors.newFixedThreadPool(config.getThreads(), new NamedThreadFactory("Admin-Client-Executors"));
     }
 
     @Override
     public CompletableFuture<ClusterConfiguration> getClusterConfiguration() {
-        return invokeClientLeaderRpc(ClientServerRpc::getServers)
+        return clientRpc.invokeClientLeaderRpc(ClientServerRpc::getServers)
                 .thenApply(GetServersResponse::getClusterConfiguration);
     }
 
     @Override
     public CompletableFuture<ClusterConfiguration> getClusterConfiguration(URI uri) {
-        return clientServerRpcAccessPoint.getClintServerRpc(uri)
-                .getServers()
+        return clientRpc.invokeClientServerRpc(uri, ClientServerRpc::getServers)
                 .thenApply(GetServersResponse::getClusterConfiguration);
     }
 
     @Override
     public CompletableFuture<Boolean> updateVoters(List<URI> oldConfig, List<URI> newConfig) {
-        return  invokeClientLeaderRpc(leaderRpc -> leaderRpc.updateVoters(new UpdateVotersRequest(oldConfig, newConfig)))
+        return  clientRpc.invokeClientLeaderRpc(leaderRpc -> leaderRpc.updateVoters(new UpdateVotersRequest(oldConfig, newConfig)))
                 .thenApply(BaseResponse::success);
     }
 
     @Override
     public CompletableFuture<Void> convertRoll(URI uri, RaftServer.Roll roll) {
-        return clientServerRpcAccessPoint.getClintServerRpc(uri)
-                .convertRoll(new ConvertRollRequest(roll)).thenApply(r -> null);
+        return clientRpc.invokeClientServerRpc(uri, rpc -> rpc.convertRoll(new ConvertRollRequest(roll)))
+                .thenApply(r -> null);
     }
 
     @Override
@@ -91,9 +81,8 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
 
     @Override
     public CompletableFuture<ServerStatus> getServerStatus(URI uri) {
-        return clientServerRpcAccessPoint
-                .getClintServerRpc(uri)
-                .getServerStatus()
+        return clientRpc.invokeClientServerRpc(uri,
+                ClientServerRpc::getServerStatus)
                 .thenApply(GetServerStatusResponse::getServerStatus);
     }
 
@@ -101,11 +90,6 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
     public CompletableFuture<Void> setPreferredLeader(URI preferredLeader) {
         return this.update(ReservedEntriesSerializeSupport.serialize(new SetPreferredLeaderEntry(preferredLeader)),
                 RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
-    }
-
-    @Override
-    public void stop() {
-        clientServerRpcAccessPoint.stop();
     }
 
     private Config toConfig(Properties properties) {

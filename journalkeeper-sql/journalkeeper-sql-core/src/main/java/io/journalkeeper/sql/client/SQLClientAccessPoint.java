@@ -14,6 +14,7 @@
 package io.journalkeeper.sql.client;
 
 import io.journalkeeper.base.Serializer;
+import io.journalkeeper.core.BootStrap;
 import io.journalkeeper.core.client.DefaultRaftClient;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
@@ -41,7 +42,6 @@ public class SQLClientAccessPoint {
     private Serializer<WriteResponse> writeResponseSerializer;
     private Serializer<ReadRequest> readRequestSerializer;
     private Serializer<ReadResponse> readResponseSerializer;
-
     public SQLClientAccessPoint(Properties config) {
         this(config,
                 new KryoSerializer<>(WriteRequest.class),
@@ -60,13 +60,16 @@ public class SQLClientAccessPoint {
         this.writeResponseSerializer = writeResponseSerializer;
         this.readRequestSerializer = readRequestSerializer;
         this.readResponseSerializer = readResponseSerializer;
+
     }
 
     public SQLClient createClient(List<URI> servers) {
-        RpcAccessPointFactory rpcAccessPoint = ServiceSupport.load(RpcAccessPointFactory.class);
-        ClientServerRpcAccessPoint clientServerRpcAccessPoint = rpcAccessPoint.createClientServerRpcAccessPoint(config);
-        DefaultRaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client = new DefaultRaftClient<>(servers, clientServerRpcAccessPoint, writeRequestSerializer,
+
+        BootStrap<WriteRequest, WriteResponse, ReadRequest, ReadResponse> bootStrap =
+                new BootStrap<>(servers, writeRequestSerializer,
                 writeResponseSerializer, readRequestSerializer, readResponseSerializer, config);
-        return new SQLClient(servers, config, client);
+
+        return new SQLClient(servers, config,
+                bootStrap.getClient());
     }
 }
