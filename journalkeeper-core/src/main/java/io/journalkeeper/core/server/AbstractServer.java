@@ -25,6 +25,7 @@ import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
 import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
 import io.journalkeeper.core.entry.reserved.ReservedEntry;
+import io.journalkeeper.core.entry.reserved.ReservedPartition;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
 import io.journalkeeper.core.entry.reserved.UpdateVotersS2Entry;
@@ -328,7 +329,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     @Override
     public synchronized void init(URI uri, List<URI> voters, Set<Integer> partitions) throws IOException {
-
+        ReservedPartition.validatePartitions(partitions);
         this.uri = uri;
         votersConfigStateMachine = new VoterConfigurationStateMachine(voters);
         createMissingDirectories();

@@ -13,11 +13,11 @@
  */
 package io.journalkeeper.journalstore;
 
-import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.PartitionedJournalStore;
 import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.entry.reserved.ReservedPartition;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.utils.event.EventWatcher;
@@ -46,12 +46,14 @@ public class JournalStoreClient implements PartitionedJournalStore {
     @Override
     public CompletableFuture<Long> append(int partition, int batchSize,
                                           byte [] entries, boolean includeHeader, ResponseConfig responseConfig) {
+        ReservedPartition.validatePartition(partition);
         return raftClient.update(entries, partition,
                 batchSize, includeHeader, responseConfig);
     }
 
     @Override
     public CompletableFuture<List<JournalEntry>> get(int partition, long index, int size) {
+        ReservedPartition.validatePartition(partition);
         return raftClient.query(JournalStoreQuery.createQueryEntries(partition, index, size))
                 .thenApply(result -> {
                     if(result.getCode() == JournalStoreQueryResult.CODE_SUCCESS) {
@@ -94,6 +96,7 @@ public class JournalStoreClient implements PartitionedJournalStore {
 
     @Override
     public CompletableFuture<Long> queryIndex(int partition, long timestamp) {
+        ReservedPartition.validatePartition(partition);
         return raftClient
                 .query(JournalStoreQuery.createQueryIndex(partition, timestamp))
                 .thenApply(result -> result.getCode() == JournalStoreQueryResult.CODE_SUCCESS ? result.getIndex(): -1L)

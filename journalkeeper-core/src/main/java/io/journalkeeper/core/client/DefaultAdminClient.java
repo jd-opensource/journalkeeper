@@ -9,11 +9,11 @@ import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
+import io.journalkeeper.core.entry.reserved.ReservedPartition;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.reserved.SetPreferredLeaderEntry;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.client.ClientServerRpc;
-import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
 import io.journalkeeper.rpc.client.GetServerStatusResponse;
 import io.journalkeeper.rpc.client.GetServersResponse;
@@ -75,6 +75,9 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
     }
     @Override
     public CompletableFuture<Void> scalePartitions(int[] partitions) {
+
+        ReservedPartition.validatePartitions(partitions);
+
         return this.update(ReservedEntriesSerializeSupport.serialize(new ScalePartitionsEntry(partitions)),
                 RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
     }
