@@ -19,6 +19,7 @@ package io.journalkeeper.core.api;
  * RECEIVE: Server收到请求后应答；
  * PERSISTENCE：Server将消息写入磁盘后应答；
  * REPLICATION：Server将消息复制到集群大多数节点后应答，默认值；
+ * ALL：Server将消息复制到集群大多数节点后应答并且在LEADER写入磁盘后应答；
  *
  * @author LiYue
  * Date: 2019-04-23
@@ -27,7 +28,8 @@ public enum ResponseConfig {
     ONE_WAY(0),
     RECEIVE(1),
     PERSISTENCE(2),
-    REPLICATION(3);
+    REPLICATION(3),
+    ALL(9);
 
     private int value;
 
@@ -47,6 +49,8 @@ public enum ResponseConfig {
                 return RECEIVE;
             case 2:
                 return PERSISTENCE;
+            case 9:
+                return ALL;
             default:
                 return REPLICATION;
         }

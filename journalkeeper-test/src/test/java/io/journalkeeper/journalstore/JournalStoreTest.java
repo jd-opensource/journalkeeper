@@ -22,6 +22,7 @@ import io.journalkeeper.core.entry.JournalEntryParseSupport;
 import io.journalkeeper.exceptions.ServerBusyException;
 import io.journalkeeper.utils.format.Format;
 import io.journalkeeper.utils.net.NetworkingUtils;
+import io.journalkeeper.utils.test.ByteUtils;
 import io.journalkeeper.utils.test.TestPathUtils;
 import io.journalkeeper.utils.threads.NamedThreadFactory;
 import org.junit.After;
@@ -43,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -243,6 +245,41 @@ public class JournalStoreTest {
         }
 
     }
+    @Test
+    public void allResponseTest() throws Exception {
+        int nodes = 5;
+        int entrySize = 1024;
+        int count = 512;
+        List<JournalStoreServer> servers = createServers(nodes, base);
+        try {
+            JournalStoreClient client = servers.get(0).createClient();
+            client.waitForClusterReady(10000);
+
+            byte[] rawEntries = ByteUtils.createFixedSizeBytes(entrySize);
+            CompletableFuture[] futures = new CompletableFuture [count];
+            for (int i = 0; i < count; i++) {
+                futures[i] = client.append(0, 1, rawEntries, ResponseConfig.ALL);
+            }
+
+            CompletableFuture.allOf(futures).get();
+
+            for (int i = 0; i < count; i++) {
+                List<JournalEntry> raftEntries = client.get(0, i, 1).get();
+                Assert.assertEquals(raftEntries.size(), 1);
+                JournalEntry entry = raftEntries.get(0);
+                Assert.assertEquals(0, entry.getPartition());
+                Assert.assertEquals(1, entry.getBatchSize());
+                Assert.assertEquals(0, entry.getOffset());
+                Assert.assertArrayEquals(rawEntries, entry.getPayload().getBytes());
+            }
+
+        } finally {
+            stopServers(servers);
+
+        }
+
+    }
+
 
     private void asyncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException {
         ExecutorService executors = Executors.newFixedThreadPool(10, new NamedThreadFactory("ClientRetryThreads"));

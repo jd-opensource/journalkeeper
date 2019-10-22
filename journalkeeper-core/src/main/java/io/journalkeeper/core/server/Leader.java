@@ -209,7 +209,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
         UpdateStateRequestResponse rr = pendingUpdateStateRequests.take();
         final UpdateClusterStateRequest request = rr.getRequest();
-        final CompletableFuture<UpdateClusterStateResponse> responseFuture = rr.getResponseFuture();
+        final ResponseFuture responseFuture = rr.getResponseFuture();
         try {
 
             if(voterConfigManager.maybeUpdateLeaderConfig(request,
@@ -220,18 +220,18 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
             doAppendJournalEntry(request, responseFuture);
 
         } catch (Throwable t) {
-            responseFuture.complete(new UpdateClusterStateResponse(t));
+            responseFuture.getResponseFuture().complete(new UpdateClusterStateResponse(t));
             throw t;
         }
 
     }
 
-    private Void doAppendJournalEntryCallable(UpdateClusterStateRequest request, CompletableFuture<UpdateClusterStateResponse> responseFuture) throws InterruptedException {
+    private Void doAppendJournalEntryCallable(UpdateClusterStateRequest request, ResponseFuture responseFuture) throws InterruptedException {
         doAppendJournalEntry(request, responseFuture);
         return null;
     }
 
-    private void doAppendJournalEntry(UpdateClusterStateRequest request, CompletableFuture<UpdateClusterStateResponse> responseFuture) throws InterruptedException {
+    private void doAppendJournalEntry(UpdateClusterStateRequest request, ResponseFuture responseFuture) throws InterruptedException {
         appendJournalMetric.start();
 
         JournalEntry entry ;
@@ -245,10 +245,13 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         entry.setBatchSize(request.getBatchSize());
         entry.setTerm(currentTerm);
         long index = journal.append(entry);
-        if (request.getResponseConfig() == ResponseConfig.PERSISTENCE) {
-            flushCallbacks.put(new Callback(index, responseFuture));
-        } else if (request.getResponseConfig() == ResponseConfig.REPLICATION) {
-            replicationCallbacks.put(new Callback(index, responseFuture));
+        if (request.getResponseConfig() == ResponseConfig.REPLICATION ) {
+            replicationCallbacks.put(new Callback(index, responseFuture.getReplicationFuture()));
+        } else if (request.getResponseConfig() == ResponseConfig.PERSISTENCE ) {
+            flushCallbacks.put(new Callback(index, responseFuture.getFlushFuture()));
+        } else if (request.getResponseConfig() == ResponseConfig.ALL) {
+            replicationCallbacks.put(new Callback(index, responseFuture.getReplicationFuture()));
+            flushCallbacks.put(new Callback(index, responseFuture.getFlushFuture()));
         }
         threads.wakeupThread(LEADER_REPLICATION_THREAD);
         threads.wakeupThread(FLUSH_JOURNAL_THREAD);
@@ -584,12 +587,12 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
             pendingUpdateStateRequests.put(requestResponse);
             if (request.getResponseConfig() == ResponseConfig.RECEIVE) {
-                requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse());
+                requestResponse.getResponseFuture().getResponseFuture().complete(new UpdateClusterStateResponse());
             }
         } catch (Throwable e) {
-            requestResponse.getResponseFuture().complete(new UpdateClusterStateResponse(e));
+            requestResponse.getResponseFuture().getResponseFuture().complete(new UpdateClusterStateResponse(e));
         }
-        return requestResponse.getResponseFuture();
+        return requestResponse.getResponseFuture().getResponseFuture();
     }
 
     void disableWrite(long timeoutMs, int term) {
@@ -734,15 +737,15 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     private static class UpdateStateRequestResponse {
         private final UpdateClusterStateRequest request;
-        private final CompletableFuture<UpdateClusterStateResponse> responseFuture;
+        private final ResponseFuture responseFuture;
         private final long start = System.nanoTime();
         private long logIndex;
 
         UpdateStateRequestResponse(UpdateClusterStateRequest request, JMetric metric) {
             this.request = request;
-            responseFuture = new CompletableFuture<>();
+            responseFuture = new ResponseFuture(request.getResponseConfig());
             final int length = request.getEntry().length;
-            responseFuture
+            responseFuture.getResponseFuture()
                     .thenRun(() -> metric.mark(System.nanoTime() - start, length));
 
         }
@@ -751,10 +754,9 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
             return request;
         }
 
-        CompletableFuture<UpdateClusterStateResponse> getResponseFuture() {
-            return responseFuture;
+        ResponseFuture getResponseFuture() {
+            return this.responseFuture;
         }
-
         public long getLogIndex() {
             return logIndex;
         }
@@ -851,6 +853,58 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
         public void setLastHeartbeatRequestTime(long lastHeartbeatRequestTime) {
             this.lastHeartbeatRequestTime = lastHeartbeatRequestTime;
+        }
+    }
+
+    private final static class ResponseFuture {
+        private final CompletableFuture<UpdateClusterStateResponse> responseFuture;
+        private final CompletableFuture<UpdateClusterStateResponse> flushFuture;
+        private final CompletableFuture<UpdateClusterStateResponse> replicationFuture;
+        private ResponseFuture(ResponseConfig responseConfig) {
+            this.responseFuture = new CompletableFuture<>();
+            if(responseConfig == ResponseConfig.ALL) {
+                this.flushFuture = new CompletableFuture<>();
+                this.replicationFuture = new CompletableFuture<>();
+
+                this.replicationFuture.whenComplete((replicationResponse, e) -> {
+                    if (null == e) {
+                        if (replicationResponse.success()) {
+                            this.flushFuture.whenComplete((flushResponse, t) -> {
+                                if (null == t) {
+                                    if (flushResponse.success()) {
+                                        // 如果都成功，优先使用replication response，因为里面有执行状态机的返回值。
+                                        responseFuture.complete(replicationResponse);
+                                    } else {
+                                        // replication 成功，flush 失败，返回失败的flush response。
+                                        responseFuture.complete(flushResponse);
+                                    }
+                                } else {
+                                    responseFuture.complete(new UpdateClusterStateResponse(t));
+                                }
+                            });
+                        } else {
+                            responseFuture.complete(replicationResponse);
+                        }
+                    } else {
+                        responseFuture.complete(new UpdateClusterStateResponse(e));
+                    }
+                });
+            } else {
+                this.flushFuture = responseFuture;
+                this.replicationFuture = responseFuture;
+            }
+        }
+
+        private CompletableFuture<UpdateClusterStateResponse> getResponseFuture() {
+            return responseFuture;
+        }
+
+        private CompletableFuture<UpdateClusterStateResponse> getFlushFuture() {
+            return flushFuture;
+        }
+
+        private CompletableFuture<UpdateClusterStateResponse> getReplicationFuture() {
+            return replicationFuture;
         }
     }
 }
