@@ -49,7 +49,7 @@ transactionIds[] | 进行中的事务ID集合
 
 #### 如何生成事务ID？
 
-使用一个固定分区TRANSACTION_ID_GENERATOR_PARTITION用于生成全局唯一的事务ID，返回的索引序号就是事务ID。
+使用Java的UUID。
 
 #### 开启事务
 
@@ -86,7 +86,7 @@ transactionIds[] | 进行中的事务ID集合
 TRANSACTION_START | 0 | 事务ID | 开启事务
 TRANSACTION_ENTRY | 1 | 事务ID、分区号、日志 | 事务日志
 TRANSACTION_PRE_COMPLETE | 2 | 事务ID | 预提交
-TRANSACTION_COMPLETE | 2 | 事务ID、操作（提交或回滚） | 事务结束
+TRANSACTION_COMPLETE | 3 | 事务ID、操作（提交或回滚） | 事务结束
 
 ### 事务分区号
 
@@ -94,5 +94,4 @@ TRANSACTION_COMPLETE | 2 | 事务ID、操作（提交或回滚） | 事务结束
 
 分区 | 分区号 | 说明
 -- | -- | -- 
-TRANSACTION_ID_GENERATOR_PARTITION | 32766 | 用于生成事务ID的分区
 TRANSACTION_PARTITION_N | 30000 + N | 事务日志分区， 30000 <= N < 30128
