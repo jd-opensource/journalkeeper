@@ -5,7 +5,11 @@ package io.journalkeeper.core.transaction;
  * Date: 2019/10/22
  */
 public enum TransactionEntryType {
+    // transient types
     TRANSACTION_EMPTY(-1),
+    TRANSACTION_PRE_START(-2),
+
+    // persistent types
     TRANSACTION_START(0),
     TRANSACTION_ENTRY(1),
     TRANSACTION_PRE_COMPLETE(2),
@@ -33,6 +37,8 @@ public enum TransactionEntryType {
                 return TRANSACTION_COMPLETE;
             case -1:
                 return TRANSACTION_EMPTY;
+            case -2:
+                return TRANSACTION_PRE_START;
             default:
                 throw new IllegalArgumentException("Illegal TransactionEntryType value!");
         }

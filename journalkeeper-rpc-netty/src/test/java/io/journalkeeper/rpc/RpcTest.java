@@ -149,7 +149,7 @@ public class RpcTest {
         for (int i = 0; i < entrySize; i++) {
             entry[i] = (byte) i;
         }
-        UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, 0, 1, false, ResponseConfig.RECEIVE);
+        UpdateClusterStateRequest request = new UpdateClusterStateRequest(UUID.randomUUID(), entry, 0, 1, false, ResponseConfig.RECEIVE);
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         UpdateClusterStateResponse response;
         // Test success response
@@ -158,6 +158,7 @@ public class RpcTest {
         response = clientServerRpc.updateClusterState(request).get();
         Assert.assertTrue(response.success());
         verify(serverRpcMock).updateClusterState(argThat((UpdateClusterStateRequest r) ->
+                request.getTransactionId().equals(r.getTransactionId()) &&
                 Arrays.equals(request.getEntry(), r.getEntry()) &&
                         request.getPartition() == r.getPartition() &&
                         request.getBatchSize() == r.getBatchSize() &&

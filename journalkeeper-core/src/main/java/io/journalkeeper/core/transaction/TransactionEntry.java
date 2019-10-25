@@ -12,6 +12,7 @@ public class TransactionEntry {
     private int partition = -1;
     private boolean commitOrAbort = false;
     private byte [] entry = new byte[0];
+    private int batchSize = 1;
 
     public TransactionEntry(UUID transactionId) {
         this.transactionId = transactionId;
@@ -24,18 +25,20 @@ public class TransactionEntry {
         this.commitOrAbort = commitOrAbort;
     }
 
-    public TransactionEntry(UUID transactionId, int partition, byte [] entry) {
+    public TransactionEntry(UUID transactionId, int partition, int batchSize, byte [] entry) {
         this.transactionId = transactionId;
         this.type = TransactionEntryType.TRANSACTION_ENTRY;
         this.partition = partition;
+        this.batchSize = batchSize;
         this.entry = entry;
     }
 
-    public TransactionEntry(UUID transactionId, TransactionEntryType type, int partition, boolean commitOrAbort, byte [] entry) {
+    public TransactionEntry(UUID transactionId, TransactionEntryType type, int partition, boolean commitOrAbort, int batchSize, byte [] entry) {
         this.transactionId = transactionId;
         this.type = type;
         this.partition = partition;
         this.commitOrAbort = commitOrAbort;
+        this.batchSize = batchSize;
         this.entry = entry;
     }
 
@@ -58,5 +61,9 @@ public class TransactionEntry {
 
     public byte[] getEntry() {
         return entry;
+    }
+
+    public int getBatchSize() {
+        return batchSize;
     }
 }

@@ -2,7 +2,7 @@ package io.journalkeeper.core.api.transaction;
 
 import io.journalkeeper.core.api.RaftJournal;
 
-import java.util.List;
+import java.util.Collection;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -32,7 +32,7 @@ public interface TransactionalJournalClient {
      * 查询进行中的事务。
      * @return 进行中的事务ID列表。
      */
-    CompletableFuture<List<UUID>> getOpeningTransactions();
+    CompletableFuture<Collection<UUID>> getOpeningTransactions();
 
 
     /**

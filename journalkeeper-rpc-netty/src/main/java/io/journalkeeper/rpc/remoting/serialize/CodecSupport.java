@@ -134,4 +134,27 @@ public class CodecSupport {
     public static boolean decodeBoolean(ByteBuf byteBuf) {
         return byteBuf.readByte() == 0X1;
     }
+
+    public static void encodeUUID(ByteBuf byteBuf, UUID uuid) {
+        long mostSigBits = 0L;
+        long leastSigBits = 0L;
+
+        if(null != uuid) {
+            mostSigBits = uuid.getMostSignificantBits();
+            leastSigBits = uuid.getLeastSignificantBits();
+        }
+        encodeLong(byteBuf, mostSigBits);
+        encodeLong(byteBuf, leastSigBits);
+    }
+
+    public static UUID decodeUUID(ByteBuf byteBuf) {
+        long mostSigBits = decodeLong(byteBuf);
+        long leastSigBits = decodeLong(byteBuf);
+
+        if (mostSigBits == 0L && leastSigBits == 0L) {
+            return null;
+        } else {
+            return new UUID(mostSigBits, leastSigBits);
+        }
+    }
 }

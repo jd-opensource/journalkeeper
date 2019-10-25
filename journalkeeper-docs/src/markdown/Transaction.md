@@ -72,7 +72,7 @@ transactionIds[] | 进行中的事务ID集合
 
 1. 如果操作是回滚，直接写入TRANSACTION_COMPLETE日志；
 2. 如果操作是提交：
-3. 这个事务中所有消息涉及到的每个分区：读出该分区的所有事务日志，组合成一个BatchEntry写入对应分区。
+3. 这个事务中所有消息涉及到的每个分区：读出该分区的所有事务日志，按顺序写入对应的对应分区。
 4. 上步骤中每条日志都写入成功后，写入TRANSACTION_COMPLETE日志，提交成功。
 
 #### 查询进行中的事务
@@ -84,8 +84,8 @@ transactionIds[] | 进行中的事务ID集合
 类型 | 类型值 | 内容| 说明
 -- | -- | -- | --
 TRANSACTION_START | 0 | 事务ID | 开启事务
-TRANSACTION_ENTRY | 1 | 事务ID、分区号、日志 | 事务日志
-TRANSACTION_PRE_COMPLETE | 2 | 事务ID | 预提交
+TRANSACTION_ENTRY | 1 | 事务ID、分区号、批量大小、序列化后的日志 | 事务日志
+TRANSACTION_PRE_COMPLETE | 2 | 事务ID、操作（提交或回滚） | 预提交
 TRANSACTION_COMPLETE | 3 | 事务ID、操作（提交或回滚） | 事务结束
 
 ### 事务分区号
