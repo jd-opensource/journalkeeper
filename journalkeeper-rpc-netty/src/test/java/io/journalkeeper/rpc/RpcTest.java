@@ -21,24 +21,7 @@ import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.exceptions.NotLeaderException;
-import io.journalkeeper.rpc.client.AddPullWatchResponse;
-import io.journalkeeper.rpc.client.ClientServerRpc;
-import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
-import io.journalkeeper.rpc.client.ConvertRollRequest;
-import io.journalkeeper.rpc.client.ConvertRollResponse;
-import io.journalkeeper.rpc.client.GetServerStatusResponse;
-import io.journalkeeper.rpc.client.GetServersResponse;
-import io.journalkeeper.rpc.client.LastAppliedResponse;
-import io.journalkeeper.rpc.client.PullEventsRequest;
-import io.journalkeeper.rpc.client.PullEventsResponse;
-import io.journalkeeper.rpc.client.QueryStateRequest;
-import io.journalkeeper.rpc.client.QueryStateResponse;
-import io.journalkeeper.rpc.client.RemovePullWatchRequest;
-import io.journalkeeper.rpc.client.RemovePullWatchResponse;
-import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
-import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
-import io.journalkeeper.rpc.client.UpdateVotersRequest;
-import io.journalkeeper.rpc.client.UpdateVotersResponse;
+import io.journalkeeper.rpc.client.*;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
@@ -601,6 +584,29 @@ public class RpcTest {
     }
 
     @Test
+    public void testCompleteTransaction() throws ExecutionException, InterruptedException {
+        final UUID transactionId = UUID.randomUUID();
+        final boolean commitOrAbort = false;
+
+        CompleteTransactionRequest request = new CompleteTransactionRequest(transactionId, commitOrAbort);
+
+        ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
+        CompleteTransactionResponse response, serverResponse;
+        serverResponse = new CompleteTransactionResponse();
+        // Test success response
+        when(serverRpcMock.completeTransaction(any(CompleteTransactionRequest.class)))
+                .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
+        response = serverRpc.completeTransaction(request).get();
+        Assert.assertTrue(response.success());
+
+        verify(serverRpcMock).completeTransaction(
+                argThat((CompleteTransactionRequest r) ->
+                                Objects.equals(r.getTransactionId(), request.getTransactionId()) &&
+                                r.isCommitOrAbort() == request.isCommitOrAbort()
+                ));
+    }
+
+    @Test
     public void testGetServerStatus() throws ExecutionException, InterruptedException {
 
 
@@ -620,6 +626,36 @@ public class RpcTest {
         response = serverRpc.getServerStatus().get();
         Assert.assertTrue(response.success());
         Assert.assertEquals(serverResponse.getServerStatus(), response.getServerStatus());
+
+    }
+
+    @Test
+    public void testCreateTransaction() throws ExecutionException, InterruptedException {
+
+        ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
+        CreateTransactionResponse response, serverResponse;
+        serverResponse = new CreateTransactionResponse(UUID.randomUUID());
+        // Test success response
+        when(serverRpcMock.createTransaction())
+                .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
+        response = serverRpc.createTransaction().get();
+        Assert.assertTrue(response.success());
+        Assert.assertEquals(serverResponse.getTransactionId(), response.getTransactionId());
+
+    }
+
+    @Test
+    public void testGetOpeningTransactions() throws ExecutionException, InterruptedException {
+
+        ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
+        GetOpeningTransactionsResponse response, serverResponse;
+        serverResponse = new GetOpeningTransactionsResponse(Arrays.asList(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()));
+        // Test success response
+        when(serverRpcMock.getOpeningTransactions())
+                .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
+        response = serverRpc.getOpeningTransactions().get();
+        Assert.assertTrue(response.success());
+        Assert.assertEquals(serverResponse.getTransactionIds(), response.getTransactionIds());
 
     }
 

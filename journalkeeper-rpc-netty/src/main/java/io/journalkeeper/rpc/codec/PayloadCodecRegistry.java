@@ -41,6 +41,13 @@ public class PayloadCodecRegistry {
         payloadCodecFactory.register(new ConvertRollResponseCodec());
         payloadCodecFactory.register(new GetServerStatusRequestCodec());
         payloadCodecFactory.register(new GetServerStatusResponseCodec());
+        payloadCodecFactory.register(new CreateTransactionRequestCodec());
+        payloadCodecFactory.register(new CreateTransactionResponseCodec());
+        payloadCodecFactory.register(new GetOpeningTransactionsRequestCodec());
+        payloadCodecFactory.register(new GetOpeningTransactionsResponseCodec());
+        payloadCodecFactory.register(new CompleteTransactionRequestCodec());
+        payloadCodecFactory.register(new CompleteTransactionResponseCodec());
+
 
         payloadCodecFactory.register(new AsyncAppendEntriesRequestCodec());
         payloadCodecFactory.register(new AsyncAppendEntriesResponseCodec());

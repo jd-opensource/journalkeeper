@@ -28,14 +28,7 @@ import io.journalkeeper.core.exception.UpdateConfigurationException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.persistence.ServerMetadata;
-import io.journalkeeper.rpc.client.GetServerStatusResponse;
-import io.journalkeeper.rpc.client.LastAppliedResponse;
-import io.journalkeeper.rpc.client.QueryStateRequest;
-import io.journalkeeper.rpc.client.QueryStateResponse;
-import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
-import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
-import io.journalkeeper.rpc.client.UpdateVotersRequest;
-import io.journalkeeper.rpc.client.UpdateVotersResponse;
+import io.journalkeeper.rpc.client.*;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
@@ -358,7 +351,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                     uri, config.getCacheRequests(), config.getHeartbeatIntervalMs(), config.getRpcTimeoutMs(),
                     config.getReplicationParallelism(),config.getReplicationBatchSize(),
                     entryResultSerializer,threads,
-                    this, asyncExecutor, scheduledExecutor, voterConfigManager, this, this,
+                    this, this, asyncExecutor, scheduledExecutor, voterConfigManager, this, this,
                     this.journalEntryParser);
             leader.start();
             this.leaderUri = this.uri;
@@ -687,6 +680,36 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 })
                 .thenApply(aVoid -> new UpdateVotersResponse())
                 .exceptionally(UpdateVotersResponse::new);
+    }
+
+    @Override
+    public CompletableFuture<CreateTransactionResponse> createTransaction() {
+        if(voterState.getState() == VoterState.LEADER && leader != null) {
+            return leader.createTransaction()
+                    .thenApply(CreateTransactionResponse::new);
+        } else {
+            return CompletableFuture.completedFuture(new CreateTransactionResponse(new NotLeaderException(leaderUri)));
+        }
+    }
+
+    @Override
+    public CompletableFuture<CompleteTransactionResponse> completeTransaction(CompleteTransactionRequest request) {
+        if(voterState.getState() == VoterState.LEADER && leader != null) {
+            return leader.completeTransaction(request.getTransactionId(), request.isCommitOrAbort())
+                    .thenApply(aVoid -> new CompleteTransactionResponse());
+        } else {
+            return CompletableFuture.completedFuture(new CompleteTransactionResponse(new NotLeaderException(leaderUri)));
+        }
+    }
+
+    @Override
+    public CompletableFuture<GetOpeningTransactionsResponse> getOpeningTransactions() {
+        if(voterState.getState() == VoterState.LEADER && leader != null) {
+            return CompletableFuture.completedFuture(leader.getOpeningTransactions())
+                    .thenApply(GetOpeningTransactionsResponse::new);
+        } else {
+            return CompletableFuture.completedFuture(new GetOpeningTransactionsResponse(new NotLeaderException(leaderUri)));
+        }
     }
 
     private void ensureLeadership(Leader<E, ER, Q, QR> finalLeader) {

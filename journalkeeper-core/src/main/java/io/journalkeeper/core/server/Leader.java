@@ -7,8 +7,11 @@ import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.journal.Journal;
+import io.journalkeeper.core.transaction.JournalTransactionManager;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.metric.JMetric;
+import io.journalkeeper.rpc.client.ClientServerRpc;
+import io.journalkeeper.rpc.client.CreateTransactionResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
@@ -23,26 +26,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.PriorityBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -124,6 +109,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private final AtomicBoolean writeEnabled = new AtomicBoolean(true);
     private final Serializer<ER> entryResultSerializer;
     private final JournalEntryParser journalEntryParser;
+
+    private final JournalTransactionManager journalTransactionManager;
     Leader(Journal journal, State state, Map<Long, State<E, ER, Q, QR>> immutableSnapshots,
            int currentTerm,
            AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine,
@@ -132,6 +119,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
            Serializer<ER> entryResultSerializer,
            Threads threads,
            ServerRpcProvider serverRpcProvider,
+           ClientServerRpc server,
            ExecutorService asyncExecutor,
            ScheduledExecutorService scheduledExecutor, VoterConfigManager voterConfigManager, MetricProvider metricProvider, CheckTermInterceptor checkTermInterceptor, JournalEntryParser journalEntryParser) {
 
@@ -159,6 +147,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.entryResultSerializer = entryResultSerializer;
         this.journal = journal;
         this.heartbeatIntervalMs = heartbeatIntervalMs;
+        this.journalTransactionManager = new JournalTransactionManager(journal, server);
 
     }
 
@@ -729,10 +718,22 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
      * 如果半数以上的时间戳距离当前时间的差值不大于平均心跳间隔，则认为LEADER当前有效，
      * 否则反复重新检查（这段时间有可能会有新的心跳响应回来更新上次心跳时间），直到成功或者超时。
      */
-    boolean checkLeadership() {
+    private boolean checkLeadership() {
 
         long now = System.currentTimeMillis();
         return now <= leaderShipDeadLineMs.get();
+    }
+
+    CompletableFuture<UUID> createTransaction() {
+        return journalTransactionManager.createTransaction();
+    }
+
+    CompletableFuture<Void> completeTransaction(UUID transactionId, boolean commitOrAbort) {
+        return journalTransactionManager.completeTransaction(transactionId, commitOrAbort);
+    }
+
+    Collection<UUID> getOpeningTransactions() {
+        return journalTransactionManager.getOpeningTransactions();
     }
 
     private static class UpdateStateRequestResponse {

@@ -45,6 +45,12 @@ public class RpcTypes {
     public static final int CONVERT_ROLL_RESPONSE = -12;
     public static final int GET_SERVER_STATUS_REQUEST = 13;
     public static final int GET_SERVER_STATUS_RESPONSE = -13;
+    public static final int CREATE_TRANSACTION_REQUEST = 14;
+    public static final int CREATE_TRANSACTION_RESPONSE = -14;
+    public static final int COMPLETE_TRANSACTION_REQUEST = 15;
+    public static final int COMPLETE_TRANSACTION_RESPONSE = -15;
+    public static final int GET_OPENING_TRANSACTIONS_REQUEST = 16;
+    public static final int GET_OPENING_TRANSACTIONS_RESPONSE = -16;
 
 
 

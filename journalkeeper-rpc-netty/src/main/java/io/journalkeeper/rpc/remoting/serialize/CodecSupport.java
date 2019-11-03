@@ -83,9 +83,13 @@ public class CodecSupport {
     }
 
     public static <T> void encodeList(ByteBuf byteBuf, List<T> list, Encoder itemEncoder) {
-        if(null == list) list = Collections.emptyList();
-        byteBuf.writeInt(list.size());
-        list.forEach(item -> itemEncoder.encode(item , byteBuf));
+        encodeCollection(byteBuf, list, itemEncoder);
+    }
+
+    public static <T> void encodeCollection(ByteBuf byteBuf, Collection<T> collection, Encoder itemEncoder) {
+        if(null == collection) collection = Collections.emptyList();
+        byteBuf.writeInt(collection.size());
+        collection.forEach(item -> itemEncoder.encode(item , byteBuf));
     }
 
 
@@ -105,6 +109,10 @@ public class CodecSupport {
             list.add((T) itemDecoder.decode(byteBuf));
         }
         return list;
+    }
+
+    public static <T> Collection<T> decodeCollection(ByteBuf byteBuf, Decoder itemDecoder) {
+        return decodeList(byteBuf, itemDecoder);
     }
 
     @SuppressWarnings("unchecked")

@@ -168,6 +168,21 @@ public class ClientServerRpcStub implements ClientServerRpc {
     }
 
     @Override
+    public CompletableFuture<CreateTransactionResponse> createTransaction() {
+        return sendRequest(null, RpcTypes.CREATE_TRANSACTION_REQUEST);
+    }
+
+    @Override
+    public CompletableFuture<CompleteTransactionResponse> completeTransaction(CompleteTransactionRequest request) {
+        return sendRequest(request, RpcTypes.COMPLETE_TRANSACTION_REQUEST);
+    }
+
+    @Override
+    public CompletableFuture<GetOpeningTransactionsResponse> getOpeningTransactions() {
+        return sendRequest(null, RpcTypes.GET_OPENING_TRANSACTIONS_REQUEST);
+    }
+
+    @Override
     public void watch(EventWatcher eventWatcher) {
         if (null == eventBus) {
             initPullEvent();
@@ -267,7 +282,7 @@ public class ClientServerRpcStub implements ClientServerRpc {
         }
     }
 
-    boolean isAlive() {
+    private boolean isAlive() {
         return null != transport && transport.state() == TransportState.CONNECTED;
     }
 
