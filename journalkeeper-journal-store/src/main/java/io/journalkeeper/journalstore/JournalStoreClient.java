@@ -13,10 +13,10 @@
  */
 package io.journalkeeper.journalstore;
 
-import io.journalkeeper.core.api.JournalEntry;
-import io.journalkeeper.core.api.PartitionedJournalStore;
-import io.journalkeeper.core.api.RaftClient;
-import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.BootStrap;
+import io.journalkeeper.core.api.*;
+import io.journalkeeper.core.api.transaction.TransactionalJournalStore;
+import io.journalkeeper.core.entry.DefaultJournalEntryParser;
 import io.journalkeeper.core.entry.reserved.ReservedPartition;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
@@ -24,8 +24,8 @@ import io.journalkeeper.utils.event.EventWatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-import java.util.Map;
+import java.net.URI;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
@@ -35,13 +35,33 @@ import java.util.stream.Collectors;
  * @author LiYue
  * Date: 2019-05-09
  */
-public class JournalStoreClient implements PartitionedJournalStore {
+public class JournalStoreClient implements PartitionedJournalStore, TransactionalJournalStore {
     private static final Logger logger = LoggerFactory.getLogger(JournalStoreClient.class);
     private final RaftClient<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient;
-    public JournalStoreClient(RaftClient<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient) {
+
+    JournalStoreClient(RaftClient<byte[], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient) {
         this.raftClient = raftClient;
     }
 
+    /**
+     * 初始化一个远程模式的客户端
+     * @param servers 集群配置
+     * @param properties 属性
+     */
+    public JournalStoreClient(List<URI> servers, Properties properties) {
+        this(servers, new DefaultJournalEntryParser(), properties);
+    }
+    public JournalStoreClient(List<URI> servers, JournalEntryParser journalEntryParser, Properties properties) {
+        BootStrap<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> bootStrap = new BootStrap<>(
+                servers,
+                new ByteArraySerializer(),
+                new LongSerializer(),
+                new JournalStoreQuerySerializer(),
+                new JournalStoreQueryResultSerializer(journalEntryParser),
+                properties
+                );
+        raftClient = bootStrap.getClient();
+    }
 
     @Override
     public CompletableFuture<Long> append(int partition, int batchSize,
@@ -118,5 +138,25 @@ public class JournalStoreClient implements PartitionedJournalStore {
     @Override
     public void unWatch(EventWatcher eventWatcher) {
         raftClient.watch(eventWatcher);
+    }
+
+    @Override
+    public CompletableFuture<UUID> createTransaction() {
+        return raftClient.createTransaction();
+    }
+
+    @Override
+    public CompletableFuture<Void> completeTransaction(UUID transactionId, boolean commitOrAbort) {
+        return raftClient.completeTransaction(transactionId, commitOrAbort);
+    }
+
+    @Override
+    public CompletableFuture<Collection<UUID>> getOpeningTransactions() {
+        return raftClient.getOpeningTransactions();
+    }
+
+    @Override
+    public CompletableFuture<Void> append(UUID transactionId, byte[] entry, int partition, int batchSize, boolean includeHeader) {
+        return raftClient.update(transactionId, entry, partition, batchSize, includeHeader);
     }
 }

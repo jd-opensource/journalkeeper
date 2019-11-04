@@ -36,14 +36,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
@@ -280,6 +273,55 @@ public class JournalStoreTest {
 
     }
 
+    @Test
+    public void transactionTest() throws Exception {
+        final int nodes = 3;
+        final int entrySize = 1024;
+        final int entryCount = 20;
+        final Set<Integer> partitions = Collections.unmodifiableSet(
+                new HashSet<>(Arrays.asList(0, 1, 2, 3, 4))
+        );
+
+        List<JournalStoreServer> servers = createServers(nodes, base, partitions);
+        JournalStoreClient client = new JournalStoreClient(servers.stream().map(JournalStoreServer::serverUri).collect(Collectors.toList()), new Properties());
+        client.waitForClusterReady(5000L);
+
+        // Create transaction
+        UUID transactionId = client.createTransaction().get();
+        Assert.assertNotNull(transactionId);
+
+        List<byte[]> rawEntries = ByteUtils.createFixedSizeByteList(entrySize, entryCount);
+
+        // Send some transactional messages
+        for (int i = 0; i < rawEntries.size(); i++) {
+            int partition = i % partitions.size();
+            client.append(transactionId, rawEntries.get(i), partition, 1);
+        }
+
+        // Verify no message is readable until the transaction was committed.
+        Map<Integer, Long> maxIndices = client.maxIndices().get();
+        for (Long maxIndex : maxIndices.values()) {
+            Assert.assertEquals(0L, (long) maxIndex);
+        }
+
+        // Commit the transaction
+        client.completeTransaction(transactionId, true).get();
+
+        // Verify messages
+        for (int i = 0; i < rawEntries.size(); i++) {
+            int partition = i % partitions.size();
+            int index = i / partitions.size();
+            List<JournalEntry> journalEntries = client.get(partition, index, 1).get();
+            Assert.assertEquals(1, journalEntries.size());
+            JournalEntry journalEntry = journalEntries.get(0);
+            byte [] readEntry = journalEntry.getPayload().getBytes();
+
+            Assert.assertArrayEquals(rawEntries.get(i), readEntry);
+
+        }
+
+
+    }
 
     private void asyncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException {
         ExecutorService executors = Executors.newFixedThreadPool(10, new NamedThreadFactory("ClientRetryThreads"));

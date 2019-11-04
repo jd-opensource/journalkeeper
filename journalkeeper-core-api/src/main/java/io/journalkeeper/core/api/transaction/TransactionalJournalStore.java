@@ -13,7 +13,7 @@ import java.util.concurrent.CompletableFuture;
  * 日志事务确保一个事务内的所有日志，要么都写入成功，要么都写入失败。
  * 当事务成功提交后，这些日志将提交给状态机执行，如果事务未提交或者回滚，所有日志都不会被状态机执行。
  */
-public interface TransactionalJournalClient {
+public interface TransactionalJournalStore {
 
     /**
      * 开启一个新事务，并返回事务ID。
@@ -39,8 +39,8 @@ public interface TransactionalJournalClient {
      * 写入事务日志，分区为默认分区（0），批量大小为1，entry中不包含Header
      * @param entry 操作日志
      */
-    default CompletableFuture<Void> update(UUID transactionId, byte [] entry) {
-        return update(transactionId, entry, RaftJournal.DEFAULT_PARTITION, 1, false);
+    default CompletableFuture<Void> append(UUID transactionId, byte[] entry) {
+        return append(transactionId, entry, RaftJournal.DEFAULT_PARTITION, 1, false);
     }
 
     /**
@@ -49,8 +49,8 @@ public interface TransactionalJournalClient {
      * @param partition 分区
      * @param batchSize 批量大小
      */
-    default CompletableFuture<Void> update(UUID transactionId, byte [] entry, int partition, int batchSize) {
-        return update(transactionId, entry, partition, batchSize, false);
+    default CompletableFuture<Void> append(UUID transactionId, byte[] entry, int partition, int batchSize) {
+        return append(transactionId, entry, partition, batchSize, false);
     }
 
     /**
@@ -61,6 +61,6 @@ public interface TransactionalJournalClient {
      * @param batchSize 批量大小
      * @param includeHeader entry中是否包含Header
      */
-    CompletableFuture<Void> update(UUID transactionId, byte [] entry, int partition, int batchSize, boolean includeHeader);
+    CompletableFuture<Void> append(UUID transactionId, byte[] entry, int partition, int batchSize, boolean includeHeader);
 
 }
