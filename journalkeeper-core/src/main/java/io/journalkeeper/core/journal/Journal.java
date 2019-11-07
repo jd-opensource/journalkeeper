@@ -289,6 +289,10 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     }
 
     private void appendPartitionIndex(byte [] offset, int partition, int batchSize) throws IOException {
+        // Create partition which not exists
+        if(!partitionMap.containsKey(partition)) {
+            addPartition(partition);
+        }
         JournalPersistence partitionPersistence = getPartitionPersistence(partition);
         if(batchSize > 1) {
             byte[] bytes = new byte[batchSize * INDEX_STORAGE_SIZE];

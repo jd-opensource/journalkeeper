@@ -1,26 +1,47 @@
 package io.journalkeeper.core.transaction;
 
+import io.journalkeeper.core.api.JournalEntry;
+import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.exception.JournalException;
+import io.journalkeeper.core.exception.TransactionException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
+import io.journalkeeper.utils.state.ServerStateMachine;
+import io.journalkeeper.utils.state.StateServer;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * @author LiYue
  * Date: 2019/10/22
  */
-public class JournalTransactionManager {
+public class JournalTransactionManager extends ServerStateMachine {
     private final ClientServerRpc server;
     private final JournalTransactionState transactionState;
-
-    public JournalTransactionManager(Journal journal, ClientServerRpc server) {
+    private final Map<UUID, CompletableFuture<Void>> pendingCompleteTransactionFutures = new ConcurrentHashMap<>();
+    public JournalTransactionManager(Journal journal, ClientServerRpc server,
+                                     ScheduledExecutorService scheduledExecutor) {
         this.server = server;
-        this.transactionState = new JournalTransactionState(journal, server);
+        this.transactionState = new JournalTransactionState(journal, server, scheduledExecutor);
+    }
+
+    @Override
+    protected void doStart() {
+        super.doStart();
+        this.transactionState.start();
+    }
+
+    @Override
+    protected void doStop() {
+        this.transactionState.stop();
+        super.doStop();
     }
 
     private final TransactionEntrySerializer transactionEntrySerializer = new TransactionEntrySerializer();
@@ -30,6 +51,7 @@ public class JournalTransactionManager {
         UUID transactionId = UUID.randomUUID();
         TransactionEntry entry = new TransactionEntry(transactionId);
         byte [] serializedEntry = transactionEntrySerializer.serialize(entry);
+
         return server.updateClusterState(new UpdateClusterStateRequest(serializedEntry, partition, 1))
                 .thenApply(response -> {
                     if(response.success()) {
@@ -45,14 +67,23 @@ public class JournalTransactionManager {
         ensureTransactionOpen(transactionId);
         TransactionEntry entry = new TransactionEntry(transactionId, TransactionEntryType.TRANSACTION_PRE_COMPLETE, completeOrAbort);
         byte [] serializedEntry = transactionEntrySerializer.serialize(entry);
-        return server.updateClusterState(new UpdateClusterStateRequest(serializedEntry, partition, 1))
-                .thenApply(response -> {
-                    if(response.success()) {
-                        return null;
-                    } else {
-                        throw new JournalException(response.errorString());
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        pendingCompleteTransactionFutures.put(transactionId, future);
+        server
+                .updateClusterState(new UpdateClusterStateRequest(serializedEntry, partition, 1))
+                .thenAccept(response -> {
+                    if(!response.success()) {
+                        CompletableFuture<Void> retFuture = pendingCompleteTransactionFutures.remove(transactionId);
+                        if(null != retFuture) {
+                            retFuture.completeExceptionally(new TransactionException(response.errorString()));
+                        }
                     }
                 });
+        return future;
+    }
+
+    public JournalEntry wrapTransactionalEntry(JournalEntry entry, UUID transactionId, JournalEntryParser journalEntryParser) {
+        return transactionState.wrapTransactionalEntry(entry, transactionId, journalEntryParser);
     }
 
     private void ensureTransactionOpen(UUID transactionId) {
@@ -67,7 +98,11 @@ public class JournalTransactionManager {
         return transactionState.getOpeningTransactions();
     }
 
-    public void execute(TransactionEntry entry, int partition, long index) throws ExecutionException, InterruptedException {
-        transactionState.execute(entry, partition, index);
+    public void applyEntry(JournalEntry journalEntry) {
+        int partition = journalEntry.getPartition();
+        if(transactionState.isTransactionPartition(partition)) {
+            TransactionEntry transactionEntry = transactionEntrySerializer.parse(journalEntry.getPayload().getBytes());
+            transactionState.applyEntry(transactionEntry, partition, pendingCompleteTransactionFutures);
+        }
     }
 }

@@ -11,7 +11,6 @@ import io.journalkeeper.core.transaction.JournalTransactionManager;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.rpc.client.ClientServerRpc;
-import io.journalkeeper.rpc.client.CreateTransactionResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
@@ -147,7 +146,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.entryResultSerializer = entryResultSerializer;
         this.journal = journal;
         this.heartbeatIntervalMs = heartbeatIntervalMs;
-        this.journalTransactionManager = new JournalTransactionManager(journal, server);
+        this.journalTransactionManager = new JournalTransactionManager(journal, server, scheduledExecutor);
 
     }
 
@@ -233,6 +232,11 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         entry.setPartition(request.getPartition());
         entry.setBatchSize(request.getBatchSize());
         entry.setTerm(currentTerm);
+
+        if(request.getTransactionId() != null) {
+            entry = journalTransactionManager.wrapTransactionalEntry(entry, request.getTransactionId(), journalEntryParser);
+        }
+
         long index = journal.append(entry);
         if (request.getResponseConfig() == ResponseConfig.REPLICATION ) {
             replicationCallbacks.put(new Callback(index, responseFuture.getReplicationFuture()));
@@ -618,12 +622,16 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.threads.startThread(LEADER_CALLBACK_THREAD);
         this.threads.startThread(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD);
         this.threads.startThread(LEADER_REPLICATION_THREAD);
+
+        journalTransactionManager.start();
     }
 
     @Override
     protected void doStop() {
         super.doStop();
         mayBeWaitingForAppendJournals();
+
+        journalTransactionManager.stop();
         this.threads.stopThread(LEADER_APPEND_ENTRY_THREAD);
         this.threads.stopThread(LEADER_CALLBACK_THREAD);
         failAllPendingCallbacks();
@@ -734,6 +742,10 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     Collection<UUID> getOpeningTransactions() {
         return journalTransactionManager.getOpeningTransactions();
+    }
+
+    void applyReservedPartition(JournalEntry journalEntry) {
+        journalTransactionManager.applyEntry(journalEntry);
     }
 
     private static class UpdateStateRequestResponse {

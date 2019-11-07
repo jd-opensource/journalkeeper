@@ -54,7 +54,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
+import static io.journalkeeper.core.api.RaftJournal.RAFT_PARTITION;
 
 
 /**
@@ -124,8 +124,8 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     }
 
     @Override
-    protected void applyReservedEntry(byte [] reservedEntry) {
-        super.applyReservedEntry(reservedEntry);
+    protected void applyRaftPartition(byte [] reservedEntry) {
+        super.applyRaftPartition(reservedEntry);
         int type = ReservedEntriesSerializeSupport.parseEntryType(reservedEntry);
         switch (type) {
             case ReservedEntry.TYPE_UPDATE_VOTERS_S1:
@@ -145,7 +145,12 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
 
     }
 
-
+    @Override
+    protected void applyReservedPartition(JournalEntry journalEntry, long index) {
+        if(voterState() == VoterState.LEADER && leader != null) {
+            leader.applyReservedPartition(journalEntry);
+        }
+    }
 
     @Override
     protected void onJournalFlushed() {
@@ -360,7 +365,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
             byte [] payload = ReservedEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(term));
             JournalEntry journalEntry = journalEntryParser.createJournalEntry(payload);
             journalEntry.setTerm(term);
-            journalEntry.setPartition(RESERVED_PARTITION);
+            journalEntry.setPartition(RAFT_PARTITION);
             journal.append(journalEntry);
         }
 
@@ -671,7 +676,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         return CompletableFuture.supplyAsync(
                 () -> new UpdateVotersS1Entry(request.getOldConfig(), request.getNewConfig()), asyncExecutor)
                 .thenApply(ReservedEntriesSerializeSupport::serialize)
-                .thenApply(entry -> new UpdateClusterStateRequest(entry, RESERVED_PARTITION, 1))
+                .thenApply(entry -> new UpdateClusterStateRequest(entry, RAFT_PARTITION, 1))
                 .thenCompose(this::updateClusterState)
                 .thenAccept(response -> {
                     if(!response.success()) {

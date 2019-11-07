@@ -275,7 +275,7 @@ public class JournalStoreTest {
 
     @Test
     public void transactionTest() throws Exception {
-        final int nodes = 3;
+        final int nodes = 1;
         final int entrySize = 1024;
         final int entryCount = 20;
         final Set<Integer> partitions = Collections.unmodifiableSet(
@@ -295,7 +295,7 @@ public class JournalStoreTest {
         // Send some transactional messages
         for (int i = 0; i < rawEntries.size(); i++) {
             int partition = i % partitions.size();
-            client.append(transactionId, rawEntries.get(i), partition, 1);
+            client.append(transactionId, rawEntries.get(i), partition, 1).get();
         }
 
         // Verify no message is readable until the transaction was committed.
