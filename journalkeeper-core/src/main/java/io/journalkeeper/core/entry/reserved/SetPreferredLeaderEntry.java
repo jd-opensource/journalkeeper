@@ -3,6 +3,8 @@ package io.journalkeeper.core.entry.reserved;
 import java.io.Serializable;
 import java.net.URI;
 
+import static io.journalkeeper.core.entry.reserved.ReservedEntryType.TYPE_SET_PREFERRED_LEADER;
+
 /**
  * @author LiYue
  * Date: 2019-09-11

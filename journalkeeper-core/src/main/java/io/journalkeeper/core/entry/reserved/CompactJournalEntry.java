@@ -16,6 +16,8 @@ package io.journalkeeper.core.entry.reserved;
 import java.io.Serializable;
 import java.util.Map;
 
+import static io.journalkeeper.core.entry.reserved.ReservedEntryType.TYPE_COMPACT_JOURNAL;
+
 /**
  * @author LiYue
  * Date: 2019-05-09

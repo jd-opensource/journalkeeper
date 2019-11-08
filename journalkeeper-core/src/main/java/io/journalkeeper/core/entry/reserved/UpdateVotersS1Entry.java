@@ -5,6 +5,8 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
+import static io.journalkeeper.core.entry.reserved.ReservedEntryType.TYPE_UPDATE_VOTERS_S1;
+
 /**
  * @author LiYue
  * Date: 2019-08-26

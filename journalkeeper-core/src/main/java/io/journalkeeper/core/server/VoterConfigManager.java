@@ -4,10 +4,7 @@ import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.VoterState;
-import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
-import io.journalkeeper.core.entry.reserved.ReservedEntry;
-import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
-import io.journalkeeper.core.entry.reserved.UpdateVotersS2Entry;
+import io.journalkeeper.core.entry.reserved.*;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.rpc.client.ClientServerRpc;
@@ -23,6 +20,7 @@ import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
 import static io.journalkeeper.core.api.RaftJournal.RAFT_PARTITION;
+import static io.journalkeeper.core.entry.reserved.ReservedEntryType.*;
 
 /**
  * @author LiYue
@@ -47,8 +45,8 @@ class VoterConfigManager {
                                     Map<URI, JMetric> appendEntriesRpcMetricMap) throws Exception {
         // 如果是配置变更请求，立刻更新当前配置
         if(request.getPartition() == RAFT_PARTITION){
-            int entryType = ReservedEntriesSerializeSupport.parseEntryType(request.getEntry());
-            if (entryType == ReservedEntry.TYPE_UPDATE_VOTERS_S1) {
+            ReservedEntryType entryType = ReservedEntriesSerializeSupport.parseEntryType(request.getEntry());
+            if (entryType == TYPE_UPDATE_VOTERS_S1) {
                 UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(request.getEntry());
                 // 等待所有日志都被提交才能进行配置变更
                 waitingForAllEntriesCommitted(journal);
@@ -62,7 +60,7 @@ class VoterConfigManager {
                     }
                 }
                 return true;
-            } else if (entryType == ReservedEntry.TYPE_UPDATE_VOTERS_S2) {
+            } else if (entryType == TYPE_UPDATE_VOTERS_S2) {
                 // 等待所有日志都被提交才能进行配置变更
                 waitingForAllEntriesCommitted(journal);
                 votersConfigStateMachine.toNewConfig(appendEntryCallable);
@@ -109,11 +107,11 @@ class VoterConfigManager {
             if (entry.getOffset() < startOffset) {
                 break;
             }
-            int reservedEntryType = ReservedEntriesSerializeSupport.parseEntryType(entry.getPayload().getBytes());
-            if(reservedEntryType == ReservedEntry.TYPE_UPDATE_VOTERS_S2) {
+            ReservedEntryType reservedEntryType = ReservedEntriesSerializeSupport.parseEntryType(entry.getPayload().getBytes());
+            if(reservedEntryType == TYPE_UPDATE_VOTERS_S2) {
                 UpdateVotersS2Entry updateVotersS2Entry = ReservedEntriesSerializeSupport.parse(entry.getPayload().getBytes());
                 votersConfigStateMachine.rollbackToJointConsensus(updateVotersS2Entry.getConfigOld());
-            } else if(reservedEntryType == ReservedEntry.TYPE_UPDATE_VOTERS_S1) {
+            } else if(reservedEntryType == TYPE_UPDATE_VOTERS_S1) {
                 votersConfigStateMachine.rollbackToOldConfig();
             }
         }
@@ -124,24 +122,24 @@ class VoterConfigManager {
             JournalEntry entryHeader = journalEntryParser.parseHeader(rawEntry);
             if(entryHeader.getPartition() == RAFT_PARTITION) {
                 int headerLength = journalEntryParser.headerLength();
-                int entryType = ReservedEntriesSerializeSupport.parseEntryType(rawEntry, headerLength, rawEntry.length - headerLength);
-                if (entryType == ReservedEntry.TYPE_UPDATE_VOTERS_S1) {
+                ReservedEntryType entryType = ReservedEntriesSerializeSupport.parseEntryType(rawEntry, headerLength, rawEntry.length - headerLength);
+                if (entryType == TYPE_UPDATE_VOTERS_S1) {
                     UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(rawEntry, headerLength, rawEntry.length - headerLength);
 
                     votersConfigStateMachine.toJointConsensus(updateVotersS1Entry.getConfigNew(),
                             () -> null);
-                } else if (entryType == ReservedEntry.TYPE_UPDATE_VOTERS_S2) {
+                } else if (entryType == TYPE_UPDATE_VOTERS_S2) {
                     votersConfigStateMachine.toNewConfig(() -> null);
                 }
             }
         }
     }
 
-    void applyReservedEntry(int type, byte [] reservedEntry, VoterState voterState,
+    void applyReservedEntry(ReservedEntryType type, byte [] reservedEntry, VoterState voterState,
                                       AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine,
                                       ClientServerRpc clientServerRpc, URI serverUri, StateServer server) {
         switch (type) {
-            case ReservedEntry.TYPE_UPDATE_VOTERS_S1:
+            case TYPE_UPDATE_VOTERS_S1:
                 if(voterState == VoterState.LEADER) {
                     byte[] s2Entry = ReservedEntriesSerializeSupport.serialize(new UpdateVotersS2Entry(votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew()));
                     try {
@@ -162,7 +160,7 @@ class VoterConfigManager {
                     server.stopAsync();
                 }
                 break;
-            case ReservedEntry.TYPE_UPDATE_VOTERS_S2:
+            case TYPE_UPDATE_VOTERS_S2:
                 // Stop myself if I'm no longer a member of the cluster.
                 // Leader can be stopped on this stage, a new leader will be elected in the new configuration.
                 if(!votersConfigStateMachine.voters().contains(serverUri)) {

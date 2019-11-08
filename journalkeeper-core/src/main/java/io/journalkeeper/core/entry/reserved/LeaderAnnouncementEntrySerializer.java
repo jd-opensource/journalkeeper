@@ -27,7 +27,7 @@ public class LeaderAnnouncementEntrySerializer implements Serializer<LeaderAnnou
     public byte[] serialize(LeaderAnnouncementEntry entry) {
         byte [] buffer = new byte[Byte.BYTES + Integer.BYTES];
         ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
-        byteBuffer.put((byte) LeaderAnnouncementEntry.TYPE_LEADER_ANNOUNCEMENT);
+        byteBuffer.put((byte) ReservedEntryType.TYPE_LEADER_ANNOUNCEMENT.value());
         byteBuffer.putInt(entry.getTerm());
         return buffer;
     }

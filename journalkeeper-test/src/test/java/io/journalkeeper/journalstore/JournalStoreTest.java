@@ -275,7 +275,7 @@ public class JournalStoreTest {
 
     @Test
     public void transactionTest() throws Exception {
-        final int nodes = 1;
+        final int nodes = 3;
         final int entrySize = 1024;
         final int entryCount = 20;
         final Set<Integer> partitions = Collections.unmodifiableSet(

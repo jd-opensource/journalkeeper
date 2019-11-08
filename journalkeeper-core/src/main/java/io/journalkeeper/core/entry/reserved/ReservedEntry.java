@@ -18,20 +18,14 @@ package io.journalkeeper.core.entry.reserved;
  * Date: 2019-05-09
  */
 public abstract class ReservedEntry {
-    public final static int TYPE_LEADER_ANNOUNCEMENT = 0;
-    public final static int TYPE_COMPACT_JOURNAL = 1;
-    public final static int TYPE_SCALE_PARTITIONS = 2;
-    public final static int TYPE_UPDATE_VOTERS_S1 = 3;
-    public final static int TYPE_UPDATE_VOTERS_S2 = 4;
-    public final static int TYPE_UPDATE_OBSERVERS = 5;
-    public final static int TYPE_SET_PREFERRED_LEADER = 6;
-    private final int type;
 
-    protected ReservedEntry(int type) {
+    private final ReservedEntryType type;
+
+    protected ReservedEntry(ReservedEntryType type) {
         this.type = type;
     }
 
-    public int getType() {
+    public ReservedEntryType getType() {
         return type;
     }
 }

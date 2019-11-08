@@ -19,11 +19,7 @@ import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;
-import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
-import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
-import io.journalkeeper.core.entry.reserved.ReservedEntry;
-import io.journalkeeper.core.entry.reserved.SetPreferredLeaderEntry;
-import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
+import io.journalkeeper.core.entry.reserved.*;
 import io.journalkeeper.core.exception.UpdateConfigurationException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.exceptions.NotLeaderException;
@@ -55,6 +51,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static io.journalkeeper.core.api.RaftJournal.RAFT_PARTITION;
+import static io.journalkeeper.core.entry.reserved.ReservedEntryType.*;
 
 
 /**
@@ -126,14 +123,14 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     @Override
     protected void applyRaftPartition(byte [] reservedEntry) {
         super.applyRaftPartition(reservedEntry);
-        int type = ReservedEntriesSerializeSupport.parseEntryType(reservedEntry);
+        ReservedEntryType type = ReservedEntriesSerializeSupport.parseEntryType(reservedEntry);
         switch (type) {
-            case ReservedEntry.TYPE_UPDATE_VOTERS_S1:
-            case ReservedEntry.TYPE_UPDATE_VOTERS_S2:
+            case TYPE_UPDATE_VOTERS_S1:
+            case TYPE_UPDATE_VOTERS_S2:
                 voterConfigManager.applyReservedEntry(type, reservedEntry, voterState(), votersConfigStateMachine,
                         this, serverUri(), this);
                 break;
-            case ReservedEntry.TYPE_SET_PREFERRED_LEADER:
+            case TYPE_SET_PREFERRED_LEADER:
                 SetPreferredLeaderEntry setPreferredLeaderEntry = ReservedEntriesSerializeSupport.parse(reservedEntry);
                 URI old = preferredLeader;
                 preferredLeader = setPreferredLeaderEntry.getPreferredLeader();
