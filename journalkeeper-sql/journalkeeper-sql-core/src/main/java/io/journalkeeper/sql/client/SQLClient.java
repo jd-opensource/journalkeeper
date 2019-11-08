@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 /**
  * SQLClient
@@ -54,10 +55,13 @@ public class SQLClient {
         this.client = client;
     }
 
-    public CompletableFuture waitClusterReady(long maxWaitMs) {
-        return this.client.whenClusterReady(maxWaitMs);
-    }
+//    public CompletableFuture waitClusterReady(long maxWaitMs) {
+//        return this.client.whenClusterReady(maxWaitMs);
+//    }
 
+    public void waitClusterReady(Long maxWaitMs) throws TimeoutException, InterruptedException {
+        this.client.waitForClusterReady(maxWaitMs);
+    }
     public CompletableFuture<ResultSet> query(String sql, List<Object> params) {
         try {
             return doQuery(new ReadRequest(OperationTypes.QUERY.getType(), sql, params))

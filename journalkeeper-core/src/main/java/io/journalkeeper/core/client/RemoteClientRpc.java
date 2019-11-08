@@ -154,6 +154,7 @@ public class RemoteClientRpc implements ClientRpc {
                     return true;
                 case TIMEOUT:
                 case SERVER_BUSY:
+                case RETRY_LATER:
                 case TRANSPORT_FAILED:
                     logger.warn(response.errorString());
                     return true;

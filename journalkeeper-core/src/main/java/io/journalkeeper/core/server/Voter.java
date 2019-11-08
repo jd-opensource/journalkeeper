@@ -223,6 +223,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
             }
 
             if(voterState() == VoterState.CANDIDATE && System.currentTimeMillis() > nextElectionTime) {
+
                 startElection(false);
             }
 
@@ -249,7 +250,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
      */
     private void startElection(boolean fromPreferredLeader) {
 
-
+        nextElectionTime = Long.MAX_VALUE;
         votedFor = uri;
         currentTerm.incrementAndGet();
         logger.info("Start election, {}", voterInfo());
@@ -536,16 +537,15 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
 
     @Override
     public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
-        CompletableFuture<UpdateClusterStateResponse> future = new CompletableFuture<>();
         Leader<E, ER, Q, QR> finalLeader = leader;
         try {
             ensureLeadership(finalLeader);
-        } catch (NotLeaderException nle) {
-            future.completeExceptionally(nle);
-            return future;
+            return finalLeader.updateClusterState(request)
+                    .exceptionally(UpdateClusterStateResponse::new);
+
+        } catch (Throwable e) {
+            return CompletableFuture.completedFuture(new UpdateClusterStateResponse(e));
         }
-        return finalLeader.updateClusterState(request)
-                .exceptionally(UpdateClusterStateResponse::new);
     }
 
     @Override

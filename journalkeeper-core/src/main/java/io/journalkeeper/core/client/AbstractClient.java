@@ -73,9 +73,9 @@ public abstract class AbstractClient implements ClusterReadyAware, ServerConfigA
     }
 
     @Override
-    public CompletableFuture whenClusterReady(long maxWaitMs) {
+    public void waitForClusterReady(long maxWaitMs) throws InterruptedException, TimeoutException {
 
-        return CompletableFuture.runAsync(() -> {
+
             long t0 = System.currentTimeMillis();
             while (System.currentTimeMillis() - t0 < maxWaitMs || maxWaitMs <= 0) {
                 try {
@@ -96,8 +96,8 @@ public abstract class AbstractClient implements ClusterReadyAware, ServerConfigA
                     throw new CompletionException(e);
                 }
             }
-            throw new CompletionException(new TimeoutException());
-        });
+            throw new TimeoutException();
+
     }
 
     @Override
