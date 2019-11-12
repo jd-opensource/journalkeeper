@@ -28,6 +28,7 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.CopyOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -130,7 +131,7 @@ public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, F
                 Path srcFile = srcFiles.get(i);
                 Path destFile = destFiles.get(i);
                 Files.createDirectories(destFile.getParent());
-                FileUtils.copyFile(srcFile.toFile(), destFile.toFile());
+                Files.copy(srcFile, destFile);
             }
 
             state.recover(destPath, raftJournal, properties);

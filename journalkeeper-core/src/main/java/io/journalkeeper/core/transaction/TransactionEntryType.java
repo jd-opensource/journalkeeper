@@ -1,3 +1,16 @@
+/**
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.journalkeeper.core.transaction;
 
 /**
@@ -5,9 +18,6 @@ package io.journalkeeper.core.transaction;
  * Date: 2019/10/22
  */
 public enum TransactionEntryType {
-    // transient types
-    TRANSACTION_EMPTY(-1),
-    TRANSACTION_PRE_START(-2),
 
     // persistent types
     TRANSACTION_START(0),
@@ -35,10 +45,6 @@ public enum TransactionEntryType {
                 return TRANSACTION_PRE_COMPLETE;
             case 3:
                 return TRANSACTION_COMPLETE;
-            case -1:
-                return TRANSACTION_EMPTY;
-            case -2:
-                return TRANSACTION_PRE_START;
             default:
                 throw new IllegalArgumentException("Illegal TransactionEntryType value!");
         }

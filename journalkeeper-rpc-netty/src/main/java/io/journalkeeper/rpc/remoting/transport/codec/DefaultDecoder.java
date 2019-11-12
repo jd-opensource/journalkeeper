@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.rpc.remoting.transport.codec;
 
+import io.journalkeeper.rpc.codec.RpcTypes;
 import io.journalkeeper.rpc.remoting.transport.command.Command;
 import io.journalkeeper.rpc.remoting.transport.command.Header;
 import io.journalkeeper.rpc.remoting.transport.exception.TransportException;
@@ -65,12 +66,15 @@ public class DefaultDecoder implements Decoder {
         if (header == null) {
             return null;
         }
+        Object payload = null;
+        if(header.getType() != RpcTypes.VOID_PAYLOAD) {
 
-        PayloadDecoder decoder = payloadCodecFactory.getDecoder(header);
-        if (decoder == null) {
-            throw new TransportException.CodecException(String.format("unsupported decode payload type,header: %s", header));
+            PayloadDecoder decoder = payloadCodecFactory.getDecoder(header);
+            if (decoder == null) {
+                throw new TransportException.CodecException(String.format("unsupported decode payload type,header: %s", header));
+            }
+            payload = decoder.decode(header, buffer);
         }
-        Object payload = decoder.decode(header, buffer);
         return new Command(header, payload);
 
     }

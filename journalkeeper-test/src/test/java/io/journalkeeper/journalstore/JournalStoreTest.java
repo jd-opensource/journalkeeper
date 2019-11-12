@@ -64,13 +64,23 @@ public class JournalStoreTest {
 
 
     @Test
-    public void writeReadOneNode() throws Exception{
-        writeReadTest(1, new int [] {2}, 1024, 1,  1024 * 1024, false);
+    public void writeReadSyncOneNode() throws Exception{
+        writeReadTest(1, new int [] {2}, 1024, 1,  32 , false);
     }
 
     @Test
-    public void writeReadTripleNodes() throws Exception{
-        writeReadTest(3, new int [] {2, 3, 4, 5, 6}, 1024, 1024, 1024 , false);
+    public void writeReadSyncTripleNodes() throws Exception{
+        writeReadTest(3, new int [] {2, 3, 4, 5, 6}, 1024, 32, 32 , false);
+    }
+
+    @Test
+    public void writeReadAsyncOneNode() throws Exception{
+        writeReadTest(1, new int [] {2}, 1024, 1,  32 , true);
+    }
+
+    @Test
+    public void writeReadasyncTripleNodes() throws Exception{
+        writeReadTest(3, new int [] {2, 3, 4, 5, 6}, 1024, 32, 32 , true);
     }
 
     @Test
@@ -542,8 +552,7 @@ public class JournalStoreTest {
         // write
         for (int partition : partitions) {
             for (int i = 0; i < batchCount; i++) {
-                Long index = client.append(partition, batchSize, rawEntries,ResponseConfig.REPLICATION).get();
-                logger.info("Index: {}", index);
+                client.append(partition, batchSize, rawEntries,ResponseConfig.REPLICATION).get();
             }
         }
     }

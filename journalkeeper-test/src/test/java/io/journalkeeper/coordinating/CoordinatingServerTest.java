@@ -23,6 +23,7 @@ import io.journalkeeper.utils.test.TestPathUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -100,6 +101,7 @@ public class CoordinatingServerTest {
         clients.get(0).waitClusterReady(0L);
     }
 
+    @Ignore
     @Test
     public void test() {
         Metrics metrics = new Metrics();

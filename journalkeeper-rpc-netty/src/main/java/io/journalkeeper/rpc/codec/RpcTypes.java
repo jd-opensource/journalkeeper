@@ -18,6 +18,10 @@ package io.journalkeeper.rpc.codec;
  * Date: 2019-03-29
  */
 public class RpcTypes {
+    // Common
+
+    public final static int VOID_PAYLOAD = - 120;
+
     // Client server RPCs
     public final static int UPDATE_CLUSTER_STATE_REQUEST = 1;
     public final static int UPDATE_CLUSTER_STATE_RESPONSE = -1;
@@ -65,5 +69,6 @@ public class RpcTypes {
     public final static int GET_SERVER_STATE_RESPONSE = -104;
     public final static int DISABLE_LEADER_WRITE_REQUEST = 105;
     public final static int DISABLE_LEADER_WRITE_RESPONSE = -105;
+
 
 }
