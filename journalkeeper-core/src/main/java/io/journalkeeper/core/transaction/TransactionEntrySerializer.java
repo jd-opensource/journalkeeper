@@ -7,6 +7,7 @@ import java.util.UUID;
 
 /**
  *  transactionId       16 bytes
+ *  timestamp           8 bytes
  *  type                1 byte
  *  partition           2 bytes
  *  commitOrAbort       1 byte
@@ -17,7 +18,7 @@ import java.util.UUID;
  * Date: 2019/10/22
  */
 public class TransactionEntrySerializer implements Serializer<TransactionEntry> {
-    private static final int FIXED_LENGTH = 22;
+    private static final int FIXED_LENGTH = 30;
 
     @Override
     public byte[] serialize(TransactionEntry entry) {
@@ -27,6 +28,9 @@ public class TransactionEntrySerializer implements Serializer<TransactionEntry> 
 
         // transactionId
         serializeUUID(entry.getTransactionId(), buffer);
+
+        // timestamp
+        buffer.putLong(entry.getTimestamp());
 
         // type
         buffer.put((byte )entry.getType().value());
@@ -74,6 +78,7 @@ public class TransactionEntrySerializer implements Serializer<TransactionEntry> 
         buffer.clear();
         return new TransactionEntry(
                 parseUUID(buffer),
+                buffer.getLong(),
                 TransactionEntryType.valueOf(buffer.get()),
                 buffer.getShort(),
                 buffer.get() == (byte) 1,

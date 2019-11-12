@@ -13,6 +13,7 @@ public class TransactionEntry {
     private boolean commitOrAbort = false;
     private byte [] entry = new byte[0];
     private int batchSize = 1;
+    private long timestamp = System.currentTimeMillis() ;
 
     public TransactionEntry(UUID transactionId) {
         this.transactionId = transactionId;
@@ -33,8 +34,9 @@ public class TransactionEntry {
         this.entry = entry;
     }
 
-    public TransactionEntry(UUID transactionId, TransactionEntryType type, int partition, boolean commitOrAbort, int batchSize, byte [] entry) {
+    public TransactionEntry(UUID transactionId, long timestamp, TransactionEntryType type, int partition, boolean commitOrAbort, int batchSize, byte [] entry) {
         this.transactionId = transactionId;
+        this.timestamp = timestamp;
         this.type = type;
         this.partition = partition;
         this.commitOrAbort = commitOrAbort;
@@ -65,5 +67,9 @@ public class TransactionEntry {
 
     public int getBatchSize() {
         return batchSize;
+    }
+
+    public long getTimestamp() {
+        return timestamp;
     }
 }

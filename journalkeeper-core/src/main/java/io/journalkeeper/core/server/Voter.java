@@ -51,7 +51,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static io.journalkeeper.core.api.RaftJournal.RAFT_PARTITION;
-import static io.journalkeeper.core.entry.reserved.ReservedEntryType.*;
 
 
 /**
@@ -166,6 +165,10 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 properties.getProperty(
                         Config.HEARTBEAT_INTERVAL_KEY,
                         String.valueOf(Config.DEFAULT_HEARTBEAT_INTERVAL_MS))));
+        config.setTransactionTimeoutMs(Long.parseLong(
+                properties.getProperty(
+                        Config.TRANSACTION_TIMEOUT_MS_KEY,
+                        String.valueOf(Config.DEFAULT_TRANSACTION_TIMEOUT_MS))));
         config.setReplicationBatchSize(Integer.parseInt(
                 properties.getProperty(
                         Config.REPLICATION_BATCH_SIZE_KEY,
@@ -355,7 +358,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                     config.getReplicationParallelism(),config.getReplicationBatchSize(),
                     entryResultSerializer,threads,
                     this, this, asyncExecutor, scheduledExecutor, voterConfigManager, this, this,
-                    this.journalEntryParser);
+                    this.journalEntryParser, config.getTransactionTimeoutMs());
             leader.start();
             this.leaderUri = this.uri;
             // Leader announcement
@@ -852,18 +855,21 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         public final static int DEFAULT_REPLICATION_BATCH_SIZE = 128;
         public final static int DEFAULT_REPLICATION_PARALLELISM = 16;
         public final static int DEFAULT_CACHE_REQUESTS = 1024;
+        private final static long DEFAULT_TRANSACTION_TIMEOUT_MS = 10L * 60 * 1000;
 
         public final static String HEARTBEAT_INTERVAL_KEY = "heartbeat_interval_ms";
         public final static String ELECTION_TIMEOUT_KEY = "election_timeout_ms";
         public final static String REPLICATION_BATCH_SIZE_KEY = "replication_batch_size";
         public final static String REPLICATION_PARALLELISM_KEY = "replication_parallelism";
         public final static String CACHE_REQUESTS_KEY = "cache_requests";
+        public final static String TRANSACTION_TIMEOUT_MS_KEY = "transaction_timeout_ms";
 
         private long heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS;
         private long electionTimeoutMs = DEFAULT_ELECTION_TIMEOUT_MS;  // 最小选举超时
         private int replicationBatchSize = DEFAULT_REPLICATION_BATCH_SIZE;
         private int replicationParallelism = DEFAULT_REPLICATION_PARALLELISM;
         private int cacheRequests = DEFAULT_CACHE_REQUESTS;
+        private long transactionTimeoutMs = DEFAULT_TRANSACTION_TIMEOUT_MS;
 
         public int getReplicationBatchSize() {
             return replicationBatchSize;
@@ -906,6 +912,13 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
             this.cacheRequests = cacheRequests;
         }
 
+        public long getTransactionTimeoutMs() {
+            return transactionTimeoutMs;
+        }
+
+        public void setTransactionTimeoutMs(long transactionTimeoutMs) {
+            this.transactionTimeoutMs = transactionTimeoutMs;
+        }
     }
 
 

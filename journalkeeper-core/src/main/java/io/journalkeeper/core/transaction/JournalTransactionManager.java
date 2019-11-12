@@ -8,14 +8,12 @@ import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.utils.state.ServerStateMachine;
-import io.journalkeeper.utils.state.StateServer;
 
 import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 
 /**
@@ -27,9 +25,9 @@ public class JournalTransactionManager extends ServerStateMachine {
     private final JournalTransactionState transactionState;
     private final Map<UUID, CompletableFuture<Void>> pendingCompleteTransactionFutures = new ConcurrentHashMap<>();
     public JournalTransactionManager(Journal journal, ClientServerRpc server,
-                                     ScheduledExecutorService scheduledExecutor) {
+                                     ScheduledExecutorService scheduledExecutor, long transactionTimeoutMs) {
         this.server = server;
-        this.transactionState = new JournalTransactionState(journal, server, scheduledExecutor);
+        this.transactionState = new JournalTransactionState(journal, transactionTimeoutMs, server, scheduledExecutor);
     }
 
     @Override

@@ -120,7 +120,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
            ServerRpcProvider serverRpcProvider,
            ClientServerRpc server,
            ExecutorService asyncExecutor,
-           ScheduledExecutorService scheduledExecutor, VoterConfigManager voterConfigManager, MetricProvider metricProvider, CheckTermInterceptor checkTermInterceptor, JournalEntryParser journalEntryParser) {
+           ScheduledExecutorService scheduledExecutor, VoterConfigManager voterConfigManager, MetricProvider metricProvider, CheckTermInterceptor checkTermInterceptor, JournalEntryParser journalEntryParser, long transactionTimeoutMs) {
 
         super(true);
         this.pendingUpdateStateRequests = new LinkedBlockingQueue<>(cacheRequests);
@@ -146,7 +146,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.entryResultSerializer = entryResultSerializer;
         this.journal = journal;
         this.heartbeatIntervalMs = heartbeatIntervalMs;
-        this.journalTransactionManager = new JournalTransactionManager(journal, server, scheduledExecutor);
+        this.journalTransactionManager = new JournalTransactionManager(journal, server, scheduledExecutor, transactionTimeoutMs);
 
     }
 

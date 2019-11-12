@@ -452,6 +452,45 @@ public class JournalStoreTest {
 
     }
 
+    @Test
+    public void transactionTimeoutTest() throws Exception {
+        final int nodes = 3;
+        final int entrySize = 1024;
+        final int entryCount = 3;
+        final long transactionTimeoutMs = 5000L;
+        final Set<Integer> partitions = Collections.unmodifiableSet(
+                new HashSet<>(Arrays.asList(0, 1, 2, 3, 4))
+        );
+        List<byte[]> rawEntries = ByteUtils.createFixedSizeByteList(entrySize, entryCount);
+        Properties properties = new Properties();
+        properties.put("transaction_timeout_ms", String.valueOf(transactionTimeoutMs));
+        List<JournalStoreServer> servers = createServers(nodes, base, partitions, properties);
+        JournalStoreClient client = new JournalStoreClient(servers.stream().map(JournalStoreServer::serverUri).collect(Collectors.toList()), new Properties());
+        client.waitForClusterReady();
+
+        // Create transaction
+        UUID transactionId = client.createTransaction().get();
+        Assert.assertNotNull(transactionId);
+
+        // Send some transactional messages
+        CompletableFuture [] futures = new CompletableFuture[rawEntries.size()];
+        for (int i = 0; i < rawEntries.size(); i++) {
+            int partition = i % partitions.size();
+            futures[i] = client.append(transactionId, rawEntries.get(i), partition, 1);
+        }
+        CompletableFuture.allOf(futures).get();
+
+        // wait for transaction timeout
+        logger.info("Wait {} ms for transaction timeout...", transactionTimeoutMs * 2);
+        Thread.sleep(transactionTimeoutMs * 2);
+
+        Collection<UUID> openingTransactions = client.getOpeningTransactions().get();
+        Assert.assertFalse(openingTransactions.contains(transactionId));
+
+        stopServers(servers);
+
+    }
+
 
 
     private void asyncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException {
@@ -523,6 +562,10 @@ public class JournalStoreTest {
     }
 
     private List<JournalStoreServer> createServers(int nodes, Path path, Set<Integer> partitions) throws IOException {
+        return createServers(nodes, path, partitions, null);
+    }
+
+    private List<JournalStoreServer> createServers(int nodes, Path path, Set<Integer> partitions, Properties props) throws IOException {
         logger.info("Create {} nodes servers", nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
         List<Properties> propertiesList = new ArrayList<>(nodes);
@@ -535,6 +578,10 @@ public class JournalStoreTest {
             properties.setProperty("snapshot_step", "0");
             properties.setProperty("rpc_timeout_ms", "600000");
             properties.setProperty("cache_requests", String.valueOf(1024L * 1024));
+
+            if(null != props) {
+                properties.putAll(props);
+            }
 //            properties.setProperty("print_metric_interval_sec", String.valueOf(1));
 //            properties.setProperty("enable_metric", String.valueOf(true));
 //            properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));

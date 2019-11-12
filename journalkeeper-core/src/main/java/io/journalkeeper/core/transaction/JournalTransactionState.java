@@ -8,7 +8,6 @@ import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import io.journalkeeper.utils.state.ServerStateMachine;
-import io.journalkeeper.utils.state.StateServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,11 +33,15 @@ class JournalTransactionState extends ServerStateMachine {
     private final AtomicInteger nextFreePartition = new AtomicInteger(TRANSACTION_PARTITION_START);
     private final DelayQueue<CompleteTransactionRetry> retryCompleteTransactions = new DelayQueue<>();
     private final ScheduledExecutorService scheduledExecutor;
-    private ScheduledFuture scheduledFuture = null;
+    private ScheduledFuture retryCompleteTransactionScheduledFuture = null;
+    private ScheduledFuture checkOutdatedTransactionsScheduledFuture = null;
     private static final long RETRY_COMPLETE_TRANSACTION_INTERVAL_MS = 10000L;
-    JournalTransactionState(Journal journal, ClientServerRpc server, ScheduledExecutorService scheduledExecutor) {
+    private final long transactionTimeoutMs;
+
+    JournalTransactionState(Journal journal, long transactionTimeoutMs, ClientServerRpc server, ScheduledExecutorService scheduledExecutor) {
         super(false);
         this.journal = journal;
+        this.transactionTimeoutMs = transactionTimeoutMs;
         this.server = server;
         this.scheduledExecutor = scheduledExecutor;
         this.partitionStatusMap = new HashMap<>(TRANSACTION_PARTITION_COUNT);
@@ -49,20 +52,54 @@ class JournalTransactionState extends ServerStateMachine {
     protected void doStart() {
         super.doStart();
         recoverTransactionState();
-        scheduledFuture = scheduledExecutor.scheduleWithFixedDelay(
+        retryCompleteTransactionScheduledFuture = scheduledExecutor.scheduleWithFixedDelay(
                 this::retryCompleteTransactions,
                 RETRY_COMPLETE_TRANSACTION_INTERVAL_MS,
                 RETRY_COMPLETE_TRANSACTION_INTERVAL_MS,
+                TimeUnit.MILLISECONDS
+        );
+        checkOutdatedTransactionsScheduledFuture = scheduledExecutor.scheduleWithFixedDelay(
+                this::abortOutdatedTransactions,
+                transactionTimeoutMs,
+                transactionTimeoutMs,
                 TimeUnit.MILLISECONDS
         );
     }
 
     @Override
     protected void doStop() {
-        if(null != scheduledFuture) {
-            scheduledFuture.cancel(false);
+        if(null != retryCompleteTransactionScheduledFuture) {
+            retryCompleteTransactionScheduledFuture.cancel(false);
+        }
+        if(null != checkOutdatedTransactionsScheduledFuture) {
+            checkOutdatedTransactionsScheduledFuture.cancel(false);
         }
         super.doStop();
+    }
+
+    private void abortOutdatedTransactions() {
+        long currentTimestamp = System.currentTimeMillis();
+        openingTransactionMap.forEach((transactionId, partition) -> {
+            long i = journal.maxIndex(partition);
+            while ( -- i >= journal.minIndex(partition)){
+                JournalEntry journalEntry = journal.readByPartition(partition, i);
+                TransactionEntry transactionEntry = transactionEntrySerializer.parse(journalEntry.getPayload().getBytes());
+
+                if (!transactionId.equals(transactionEntry.getTransactionId())) {
+                    break;
+                }
+
+                if (transactionEntry.getType() == TransactionEntryType.TRANSACTION_START) {
+                    long transactionCreateTimestamp = transactionEntry.getTimestamp();
+                    if(transactionCreateTimestamp + transactionTimeoutMs < currentTimestamp) {
+                        logger.info("Abort outdated transaction: {}.", transactionId.toString());
+                        writeTransactionCompleteEntry(transactionId, false, partition);
+                    }
+                    break;
+                }
+            }
+
+        });
     }
 
     private void retryCompleteTransactions() {
