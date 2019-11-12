@@ -18,6 +18,7 @@ import io.journalkeeper.core.exception.NoLeaderException;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.exceptions.RequestTimeoutException;
 import io.journalkeeper.exceptions.ServerBusyException;
+import io.journalkeeper.exceptions.ServerNotFoundException;
 import io.journalkeeper.exceptions.TransportException;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.LeaderResponse;
@@ -145,7 +146,7 @@ public class RemoteClientRpc implements ClientRpc {
 
                 logger.debug("Rpc exception: {}-{}", exception.getClass().getCanonicalName(), exception.getMessage());
                 throw exception;
-            } catch (RequestTimeoutException | ServerBusyException | TransportException ne) {
+            } catch (RequestTimeoutException | ServerBusyException | TransportException | ServerNotFoundException ne) {
                 return true;
             } catch (NoLeaderException ne) {
                 leaderUri = null;

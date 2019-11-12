@@ -215,8 +215,8 @@ public class VoterTest {
         BytesSerializer bytesSerializer = new BytesSerializer();
         Properties properties = new Properties();
         properties.setProperty("working_dir", base.toString());
-        properties.setProperty("enable_metric", "true");
-        properties.setProperty("print_metric_interval_sec", "3");
+//        properties.setProperty("enable_metric", "true");
+//        properties.setProperty("print_metric_interval_sec", "3");
 //        properties.setProperty("cache_requests", String.valueOf(1024L * 1024 * 5));
 
         Server<byte [], byte [], byte [], byte []>  voter =

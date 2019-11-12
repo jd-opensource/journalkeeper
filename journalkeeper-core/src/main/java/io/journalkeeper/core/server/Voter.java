@@ -113,6 +113,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
      * 检查选举超时定时任务
      */
     private ScheduledFuture checkElectionTimeoutFuture;
+    private ScheduledFuture printStateFuture;
 
     private Leader<E, ER, Q, QR> leader;
     private Follower follower;
@@ -206,6 +207,10 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 properties.getProperty(
                         AbstractServer.Config.FLUSH_INTERVAL_MS_KEY,
                         String.valueOf(AbstractServer.Config.DEFAULT_FLUSH_INTERVAL_MS))));
+        config.setPrintStateIntervalSec(Integer.parseInt(
+                properties.getProperty(
+                        Config.PRINT_STATE_INTERVAL_SEC_KEY,
+                        String.valueOf(Config.DEFAULT_PRINT_STATE_INTERVAL_SEC))));
 
         config.setWorkingDir(Paths.get(
                 properties.getProperty(AbstractServer.Config.WORKING_DIR_KEY,
@@ -747,12 +752,23 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 ThreadLocalRandom.current().nextLong(500L, 1000L),
                 config.getHeartbeatIntervalMs(), TimeUnit.MILLISECONDS);
 
+        if(config.getPrintStateIntervalSec() > 0) {
+            this.printStateFuture = scheduledExecutor.scheduleAtFixedRate(this::printState,
+                    ThreadLocalRandom.current().nextLong(0, config.getPrintStateIntervalSec()),
+                    config.getPrintStateIntervalSec(), TimeUnit.SECONDS);
+        }
+
+    }
+
+    private void printState() {
+        logger.info(voterInfo());
     }
 
     @Override
     public void doStop() {
         try {
             stopAndWaitScheduledFeature(checkElectionTimeoutFuture, 1000L);
+            stopAndWaitScheduledFeature(printStateFuture, 1000L);
             if(null != leader) {
                 leader.stop();
             }
@@ -797,7 +813,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     }
 
     private String voterInfo() {
-        return String.format("voterState: %s, currentTerm: %d, minIndex: %d, " +
+        return String.format("VoterState: %s, currentTerm: %d, minIndex: %d, " +
                         "maxIndex: %d, commitIndex: %d, lastApplied: %d, uri: %s",
                 voterState.getState(), currentTerm.get(), journal.minIndex(),
                 journal.maxIndex(), journal.commitIndex(), state.lastApplied(), uri.toString());
@@ -860,7 +876,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         }
     }
 
-
     //TODO: 继承AbstractServer.Config的属性没有解析
     public static class Config extends AbstractServer.Config {
         public final static long DEFAULT_HEARTBEAT_INTERVAL_MS = 100L;
@@ -868,7 +883,8 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         public final static int DEFAULT_REPLICATION_BATCH_SIZE = 128;
         public final static int DEFAULT_REPLICATION_PARALLELISM = 16;
         public final static int DEFAULT_CACHE_REQUESTS = 1024;
-        private final static long DEFAULT_TRANSACTION_TIMEOUT_MS = 10L * 60 * 1000;
+        public final static long DEFAULT_TRANSACTION_TIMEOUT_MS = 10L * 60 * 1000;
+        public final static int DEFAULT_PRINT_STATE_INTERVAL_SEC = 0;
 
         public final static String HEARTBEAT_INTERVAL_KEY = "heartbeat_interval_ms";
         public final static String ELECTION_TIMEOUT_KEY = "election_timeout_ms";
@@ -876,6 +892,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         public final static String REPLICATION_PARALLELISM_KEY = "replication_parallelism";
         public final static String CACHE_REQUESTS_KEY = "cache_requests";
         public final static String TRANSACTION_TIMEOUT_MS_KEY = "transaction_timeout_ms";
+        public final static String PRINT_STATE_INTERVAL_SEC_KEY = "print_state_interval_sec";
 
         private long heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS;
         private long electionTimeoutMs = DEFAULT_ELECTION_TIMEOUT_MS;  // 最小选举超时
@@ -883,6 +900,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         private int replicationParallelism = DEFAULT_REPLICATION_PARALLELISM;
         private int cacheRequests = DEFAULT_CACHE_REQUESTS;
         private long transactionTimeoutMs = DEFAULT_TRANSACTION_TIMEOUT_MS;
+        private int printStateIntervalSec = DEFAULT_PRINT_STATE_INTERVAL_SEC;
 
         public int getReplicationBatchSize() {
             return replicationBatchSize;
@@ -931,6 +949,14 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
 
         public void setTransactionTimeoutMs(long transactionTimeoutMs) {
             this.transactionTimeoutMs = transactionTimeoutMs;
+        }
+
+        public int getPrintStateIntervalSec() {
+            return printStateIntervalSec;
+        }
+
+        public void setPrintStateIntervalSec(int printStateIntervalSec) {
+            this.printStateIntervalSec = printStateIntervalSec;
         }
     }
 

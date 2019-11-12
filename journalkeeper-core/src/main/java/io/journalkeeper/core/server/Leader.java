@@ -334,9 +334,20 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         }
         follower.setLastHeartbeatRequestTime(System.currentTimeMillis());
 
+        final JMetric metric = appendEntriesRpcMetricMap.get(follower.getUri());
+
+        long traffic = metric == null ? 0L : request.getEntries().stream().mapToLong(e -> e.length).sum();
+        long start = metric == null ? 0L : System.nanoTime();
+
         serverRpcProvider.getServerRpc(follower.getUri())
                 .thenCompose(serverRpc -> serverRpc.asyncAppendEntries(request))
                 .exceptionally(AsyncAppendEntriesResponse::new)
+                .thenApply(response -> {
+                    if(null != metric && traffic > 0) {
+                        metric.mark(System.nanoTime() - start, traffic);
+                    }
+                    return response;
+                })
                 .thenAccept(response -> leaderOnAppendEntriesResponse(follower, request, response));
 
 

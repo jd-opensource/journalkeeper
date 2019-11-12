@@ -256,8 +256,8 @@ public class KvTest {
             properties.setProperty("working_dir", workingDir.toString());
             properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
-            properties.setProperty("enable_metric", "true");
-            properties.setProperty("print_metric_interval_sec", "3");
+//            properties.setProperty("enable_metric", "true");
+//            properties.setProperty("print_metric_interval_sec", "3");
             properties.setProperty("observer.parents", String.join(",", oldConfig.stream().map(URI::toString).toArray(String[]::new)));
             KvServer kvServer = new KvServer(RaftServer.Roll.OBSERVER, properties);
             newServers.add(kvServer);
@@ -477,7 +477,7 @@ public class KvTest {
 
 
         // 可能发生选举，需要等待选举完成。
-        newAdminClient.waitForClusterReady(0L);
+        newAdminClient.waitForClusterReady();
 
         KvClient newClient = newServers.get(0).createClient();
 //        leaderUri = newAdminClient.getClusterConfiguration().get().getLeader();
@@ -714,6 +714,8 @@ public class KvTest {
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
 //            properties.setProperty("enable_metric", "true");
 //            properties.setProperty("print_metric_interval_sec", "3");
+            properties.setProperty("print_state_interval_sec", String.valueOf(5));
+
             propertiesList.add(properties);
         }
         return createServers(serverURIs, propertiesList, roll,waitForLeader);

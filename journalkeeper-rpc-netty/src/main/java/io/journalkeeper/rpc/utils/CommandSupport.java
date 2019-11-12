@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.rpc.utils;
 
+import io.journalkeeper.exceptions.ServerNotFoundException;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.StatusCode;
@@ -61,14 +62,20 @@ public class CommandSupport {
                     public void onSuccess(Command request, Command response) {
 
                         if (response.getHeader().getType() == RpcTypes.VOID_PAYLOAD) {
-                            future.completeExceptionally(
-                                    new RpcException(
-                                            String.format("StatusCode: (%d)%s, ErrorMessage: %s",
-                                                    response.getHeader().getStatus(),
-                                                    StatusCode.valueOf(response.getHeader().getStatus()).getMessage(),
-                                                    response.getHeader().getError())
-                                    )
-                            );
+                            if(response.getHeader().getStatus() == StatusCode.SERVER_NOT_FOUND.getCode()) {
+                                future.completeExceptionally(
+                                        new ServerNotFoundException(response.getHeader().getError())
+                                );
+                            } else {
+                                future.completeExceptionally(
+                                        new RpcException(
+                                                String.format("StatusCode: (%d)%s, ErrorMessage: %s",
+                                                        response.getHeader().getStatus(),
+                                                        StatusCode.valueOf(response.getHeader().getStatus()).getMessage(),
+                                                        response.getHeader().getError())
+                                        )
+                                );
+                            }
                         } else {
 
                             future.complete(GenericPayload.get(response.getPayload()));

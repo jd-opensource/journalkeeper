@@ -92,7 +92,7 @@ class Follower extends ServerStateMachine implements StateServer {
         return ThreadBuilder.builder()
                 .name(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD)
                 .doWork(this::followerHandleAppendEntriesRequest)
-                .sleepTime(heartbeatIntervalMs, heartbeatIntervalMs)
+                .sleepTime(0L, 0L)
                 .onException(e -> logger.warn("{} Exception, {}: ", VOTER_REPLICATION_REQUESTS_HANDLER_THREAD, voterInfo(), e))
                 .daemon(true)
                 .build();

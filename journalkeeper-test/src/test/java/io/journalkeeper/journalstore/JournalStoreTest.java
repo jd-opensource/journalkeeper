@@ -227,7 +227,7 @@ public class JournalStoreTest {
                     Assert.assertEquals(partition, entry.getPartition());
                     Assert.assertEquals(batchSize, entry.getBatchSize());
                     Assert.assertEquals(0, entry.getOffset());
-                    Assert.assertArrayEquals(rawEntries, entry.getSerializedBytes());
+                    Assert.assertArrayEquals(rawEntries, entry.getPayload().getBytes());
                 }
             }
             t1 = System.nanoTime();
@@ -558,6 +558,7 @@ public class JournalStoreTest {
     }
 
     private void stopServers(List<JournalStoreServer> servers) {
+        logger.info("Stop servers...");
         for (JournalStoreServer server : servers) {
             try {
                 server.stop();
@@ -565,6 +566,7 @@ public class JournalStoreTest {
                 logger.warn("Stop server {} exception: ", server.serverUri(), t);
             }
         }
+        logger.info("All servers were stopped.");
     }
     private List<JournalStoreServer> createServers(int nodes, Path path) throws IOException {
         return createServers(nodes, path, Collections.singleton(0));
@@ -591,8 +593,9 @@ public class JournalStoreTest {
             if(null != props) {
                 properties.putAll(props);
             }
-//            properties.setProperty("print_metric_interval_sec", String.valueOf(1));
+//            properties.setProperty("print_metric_interval_sec", String.valueOf(5));
 //            properties.setProperty("enable_metric", String.valueOf(true));
+//            properties.setProperty("print_state_interval_sec", String.valueOf(5));
 //            properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
 //            properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
             propertiesList.add(properties);

@@ -109,7 +109,7 @@ public class SQLServer implements StateServer {
     public void start() {
         try {
             RaftServer server = bootStrap.getServer();
-            if (server.isInitialized()) {
+            if (!server.isInitialized()) {
                 server.init(current, servers);
             }
             server.recover();

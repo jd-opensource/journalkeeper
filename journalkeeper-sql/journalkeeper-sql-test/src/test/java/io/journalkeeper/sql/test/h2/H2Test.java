@@ -27,6 +27,7 @@ import io.journalkeeper.sql.state.config.SQLConfigs;
 import io.journalkeeper.sql.state.jdbc.config.JDBCConfigs;
 import org.apache.commons.io.FileUtils;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
@@ -94,6 +95,7 @@ public class H2Test {
         }
     }
 
+    @Ignore
     @Test
     public void test() throws Exception {
         for (int i = 0; i < 1; i++) {
