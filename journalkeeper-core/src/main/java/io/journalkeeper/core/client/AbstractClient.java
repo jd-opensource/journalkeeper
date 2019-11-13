@@ -1,3 +1,16 @@
+/**
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.journalkeeper.core.client;
 
 import io.journalkeeper.base.Serializer;
@@ -10,9 +23,7 @@ import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.exceptions.RequestTimeoutException;
 import io.journalkeeper.exceptions.ServerBusyException;
 import io.journalkeeper.exceptions.TransportException;
-import io.journalkeeper.rpc.BaseResponse;
-import io.journalkeeper.rpc.LeaderResponse;
-import io.journalkeeper.rpc.RpcAccessPointFactory;
+import io.journalkeeper.rpc.*;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.client.GetServersResponse;
@@ -57,17 +68,27 @@ public abstract class AbstractClient implements ClusterReadyAware, ServerConfigA
     protected <R> CompletableFuture<R> update(byte[] entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig, Serializer<R> serializer) {
         return
                 clientRpc.invokeClientLeaderRpc(rpc -> rpc.updateClusterState(new UpdateClusterStateRequest(entry, partition, batchSize, includeHeader, responseConfig)))
-                .thenApply(UpdateClusterStateResponse::getResult)
-                .thenApply(serializer::parse);
+                        .thenApply(this::checkResponse)
+                        .thenApply(UpdateClusterStateResponse::getResult)
+                        .thenApply(serializer::parse);
     }
     protected <R> CompletableFuture<R> update(byte[] entry, int partition, int batchSize, ResponseConfig responseConfig, Serializer<R> serializer) {
         return update(entry, partition, batchSize, false, responseConfig, serializer);
     }
 
-    @Override
-    public CompletableFuture whenClusterReady(long maxWaitMs) {
 
-        return CompletableFuture.runAsync(() -> {
+
+    protected <R extends BaseResponse> R  checkResponse(R response) {
+        if (response.getStatusCode() != StatusCode.SUCCESS) {
+            throw new RpcException(response);
+        }
+        return response;
+    }
+
+    @Override
+    public void waitForClusterReady(long maxWaitMs) throws InterruptedException, TimeoutException {
+
+
             long t0 = System.currentTimeMillis();
             while (System.currentTimeMillis() - t0 < maxWaitMs || maxWaitMs <= 0) {
                 try {
@@ -88,8 +109,8 @@ public abstract class AbstractClient implements ClusterReadyAware, ServerConfigA
                     throw new CompletionException(e);
                 }
             }
-            throw new CompletionException(new TimeoutException());
-        });
+            throw new TimeoutException();
+
     }
 
     @Override

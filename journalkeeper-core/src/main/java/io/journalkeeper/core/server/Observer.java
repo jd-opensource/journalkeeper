@@ -24,14 +24,7 @@ import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.persistence.ServerMetadata;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.StatusCode;
-import io.journalkeeper.rpc.client.GetServerStatusResponse;
-import io.journalkeeper.rpc.client.LastAppliedResponse;
-import io.journalkeeper.rpc.client.QueryStateRequest;
-import io.journalkeeper.rpc.client.QueryStateResponse;
-import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
-import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
-import io.journalkeeper.rpc.client.UpdateVotersRequest;
-import io.journalkeeper.rpc.client.UpdateVotersResponse;
+import io.journalkeeper.rpc.client.*;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
@@ -249,17 +242,17 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
     @Override
     public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
-        return CompletableFuture.supplyAsync(() -> new UpdateClusterStateResponse(new NotLeaderException(leaderUri)), asyncExecutor);
+        return CompletableFuture.completedFuture(new UpdateClusterStateResponse(new NotLeaderException(leaderUri)));
     }
 
     @Override
     public CompletableFuture<QueryStateResponse> queryClusterState(QueryStateRequest request) {
-        return CompletableFuture.supplyAsync(() -> new QueryStateResponse(new NotLeaderException(leaderUri)), asyncExecutor);
+        return CompletableFuture.completedFuture(new QueryStateResponse(new NotLeaderException(leaderUri)));
     }
 
     @Override
     public CompletableFuture<LastAppliedResponse> lastApplied() {
-        return CompletableFuture.supplyAsync(() -> new LastAppliedResponse(new NotLeaderException(leaderUri)), asyncExecutor);
+        return CompletableFuture.completedFuture(new LastAppliedResponse(new NotLeaderException(leaderUri)));
     }
 
     @Override
@@ -276,22 +269,37 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
     @Override
     public CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request) {
-        return CompletableFuture.supplyAsync(() -> new UpdateVotersResponse(new NotLeaderException(leaderUri)), asyncExecutor);
+        return CompletableFuture.completedFuture(new UpdateVotersResponse(new NotLeaderException(leaderUri)));
+    }
+
+    @Override
+    public CompletableFuture<CreateTransactionResponse> createTransaction() {
+        return CompletableFuture.completedFuture(new CreateTransactionResponse(new NotLeaderException(leaderUri)));
+    }
+
+    @Override
+    public CompletableFuture<CompleteTransactionResponse> completeTransaction(CompleteTransactionRequest request) {
+        return CompletableFuture.completedFuture(new CompleteTransactionResponse(new NotLeaderException(leaderUri)));
+    }
+
+    @Override
+    public CompletableFuture<GetOpeningTransactionsResponse> getOpeningTransactions() {
+        return CompletableFuture.completedFuture(new GetOpeningTransactionsResponse(new NotLeaderException(leaderUri)));
     }
 
     @Override
     public CompletableFuture<AsyncAppendEntriesResponse> asyncAppendEntries(AsyncAppendEntriesRequest request) {
-        return CompletableFuture.supplyAsync(() -> new AsyncAppendEntriesResponse(new NotVoterException()), asyncExecutor);
+        return CompletableFuture.completedFuture(new AsyncAppendEntriesResponse(new NotVoterException()));
     }
 
     @Override
     public CompletableFuture<RequestVoteResponse> requestVote(RequestVoteRequest request) {
-        return CompletableFuture.supplyAsync(() -> new RequestVoteResponse(new NotVoterException()), asyncExecutor);
+        return CompletableFuture.completedFuture(new RequestVoteResponse(new NotVoterException()));
     }
 
     @Override
     public CompletableFuture<DisableLeaderWriteResponse> disableLeaderWrite(DisableLeaderWriteRequest request) {
-        return CompletableFuture.supplyAsync(() -> new DisableLeaderWriteResponse(new NotVoterException()), asyncExecutor);
+        return CompletableFuture.completedFuture(new DisableLeaderWriteResponse(new NotVoterException()));
     }
 
     @Override

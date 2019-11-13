@@ -83,9 +83,13 @@ public class CodecSupport {
     }
 
     public static <T> void encodeList(ByteBuf byteBuf, List<T> list, Encoder itemEncoder) {
-        if(null == list) list = Collections.emptyList();
-        byteBuf.writeInt(list.size());
-        list.forEach(item -> itemEncoder.encode(item , byteBuf));
+        encodeCollection(byteBuf, list, itemEncoder);
+    }
+
+    public static <T> void encodeCollection(ByteBuf byteBuf, Collection<T> collection, Encoder itemEncoder) {
+        if(null == collection) collection = Collections.emptyList();
+        byteBuf.writeInt(collection.size());
+        collection.forEach(item -> itemEncoder.encode(item , byteBuf));
     }
 
 
@@ -105,6 +109,10 @@ public class CodecSupport {
             list.add((T) itemDecoder.decode(byteBuf));
         }
         return list;
+    }
+
+    public static <T> Collection<T> decodeCollection(ByteBuf byteBuf, Decoder itemDecoder) {
+        return decodeList(byteBuf, itemDecoder);
     }
 
     @SuppressWarnings("unchecked")
@@ -133,5 +141,28 @@ public class CodecSupport {
 
     public static boolean decodeBoolean(ByteBuf byteBuf) {
         return byteBuf.readByte() == 0X1;
+    }
+
+    public static void encodeUUID(ByteBuf byteBuf, UUID uuid) {
+        long mostSigBits = 0L;
+        long leastSigBits = 0L;
+
+        if(null != uuid) {
+            mostSigBits = uuid.getMostSignificantBits();
+            leastSigBits = uuid.getLeastSignificantBits();
+        }
+        encodeLong(byteBuf, mostSigBits);
+        encodeLong(byteBuf, leastSigBits);
+    }
+
+    public static UUID decodeUUID(ByteBuf byteBuf) {
+        long mostSigBits = decodeLong(byteBuf);
+        long leastSigBits = decodeLong(byteBuf);
+
+        if (mostSigBits == 0L && leastSigBits == 0L) {
+            return null;
+        } else {
+            return new UUID(mostSigBits, leastSigBits);
+        }
     }
 }

@@ -42,6 +42,8 @@ public abstract class LeaderResponse extends BaseResponse {
     protected void onSetException(Throwable throwable) {
         try {
             throw throwable;
+        } catch (IllegalStateException e) {
+          setStatusCode(StatusCode.SERVER_BUSY);
         } catch (NotLeaderException e) {
             setStatusCode(StatusCode.NOT_LEADER);
             setLeader(e.getLeader());

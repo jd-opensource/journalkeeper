@@ -39,7 +39,7 @@ public class ScalePartitionsEntrySerializer implements Serializer<ScalePartition
     public byte[] serialize(ScalePartitionsEntry entry) {
         byte [] bytes = new byte[sizeOf(entry)];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
-        buffer.put((byte) entry.getType());
+        buffer.put((byte) entry.getType().value());
         for (int partition : entry.getPartitions()) {
             buffer.putShort((short) partition);
         }

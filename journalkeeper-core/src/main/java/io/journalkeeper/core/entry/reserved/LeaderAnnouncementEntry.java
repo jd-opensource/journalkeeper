@@ -15,6 +15,8 @@ package io.journalkeeper.core.entry.reserved;
 
 import java.io.Serializable;
 
+import static io.journalkeeper.core.entry.reserved.ReservedEntryType.TYPE_LEADER_ANNOUNCEMENT;
+
 /**
  * @author LiYue
  * Date: 2019-05-09

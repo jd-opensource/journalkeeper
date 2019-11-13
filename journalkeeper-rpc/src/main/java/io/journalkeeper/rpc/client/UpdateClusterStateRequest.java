@@ -15,6 +15,8 @@ package io.journalkeeper.rpc.client;
 
 import io.journalkeeper.core.api.ResponseConfig;
 
+import java.util.UUID;
+
 /**
  * RPC方法
  * {@link ClientServerRpc#queryServerState(QueryStateRequest) queryServerState}
@@ -28,12 +30,22 @@ public class UpdateClusterStateRequest {
     private final int batchSize;
     private final boolean includeHeader;
     private final ResponseConfig responseConfig;
+    private final UUID transactionId;
 
     public UpdateClusterStateRequest(byte [] entry, int partition, int batchSize) {
         this(entry, partition, batchSize, false, ResponseConfig.REPLICATION);
     }
 
     public UpdateClusterStateRequest(byte[] entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig) {
+        this(null, entry, partition, batchSize, includeHeader, responseConfig);
+    }
+
+    public UpdateClusterStateRequest(UUID transactionId, byte[] entry, int partition, int batchSize, boolean includeHeader) {
+        this(transactionId, entry, partition, batchSize, includeHeader, ResponseConfig.REPLICATION);
+    }
+
+    public UpdateClusterStateRequest(UUID transactionId, byte[] entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig) {
+        this.transactionId = transactionId;
         this.batchSize = batchSize;
         this.responseConfig = responseConfig;
         this.entry = entry;
@@ -69,5 +81,9 @@ public class UpdateClusterStateRequest {
 
     public boolean isIncludeHeader() {
         return includeHeader;
+    }
+
+    public UUID getTransactionId() {
+        return transactionId;
     }
 }

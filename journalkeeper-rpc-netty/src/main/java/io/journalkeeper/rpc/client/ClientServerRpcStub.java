@@ -2,6 +2,19 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  * <p>
  * http://www.apache.org/licenses/LICENSE-2.0
  * <p>
@@ -168,6 +181,21 @@ public class ClientServerRpcStub implements ClientServerRpc {
     }
 
     @Override
+    public CompletableFuture<CreateTransactionResponse> createTransaction() {
+        return sendRequest(null, RpcTypes.CREATE_TRANSACTION_REQUEST);
+    }
+
+    @Override
+    public CompletableFuture<CompleteTransactionResponse> completeTransaction(CompleteTransactionRequest request) {
+        return sendRequest(request, RpcTypes.COMPLETE_TRANSACTION_REQUEST);
+    }
+
+    @Override
+    public CompletableFuture<GetOpeningTransactionsResponse> getOpeningTransactions() {
+        return sendRequest(null, RpcTypes.GET_OPENING_TRANSACTIONS_REQUEST);
+    }
+
+    @Override
     public void watch(EventWatcher eventWatcher) {
         if (null == eventBus) {
             initPullEvent();
@@ -267,7 +295,7 @@ public class ClientServerRpcStub implements ClientServerRpc {
         }
     }
 
-    boolean isAlive() {
+    private boolean isAlive() {
         return null != transport && transport.state() == TransportState.CONNECTED;
     }
 

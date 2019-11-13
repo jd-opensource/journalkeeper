@@ -19,7 +19,7 @@ package io.journalkeeper.rpc;
  */
 public class RpcException extends RuntimeException {
     public RpcException(BaseResponse response) {
-        super(response.getError());
+        super(response.errorString());
     }
     public RpcException(Throwable t) {
         super(t);

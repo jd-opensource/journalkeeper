@@ -16,7 +16,6 @@ package io.journalkeeper.core.server;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
-import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;
@@ -93,7 +92,7 @@ public class VoterTest {
             voter.updateClusterState(new UpdateClusterStateRequest(
                     ReservedEntriesSerializeSupport
                             .serialize(new ScalePartitionsEntry(partitions)),
-                    RaftJournal.RESERVED_PARTITION, 1)).get();
+                    RaftJournal.RAFT_PARTITION, 1)).get();
 
 
             byte[] entry = ByteUtils.createFixedSizeBytes(entrySize);
@@ -142,7 +141,7 @@ public class VoterTest {
             voter.updateClusterState(new UpdateClusterStateRequest(
                     ReservedEntriesSerializeSupport
                             .serialize(new ScalePartitionsEntry(partitions)),
-                    RaftJournal.RESERVED_PARTITION, 1)).get();
+                    RaftJournal.RAFT_PARTITION, 1)).get();
 
 
             byte[] entry = ByteUtils.createFixedSizeBytes(entrySize);
@@ -216,8 +215,8 @@ public class VoterTest {
         BytesSerializer bytesSerializer = new BytesSerializer();
         Properties properties = new Properties();
         properties.setProperty("working_dir", base.toString());
-        properties.setProperty("enable_metric", "true");
-        properties.setProperty("print_metric_interval_sec", "3");
+//        properties.setProperty("enable_metric", "true");
+//        properties.setProperty("print_metric_interval_sec", "3");
 //        properties.setProperty("cache_requests", String.valueOf(1024L * 1024 * 5));
 
         Server<byte [], byte [], byte [], byte []>  voter =

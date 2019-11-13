@@ -332,7 +332,6 @@ public class JournalTest {
         long index = journal.minIndex();
 
         while (index < journal.maxIndex()) {
-            logger.info("Index: {}.", index);
             Assert.assertArrayEquals(entries.get((int)index), journal.read(index).getPayload().getBytes());
             index++;
         }
@@ -585,7 +584,7 @@ public class JournalTest {
 
         // 测试多余数据是否能自动删除
 
-        File lastFile = findLastFile(path.resolve("journal"));
+        File lastFile = findLastFile(path);
 //        FileUtils.write(lastFile, "Extra bytes", StandardCharsets.UTF_8, true);
 
         journal = createJournal(properties);
@@ -601,7 +600,7 @@ public class JournalTest {
 
 
         // 删掉最后一条Entry的部分字节，测试是否能自动删除多余的半条Entry和索引
-        lastFile = findLastFile(path.resolve("journal"));
+        lastFile = findLastFile(path);
         try(RandomAccessFile raf = new RandomAccessFile(lastFile, "rw");
             FileChannel fileChannel = raf.getChannel()) {
             fileChannel.truncate(fileChannel.size() - entrySize / 3);
@@ -620,7 +619,7 @@ public class JournalTest {
         journal.close();
 
         // 删掉索引最后的15个字节（一条完整索引+一条不完整索引），测试自动重建索引
-        lastFile = findLastFile(path.resolve("index"));
+        lastFile = findLastFile(path.resolve("index").resolve("all"));
         try(RandomAccessFile raf = new RandomAccessFile(lastFile, "rw");
             FileChannel fileChannel = raf.getChannel()) {
             fileChannel.truncate(fileChannel.size() - Long.BYTES * 2 - 1);

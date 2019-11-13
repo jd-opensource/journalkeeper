@@ -13,7 +13,11 @@
  */
 package io.journalkeeper.rpc.utils;
 
+import io.journalkeeper.exceptions.ServerNotFoundException;
 import io.journalkeeper.rpc.BaseResponse;
+import io.journalkeeper.rpc.RpcException;
+import io.journalkeeper.rpc.StatusCode;
+import io.journalkeeper.rpc.codec.RpcTypes;
 import io.journalkeeper.rpc.header.JournalKeeperHeader;
 import io.journalkeeper.rpc.payload.GenericPayload;
 import io.journalkeeper.rpc.payload.VoidPayload;
@@ -56,7 +60,26 @@ public class CommandSupport {
                 new CommandCallback() {
                     @Override
                     public void onSuccess(Command request, Command response) {
-                        future.complete(GenericPayload.get(response.getPayload()));
+
+                        if (response.getHeader().getType() == RpcTypes.VOID_PAYLOAD) {
+                            if(response.getHeader().getStatus() == StatusCode.SERVER_NOT_FOUND.getCode()) {
+                                future.completeExceptionally(
+                                        new ServerNotFoundException(response.getHeader().getError())
+                                );
+                            } else {
+                                future.completeExceptionally(
+                                        new RpcException(
+                                                String.format("StatusCode: (%d)%s, ErrorMessage: %s",
+                                                        response.getHeader().getStatus(),
+                                                        StatusCode.valueOf(response.getHeader().getStatus()).getMessage(),
+                                                        response.getHeader().getError())
+                                        )
+                                );
+                            }
+                        } else {
+
+                            future.complete(GenericPayload.get(response.getPayload()));
+                        }
                     }
 
                     @Override
@@ -79,5 +102,13 @@ public class CommandSupport {
         header.setError(response.getError());
 
         return new Command(header,new GenericPayload<>(response));
+    }
+    public static Command newVoidPayloadResponse(int status, String error, Command requestCommand) {
+        Header requestHeader = requestCommand.getHeader();
+        JournalKeeperHeader header = new JournalKeeperHeader(Direction.RESPONSE, requestHeader.getRequestId(), RpcTypes.VOID_PAYLOAD, null);
+        header.setStatus(status);
+        header.setError(error);
+
+        return new Command(header,new VoidPayload());
     }
 }

@@ -33,6 +33,9 @@ public enum StatusCode {
     TRANSPORT_FAILED(3, "TRANSPORT_FAILED"),
     SERVER_BUSY(4, "SERVER_BUSY"),
     TIMEOUT(5, "TIMEOUT"),
+    RETRY_LATER(6, "RETRY_LATER"),
+    SERVER_NOT_FOUND(7, "SERVER_NOT_FOUND"),
+
     NOT_LEADER(100, "NOT_LEADER"),
 
     // 101 ~ 200 Client Server Rpc

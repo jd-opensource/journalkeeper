@@ -22,7 +22,8 @@ import java.util.Set;
  */
 public interface RaftJournal {
     int DEFAULT_PARTITION = 0;
-    int RESERVED_PARTITION = Short.MAX_VALUE;
+    int RAFT_PARTITION = Short.MAX_VALUE;
+    int RESERVED_PARTITIONS_START = 30000;
     long minIndex();
 
     long maxIndex();

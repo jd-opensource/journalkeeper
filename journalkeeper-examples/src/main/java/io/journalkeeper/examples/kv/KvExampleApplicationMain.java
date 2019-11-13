@@ -27,11 +27,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 public class KvExampleApplicationMain {
     private static final Logger logger = LoggerFactory.getLogger(KvExampleApplicationMain.class);
-    public static void main(String [] args) throws IOException, ExecutionException, InterruptedException {
+    public static void main(String [] args) throws IOException, InterruptedException, TimeoutException {
         int nodes = 1;
         logger.info("Usage: java " + KvExampleApplicationMain.class.getName() + " [nodes(default 3)]");
         if(args.length > 0) {
@@ -57,7 +58,7 @@ public class KvExampleApplicationMain {
         }
 
         AdminClient adminClient = kvServers.get(0).getAdminClient();
-        adminClient.whenClusterReady(0).get();
+        adminClient.waitForClusterReady(0L);
 
         List<KvClient> kvClients = kvServers.stream().map(KvServer::createClient).collect(Collectors.toList());
 

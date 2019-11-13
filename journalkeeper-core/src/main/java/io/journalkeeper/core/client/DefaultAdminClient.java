@@ -1,3 +1,16 @@
+/**
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.journalkeeper.core.client;
 
 import io.journalkeeper.base.VoidSerializer;
@@ -9,11 +22,11 @@ import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
+import io.journalkeeper.core.entry.reserved.ReservedPartition;
 import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.reserved.SetPreferredLeaderEntry;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.client.ClientServerRpc;
-import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
 import io.journalkeeper.rpc.client.GetServerStatusResponse;
 import io.journalkeeper.rpc.client.GetServersResponse;
@@ -71,12 +84,15 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
     @Override
     public CompletableFuture<Void> compact(Map<Integer, Long> toIndices) {
         return this.update(ReservedEntriesSerializeSupport.serialize(new CompactJournalEntry(toIndices)),
-                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
+                RaftJournal.RAFT_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
     }
     @Override
     public CompletableFuture<Void> scalePartitions(int[] partitions) {
+
+        ReservedPartition.validatePartitions(partitions);
+
         return this.update(ReservedEntriesSerializeSupport.serialize(new ScalePartitionsEntry(partitions)),
-                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
+                RaftJournal.RAFT_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
     }
 
     @Override
@@ -89,7 +105,7 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
     @Override
     public CompletableFuture<Void> setPreferredLeader(URI preferredLeader) {
         return this.update(ReservedEntriesSerializeSupport.serialize(new SetPreferredLeaderEntry(preferredLeader)),
-                RaftJournal.RESERVED_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
+                RaftJournal.RAFT_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
     }
 
     private Config toConfig(Properties properties) {

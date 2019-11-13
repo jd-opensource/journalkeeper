@@ -41,7 +41,7 @@ public class CompactJournalEntrySerializer implements Serializer<CompactJournalE
     public byte[] serialize(CompactJournalEntry entry) {
         byte [] bytes = new byte[sizeOf(entry)];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
-        buffer.put((byte) entry.getType());
+        buffer.put((byte) entry.getType().value());
         entry.getCompactIndices().forEach((partition, index) -> {
             buffer.putShort(partition.shortValue());
             buffer.putLong(index);

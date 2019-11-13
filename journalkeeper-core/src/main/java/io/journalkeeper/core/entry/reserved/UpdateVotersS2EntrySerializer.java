@@ -59,7 +59,7 @@ public class UpdateVotersS2EntrySerializer implements Serializer<UpdateVotersS2E
     public byte[] serialize(UpdateVotersS2Entry entry) {
         byte [] bytes = new byte[sizeOf(entry)];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
-        buffer.put((byte) entry.getType());
+        buffer.put((byte) entry.getType().value());
 
         List<URI> config = entry.getConfigOld();
         serializeUriList(buffer, config);

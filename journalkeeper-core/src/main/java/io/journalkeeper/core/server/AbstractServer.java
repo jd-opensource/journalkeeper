@@ -21,13 +21,7 @@ import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
-import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
-import io.journalkeeper.core.entry.reserved.LeaderAnnouncementEntry;
-import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
-import io.journalkeeper.core.entry.reserved.ReservedEntry;
-import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
-import io.journalkeeper.core.entry.reserved.UpdateVotersS1Entry;
-import io.journalkeeper.core.entry.reserved.UpdateVotersS2Entry;
+import io.journalkeeper.core.entry.reserved.*;
 import io.journalkeeper.core.exception.RecoverException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.metric.DummyMetric;
@@ -109,7 +103,9 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
-import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
+import static io.journalkeeper.core.api.RaftJournal.RAFT_PARTITION;
+import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITIONS_START;
+import static io.journalkeeper.core.entry.reserved.ReservedEntryType.*;
 import static io.journalkeeper.core.server.ThreadNames.FLUSH_JOURNAL_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.PRINT_METRIC_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
@@ -328,14 +324,14 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     @Override
     public synchronized void init(URI uri, List<URI> voters, Set<Integer> partitions) throws IOException {
-
+        ReservedPartition.validatePartitions(partitions);
         this.uri = uri;
         votersConfigStateMachine = new VoterConfigurationStateMachine(voters);
         createMissingDirectories();
         metadataPersistence.recover(metadataPath());
         lastSavedServerMetadata = createServerMetadata();
         Set<Integer> partitionsWithReserved = new HashSet<>(partitions);
-        partitionsWithReserved.add(RESERVED_PARTITION);
+        partitionsWithReserved.add(RAFT_PARTITION);
         lastSavedServerMetadata.setPartitions(partitionsWithReserved);
         metadataPersistence.save(lastSavedServerMetadata);
 
@@ -426,7 +422,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
             JournalEntry journalEntry = journal.read(state.lastApplied());
             Map<String, String> customizedEventData = new HashMap<>();
             ER result = null;
-            if(journalEntry.getPartition() != RESERVED_PARTITION) {
+            if(journalEntry.getPartition() < RESERVED_PARTITIONS_START) {
                 E entry = entrySerializer.parse(journalEntry.getPayload().getBytes());
                 long stamp = stateLock.writeLock();
                 try {
@@ -437,8 +433,10 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 } finally {
                     stateLock.unlockWrite(stamp);
                 }
+            } else if (journalEntry.getPartition() == RAFT_PARTITION){
+                applyRaftPartition(journalEntry.getPayload().getBytes());
             } else {
-                applyReservedEntry(journalEntry.getPayload().getBytes());
+                applyReservedPartition(journalEntry, state.lastApplied());
             }
 
 
@@ -453,24 +451,26 @@ public abstract class AbstractServer<E, ER, Q, QR>
         }
     }
 
-    protected void applyReservedEntry(byte [] reservedEntry) {
-        int type = ReservedEntriesSerializeSupport.parseEntryType(reservedEntry);
+    protected void applyReservedPartition(JournalEntry journalEntry, long index) {};
+
+    protected void applyRaftPartition(byte [] reservedEntry) {
+        ReservedEntryType type = ReservedEntriesSerializeSupport.parseEntryType(reservedEntry);
         logger.info("Apply reserved entry, type: {}", type);
         switch (type) {
-            case ReservedEntry.TYPE_COMPACT_JOURNAL:
+            case TYPE_COMPACT_JOURNAL:
                 // TODO: 删除日志之前需要找到一个快照
                 compactJournalAsync(ReservedEntriesSerializeSupport.parse(reservedEntry, CompactJournalEntry.class).getCompactIndices());
                 break;
-            case ReservedEntry.TYPE_SCALE_PARTITIONS:
+            case TYPE_SCALE_PARTITIONS:
                 scalePartitions(ReservedEntriesSerializeSupport.parse(reservedEntry, ScalePartitionsEntry.class).getPartitions());
                 break;
-            case ReservedEntry.TYPE_LEADER_ANNOUNCEMENT:
+            case TYPE_LEADER_ANNOUNCEMENT:
                 LeaderAnnouncementEntry leaderAnnouncementEntry = ReservedEntriesSerializeSupport.parse(reservedEntry);
                 fireOnLeaderChangeEvent(leaderAnnouncementEntry.getTerm());
                 break;
-            case ReservedEntry.TYPE_UPDATE_VOTERS_S1:
-            case ReservedEntry.TYPE_UPDATE_VOTERS_S2:
-            case ReservedEntry.TYPE_SET_PREFERRED_LEADER:
+            case TYPE_UPDATE_VOTERS_S1:
+            case TYPE_UPDATE_VOTERS_S2:
+            case TYPE_SET_PREFERRED_LEADER:
                 break;
             default:
                 logger.warn("Invalid reserved entry type: {}.", type);
@@ -490,7 +490,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
             scalePartitionLock.lock();
 
             journal.rePartition(
-                    Stream.concat(IntStream.of(RESERVED_PARTITION).boxed(),
+                    Stream.concat(IntStream.of(RAFT_PARTITION).boxed(),
                             Arrays.stream(partitions).boxed())
                             .collect(Collectors.toSet()));
             //TODO: request flush metadata
@@ -862,19 +862,19 @@ public abstract class AbstractServer<E, ER, Q, QR>
      */
     private void recoverVoterConfig() {
         boolean isRecoveredFromJournal = false;
-        for(long index = journal.maxIndex(RESERVED_PARTITION) - 1;
-            index >= journal.minIndex(RESERVED_PARTITION);
+        for(long index = journal.maxIndex(RAFT_PARTITION) - 1;
+            index >= journal.minIndex(RAFT_PARTITION);
             index --) {
-            JournalEntry entry = journal.readByPartition(RESERVED_PARTITION, index);
-            int type = ReservedEntriesSerializeSupport.parseEntryType(entry.getPayload().getBytes());
+            JournalEntry entry = journal.readByPartition(RAFT_PARTITION, index);
+            ReservedEntryType type = ReservedEntriesSerializeSupport.parseEntryType(entry.getPayload().getBytes());
 
-            if(type == ReservedEntry.TYPE_UPDATE_VOTERS_S1) {
+            if(type == ReservedEntryType.TYPE_UPDATE_VOTERS_S1) {
                 UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(entry.getPayload().getBytes());
                 votersConfigStateMachine = new VoterConfigurationStateMachine(
                         updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew());
                 isRecoveredFromJournal = true;
                 break;
-            } else if(type == ReservedEntry.TYPE_UPDATE_VOTERS_S2) {
+            } else if(type == ReservedEntryType.TYPE_UPDATE_VOTERS_S2) {
                 UpdateVotersS2Entry updateVotersS2Entry = ReservedEntriesSerializeSupport.parse(entry.getPayload().getBytes());
                 votersConfigStateMachine = new VoterConfigurationStateMachine(updateVotersS2Entry.getConfigNew());
                 isRecoveredFromJournal = true;
@@ -944,7 +944,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
         if(metadata.getPartitions().isEmpty()) {
             metadata.getPartitions().addAll(
-                    Stream.of(RaftJournal.DEFAULT_PARTITION, RESERVED_PARTITION)
+                    Stream.of(RaftJournal.DEFAULT_PARTITION, RAFT_PARTITION)
                             .collect(Collectors.toSet())
             );
         }

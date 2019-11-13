@@ -19,15 +19,16 @@ import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.StatusCode;
-import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
-import io.journalkeeper.rpc.client.QueryStateRequest;
+import io.journalkeeper.rpc.client.*;
 import io.journalkeeper.utils.threads.NamedThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.util.Collection;
 import java.util.List;
 import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -71,13 +72,8 @@ public class DefaultRaftClient<E, ER, Q, QR> extends AbstractClient implements R
     @Override
     public CompletableFuture<QR> query(Q query) {
         return clientRpc.invokeClientLeaderRpc(leaderRpc -> leaderRpc.queryClusterState(new QueryStateRequest(querySerializer.serialize(query))))
-                .thenApply(response -> {
-                    if(response.getStatusCode() == StatusCode.SUCCESS) {
-                        return response.getResult();
-                    } else {
-                        throw new RpcException(response);
-                    }
-                })
+                .thenApply(super::checkResponse)
+                .thenApply(QueryStateResponse::getResult)
                 .thenApply(resultSerializer::parse);
     }
 
@@ -89,6 +85,36 @@ public class DefaultRaftClient<E, ER, Q, QR> extends AbstractClient implements R
                         String.valueOf(Config.DEFAULT_THREADS))));
 
         return config;
+    }
+
+    @Override
+    public CompletableFuture<UUID> createTransaction() {
+        return clientRpc.invokeClientLeaderRpc(ClientServerRpc::createTransaction)
+                .thenApply(super::checkResponse)
+                .thenApply(CreateTransactionResponse::getTransactionId);
+    }
+
+    @Override
+    public CompletableFuture<Void> completeTransaction(UUID transactionId, boolean commitOrAbort) {
+        return clientRpc.invokeClientLeaderRpc(leaderRpc -> leaderRpc.completeTransaction(
+                new CompleteTransactionRequest(transactionId, commitOrAbort)))
+                .thenApply(super::checkResponse)
+                .thenApply(response -> null);
+    }
+
+    @Override
+    public CompletableFuture<Collection<UUID>> getOpeningTransactions() {
+        return clientRpc.invokeClientLeaderRpc(ClientServerRpc::getOpeningTransactions)
+                .thenApply(super::checkResponse)
+                .thenApply(GetOpeningTransactionsResponse::getTransactionIds);
+    }
+
+    @Override
+    public CompletableFuture<Void> update(UUID transactionId, byte[] entry, int partition, int batchSize, boolean includeHeader) {
+        return
+                clientRpc.invokeClientLeaderRpc(rpc -> rpc.updateClusterState(new UpdateClusterStateRequest(transactionId, entry, partition, batchSize, includeHeader)))
+                        .thenApply(this::checkResponse)
+                        .thenApply(response -> null);
     }
 
     static class Config {

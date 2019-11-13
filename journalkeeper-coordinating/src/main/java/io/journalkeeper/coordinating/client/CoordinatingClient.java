@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 /**
  * CoordinatingClient
@@ -117,9 +118,10 @@ public class CoordinatingClient {
         client.unWatch(new EventWatcherAdapter(key, listener));
     }
 
-    public CompletableFuture waitClusterReady(long maxWaitMs) {
-        return this.client.whenClusterReady(maxWaitMs);
+    public void waitClusterReady(Long maxWaitMs) throws InterruptedException, TimeoutException {
+        this.client.waitForClusterReady(maxWaitMs);
     }
+
     public void stop() {
         client.stop();
     }

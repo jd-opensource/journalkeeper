@@ -17,6 +17,7 @@ import io.journalkeeper.utils.event.EventBus;
 import io.journalkeeper.utils.event.EventWatcher;
 
 import java.net.URI;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -129,6 +130,26 @@ public interface ClientServerRpc {
      * @return See {@link ConvertRollResponse}
      */
     CompletableFuture<ConvertRollResponse> convertRoll(ConvertRollRequest request);
+
+    /**
+     * 开启一个新事务，并返回事务ID。
+     * @return See {@link CreateTransactionResponse}
+     */
+    CompletableFuture<CreateTransactionResponse> createTransaction();
+
+    /**
+     * 提交或回滚事务
+     * @param request See {@link CompleteTransactionRequest}
+     * @return See {@link CompleteTransactionResponse}
+     */
+    CompletableFuture<CompleteTransactionResponse> completeTransaction(CompleteTransactionRequest request);
+
+    /**
+     * 获取当前进行中的事务
+     * @return See {@link GetOpeningTransactionsResponse}
+     */
+    CompletableFuture<GetOpeningTransactionsResponse> getOpeningTransactions();
+
     /**
      * 添加事件监听器，当事件发生时会调用监听器
      * @see EventBus
@@ -141,8 +162,6 @@ public interface ClientServerRpc {
      * @param eventWatcher 事件监听器
      */
     void unWatch(EventWatcher eventWatcher);
-
-
 
     void stop();
 }

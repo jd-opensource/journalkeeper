@@ -1,3 +1,16 @@
+/**
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.journalkeeper.core.server;
 
 import io.journalkeeper.base.Serializer;
@@ -5,22 +18,7 @@ import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
-import io.journalkeeper.rpc.client.AddPullWatchResponse;
-import io.journalkeeper.rpc.client.ConvertRollRequest;
-import io.journalkeeper.rpc.client.ConvertRollResponse;
-import io.journalkeeper.rpc.client.GetServerStatusResponse;
-import io.journalkeeper.rpc.client.GetServersResponse;
-import io.journalkeeper.rpc.client.LastAppliedResponse;
-import io.journalkeeper.rpc.client.PullEventsRequest;
-import io.journalkeeper.rpc.client.PullEventsResponse;
-import io.journalkeeper.rpc.client.QueryStateRequest;
-import io.journalkeeper.rpc.client.QueryStateResponse;
-import io.journalkeeper.rpc.client.RemovePullWatchRequest;
-import io.journalkeeper.rpc.client.RemovePullWatchResponse;
-import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
-import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
-import io.journalkeeper.rpc.client.UpdateVotersRequest;
-import io.journalkeeper.rpc.client.UpdateVotersResponse;
+import io.journalkeeper.rpc.client.*;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
@@ -199,6 +197,21 @@ public class Server<E, ER, Q, QR>
             }
             return new ConvertRollResponse();
         }, asyncExecutor);
+    }
+
+    @Override
+    public CompletableFuture<CreateTransactionResponse> createTransaction() {
+        return server.createTransaction();
+    }
+
+    @Override
+    public CompletableFuture<CompleteTransactionResponse> completeTransaction(CompleteTransactionRequest request) {
+        return server.completeTransaction(request);
+    }
+
+    @Override
+    public CompletableFuture<GetOpeningTransactionsResponse> getOpeningTransactions() {
+        return server.getOpeningTransactions();
     }
 
     @Override

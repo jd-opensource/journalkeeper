@@ -27,12 +27,12 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
-import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITION;
+import static io.journalkeeper.core.api.RaftJournal.RAFT_PARTITION;
+import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITIONS_START;
 import static io.journalkeeper.journalstore.JournalStoreQuery.CMD_QUERY_INDEX;
 
 /**
@@ -111,7 +111,8 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
 
     private CompletableFuture<JournalStoreQueryResult> queryPartitions() {
         Set<Integer> partitions = journal.getPartitions();
-        partitions.remove(RESERVED_PARTITION);
+        partitions.removeIf(partition -> partition >= RESERVED_PARTITIONS_START);
+
         return CompletableFuture.completedFuture(null)
                 .thenApply(ignored ->
             new JournalStoreQueryResult(

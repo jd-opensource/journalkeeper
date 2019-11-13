@@ -33,6 +33,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 /**
@@ -42,21 +43,21 @@ import java.util.stream.Collectors;
 public class KvTest {
     private static final Logger logger = LoggerFactory.getLogger(KvTest.class);
     @Test
-    public void singleNodeTest() throws IOException, ExecutionException, InterruptedException {
+    public void singleNodeTest() throws Exception {
         setGetTest(1);
     }
 
     @Test
-    public void tripleNodesTest() throws IOException, ExecutionException, InterruptedException {
+    public void tripleNodesTest() throws Exception {
         setGetTest(3);
     }
 
     @Test
-    public void fiveNodesTest() throws IOException, ExecutionException, InterruptedException {
+    public void fiveNodesTest() throws Exception {
         setGetTest(5);
     }
     @Test
-    public void sevenNodesTest() throws IOException, ExecutionException, InterruptedException {
+    public void sevenNodesTest() throws Exception {
         setGetTest(7);
     }
 
@@ -69,7 +70,7 @@ public class KvTest {
         kvServer.stop();
 
         kvServer = recoverServer("server0", path);
-        kvServer.getAdminClient().whenClusterReady(0L).get();
+        kvServer.getAdminClient().waitForClusterReady(0L);
         kvClient = kvServer.createClient();
 
         Assert.assertEquals("value", kvClient.get("key"));
@@ -78,19 +79,19 @@ public class KvTest {
 
     }
     @Test
-    public void singleNodeAvailabilityTest() throws IOException, InterruptedException, ExecutionException {
+    public void singleNodeAvailabilityTest() throws IOException, InterruptedException, ExecutionException, TimeoutException {
         availabilityTest(1);
     }
 
     @Test
-    public void tripleNodesAvailabilityTest() throws IOException, InterruptedException, ExecutionException {
+    public void tripleNodesAvailabilityTest() throws IOException, InterruptedException, ExecutionException, TimeoutException {
         availabilityTest(3);
     }
 
     /**
      * 创建N个server，依次停掉每个server，再依次启动，验证集群可用性
      */
-    private void availabilityTest(int nodes) throws IOException, InterruptedException, ExecutionException {
+    private void availabilityTest(int nodes) throws IOException, InterruptedException, ExecutionException, TimeoutException {
         logger.info("{} nodes availability test.", nodes);
         Path path = TestPathUtils.prepareBaseDir("availabilityTest" + nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
@@ -172,7 +173,7 @@ public class KvTest {
         return kvServer;
     }
 
-    private void setGetTest(int nodes) throws IOException, ExecutionException, InterruptedException {
+    private void setGetTest(int nodes) throws IOException, ExecutionException, InterruptedException, TimeoutException {
 
         Path path = TestPathUtils.prepareBaseDir("SetGetTest-" + nodes);
         List<KvServer> kvServers = createServers(nodes, path);
@@ -197,7 +198,7 @@ public class KvTest {
     }
 
     @Test
-    public void localClientTest() throws IOException, ExecutionException, InterruptedException {
+    public void localClientTest() throws IOException, ExecutionException, InterruptedException, TimeoutException {
 
         Path path = TestPathUtils.prepareBaseDir("LocalClientTest");
         List<KvServer> kvServers = createServers(1, path);
@@ -224,7 +225,7 @@ public class KvTest {
     // 增加节点
 
     @Test
-    public void addVotersTest() throws IOException, InterruptedException, ExecutionException {
+    public void addVotersTest() throws IOException, InterruptedException, ExecutionException, TimeoutException {
         final int newServerCount = 2;
         final int oldServerCount = 3;
 
@@ -255,8 +256,8 @@ public class KvTest {
             properties.setProperty("working_dir", workingDir.toString());
             properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
-            properties.setProperty("enable_metric", "true");
-            properties.setProperty("print_metric_interval_sec", "3");
+//            properties.setProperty("enable_metric", "true");
+//            properties.setProperty("print_metric_interval_sec", "3");
             properties.setProperty("observer.parents", String.join(",", oldConfig.stream().map(URI::toString).toArray(String[]::new)));
             KvServer kvServer = new KvServer(RaftServer.Roll.OBSERVER, properties);
             newServers.add(kvServer);
@@ -352,7 +353,7 @@ public class KvTest {
     // 替换节点
 
     @Test
-    public void replaceVotersTest() throws IOException, InterruptedException, ExecutionException {
+    public void replaceVotersTest() throws IOException, InterruptedException, ExecutionException, TimeoutException {
         final int serverCount = 3;
         final int replaceServerCount = 1;
 
@@ -476,7 +477,7 @@ public class KvTest {
 
 
         // 可能发生选举，需要等待选举完成。
-        newAdminClient.whenClusterReady(0L).get();
+        newAdminClient.waitForClusterReady();
 
         KvClient newClient = newServers.get(0).createClient();
 //        leaderUri = newAdminClient.getClusterConfiguration().get().getLeader();
@@ -513,7 +514,7 @@ public class KvTest {
     // 减少节点
 
     @Test
-    public void removeVotersTest() throws IOException, InterruptedException, ExecutionException {
+    public void removeVotersTest() throws IOException, InterruptedException, ExecutionException, TimeoutException {
         final int newServerCount = 3;
         final int oldServerCount = 5;
 
@@ -571,7 +572,7 @@ public class KvTest {
         });
 
         // 可能发生选举，需要等待选举完成。
-        newAdminClient.whenClusterReady(0L).get();
+        newAdminClient.waitForClusterReady(0L);
 
         // 验证所有节点都成功完成了配置变更
         for (URI uri : newConfig) {
@@ -694,11 +695,11 @@ public class KvTest {
             }
         }
     }
-    private List<KvServer> createServers(int nodes, Path path) throws IOException, ExecutionException, InterruptedException {
+    private List<KvServer> createServers(int nodes, Path path) throws IOException, ExecutionException, InterruptedException, TimeoutException {
         return createServers(nodes, path, RaftServer.Roll.VOTER, true);
     }
 
-    private List<KvServer> createServers(int nodes, Path path, RaftServer.Roll roll, boolean waitForLeader) throws IOException, ExecutionException, InterruptedException {
+    private List<KvServer> createServers(int nodes, Path path, RaftServer.Roll roll, boolean waitForLeader) throws IOException, ExecutionException, InterruptedException, TimeoutException {
         logger.info("Create {} nodes servers", nodes);
         List<URI> serverURIs = new ArrayList<>(nodes);
         List<Properties> propertiesList = new ArrayList<>(nodes);
@@ -713,6 +714,8 @@ public class KvTest {
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
 //            properties.setProperty("enable_metric", "true");
 //            properties.setProperty("print_metric_interval_sec", "3");
+            properties.setProperty("print_state_interval_sec", String.valueOf(5));
+
             propertiesList.add(properties);
         }
         return createServers(serverURIs, propertiesList, roll,waitForLeader);
@@ -721,7 +724,7 @@ public class KvTest {
 
 
 
-    private List<KvServer> createServers(List<URI> serverURIs, List<Properties> propertiesList, RaftServer.Roll roll, boolean waitForLeader) throws IOException, ExecutionException, InterruptedException {
+    private List<KvServer> createServers(List<URI> serverURIs, List<Properties> propertiesList, RaftServer.Roll roll, boolean waitForLeader) throws IOException, ExecutionException, InterruptedException, TimeoutException {
 
         List<KvServer> kvServers = new ArrayList<>(serverURIs.size());
         for (int i = 0; i < serverURIs.size(); i++) {
@@ -732,7 +735,7 @@ public class KvTest {
             kvServer.start();
         }
         if(waitForLeader) {
-            kvServers.get(0).getAdminClient().whenClusterReady(0).get();
+            kvServers.get(0).getAdminClient().waitForClusterReady(0L);
         }
         return kvServers;
     }

@@ -21,6 +21,8 @@ import io.journalkeeper.rpc.remoting.transport.codec.PayloadCodecFactory;
  */
 public class PayloadCodecRegistry {
     public static void register(PayloadCodecFactory payloadCodecFactory) {
+        payloadCodecFactory.register(RpcTypes.VOID_PAYLOAD, new VoidPayloadCodec());
+
         payloadCodecFactory.register(new UpdateClusterStateRequestCodec());
         payloadCodecFactory.register(new UpdateClusterStateResponseCodec());
         payloadCodecFactory.register(new LastAppliedRequestCodec());
@@ -41,6 +43,13 @@ public class PayloadCodecRegistry {
         payloadCodecFactory.register(new ConvertRollResponseCodec());
         payloadCodecFactory.register(new GetServerStatusRequestCodec());
         payloadCodecFactory.register(new GetServerStatusResponseCodec());
+        payloadCodecFactory.register(new CreateTransactionRequestCodec());
+        payloadCodecFactory.register(new CreateTransactionResponseCodec());
+        payloadCodecFactory.register(new GetOpeningTransactionsRequestCodec());
+        payloadCodecFactory.register(new GetOpeningTransactionsResponseCodec());
+        payloadCodecFactory.register(new CompleteTransactionRequestCodec());
+        payloadCodecFactory.register(new CompleteTransactionResponseCodec());
+
 
         payloadCodecFactory.register(new AsyncAppendEntriesRequestCodec());
         payloadCodecFactory.register(new AsyncAppendEntriesResponseCodec());

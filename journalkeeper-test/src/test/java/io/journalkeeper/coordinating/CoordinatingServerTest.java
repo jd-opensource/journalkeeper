@@ -23,6 +23,7 @@ import io.journalkeeper.utils.test.TestPathUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -33,6 +34,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * author: gaohaoxiang
@@ -51,7 +53,7 @@ public class CoordinatingServerTest {
     private static final String WORKING_DIR = "CoordinatingServerTest";
     private Path base = null;
     @Before
-    public void before() throws IOException, ExecutionException, InterruptedException {
+    public void before() throws IOException, ExecutionException, InterruptedException, TimeoutException {
 
         base = TestPathUtils.prepareBaseDir(WORKING_DIR );
         List<URI> voters = new ArrayList<>();
@@ -96,9 +98,10 @@ public class CoordinatingServerTest {
             clients.add(client);
         }
 
-        clients.get(0).waitClusterReady(0L).get();
+        clients.get(0).waitClusterReady(0L);
     }
 
+    @Ignore
     @Test
     public void test() {
         Metrics metrics = new Metrics();

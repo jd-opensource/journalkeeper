@@ -20,6 +20,8 @@ import io.journalkeeper.rpc.remoting.serialize.CodecSupport;
 import io.journalkeeper.rpc.remoting.transport.command.Type;
 import io.netty.buffer.ByteBuf;
 
+import java.util.UUID;
+
 /**
  * @author LiYue
  * Date: 2019-03-29
@@ -27,16 +29,19 @@ import io.netty.buffer.ByteBuf;
 public class UpdateClusterStateRequestCodec extends GenericPayloadCodec<UpdateClusterStateRequest> implements Type {
     @Override
     protected void encodePayload(UpdateClusterStateRequest request, ByteBuf buffer) throws Exception {
+        CodecSupport.encodeUUID(buffer, request.getTransactionId());
         CodecSupport.encodeBytes(buffer, request.getEntry());
         CodecSupport.encodeShort(buffer, (short )request.getPartition());
         CodecSupport.encodeShort(buffer, (short )request.getBatchSize());
         CodecSupport.encodeBoolean(buffer, request.isIncludeHeader());
         CodecSupport.encodeByte(buffer, (byte) request.getResponseConfig().value());
+
     }
 
     @Override
     protected UpdateClusterStateRequest decodePayload(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
         return new UpdateClusterStateRequest(
+                CodecSupport.decodeUUID(buffer),
                 CodecSupport.decodeBytes(buffer),
                 CodecSupport.decodeShort(buffer),
                 CodecSupport.decodeShort(buffer),

@@ -46,6 +46,8 @@ public abstract class BaseResponse {
             throw throwable instanceof CompletionException ? throwable.getCause() : throwable ;
         } catch (TimeoutException e) {
             setStatusCode(StatusCode.TIMEOUT);
+        } catch (IllegalStateException e) {
+            setStatusCode(StatusCode.RETRY_LATER);
         } catch (Throwable t) {
             onSetException(t);
         }

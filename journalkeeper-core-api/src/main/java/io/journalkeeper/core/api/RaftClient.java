@@ -14,12 +14,9 @@
 package io.journalkeeper.core.api;
 
 import io.journalkeeper.base.Queryable;
+import io.journalkeeper.core.api.transaction.TransactionClient;
 import io.journalkeeper.utils.event.Watchable;
 
-import java.io.Closeable;
-import java.net.URI;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -34,7 +31,7 @@ import java.util.concurrent.CompletableFuture;
  * @param <ER> 更新执行结果
  *
  */
-public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, ClusterReadyAware, ServerConfigAware {
+public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, ClusterReadyAware, ServerConfigAware, TransactionClient {
 
 
     /**
