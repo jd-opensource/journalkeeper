@@ -13,6 +13,8 @@
  */
 package io.journalkeeper.sql.client;
 
+import io.journalkeeper.core.BootStrap;
+import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.sql.client.domain.Codes;
@@ -23,6 +25,7 @@ import io.journalkeeper.sql.client.domain.ResultSet;
 import io.journalkeeper.sql.client.domain.WriteRequest;
 import io.journalkeeper.sql.client.domain.WriteResponse;
 import io.journalkeeper.sql.client.exception.SQLClientException;
+import io.journalkeeper.sql.exception.SQLException;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,14 +47,16 @@ public class SQLClient {
 
     private List<URI> servers;
     private Properties config;
+    private BootStrap<WriteRequest, WriteResponse, ReadRequest, ReadResponse> bootStrap;
     private RaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client;
 
     public SQLClient(List<URI> servers,
                      Properties config,
-                     RaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client) {
+                     BootStrap<WriteRequest, WriteResponse, ReadRequest, ReadResponse> bootStrap) {
         this.servers = servers;
         this.config = config;
-        this.client = client;
+        this.bootStrap = bootStrap;
+        this.client = bootStrap.getClient();
     }
 
     public CompletableFuture waitClusterReady(long maxWaitMs) {
@@ -59,6 +64,9 @@ public class SQLClient {
     }
 
     public CompletableFuture<ResultSet> query(String sql, List<Object> params) {
+        if (StringUtils.isBlank(sql)) {
+            throw new SQLException("sql not blank");
+        }
         try {
             return doQuery(new ReadRequest(OperationTypes.QUERY.getType(), sql, params))
                     .exceptionally(cause -> {
@@ -70,6 +78,9 @@ public class SQLClient {
     }
 
     public CompletableFuture<Object> insert(String sql, List<Object> params) {
+        if (StringUtils.isBlank(sql)) {
+            throw new SQLException("sql not blank");
+        }
         try {
             return doUpdate(new WriteRequest(OperationTypes.INSERT.getType(), sql, params))
                     .exceptionally(cause -> {
@@ -83,6 +94,9 @@ public class SQLClient {
     }
 
     public CompletableFuture<Object> update(String sql, List<Object> params) {
+        if (StringUtils.isBlank(sql)) {
+            throw new SQLException("sql not blank");
+        }
         try {
             return doUpdate(new WriteRequest(OperationTypes.UPDATE.getType(), sql, params))
                     .exceptionally(cause -> {
@@ -96,6 +110,9 @@ public class SQLClient {
     }
 
     public CompletableFuture<Object> delete(String sql, List<Object> params) {
+        if (StringUtils.isBlank(sql)) {
+            throw new SQLException("sql not blank");
+        }
         try {
             return doUpdate(new WriteRequest(OperationTypes.DELETE.getType(), sql, params))
                     .exceptionally(cause -> {
@@ -109,6 +126,9 @@ public class SQLClient {
     }
 
     public CompletableFuture<List<Object>> batch(List<String> sqlList, List<List<Object>> paramList) {
+        if (sqlList == null || sqlList.isEmpty()) {
+            throw new SQLException("sqlList not empty");
+        }
         try {
             return doUpdate(new WriteRequest(OperationTypes.BATCH.getType(), sqlList, paramList))
                     .exceptionally(cause -> {
@@ -119,6 +139,10 @@ public class SQLClient {
         } catch (Exception e) {
             throw convertException(e);
         }
+    }
+
+    public AdminClient getAdminClient() {
+        return bootStrap.getAdminClient();
     }
 
     public void watch(SQLEventListener listener) {

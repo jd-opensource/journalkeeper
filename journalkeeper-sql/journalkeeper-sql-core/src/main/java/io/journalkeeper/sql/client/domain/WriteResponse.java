@@ -47,10 +47,20 @@ public class WriteResponse implements Serializable {
         this.msg = msg;
     }
 
+    public WriteResponse(int code, Object result) {
+        this.code = code;
+        this.result = result;
+    }
+
     public WriteResponse(int code, List<Object> resultList, String msg) {
         this.code = code;
         this.resultList = resultList;
         this.msg = msg;
+    }
+
+    public WriteResponse(int code, List<Object> resultList) {
+        this.code = code;
+        this.resultList = resultList;
     }
 
     public int getCode() {

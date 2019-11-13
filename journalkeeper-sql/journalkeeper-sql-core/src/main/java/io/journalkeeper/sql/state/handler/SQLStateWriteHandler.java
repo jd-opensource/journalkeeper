@@ -66,17 +66,17 @@ public class SQLStateWriteHandler {
 
     protected WriteResponse doInsert(WriteRequest request) {
         String result = sqlExecutor.insert(request.getSql(), request.getParams());
-        return new WriteResponse(Codes.SUCCESS.getCode(), result, null);
+        return new WriteResponse(Codes.SUCCESS.getCode(), result);
     }
 
     protected WriteResponse doUpdate(WriteRequest request) {
         int result = sqlExecutor.update(request.getSql(), request.getParams());
-        return new WriteResponse(Codes.SUCCESS.getCode(), result, null);
+        return new WriteResponse(Codes.SUCCESS.getCode(), result);
     }
 
     protected WriteResponse doDelete(WriteRequest request) {
         int result = sqlExecutor.delete(request.getSql(), request.getParams());
-        return new WriteResponse(Codes.SUCCESS.getCode(), result, null);
+        return new WriteResponse(Codes.SUCCESS.getCode(), result);
     }
 
     protected WriteResponse doBatch(WriteRequest request) {
@@ -90,7 +90,7 @@ public class SQLStateWriteHandler {
                 resultList.add(result);
             }
             transaction.commit();
-            return new WriteResponse(Codes.SUCCESS.getCode(), resultList, null);
+            return new WriteResponse(Codes.SUCCESS.getCode(), resultList);
         } catch (Exception e) {
             transaction.rollback();
             throw e;

@@ -33,9 +33,8 @@ public class H2DataSourceFactory implements DataSourceFactory {
     public DataSource createDataSource(Path path, Properties properties) {
         String url = properties.getProperty(H2Configs.DATASOURCE_URL);
         if (StringUtils.isBlank(url)) {
-            throw new IllegalArgumentException("url not exist");
+            url = String.format("jdbc:h2:file:%s/data;DB_CLOSE_DELAY=TRUE;AUTO_SERVER=TRUE;MVCC=TRUE;LOCK_TIMEOUT=30000", path.toString());
         }
-
         JdbcDataSource datasource = new JdbcDataSource();
         datasource.setURL(url);
         return datasource;
