@@ -197,7 +197,7 @@ public class VoterTest {
 
             UpdateClusterStateResponse response = voter.updateClusterState(new UpdateClusterStateRequest(entry, RaftJournal.DEFAULT_PARTITION, 1)).get();
             Assert.assertTrue(response.success());
-            Assert.assertArrayEquals(entry, response.getResult());
+            Assert.assertArrayEquals(entry, response.getResults().get(0));
 
         } finally {
             voter.stop();

@@ -15,6 +15,7 @@ package io.journalkeeper.core.transaction;
 
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
+import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.exception.JournalException;
 import io.journalkeeper.core.exception.TransactionException;
 import io.journalkeeper.core.journal.Journal;
@@ -63,7 +64,7 @@ public class JournalTransactionManager extends ServerStateMachine {
         TransactionEntry entry = new TransactionEntry(transactionId);
         byte [] serializedEntry = transactionEntrySerializer.serialize(entry);
 
-        return server.updateClusterState(new UpdateClusterStateRequest(serializedEntry, partition, 1))
+        return server.updateClusterState(new UpdateClusterStateRequest(new SerializedUpdateRequest(serializedEntry, partition, 1)))
                 .thenApply(response -> {
                     if(response.success()) {
                         return transactionId;
@@ -81,7 +82,7 @@ public class JournalTransactionManager extends ServerStateMachine {
         CompletableFuture<Void> future = new CompletableFuture<>();
         pendingCompleteTransactionFutures.put(transactionId, future);
         server
-                .updateClusterState(new UpdateClusterStateRequest(serializedEntry, partition, 1))
+                .updateClusterState(new UpdateClusterStateRequest(new SerializedUpdateRequest(serializedEntry, partition, 1)))
                 .thenAccept(response -> {
                     if(!response.success()) {
                         CompletableFuture<Void> retFuture = pendingCompleteTransactionFutures.remove(transactionId);

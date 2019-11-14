@@ -17,6 +17,9 @@ import io.journalkeeper.exceptions.ServerBusyException;
 import io.journalkeeper.rpc.LeaderResponse;
 import io.journalkeeper.rpc.StatusCode;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * @author LiYue
  * Date: 2019-03-14
@@ -24,26 +27,26 @@ import io.journalkeeper.rpc.StatusCode;
 public class UpdateClusterStateResponse extends LeaderResponse {
     public UpdateClusterStateResponse() {
         super();
-        this.result = null;
+        this.results = Collections.emptyList();;
     }
-    public UpdateClusterStateResponse(byte [] result) {
+    public UpdateClusterStateResponse(List<byte []> results) {
         super();
-        this.result = result;
+        this.results = results;
     }
     public UpdateClusterStateResponse(Throwable exception) {
         super(exception);
-        this.result = null;
+        this.results = Collections.emptyList();
 
     }
-    private final byte [] result;
+    private final List<byte []> results;
 
 
     /**
      * 序列化后的执行结果。
      * @return 序列化后的执行结果。
      */
-    public byte [] getResult() {
-        return result;
+    public List<byte []> getResults() {
+        return results;
     }
 
     @Override

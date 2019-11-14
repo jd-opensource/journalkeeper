@@ -29,6 +29,7 @@ import java.util.concurrent.CompletableFuture;
  * Date: 2019-04-23
  */
 public interface PartitionedJournalStore extends Watchable {
+
     /**
      * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
      * 日志在集群中被复制到大多数节点后返回。
@@ -58,7 +59,65 @@ public interface PartitionedJournalStore extends Watchable {
      * @param includeHeader 序列化的日志中是否包含header
      * @param responseConfig 返回响应的配置。See {@link ResponseConfig}
      */
-    CompletableFuture<Long> append(int partition, int batchSize, byte [] entries, boolean includeHeader, ResponseConfig responseConfig);
+    default CompletableFuture<Long> append(int partition, int batchSize, byte [] entries, boolean includeHeader, ResponseConfig responseConfig) {
+        return append(new UpdateRequest<>(entries, partition, batchSize), includeHeader, responseConfig);
+    }
+
+
+    /**
+     * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
+     * 日志在集群中被复制到大多数节点后返回。
+     * @param updateRequest See {@link UpdateRequest}
+     * @return 写入日志在分区上的索引序号
+     */
+    default CompletableFuture<Long> append(UpdateRequest<byte []> updateRequest) {
+        return append(updateRequest, ResponseConfig.REPLICATION);
+    }
+
+    /**
+     * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
+     * @param updateRequest See {@link UpdateRequest}
+     * @param responseConfig 返回响应的配置。See {@link ResponseConfig}
+     * @return 写入日志在分区上的索引序号
+     */
+    default CompletableFuture<Long> append(UpdateRequest<byte []> updateRequest, ResponseConfig responseConfig) {
+        return append(updateRequest, false, responseConfig);
+    }
+    /**
+     * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
+     * @param updateRequest See {@link UpdateRequest}
+     * @param includeHeader 序列化的日志中是否包含header
+     * @param responseConfig 返回响应的配置。See {@link ResponseConfig}
+     * @return 写入日志在分区上的索引序号
+     */
+    CompletableFuture<Long> append(UpdateRequest<byte []> updateRequest, boolean includeHeader, ResponseConfig responseConfig);
+    /**
+     * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
+     * 日志在集群中被复制到大多数节点后返回。
+     * @param updateRequests See {@link UpdateRequest}
+     * @return 写入日志在分区上的索引序号列表
+     */
+    default CompletableFuture<List<Long>> append(List<UpdateRequest<byte []>> updateRequests) {
+        return append(updateRequests, ResponseConfig.REPLICATION);
+    }
+
+    /**
+     * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
+     * @param updateRequests See {@link UpdateRequest}
+     * @param responseConfig 返回响应的配置。See {@link ResponseConfig}
+     * @return 写入日志在分区上的索引序号列表
+     */
+    default CompletableFuture<List<Long>> append(List<UpdateRequest<byte []>> updateRequests, ResponseConfig responseConfig) {
+        return append(updateRequests, false, responseConfig);
+    }
+    /**
+     * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
+     * @param updateRequests See {@link UpdateRequest}
+     * @param includeHeader 序列化的日志中是否包含header
+     * @param responseConfig 返回响应的配置。See {@link ResponseConfig}
+     * @return 写入日志在分区上的索引序号列表
+     */
+    CompletableFuture<List<Long>> append(List<UpdateRequest<byte []>> updateRequests, boolean includeHeader, ResponseConfig responseConfig);
 
     /**
      * 查询日志

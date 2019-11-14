@@ -17,6 +17,8 @@ import io.journalkeeper.base.Queryable;
 import io.journalkeeper.core.api.transaction.TransactionClient;
 import io.journalkeeper.utils.event.Watchable;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -31,8 +33,7 @@ import java.util.concurrent.CompletableFuture;
  * @param <ER> 更新执行结果
  *
  */
-public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, ClusterReadyAware, ServerConfigAware, TransactionClient {
-
+public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, ClusterReadyAware, ServerConfigAware, TransactionClient<E> {
 
     /**
      * 写入操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
@@ -66,7 +67,85 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, C
      * @param responseConfig 响应级别。See {@link ResponseConfig}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
      */
-    CompletableFuture<ER> update(E entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig);
+    default CompletableFuture<ER> update(E entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig) {
+        return update(new UpdateRequest<>(entry, partition, batchSize), includeHeader, responseConfig);
+    }
+
+
+    /**
+     * 写入操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
+     * 日志在集群中复制到大多数节点，并在状态机执行后返回。
+     * @param updateRequest See {@link UpdateRequest}
+     * @param includeHeader entry中是否包含Header
+     * @param responseConfig 响应级别。See {@link ResponseConfig}
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     */
+    default CompletableFuture<ER> update(UpdateRequest<E> updateRequest, boolean includeHeader, ResponseConfig responseConfig){
+        return update(Collections.singletonList(updateRequest), includeHeader, responseConfig)
+                .thenApply(ers -> {
+                    if(null != ers && ers.size() > 0) {
+                        return ers.get(0);
+                    }
+                    return null;
+                });
+    }
+
+    /**
+     * 写入操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
+     * 日志在集群中复制到大多数节点，并在状态机执行后返回。
+     * 此方法等效于：update(updateRequest, false, responseConfig);
+     * @param updateRequest See {@link UpdateRequest}
+     * @param responseConfig 响应级别。See {@link ResponseConfig}
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     */
+    default CompletableFuture<ER> update(UpdateRequest<E> updateRequest, ResponseConfig responseConfig) {
+        return update(updateRequest, false, responseConfig);
+    }
+
+    /**
+     * 写入操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
+     * 日志在集群中复制到大多数节点，并在状态机执行后返回。
+     * 此方法等效于：update(updateRequest, false, ResponseConfig.REPLICATION);
+     * @param updateRequest See {@link UpdateRequest}
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     */
+    default CompletableFuture<ER> update(UpdateRequest<E> updateRequest) {
+        return update(updateRequest, false, ResponseConfig.REPLICATION);
+    }
+
+    /**
+     * 写入操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
+     * 日志在集群中复制到大多数节点，并在状态机执行后返回。
+     * 此方法等效于：update(updateRequests, false, responseConfig);
+     * @param updateRequests See {@link UpdateRequest}
+     * @param responseConfig 响应级别。See {@link ResponseConfig}
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     */
+    default CompletableFuture<List<ER>> update(List<UpdateRequest<E>> updateRequests, ResponseConfig responseConfig) {
+        return update(updateRequests, false, responseConfig);
+    }
+
+    /**
+     * 写入操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
+     * 日志在集群中复制到大多数节点，并在状态机执行后返回。
+     * 此方法等效于：update(updateRequests, false, ResponseConfig.REPLICATION);
+     * @param updateRequests See {@link UpdateRequest}
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     */
+    default CompletableFuture<List<ER>> update(List<UpdateRequest<E>> updateRequests) {
+        return update(updateRequests, false, ResponseConfig.REPLICATION);
+    }
+
+    /**
+     * 写入操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
+     * 日志在集群中复制到大多数节点，并在状态机执行后返回。
+     * @param updateRequests See {@link UpdateRequest}
+     * @param includeHeader entry中是否包含Header
+     * @param responseConfig 响应级别。See {@link ResponseConfig}
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     */
+    CompletableFuture<List<ER>> update(List<UpdateRequest<E>> updateRequests, boolean includeHeader, ResponseConfig responseConfig);
+
 
     /**
      * 查询集群当前的状态，即日志在状态机中执行完成后产生的数据。该服务保证强一致性，保证读到的状态总是集群的最新状态。

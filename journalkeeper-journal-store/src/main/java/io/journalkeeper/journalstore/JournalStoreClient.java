@@ -65,13 +65,32 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
     }
 
     @Override
-    public CompletableFuture<Long> append(int partition, int batchSize,
-                                          byte [] entries, boolean includeHeader, ResponseConfig responseConfig) {
-        ReservedPartition.validatePartition(partition);
-        return raftClient.update(entries, partition,
-                batchSize, includeHeader, responseConfig);
+    public CompletableFuture<Long> append(UpdateRequest<byte []> updateRequest, boolean includeHeader, ResponseConfig responseConfig) {
+        ReservedPartition.validatePartition(updateRequest.getPartition());
+        return raftClient.update(updateRequest, includeHeader, responseConfig);
     }
 
+    @Override
+    public CompletableFuture<Void> append(UUID transactionId, UpdateRequest<byte []> updateRequest, boolean includeHeader) {
+        ReservedPartition.validatePartition(updateRequest.getPartition());
+        return raftClient.update(transactionId, updateRequest, includeHeader);
+    }
+
+    @Override
+    public CompletableFuture<List<Long>> append(List<UpdateRequest<byte []>> updateRequests, boolean includeHeader, ResponseConfig responseConfig) {
+        for (UpdateRequest<byte[]> updateRequest : updateRequests) {
+            ReservedPartition.validatePartition(updateRequest.getPartition());
+        }
+        return raftClient.update(updateRequests, includeHeader, responseConfig);
+    }
+
+    @Override
+    public CompletableFuture<Void> append(UUID transactionId, List<UpdateRequest<byte []>> updateRequests, boolean includeHeader) {
+        for (UpdateRequest<byte[]> updateRequest : updateRequests) {
+            ReservedPartition.validatePartition(updateRequest.getPartition());
+        }
+        return raftClient.update(transactionId, updateRequests, includeHeader);
+    }
     @Override
     public CompletableFuture<List<JournalEntry>> get(int partition, long index, int size) {
         ReservedPartition.validatePartition(partition);
@@ -160,8 +179,4 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
         return raftClient.getOpeningTransactions();
     }
 
-    @Override
-    public CompletableFuture<Void> append(UUID transactionId, byte[] entry, int partition, int batchSize, boolean includeHeader) {
-        return raftClient.update(transactionId, entry, partition, batchSize, includeHeader);
-    }
 }

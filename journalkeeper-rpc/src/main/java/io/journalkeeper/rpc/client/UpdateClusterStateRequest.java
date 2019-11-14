@@ -14,7 +14,11 @@
 package io.journalkeeper.rpc.client;
 
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.api.SerializedUpdateRequest;
+import io.journalkeeper.core.api.UpdateRequest;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -25,12 +29,10 @@ import java.util.UUID;
  * Date: 2019-03-14
  */
 public class UpdateClusterStateRequest {
-    private final byte [] entry;
-    private final int partition;
-    private final int batchSize;
+    private final UUID transactionId;
+    private final List<SerializedUpdateRequest> requests;
     private final boolean includeHeader;
     private final ResponseConfig responseConfig;
-    private final UUID transactionId;
 
     public UpdateClusterStateRequest(byte [] entry, int partition, int batchSize) {
         this(entry, partition, batchSize, false, ResponseConfig.REPLICATION);
@@ -45,22 +47,34 @@ public class UpdateClusterStateRequest {
     }
 
     public UpdateClusterStateRequest(UUID transactionId, byte[] entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig) {
-        this.transactionId = transactionId;
-        this.batchSize = batchSize;
-        this.responseConfig = responseConfig;
-        this.entry = entry;
-        this.partition = partition;
-        this.includeHeader = includeHeader;
+        this(transactionId, Collections.singletonList(new SerializedUpdateRequest(entry, partition, batchSize)), includeHeader, responseConfig);
     }
 
-    /**
-     * 序列化后待执行的操作。entry将被：
-     * 1. 写入Journal；
-     * 2. 被状态机执行，变更系统状态；
-     * @return 序列化后的entry。
-     */
-    public byte [] getEntry() {
-        return entry;
+    public UpdateClusterStateRequest(UUID transactionId, List<SerializedUpdateRequest> requests, boolean includeHeader, ResponseConfig responseConfig) {
+        this.transactionId = transactionId;
+        this.requests = requests;
+        this.includeHeader = includeHeader;
+        this.responseConfig = responseConfig;
+    }
+
+    public UpdateClusterStateRequest(List<SerializedUpdateRequest> requests, boolean includeHeader, ResponseConfig responseConfig) {
+        this(null, requests, includeHeader, responseConfig);
+    }
+
+    public UpdateClusterStateRequest(List<SerializedUpdateRequest> requests) {
+        this(null, requests, false, ResponseConfig.REPLICATION);
+    }
+
+    public UpdateClusterStateRequest(SerializedUpdateRequest request) {
+        this(null, Collections.singletonList(request), false, ResponseConfig.REPLICATION);
+    }
+
+    public UpdateClusterStateRequest(UUID transactionId, List<SerializedUpdateRequest> requests, boolean includeHeader) {
+        this(transactionId, requests, includeHeader, ResponseConfig.REPLICATION);
+    }
+
+    public List<SerializedUpdateRequest> getRequests() {
+        return requests;
     }
 
     /**
@@ -69,14 +83,6 @@ public class UpdateClusterStateRequest {
      */
     public ResponseConfig getResponseConfig() {
         return responseConfig;
-    }
-
-    public int getPartition() {
-        return partition;
-    }
-
-    public int getBatchSize() {
-        return batchSize;
     }
 
     public boolean isIncludeHeader() {

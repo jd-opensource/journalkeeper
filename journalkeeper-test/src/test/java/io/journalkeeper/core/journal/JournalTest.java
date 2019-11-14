@@ -347,6 +347,43 @@ public class JournalTest {
 
     }
 
+    @Test
+    public void batchWriteTest() {
+        int maxLength = 1024;
+        int size = 1024;
+        int term = 8;
+        int partition = 6;
+        List<byte []> entries = ByteUtils.createRandomSizeByteList(maxLength, size);
+        List<JournalEntry> storageEntries =
+                entries.stream()
+                        .map(entry -> journalEntryParser.createJournalEntry(entry))
+                        .peek(entry -> entry.setTerm(term))
+                        .peek(entry -> entry.setPartition(partition))
+                        .collect(Collectors.toList());
+        List<Long> indices = journal.append(storageEntries);
+        Assert.assertEquals(size, indices.size());
+        for (int i = 0; i < indices.size(); i++) {
+            Assert.assertEquals(i + 1, (long) indices.get(i));
+        }
+        Assert.assertEquals(0, journal.minIndex());
+        long index = journal.minIndex();
+
+        while (index < journal.maxIndex()) {
+            Assert.assertArrayEquals(entries.get((int)index), journal.read(index).getPayload().getBytes());
+            index++;
+        }
+
+        index = journal.minIndex();
+
+        while (index < journal.maxIndex()) {
+            JournalEntry readStorageEntry = journal.read(index);
+            JournalEntry writeStorageEntry = storageEntries.get((int) index);
+            Assert.assertEquals(writeStorageEntry, readStorageEntry);
+            index++;
+        }
+
+    }
+
 
     @Test
     public void readByPartitionTest() throws IOException, InterruptedException {

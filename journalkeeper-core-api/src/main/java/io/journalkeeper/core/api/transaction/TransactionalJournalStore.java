@@ -14,8 +14,11 @@
 package io.journalkeeper.core.api.transaction;
 
 import io.journalkeeper.core.api.RaftJournal;
+import io.journalkeeper.core.api.UpdateRequest;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -74,6 +77,49 @@ public interface TransactionalJournalStore {
      * @param batchSize 批量大小
      * @param includeHeader entry中是否包含Header
      */
-    CompletableFuture<Void> append(UUID transactionId, byte[] entry, int partition, int batchSize, boolean includeHeader);
+    default CompletableFuture<Void> append(UUID transactionId, byte[] entry, int partition, int batchSize, boolean includeHeader) {
+        return append(transactionId, new UpdateRequest<>(entry, partition, batchSize), includeHeader);
+    }
+
+
+    /**
+     * 写入事务操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
+     * 日志在集群中复制到大多数节点，并在状态机执行后返回。
+     * @param transactionId 事务ID
+     * @param updateRequest See {@link UpdateRequest}
+     * @param includeHeader entry中是否包含Header
+     */
+    CompletableFuture<Void> append(UUID transactionId, UpdateRequest<byte []> updateRequest, boolean includeHeader);
+
+    /**
+     * 写入事务操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
+     * 日志在集群中复制到大多数节点，并在状态机执行后返回。
+     * 此方法等效于：append(transactionId, updateRequest, false, responseConfig);
+     * @param transactionId 事务ID
+     * @param updateRequest See {@link UpdateRequest}
+     */
+    default CompletableFuture<Void> append(UUID transactionId, UpdateRequest<byte []> updateRequest) {
+        return append(transactionId, updateRequest, false);
+    }
+
+    /**
+     * 写入事务操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
+     * 日志在集群中复制到大多数节点，并在状态机执行后返回。
+     * 此方法等效于：append(transactionId, updateRequests, false, responseConfig);
+     * @param transactionId 事务ID
+     * @param updateRequests See {@link UpdateRequest}
+     */
+    default CompletableFuture<Void> append(UUID transactionId, List<UpdateRequest<byte []>> updateRequests) {
+        return append(transactionId, updateRequests, false);
+    }
+
+    /**
+     * 写入事务操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
+     * 日志在集群中复制到大多数节点，并在状态机执行后返回。
+     * @param transactionId 事务ID
+     * @param updateRequests See {@link UpdateRequest}
+     * @param includeHeader entry中是否包含Header
+     */
+    CompletableFuture<Void> append(UUID transactionId, List<UpdateRequest<byte []>> updateRequests, boolean includeHeader);
 
 }

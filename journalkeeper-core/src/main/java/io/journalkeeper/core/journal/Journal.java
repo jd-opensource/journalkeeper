@@ -260,6 +260,37 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         return maxIndex();
     }
 
+    public List<Long> append(List<JournalEntry> entries) {
+
+
+        // 记录当前最大位置，也是写入的Journal的offset
+        long offset = journalPersistence.max();
+        long index = maxIndex();
+        ByteBuffer entryBuffer = ByteBuffer.wrap(new byte[entries.stream().mapToInt(e -> e.getSerializedBytes().length).sum()]);
+        ByteBuffer indicesBuffer = ByteBuffer.wrap(new byte[entries.size() * INDEX_STORAGE_SIZE]);
+        List<Long> indices = new ArrayList<>(entries.size());
+        for (JournalEntry entry : entries) {
+
+            entryBuffer.put(entry.getSerializedBytes());
+            indicesBuffer.putLong(offset);
+            offset += entry.getLength();
+            indices.add(++index);
+        }
+
+        try {
+            // 写入Journal header
+            journalPersistence.append(entryBuffer.array());
+
+            // 写入全局索引
+            indexPersistence.append(indicesBuffer.array());
+
+        }  catch (IOException e) {
+            throw new JournalException(e);
+        }
+
+        return indices;
+    }
+
     // Not thread safe !
     public void commit(long index) throws IOException {
         long finalCommitIndex;

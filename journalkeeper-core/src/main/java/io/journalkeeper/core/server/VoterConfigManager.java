@@ -16,6 +16,7 @@ package io.journalkeeper.core.server;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.entry.reserved.*;
 import io.journalkeeper.core.journal.Journal;
@@ -27,6 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -48,7 +50,7 @@ class VoterConfigManager {
         this.journalEntryParser = journalEntryParser;
     }
 
-    boolean maybeUpdateLeaderConfig(UpdateClusterStateRequest request,
+    boolean maybeUpdateLeaderConfig(SerializedUpdateRequest request,
                                     AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine,
                                     Journal journal,
                                     Callable appendEntryCallable,
@@ -157,7 +159,13 @@ class VoterConfigManager {
                     byte[] s2Entry = ReservedEntriesSerializeSupport.serialize(new UpdateVotersS2Entry(votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew()));
                     try {
                         if (votersConfigStateMachine.isJointConsensus()) {
-                            clientServerRpc.updateClusterState(new UpdateClusterStateRequest(s2Entry, RAFT_PARTITION, 1, false, ResponseConfig.ONE_WAY));
+                            clientServerRpc.updateClusterState(new UpdateClusterStateRequest(
+                                    Collections.singletonList(
+                                            new SerializedUpdateRequest(
+                                                    s2Entry, RAFT_PARTITION, 1
+                                            )
+                                    )
+                                    , false, ResponseConfig.ONE_WAY));
                         } else {
                             throw new IllegalStateException();
                         }

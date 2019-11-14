@@ -16,6 +16,7 @@ package io.journalkeeper.rpc;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.exceptions.IndexOverflowException;
@@ -126,25 +127,27 @@ public class RpcTest {
 
     @Test
     public void testUpdateClusterState() throws ExecutionException, InterruptedException {
-        int entrySize = 128;
-
-        byte [] entry = new byte[entrySize];
-        for (int i = 0; i < entrySize; i++) {
-            entry[i] = (byte) i;
-        }
-        UpdateClusterStateRequest request = new UpdateClusterStateRequest(UUID.randomUUID(), entry, 0, 1, false, ResponseConfig.RECEIVE);
+        List<SerializedUpdateRequest> entries = Arrays.asList(
+              new SerializedUpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
+              new SerializedUpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
+              new SerializedUpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1)
+        );
+        UpdateClusterStateRequest request = new UpdateClusterStateRequest(UUID.randomUUID(), entries, false, ResponseConfig.RECEIVE);
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
-        UpdateClusterStateResponse response;
+        UpdateClusterStateResponse response, serverResponse;
+        serverResponse = new UpdateClusterStateResponse(
+          ByteUtils.createFixedSizeByteList(32, 3)
+        );
         // Test success response
         when(serverRpcMock.updateClusterState(any(UpdateClusterStateRequest.class)))
-                .thenReturn(CompletableFuture.supplyAsync(UpdateClusterStateResponse::new));
+                .thenReturn(CompletableFuture.completedFuture(serverResponse));
         response = clientServerRpc.updateClusterState(request).get();
         Assert.assertTrue(response.success());
+        Assert.assertEquals(response.getResults(), serverResponse.getResults());
+
         verify(serverRpcMock).updateClusterState(argThat((UpdateClusterStateRequest r) ->
                 request.getTransactionId().equals(r.getTransactionId()) &&
-                Arrays.equals(request.getEntry(), r.getEntry()) &&
-                        request.getPartition() == r.getPartition() &&
-                        request.getBatchSize() == r.getBatchSize() &&
+                request.getRequests().equals(r.getRequests()) &&
                         request.isIncludeHeader() == r.isIncludeHeader() &&
                         request.getResponseConfig() == r.getResponseConfig()));
 

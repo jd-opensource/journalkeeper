@@ -15,6 +15,7 @@ package io.journalkeeper.core.transaction;
 
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
+import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.exception.TransactionException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.rpc.client.ClientServerRpc;
@@ -250,7 +251,9 @@ class JournalTransactionState extends ServerStateMachine {
                         server
                             .updateClusterState(
                                 new UpdateClusterStateRequest(
+                                        new SerializedUpdateRequest(
                                         te.getEntry(), bizPartition, te.getBatchSize()
+                                        )
                                 )
                             )
                             .exceptionally(UpdateClusterStateResponse::new)
@@ -309,7 +312,9 @@ class JournalTransactionState extends ServerStateMachine {
         TransactionEntry entry = new TransactionEntry(transactionId, TransactionEntryType.TRANSACTION_COMPLETE, commitOrAbort);
         byte[] serializedEntry = transactionEntrySerializer.serialize(entry);
         server.updateClusterState(new UpdateClusterStateRequest(
-                serializedEntry, partition, 1
+                new SerializedUpdateRequest(
+                    serializedEntry, partition, 1
+                )
         ))
                 .exceptionally(UpdateClusterStateResponse::new)
                 .thenAccept(response -> {

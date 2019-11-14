@@ -24,12 +24,12 @@ import java.util.concurrent.CompletableFuture;
 class Callback {
     private final long position;
     private final long timestamp;
-    private final CompletableFuture<UpdateClusterStateResponse> completableFuture;
+    private final ResponseFuture responseFuture;
 
-    Callback(long position, CompletableFuture<UpdateClusterStateResponse> completableFuture) {
+    Callback(long position, ResponseFuture responseFuture) {
         this.position = position;
         this.timestamp = System.currentTimeMillis();
-        this.completableFuture = completableFuture;
+        this.responseFuture = responseFuture;
     }
 
     long getPosition() {
@@ -41,8 +41,7 @@ class Callback {
         return timestamp;
     }
 
-    CompletableFuture<UpdateClusterStateResponse> getCompletableFuture() {
-        return completableFuture;
+    public ResponseFuture getResponseFuture() {
+        return responseFuture;
     }
-
 }

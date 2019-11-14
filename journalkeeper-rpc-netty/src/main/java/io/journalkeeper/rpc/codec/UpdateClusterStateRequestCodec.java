@@ -14,13 +14,12 @@
 package io.journalkeeper.rpc.codec;
 
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.header.JournalKeeperHeader;
 import io.journalkeeper.rpc.remoting.serialize.CodecSupport;
 import io.journalkeeper.rpc.remoting.transport.command.Type;
 import io.netty.buffer.ByteBuf;
-
-import java.util.UUID;
 
 /**
  * @author LiYue
@@ -30,21 +29,27 @@ public class UpdateClusterStateRequestCodec extends GenericPayloadCodec<UpdateCl
     @Override
     protected void encodePayload(UpdateClusterStateRequest request, ByteBuf buffer) throws Exception {
         CodecSupport.encodeUUID(buffer, request.getTransactionId());
-        CodecSupport.encodeBytes(buffer, request.getEntry());
-        CodecSupport.encodeShort(buffer, (short )request.getPartition());
-        CodecSupport.encodeShort(buffer, (short )request.getBatchSize());
+        CodecSupport.encodeList(buffer, request.getRequests(), (obj, buffer1) -> {
+            SerializedUpdateRequest request1  = (SerializedUpdateRequest) obj;
+            CodecSupport.encodeBytes(buffer1, request1.getEntry());
+            CodecSupport.encodeShort(buffer1, (short )request1.getPartition());
+            CodecSupport.encodeShort(buffer1, (short )request1.getBatchSize());
+
+        });
         CodecSupport.encodeBoolean(buffer, request.isIncludeHeader());
         CodecSupport.encodeByte(buffer, (byte) request.getResponseConfig().value());
 
     }
 
     @Override
-    protected UpdateClusterStateRequest decodePayload(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
+    protected UpdateClusterStateRequest decodePayload(JournalKeeperHeader header, ByteBuf buffer) {
         return new UpdateClusterStateRequest(
                 CodecSupport.decodeUUID(buffer),
-                CodecSupport.decodeBytes(buffer),
-                CodecSupport.decodeShort(buffer),
-                CodecSupport.decodeShort(buffer),
+                CodecSupport.decodeList(buffer, buffer1 -> new SerializedUpdateRequest(
+                        CodecSupport.decodeBytes(buffer1),
+                        CodecSupport.decodeShort(buffer1),
+                        CodecSupport.decodeShort(buffer1)
+                )),
                 CodecSupport.decodeBoolean(buffer),
                 ResponseConfig.valueOf(CodecSupport.decodeByte(buffer)));
     }
