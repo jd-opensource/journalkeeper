@@ -32,20 +32,21 @@
 
     <modules>
         <module>journalkeeper-docs</module>
-        <module>journalkeeper-core-api</module>
-        <module>journalkeeper-persistence</module>
-        <module>journalkeeper-rpc</module>
-        <module>journalkeeper-core</module>
         <module>journalkeeper-utils</module>
+        <module>journalkeeper-core-api</module>
+        <module>journalkeeper-core</module>
+        <module>journalkeeper-rpc</module>
+        <module>journalkeeper-persistence</module>
         <module>journalkeeper-persistence-local</module>
         <module>journalkeeper-rpc-netty</module>
         <module>journalkeeper-journal-store</module>
-        <module>journalkeeper-examples</module>
-        <module>journalkeeper-test</module>
         <module>journalkeeper-coordinating</module>
         <module>journalkeeper-metric</module>
         <module>journalkeeper-metric-dropwizard</module>
         <module>journalkeeper-sql</module>
+        <module>journalkeeper-examples</module>
+        <module>journalkeeper-test</module>
+
     </modules>
     <properties>
         <encoding>UTF-8</encoding>

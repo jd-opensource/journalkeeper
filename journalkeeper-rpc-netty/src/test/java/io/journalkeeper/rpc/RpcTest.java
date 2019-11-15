@@ -143,13 +143,27 @@ public class RpcTest {
                 .thenReturn(CompletableFuture.completedFuture(serverResponse));
         response = clientServerRpc.updateClusterState(request).get();
         Assert.assertTrue(response.success());
-        Assert.assertEquals(response.getResults(), serverResponse.getResults());
+        Assert.assertEquals(response.getResults().size(), serverResponse.getResults().size());
+        for (int i = 0; i < response.getResults().size(); i++) {
+            Assert.assertArrayEquals(response.getResults().get(i), serverResponse.getResults().get(i));
+        }
 
-        verify(serverRpcMock).updateClusterState(argThat((UpdateClusterStateRequest r) ->
-                request.getTransactionId().equals(r.getTransactionId()) &&
-                request.getRequests().equals(r.getRequests()) &&
-                        request.isIncludeHeader() == r.isIncludeHeader() &&
-                        request.getResponseConfig() == r.getResponseConfig()));
+        verify(serverRpcMock).updateClusterState(argThat((UpdateClusterStateRequest r) -> {
+                    if (request.getTransactionId().equals(r.getTransactionId()) &&
+                            request.getRequests().size() == r.getRequests().size() &&
+                            request.isIncludeHeader() == r.isIncludeHeader() &&
+                            request.getResponseConfig() == r.getResponseConfig()) {
+                        for (int i = 0; i < request.getRequests().size(); i++) {
+                            Assert.assertArrayEquals(request.getRequests().get(i).getEntry(), r.getRequests().get(i).getEntry());
+                            Assert.assertEquals(request.getRequests().get(i).getPartition(), r.getRequests().get(i).getPartition());
+                            Assert.assertEquals(request.getRequests().get(i).getBatchSize(), r.getRequests().get(i).getBatchSize());
+                        }
+                        return true;
+                    }
+                    return false;
+                }
+
+        ));
 
     }
 
