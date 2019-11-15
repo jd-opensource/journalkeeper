@@ -16,8 +16,10 @@ package io.journalkeeper.core.server;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
+import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
+import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.entry.DefaultJournalEntryParser;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
@@ -44,6 +46,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
@@ -55,6 +58,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 /**
  * @author LiYue
@@ -198,6 +202,39 @@ public class VoterTest {
             UpdateClusterStateResponse response = voter.updateClusterState(new UpdateClusterStateRequest(entry, RaftJournal.DEFAULT_PARTITION, 1)).get();
             Assert.assertTrue(response.success());
             Assert.assertArrayEquals(entry, response.getResults().get(0));
+
+        } finally {
+            voter.stop();
+        }
+
+
+
+    }
+
+
+    @Test
+    public void batchUpdateClusterStateTest() throws IOException, ExecutionException, InterruptedException {
+        Server<byte[],byte[], byte[], byte[]> voter = createVoter();
+
+
+        try {
+            List<byte []> bytes = ByteUtils.createRandomSizeByteList(1024, 128);
+            while(voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
+                Thread.sleep(50L);
+            }
+            List<SerializedUpdateRequest> requests = bytes.stream()
+                    .map(byteArray -> new SerializedUpdateRequest(byteArray, RaftJournal.DEFAULT_PARTITION, 1))
+                    .collect(Collectors.toList());
+            UpdateClusterStateResponse response =
+                    voter.updateClusterState(
+                            new UpdateClusterStateRequest(
+                                    requests
+                            )).get();
+            Assert.assertTrue(response.success());
+            Assert.assertEquals(bytes.size(), response.getResults().size());
+            for (int i = 0; i < bytes.size(); i++) {
+                Assert.assertArrayEquals(bytes.get(i), response.getResults().get(i));
+            }
 
         } finally {
             voter.stop();

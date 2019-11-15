@@ -17,6 +17,8 @@ import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.api.SerializedUpdateRequest;
+import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.entry.DefaultJournalEntryParser;
 import io.journalkeeper.core.entry.JournalEntryParseSupport;
 import io.journalkeeper.exceptions.ServerBusyException;
@@ -79,7 +81,7 @@ public class JournalStoreTest {
     }
 
     @Test
-    public void writeReadasyncTripleNodes() throws Exception{
+    public void writeReadAsyncTripleNodes() throws Exception{
         writeReadTest(3, new int [] {2, 3, 4, 5, 6}, 1024, 32, 32 , true);
     }
 
@@ -230,6 +232,62 @@ public class JournalStoreTest {
                     Assert.assertArrayEquals(rawEntries, entry.getPayload().getBytes());
                 }
             }
+            t1 = System.nanoTime();
+            logger.info("Read finished. " +
+                            "Takes: {}ms {}ps, tps: {}.",
+                    (t1 - t0) / 1000000,
+                    Format.formatSize( 1000000000L * partitions.length * entrySize * batchCount  / (t1 - t0)),
+                    1000000000L * partitions.length * batchCount  / (t1 - t0));
+        } finally {
+            stopServers(servers);
+
+        }
+
+    }
+
+    @Test
+    public void batchWriteReadTest() throws Exception {
+        int nodes = 3;
+        Integer [] partitions = new Integer[] {0, 1, 2, 3, 4};
+        int entrySize = 1024;
+        int batchSize = 12;
+        int batchCount = 1024;
+        List<JournalStoreServer> servers = createServers(nodes, base, new HashSet<>(Arrays.asList(partitions)));
+        try {
+            JournalStoreClient client = servers.get(0).createClient();
+            client.waitForClusterReady();
+
+            List<byte []> bytes = ByteUtils.createRandomSizeByteList(entrySize, batchCount);
+            List<UpdateRequest<byte []>> requests = new ArrayList<>(bytes.size());
+            for (int i = 0; i < bytes.size(); i++) {
+                int partition = partitions[i % partitions.length];
+                requests.add(new UpdateRequest<>(bytes.get(i), partition, batchSize));
+            }
+            long t0 = System.nanoTime();
+            List<Long> indices = client.append(requests).get();
+            long t1 = System.nanoTime();
+            logger.info("Replication finished. " +
+                    "Write takes: {}ms, {}ps, tps: {}.",
+                     (t1 - t0) / 1000000,
+                    Format.formatSize( 1000000000L * partitions.length * entrySize * batchCount  / (t1 - t0)),
+                    1000000000L * partitions.length * batchCount  / (t1 - t0));
+
+
+            // read
+
+            t0 = System.nanoTime();
+
+                for (int i = 0; i < batchCount; i++) {
+                    int partition = partitions[i % partitions.length];
+                    List<JournalEntry> raftEntries = client.get(partition, indices.get(i), batchSize).get();
+                    Assert.assertEquals(1, raftEntries.size());
+                    JournalEntry entry = raftEntries.get(0);
+                    Assert.assertEquals(partition, entry.getPartition());
+                    Assert.assertEquals(batchSize, entry.getBatchSize());
+                    Assert.assertEquals(0, entry.getOffset());
+                    Assert.assertArrayEquals(bytes.get(i), entry.getPayload().getBytes());
+                }
+
             t1 = System.nanoTime();
             logger.info("Read finished. " +
                             "Takes: {}ms {}ps, tps: {}.",
