@@ -46,9 +46,7 @@ public class Format {
         return  NumberFormat.getNumberInstance(Locale.US).format(position);
     }
 
-    /**
-     * copied from https://stackoverflow.com/questions/3263892/format-file-size-as-mb-gb-etc/5599842#5599842
-     */
+    // copied from https://stackoverflow.com/questions/3263892/format-file-size-as-mb-gb-etc/5599842#5599842
     public static String formatSize(long size) {
         if(size <= 0) return "0";
         final String[] units = new String[] { "B", "kB", "MB", "GB", "TB" };

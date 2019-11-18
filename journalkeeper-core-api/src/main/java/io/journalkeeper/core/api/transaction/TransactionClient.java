@@ -42,6 +42,7 @@ public interface TransactionClient<E> {
      * 结束事务，可能是提交或者回滚事务。
      * @param transactionId 事务ID
      * @param commitOrAbort true：提交事务，false：回滚事务。
+     * @return 执行成功返回null，失败抛出异常。
      */
     CompletableFuture<Void> completeTransaction(UUID transactionId, boolean commitOrAbort);
 
@@ -57,6 +58,7 @@ public interface TransactionClient<E> {
      * @param transactionId 事务ID
      * @param updateRequest See {@link UpdateRequest}
      * @param includeHeader entry中是否包含Header
+     * @return 执行成功返回null，失败抛出异常。
      */
     default CompletableFuture<Void> update(UUID transactionId, UpdateRequest<E> updateRequest, boolean includeHeader){
         return update(transactionId, Collections.singletonList(updateRequest), includeHeader);
@@ -68,6 +70,7 @@ public interface TransactionClient<E> {
      * 此方法等效于：update(transactionId, updateRequest, false, responseConfig);
      * @param transactionId 事务ID
      * @param updateRequest See {@link UpdateRequest}
+     * @return 执行成功返回null，失败抛出异常。
      */
     default CompletableFuture<Void> update(UUID transactionId, UpdateRequest<E> updateRequest) {
         return update(transactionId, updateRequest, false);
@@ -79,6 +82,7 @@ public interface TransactionClient<E> {
      * 此方法等效于：update(transactionId, updateRequests, false, responseConfig);
      * @param transactionId 事务ID
      * @param updateRequests See {@link UpdateRequest}
+     * @return 执行成功返回null，失败抛出异常。
      */
     default CompletableFuture<Void> update(UUID transactionId, List<UpdateRequest<E>> updateRequests) {
         return update(transactionId, updateRequests, false);
@@ -90,6 +94,7 @@ public interface TransactionClient<E> {
      * @param transactionId 事务ID
      * @param updateRequests See {@link UpdateRequest}
      * @param includeHeader entry中是否包含Header
+     * @return 执行成功返回null，失败抛出异常。
      */
     CompletableFuture<Void> update(UUID transactionId, List<UpdateRequest<E>> updateRequests, boolean includeHeader);
 

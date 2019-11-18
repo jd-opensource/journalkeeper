@@ -22,6 +22,7 @@ public interface Serializer<T> {
     /**
      * 将日志序列化
      * @param entry 日志
+     * @return 序列化后的字节数组
      */
     byte [] serialize(T entry);
 

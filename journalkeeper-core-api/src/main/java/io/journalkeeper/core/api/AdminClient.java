@@ -56,18 +56,21 @@ public interface AdminClient extends Watchable, ClusterReadyAware, ServerConfigA
      * 转换失败抛出异常。
      * @param uri 节点URI
      * @param roll 新角色
+     * @return 执行成功返回null，失败抛出异常。
      */
     CompletableFuture<Void> convertRoll(URI uri, RaftServer.Roll roll);
 
     /**
      * 压缩WAL。删除指定位置之前的WAL日志。
      * @param toIndices 每个分区的安全删除位置。
+     * @return 执行成功返回null，失败抛出异常。
      */
     CompletableFuture<Void> compact(Map<Integer, Long> toIndices);
 
     /**
      * 变更集群分区配置
      * @param partitions 新分区配置
+     * @return 执行成功返回null，失败抛出异常。
      */
     CompletableFuture<Void> scalePartitions(int[] partitions);
 
@@ -84,6 +87,7 @@ public interface AdminClient extends Watchable, ClusterReadyAware, ServerConfigA
      * 集群会自动将Leader节点切换为推荐的Leader节点。
      *
      * @param preferredLeader 推荐的Leader
+     * @return 执行成功返回null，失败抛出异常。
      */
     CompletableFuture<Void> setPreferredLeader(URI preferredLeader);
 

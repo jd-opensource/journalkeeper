@@ -24,6 +24,7 @@ public interface ServerConfigAware {
     /**
      * 客户端使用
      * 更新可供连接的server列表
+     * @param servers 可供连接的server列表
      */
     void updateServers(List<URI> servers);
 }

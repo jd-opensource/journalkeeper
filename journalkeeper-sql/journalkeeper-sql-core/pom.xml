@@ -20,12 +20,16 @@
     <parent>
         <artifactId>journalkeeper-sql</artifactId>
         <groupId>io.journalkeeper</groupId>
-        <version>0.1-SNAPSHOT</version>
+        <version>0.1.0-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>journalkeeper-sql-core</artifactId>
-
+    <name>JournalKeeper - SQL Core</name>
+    <description>
+        A SQL database cluster powered by Journalkeeper which use H2 Database Engine as local backend storage.
+        This module includes core implementations.
+    </description>
     <properties>
         <kryo.version>4.0.2</kryo.version>
         <commons-lang3.version>3.9</commons-lang3.version>

@@ -27,7 +27,7 @@ public interface Encoder {
      *
      * @param obj 对象
      * @param buffer 输出流
-     * @throws TransportException.CodecException
+     * @throws TransportException.CodecException 编解码异常
      */
     void encode(Object obj, ByteBuf buffer) throws TransportException.CodecException;
 

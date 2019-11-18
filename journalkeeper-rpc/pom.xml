@@ -20,11 +20,16 @@
     <parent>
         <artifactId>journalkeeper</artifactId>
         <groupId>io.journalkeeper</groupId>
-        <version>0.1-SNAPSHOT</version>
+        <version>0.1.0-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>journalkeeper-rpc</artifactId>
+    <name>Journalkeeper - RPC provider API</name>
+    <description>
+        Journalkeeper RPC provider API library.
+    </description>
+
     <dependencies>
         <dependency>
             <groupId>io.journalkeeper</groupId>

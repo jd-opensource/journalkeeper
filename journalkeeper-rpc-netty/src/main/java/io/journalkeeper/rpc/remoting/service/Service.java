@@ -66,46 +66,4 @@ public abstract class Service extends Activity implements LifeCycle {
         return super.isReady();
     }
 
-    /**
-     * 选举服务标示
-     * Created by hexiaofeng on 16-8-25.
-     */
-    public interface Election {
-
-        /**
-         * 注册，参与选举
-         */
-        void register(ElectionListener listener);
-
-        /**
-         * 注销，取消选举
-         */
-        void deregister();
-
-        /**
-         * 是否是领导
-         *
-         * @return 领导标示
-         */
-        boolean isLeader();
-
-    }
-
-    /**
-     * 选举监听器
-     */
-    public interface ElectionListener {
-
-        /**
-         * 获取领导事件
-         */
-        void onTake();
-
-        /**
-         * 丢失领导事件
-         */
-        void onLost();
-
-    }
-
 }

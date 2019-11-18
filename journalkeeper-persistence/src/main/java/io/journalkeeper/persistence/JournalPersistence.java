@@ -27,28 +27,32 @@ import java.util.Properties;
 public interface JournalPersistence extends Closeable {
     /**
      * 最小位置，初始化为0
+     * @return 最小位置
      */
     long min();
 
     /**
      * 最大位置， 初始化为0
+     * @return 最大位置
      */
     long max();
 
     /**
      * 当前刷盘位置
+     * @return 当前刷盘位置
      */
     default long flushed() { return max();}
 
     /**
      * 执行一次刷盘操作
-     * @return 刷盘位置
+     * @throws IOException 发生IO异常时抛出
      */
     default void flush() throws IOException {};
     /**
      * 截断最新的日志。
      * 如果givenMax不在最大最小位置之间，则清空所有数据，并将最大最小位置置为givenMax
      * @param givenMax 新的最大位置.
+     * @throws IOException 发生IO异常时抛出
      */
     void truncate(long givenMax) throws IOException;
 
@@ -57,13 +61,16 @@ public interface JournalPersistence extends Closeable {
      * 不要求精确删除到给定位置。但不能删除给定位置之后的数据。
      * @param givenMin 给定删除位置，这个位置之前都可以删除。
      * @return 删除后当前最小位置。
+     * @throws IOException 发生IO异常时抛出
      */
     long compact(long givenMin) throws IOException;
 
     /**
      * 追加写入
+     * @param entry 待写入的entry
      * @return 写入后新的位置
      * @throws TooManyBytesException 当写入数据超长时抛出
+     * @throws IOException 发生IO异常时抛出
      */
     long append(byte [] entry) throws IOException;
 
@@ -72,6 +79,7 @@ public interface JournalPersistence extends Closeable {
      * @param position 起始位置
      * @param length 读取长度
      * @return 存放数据的ByteBuffer
+     * @throws IOException 发生IO异常时抛出
      */
     byte [] read(long position, int length) throws IOException;
 
@@ -79,12 +87,13 @@ public interface JournalPersistence extends Closeable {
      * 从指定Path恢复Journal，如果没有则创建一个空的。
      * @param path journal存放路径
      * @param properties 属性
+     * @throws IOException 发生IO异常时抛出
      */
     void recover(Path path, Properties properties) throws IOException;
 
     /**
      * 清空所有数据
-     * @throws IOException
+     * @throws IOException 发生IO异常时抛出
      */
     void delete() throws IOException;
 

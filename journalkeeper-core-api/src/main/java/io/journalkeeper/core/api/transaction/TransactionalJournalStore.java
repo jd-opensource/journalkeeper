@@ -41,6 +41,7 @@ public interface TransactionalJournalStore {
      * 结束事务，可能是提交或者回滚事务。
      * @param transactionId 事务ID
      * @param commitOrAbort true：提交事务，false：回滚事务。
+     * @return 执行成功返回null，失败抛出异常。
      */
     CompletableFuture<Void> completeTransaction(UUID transactionId, boolean commitOrAbort);
 
@@ -53,7 +54,9 @@ public interface TransactionalJournalStore {
 
     /**
      * 写入事务日志，分区为默认分区（0），批量大小为1，entry中不包含Header
+     * @param transactionId 事务ID
      * @param entry 操作日志
+     * @return 执行成功返回null，失败抛出异常。
      */
     default CompletableFuture<Void> append(UUID transactionId, byte[] entry) {
         return append(transactionId, entry, RaftJournal.DEFAULT_PARTITION, 1, false);
@@ -61,9 +64,11 @@ public interface TransactionalJournalStore {
 
     /**
      * 写入事务日志，entry中不包含Header
+     * @param transactionId 事务ID
      * @param entry 操作日志
      * @param partition 分区
      * @param batchSize 批量大小
+     * @return 执行成功返回null，失败抛出异常。
      */
     default CompletableFuture<Void> append(UUID transactionId, byte[] entry, int partition, int batchSize) {
         return append(transactionId, entry, partition, batchSize, false);
@@ -76,6 +81,7 @@ public interface TransactionalJournalStore {
      * @param partition 分区
      * @param batchSize 批量大小
      * @param includeHeader entry中是否包含Header
+     * @return 执行成功返回null，失败抛出异常。
      */
     default CompletableFuture<Void> append(UUID transactionId, byte[] entry, int partition, int batchSize, boolean includeHeader) {
         return append(transactionId, new UpdateRequest<>(entry, partition, batchSize), includeHeader);
@@ -88,6 +94,7 @@ public interface TransactionalJournalStore {
      * @param transactionId 事务ID
      * @param updateRequest See {@link UpdateRequest}
      * @param includeHeader entry中是否包含Header
+     * @return 执行成功返回null，失败抛出异常。
      */
     CompletableFuture<Void> append(UUID transactionId, UpdateRequest<byte []> updateRequest, boolean includeHeader);
 
@@ -97,6 +104,7 @@ public interface TransactionalJournalStore {
      * 此方法等效于：append(transactionId, updateRequest, false, responseConfig);
      * @param transactionId 事务ID
      * @param updateRequest See {@link UpdateRequest}
+     * @return 执行成功返回null，失败抛出异常。
      */
     default CompletableFuture<Void> append(UUID transactionId, UpdateRequest<byte []> updateRequest) {
         return append(transactionId, updateRequest, false);
@@ -108,6 +116,7 @@ public interface TransactionalJournalStore {
      * 此方法等效于：append(transactionId, updateRequests, false, responseConfig);
      * @param transactionId 事务ID
      * @param updateRequests See {@link UpdateRequest}
+     * @return 执行成功返回null，失败抛出异常。
      */
     default CompletableFuture<Void> append(UUID transactionId, List<UpdateRequest<byte []>> updateRequests) {
         return append(transactionId, updateRequests, false);
@@ -119,6 +128,7 @@ public interface TransactionalJournalStore {
      * @param transactionId 事务ID
      * @param updateRequests See {@link UpdateRequest}
      * @param includeHeader entry中是否包含Header
+     * @return 执行成功返回null，失败抛出异常。
      */
     CompletableFuture<Void> append(UUID transactionId, List<UpdateRequest<byte []>> updateRequests, boolean includeHeader);
 

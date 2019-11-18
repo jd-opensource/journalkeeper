@@ -106,6 +106,7 @@ public interface ClientServerRpc {
      * 删除pull事件监听。
      * @see EventBus
      * @param request See {@link RemovePullWatchRequest}
+     * @return See {@link RemovePullWatchResponse}
      */
     CompletableFuture<RemovePullWatchResponse> removePullWatch(RemovePullWatchRequest request);
 

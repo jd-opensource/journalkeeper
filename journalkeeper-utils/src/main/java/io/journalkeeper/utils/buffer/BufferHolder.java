@@ -21,11 +21,13 @@ package io.journalkeeper.utils.buffer;
 public interface BufferHolder extends Timed {
     /**
      * Buffer大小
+     * @return Buffer的大小
      */
     int size();
 
     /**
      * 是否可以释放？
+     * @return 是否可以释放？
      */
     boolean isFree();
 

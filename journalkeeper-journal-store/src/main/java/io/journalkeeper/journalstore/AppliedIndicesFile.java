@@ -37,6 +37,7 @@ public class AppliedIndicesFile extends DoubleCopy implements Map<Integer, Long>
      * 构造函数
      *
      * @param file        本地存储文件
+     * @throws IOException 发生IO异常时抛出
      */
     public AppliedIndicesFile(File file) throws IOException {
         super(file, Short.BYTES + Short.MAX_VALUE * (Integer.BYTES + Long.BYTES));

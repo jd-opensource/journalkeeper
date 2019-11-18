@@ -94,11 +94,16 @@ public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, F
 
     /**
      * 从本地文件恢复状态，如果不存在则创建新的。
+     * @param path 状态目录
+     * @param raftJournal 当前的Journal
+     * @param properties 属性
+     * @throws IOException 当发生IO异常时抛出
      */
     protected abstract void recoverLocalState(Path path, RaftJournal raftJournal, Properties properties) throws IOException;
 
     /**
      * 列出所有复制时需要拷贝的文件。
+     * @return 所有需要复制的文件的Path
      */
     protected List<Path> listAllFiles() {
         return FileUtils.listFiles(
@@ -146,6 +151,11 @@ public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, F
      * [File Size (4 bytes)][File relative path][CRLF]
      * ...
      * [serialized files data]
+     *
+     * @param startOffset 偏移量
+     * @param size 本次读取的长度
+     * @return 序列化后的状态数据
+     * @throws IOException 发生IO异常时抛出
      */
 
     @Override
@@ -290,6 +300,7 @@ public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, F
      * 如果文件所在的目录不存在则创建；
      * 如果文件存在：清空文件。
      * 如果文件不存在：创建空文件。
+     * @param filePath 文件目录
      */
     private void createOrTruncateFile(Path filePath) throws IOException {
         File parentDir = filePath.getParent().toFile();
@@ -308,11 +319,13 @@ public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, F
     }
 
     /**
-     * 存放state元数据文件的路径
+     * 返回存放state元数据文件的路径
+     * @return 存放state元数据文件的路径
      */
     protected Path metadataPath() {
        return Paths.get("metadata");
     }
+
     @Override
     public void installFinish(long lastApplied, int lastIncludedTerm) {
         try {

@@ -65,7 +65,7 @@ public class IpUtil {
      * 得到本机所有的地址
      *
      * @return 本机所有的地址
-     * @throws Exception
+     * @throws Exception 异常
      */
     public static List<String> getLocalIps() throws Exception {
         return getLocalIps(null, null);
@@ -77,7 +77,6 @@ public class IpUtil {
      * @param nic     网卡
      * @param exclude 排除的地址
      * @return 地址列表
-     * @throws SocketException
      */
     public static List<String> getLocalIps(final String nic, final String exclude) {
         try {
@@ -232,9 +231,7 @@ public class IpUtil {
 
     /**
      * 把地址转化成字节数组，如果有端口，则第一和第二字节为端口，其余为IP段
-     * <p>
-     * <p>
-     * 解析地址<br>，分隔符支持".",":","_"
+     * 解析地址，分隔符支持".",":","_"
      * IPV4地址第1-4个元素为IP段，第5个元素为端口，如果第5个元素为-1，则表示端口不存在
      * IPV6地址第1-8个元素为IP段，第9个元素为端口，如果第9个元素为-1，则表示端口不存在
      *
@@ -553,6 +550,8 @@ public class IpUtil {
     /**
      * Creates an byte[] based on an ipAddressString. No error handling is
      * performed here.
+     * @param ipAddressString ip地址
+     * @return ip地址字节数组
      */
     private static byte[] toByteWithoutPort(String ipAddressString) {
 
@@ -652,9 +651,6 @@ public class IpUtil {
         return null;
     }
 
-    /**
-     * Converts a 4 character hex word into a 2 byte word equivalent
-     */
     private static void convertToBytes(String hexWord, byte[] ipByteArray, int byteIndex) {
 
         int hexWordLength = hexWord.length();
@@ -901,7 +897,7 @@ public class IpUtil {
 
     /**
      * Takes a string and parses it to see if it is a valid IPV4 address.
-     *
+     * @param value IP地址
      * @return true, if the string represents an IPV4 address in dotted
      * notation, false otherwise
      */

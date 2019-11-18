@@ -27,6 +27,8 @@ public interface ClientServerRpcAccessPoint  {
     /**
      * 客户端使用
      * 指定URI获取一个ClientServerRpc实例，一般用于访问Leader
+     * @param uri 目标地址
+     * @return 给定目标地址的rpc实例。
      */
     ClientServerRpc getClintServerRpc(URI uri);
 

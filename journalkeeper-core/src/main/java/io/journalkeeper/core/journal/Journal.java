@@ -102,16 +102,12 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         this.bufferPool = bufferPool;
     }
 
-    /**
-     * 最小索引位置
-     */
+    @Override
     public long minIndex() {
         return indexPersistence.min() / INDEX_STORAGE_SIZE;
     }
 
-    /**
-     * 最大索引位置
-     */
+    @Override
     public long maxIndex() {
         return indexPersistence.max() / INDEX_STORAGE_SIZE;
     }
@@ -130,6 +126,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * 删除给定索引位置之前的数据。
      * 不保证给定位置之前的数据全都被删除。
      * 保证给定位置（含）之后的数据不会被删除。
+     *
+     * @param givenMinIndex 给定最小安全索引位置。
+     * @throws IOException 当发生IO异常时抛出
      */
     public void compact(long givenMinIndex) throws IOException{
 
@@ -159,6 +158,15 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         }
 
     }
+
+    /**
+     * 删除给定分区索引位置之前的数据。
+     * 不保证给定位置之前的数据全都被删除。
+     * 保证给定位置（含）之后的数据不会被删除。
+     *
+     * @param compactIndices 给定的每个分区的最小安全索引位置。
+     * @throws IOException 当发生IO异常时抛出
+     */
 
     public void compactByPartition(Map<Integer, Long> compactIndices) throws IOException {
         // 如果给定的compactIndices 中的分区少于当前实际分区，需要用这些分区的minIndex补全分区。
@@ -234,9 +242,10 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     }
 
-    // TODO: 非线程安全，需要检测并发，然后抛出异常
     /**
      * 追加写入StorageEntry
+     * @param entry 待写入的entry
+     * @return entry写入后当前最大全局索引序号
      */
     public long append(JournalEntry entry) {
 
@@ -260,6 +269,11 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         return maxIndex();
     }
 
+    /**
+     * 批量追加写入StorageEntry
+     * @param entries 待写入的批量entry
+     * @return 每条entry写入后当前最大全局索引序号
+     */
     public List<Long> append(List<JournalEntry> entries) {
 
 
@@ -292,6 +306,12 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     }
 
     // Not thread safe !
+
+    /**
+     * 提交journal，已提交的journal不可变。
+     * @param index 提交全局索引序号
+     * @throws IOException 发生IO异常时抛出
+     */
     public void commit(long index) throws IOException {
         long finalCommitIndex;
         while ((finalCommitIndex = commitIndex.get()) < index &&
@@ -315,6 +335,10 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         }
     }
 
+    /**
+     * 获取当前提交的全局索引序号
+     * @return 当前提交的全局索引序号
+     */
     public long commitIndex() {
         return commitIndex.get();
     }
@@ -352,7 +376,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         return partitionPersistence;
     }
     /**
-     * 批量追加写入序列化之后的StorageEntry
+     * 批量追加写入序列化之后的StorageEntry，用户RAFT复制时，FOLLOWER写入从LEADER复制过来的entries
+     * @param storageEntries 从LEADER复制过来的entries
+     * @return 写入后的最大全局索引序号
      */
     public long appendBatchRaw(List<byte []> storageEntries) {
         // 计算索引
@@ -399,12 +425,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         return maxIndex();
     }
 
-    /**
-     * 给定分区索引位置读取Entry
-     * @param partition 分区
-     * @param index 分区索引
-     * @return See {@link JournalEntry}
-     */
     @Override
     public JournalEntry readByPartition(int partition, long index) {
         JournalPersistence pp = getPartitionPersistence(partition);
@@ -425,13 +445,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     }
 
-    /**
-     * 给定分区索引位置读取Entry
-     * @param partition 分区
-     * @param startPartitionIndex 其实索引
-     * @param maxSize 最大读取条数
-     * @return See {@link JournalEntry} 由于批量Entry不能拆包，返回的Entry数量有可能会大于maxSize。
-     */
     @Override
     public List<JournalEntry> batchReadByPartition(int partition, long startPartitionIndex, int maxSize) {
         List<JournalEntry> list = new LinkedList<>();
@@ -448,12 +461,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     }
 
 
-    /**
-     * 给定索引位置读取Entry
-     * @return Entry
-     * @throws IndexUnderflowException 如果 index< minIndex()
-     * @throws IndexOverflowException 如果index >= maxIndex()
-     */
     public JournalEntry read(long index){
         return journalEntryParser.parse(readRaw(index));
     }
@@ -501,14 +508,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         }
     }
 
-    /**
-     * 批量读取Entry
-     * @param index 起始索引位置
-     * @param size 期望读取的条数
-     * @return Entry列表。
-     * @throws IndexUnderflowException 如果 index< minIndex()
-     * @throws IndexOverflowException 如果index >= maxIndex()
-     */
     public List<JournalEntry> batchRead(long index, int size) {
         checkIndex(index);
         List<JournalEntry> list = new ArrayList<>(size);
@@ -525,8 +524,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * @param index 起始索引位置
      * @param size 期望读取的条数
      * @return 未反序列化的StorageEntry列表。
-     * @throws IndexUnderflowException 如果 index< minIndex()
-     * @throws IndexOverflowException 如果index >= maxIndex()
+     * @throws IndexUnderflowException 如果 index 小于 minIndex()
+     * @throws IndexOverflowException 如果index 不小于 maxIndex()
      */
     public List<byte []> readRaw(long index, int size) {
         checkIndex(index);
@@ -540,9 +539,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     /**
      * 读取指定索引位置上Entry的Term。
      * @param index 索引位置。
-     * @return Term。
-     * @throws IndexUnderflowException 如果 index< minIndex()
-     * @throws IndexOverflowException 如果index >= maxIndex()
+     * @return Term 任期
+     * @throws IndexUnderflowException 如果 index 小于 minIndex()
+     * @throws IndexOverflowException 如果index 不小于 maxIndex()
      */
     public int getTerm(long index) {
         readWriteLock.readLock().lock();
@@ -564,8 +563,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * 添加任何在已有的日志中不存在的条目。
      * @param rawEntries 待比较的日志
      * @param startIndex 起始位置
-     * @throws IndexUnderflowException 如果 startIndex< minIndex()
-     * @throws IndexOverflowException 如果 startIndex >= maxIndex()
+     * @throws IndexUnderflowException 如果 startIndex 小于 minIndex()
+     * @throws IndexOverflowException 如果 startIndex 不小于 maxIndex()
      */
     public void compareOrAppendRaw(List<byte []> rawEntries, long startIndex) {
 
@@ -596,6 +595,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     /**
      * 从索引index位置开始，截掉后面的数据
+     * @param index 截取全局索引位置
      * @throws IndexUnderflowException 如果 index < minIndex()
      * @throws IndexOverflowException 如果 index >= maxIndex()
      */
@@ -633,7 +633,10 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * 从指定path恢复Journal。
      * 1. 删除journal或者index文件末尾可能存在的不完整的数据。
      * 2. 以Journal为准，修复全局索引和分区索引：删除多余的索引，并创建缺失的索引。
-     *
+     * @param path 恢复目录
+     * @param commitIndex 当前journal提交全局索引xuh
+     * @param properties 属性
+     * @throws IOException 发生IO异常时抛出
      */
     public void recover(Path path, long commitIndex, Properties properties) throws IOException {
         this.basePath = path;

@@ -39,6 +39,7 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, C
      * 写入操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
      * 日志在集群中复制到大多数节点，并在状态机执行后返回。
      * @param entry 操作日志数组
+     * @return 操作日志在状态机的执行结果
      */
     default CompletableFuture<ER> update(E entry) {
         return update(entry, RaftJournal.DEFAULT_PARTITION, 1, false,  ResponseConfig.REPLICATION);
@@ -51,7 +52,7 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, C
      * @param partition 分区
      * @param batchSize 批量大小
      * @param responseConfig 响应级别。See {@link ResponseConfig}
-     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
     default CompletableFuture<ER> update(E entry, int partition, int batchSize, ResponseConfig responseConfig) {
         return update(entry, partition, batchSize, false, responseConfig);
@@ -65,7 +66,7 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, C
      * @param batchSize 批量大小
      * @param includeHeader entry中是否包含Header
      * @param responseConfig 响应级别。See {@link ResponseConfig}
-     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
     default CompletableFuture<ER> update(E entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig) {
         return update(new UpdateRequest<>(entry, partition, batchSize), includeHeader, responseConfig);
@@ -78,7 +79,7 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, C
      * @param updateRequest See {@link UpdateRequest}
      * @param includeHeader entry中是否包含Header
      * @param responseConfig 响应级别。See {@link ResponseConfig}
-     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
     default CompletableFuture<ER> update(UpdateRequest<E> updateRequest, boolean includeHeader, ResponseConfig responseConfig){
         return update(Collections.singletonList(updateRequest), includeHeader, responseConfig)
@@ -96,7 +97,7 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, C
      * 此方法等效于：update(updateRequest, false, responseConfig);
      * @param updateRequest See {@link UpdateRequest}
      * @param responseConfig 响应级别。See {@link ResponseConfig}
-     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
     default CompletableFuture<ER> update(UpdateRequest<E> updateRequest, ResponseConfig responseConfig) {
         return update(updateRequest, false, responseConfig);
@@ -107,7 +108,7 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, C
      * 日志在集群中复制到大多数节点，并在状态机执行后返回。
      * 此方法等效于：update(updateRequest, false, ResponseConfig.REPLICATION);
      * @param updateRequest See {@link UpdateRequest}
-     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
     default CompletableFuture<ER> update(UpdateRequest<E> updateRequest) {
         return update(updateRequest, false, ResponseConfig.REPLICATION);
@@ -119,7 +120,7 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, C
      * 此方法等效于：update(updateRequests, false, responseConfig);
      * @param updateRequests See {@link UpdateRequest}
      * @param responseConfig 响应级别。See {@link ResponseConfig}
-     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
     default CompletableFuture<List<ER>> update(List<UpdateRequest<E>> updateRequests, ResponseConfig responseConfig) {
         return update(updateRequests, false, responseConfig);
@@ -130,7 +131,7 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, C
      * 日志在集群中复制到大多数节点，并在状态机执行后返回。
      * 此方法等效于：update(updateRequests, false, ResponseConfig.REPLICATION);
      * @param updateRequests See {@link UpdateRequest}
-     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
     default CompletableFuture<List<ER>> update(List<UpdateRequest<E>> updateRequests) {
         return update(updateRequests, false, ResponseConfig.REPLICATION);
@@ -142,7 +143,7 @@ public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, C
      * @param updateRequests See {@link UpdateRequest}
      * @param includeHeader entry中是否包含Header
      * @param responseConfig 响应级别。See {@link ResponseConfig}
-     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}时才返回执行结果，否则返回null.
+     * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
     CompletableFuture<List<ER>> update(List<UpdateRequest<E>> updateRequests, boolean includeHeader, ResponseConfig responseConfig);
 

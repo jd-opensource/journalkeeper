@@ -21,28 +21,32 @@ package io.journalkeeper.core.api;
 public interface ClusterAccessPoint<E, ER, Q, QR> {
     /**
      * 获取客户端实例
+     * @return RaftClient实例
      */
     RaftClient<E, ER, Q, QR> getClient();
 
     /**
-     * 获取Server实例，如果本地存在Server返回Server实例，否则返回null
-     */
-    /**
-     * 获取客户端实例
+     * 获取绑定到本地Server节点的RaftClient实例，所有请求不经过RPC，直接调用本地Server节点。
+     * 注意：如果本地Server节点不是LEADER，所有LEADER请求将会抛出{@link io.journalkeeper.exceptions.NotLeaderException}
+     * @return 本地RaftClient实例
      */
     RaftClient<E, ER, Q, QR> getLocalClient();
 
     /**
-     * 获取Server实例，如果本地存在Server返回Server实例，否则返回null
+     * 获取Server实例
+     * @return RaftServer实例，如果本地存在Server返回Server实例，否则返回null。
      */
     RaftServer getServer();
 
     /**
      * 获取管理端实例
+     * @return AdminClient实例。
      */
     AdminClient getAdminClient();
     /**
-     * 获取管理端实例
+     * 获取绑定到本地Server节点的AdminClient实例，所有请求不经过RPC，直接调用本地Server节点。
+     * 注意：如果本地Server节点不是LEADER，所有LEADER请求将会抛出{@link io.journalkeeper.exceptions.NotLeaderException}
+     * @return 本地AdminClient实例
      */
     AdminClient getLocalAdminClient();
 }

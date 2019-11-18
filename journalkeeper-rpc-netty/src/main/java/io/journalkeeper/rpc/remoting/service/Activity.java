@@ -41,7 +41,7 @@ public abstract class Activity {
 
     /**
      * 启动
-     * @throws Exception
+     * @throws Exception 异常
      */
     protected void start() throws Exception {
         validate();
@@ -75,7 +75,7 @@ public abstract class Activity {
     /**
      * 启动前
      *
-     * @throws Exception
+     * @throws Exception 异常
      */
     protected void beforeStart() throws Exception {
 
@@ -84,7 +84,7 @@ public abstract class Activity {
     /**
      * 验证
      *
-     * @throws Exception
+     * @throws Exception 异常
      */
     protected void validate() throws Exception {
 
@@ -93,7 +93,7 @@ public abstract class Activity {
     /**
      * 启动
      *
-     * @throws Exception
+     * @throws Exception 异常
      */
     protected void doStart() throws Exception {
 
@@ -102,7 +102,7 @@ public abstract class Activity {
     /**
      * 启动后
      *
-     * @throws Exception
+     * @throws Exception 异常
      */
     protected void afterStart() throws Exception {
 
@@ -195,7 +195,7 @@ public abstract class Activity {
 
     /**
      * 是否启动
-     * @return
+     * @return 是否启动
      */
     protected boolean isStarted() {
         if (started.get()) {

@@ -60,6 +60,8 @@ public abstract class DoubleCopy implements Closeable {
      * 构造函数
      *
      * @param file 本地存储文件
+     * @param maxDataSize 最大数据长度
+     * @throws IOException 发生IO异常时抛出
      */
     public DoubleCopy(File file, int maxDataSize) throws IOException {
 
@@ -105,7 +107,7 @@ public abstract class DoubleCopy implements Closeable {
 
     /**
      * 恢复
-     *
+     * @throws IOException 发生IO异常时抛出
      */
     public synchronized void recover() throws IOException {
         long length = raf.length();

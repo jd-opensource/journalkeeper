@@ -112,7 +112,7 @@ public class EventBus<E>  {
     /**
      * 开始
      */
-    public void start() throws Exception {
+    public void start() {
         if (started.compareAndSet(false, true)) {
             // 清理一下，防止里面有数据
             events.clear();
@@ -162,7 +162,8 @@ public class EventBus<E>  {
     /**
      * 增加监听器
      *
-     * @param listener
+     * @param listener 事件监听器
+     * @return 是否成功
      */
     public boolean addListener(final EventListener<E> listener) {
         if (listener != null) {
@@ -174,7 +175,8 @@ public class EventBus<E>  {
     /**
      * 删除监听器
      *
-     * @param listener
+     * @param listener 事件监听器
+     * @return 是否成功
      */
     public boolean removeListener(final EventListener<E> listener) {
         if (listener != null) {
@@ -192,6 +194,7 @@ public class EventBus<E>  {
      * 发布事件到队列中，持续等待队列有空间
      *
      * @param event 事件
+     * @return 是否成功
      */
     public boolean add(final E event) {
         return add(event, null);
@@ -203,6 +206,7 @@ public class EventBus<E>  {
      * @param event   事件
      * @param timeout 超时
      * @param unit    时间单位
+     * @return 是否成功
      */
     public boolean add(final E event, final long timeout, final TimeUnit unit) {
         return add(event, null, timeout, unit);
@@ -213,6 +217,7 @@ public class EventBus<E>  {
      *
      * @param event 事件
      * @param owner 所有者
+     * @return 是否成功
      */
     public boolean add(final E event, final EventListener<E> owner) {
         if (event == null) {
@@ -235,6 +240,7 @@ public class EventBus<E>  {
      * @param owner   所有者
      * @param timeout 超时
      * @param unit    时间单位
+     * @return 是否成功
      */
     public boolean add(final E event, final EventListener<E> owner, final long timeout, final TimeUnit unit) {
         if (event == null) {

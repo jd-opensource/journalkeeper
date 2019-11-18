@@ -20,11 +20,16 @@
     <parent>
         <artifactId>journalkeeper</artifactId>
         <groupId>io.journalkeeper</groupId>
-        <version>0.1-SNAPSHOT</version>
+        <version>0.1.0-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>journalkeeper-sql</artifactId>
+    <name>JournalKeeper - SQL</name>
+    <description>
+        A SQL database cluster powered by Journalkeeper which use H2 Database Engine as local backend storage.
+    </description>
+
     <packaging>pom</packaging>
     <modules>
         <module>journalkeeper-sql-core</module>

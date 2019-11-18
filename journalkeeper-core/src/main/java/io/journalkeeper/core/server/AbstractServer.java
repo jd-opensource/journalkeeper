@@ -521,6 +521,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     /**
      * 当状态变化后触发事件
+     * @param updateResult 状态机执行结果
      */
     protected void afterStateChanged(ER updateResult) {}
     /**

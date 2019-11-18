@@ -47,7 +47,12 @@ import java.util.concurrent.*;
  * @author LiYue
  * Date: 2019-03-25
  */
-public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR> {
+public class BootStrap<
+        E, // 操作日志类型
+        ER, // 状态机执行操作日志后返回结果类型
+        Q, // 查询接口请求参数的类型
+        QR // 查询接口返回查询结果类型
+        > implements ClusterAccessPoint<E, ER, Q, QR> {
     private static final Logger logger = LoggerFactory.getLogger(BootStrap.class);
     private final static int SCHEDULE_EXECUTOR_THREADS = 4;
 
@@ -82,6 +87,10 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
     /**
      * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。
      * @param servers 远程Server 列表
+     * @param entrySerializer 操作日志序列化器
+     * @param entryResultSerializer 操作日志执行结果序列化器
+     * @param querySerializer 查询参数序列化器
+     * @param queryResultSerializer 查询结果序列化器
      * @param properties 配置属性
      */
     public BootStrap(List<URI> servers,
@@ -96,6 +105,11 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
     /**
      * 初始化本地Server模式BootStrap，本地包含一个Server，请求本地Server通信。
      * @param roll 本地Server的角色。
+     * @param stateFactory 状态机工厂，用户创建状态机实例
+     * @param entrySerializer 操作日志序列化器
+     * @param entryResultSerializer 操作日志执行结果序列化器
+     * @param querySerializer 查询参数序列化器
+     * @param queryResultSerializer 查询结果序列化器
      * @param properties 配置属性
      */
     public BootStrap(RaftServer.Roll roll, StateFactory<E, ER, Q, QR> stateFactory,
@@ -110,6 +124,12 @@ public class BootStrap<E, ER, Q, QR> implements ClusterAccessPoint<E, ER, Q, QR>
     /**
      * 初始化本地Server模式BootStrap，本地包含一个Server，请求本地Server通信。
      * @param roll 本地Server的角色。
+     * @param stateFactory 状态机工厂，用户创建状态机实例
+     * @param entrySerializer 操作日志序列化器
+     * @param entryResultSerializer 操作日志执行结果序列化器
+     * @param querySerializer 查询参数序列化器
+     * @param queryResultSerializer 查询结果序列化器
+     * @param journalEntryParser 操作日志的解析器，一般不需要提供，使用默认解析器即可。
      * @param properties 配置属性
      */
     public BootStrap(RaftServer.Roll roll, StateFactory<E, ER, Q, QR> stateFactory,

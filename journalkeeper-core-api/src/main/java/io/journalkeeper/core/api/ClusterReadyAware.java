@@ -18,16 +18,22 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 
 /**
+ *
  * @author LiYue
  * Date: 2019-09-09
  */
 public interface ClusterReadyAware {
     /**
      * 等待Leader选举出来
-     * @param maxWaitMs 最大等待时间，当maxWaitMs小于等于0时，永远等待，直到集群有新的Leader可用。
+     * @param maxWaitMs 最大等待时间，当maxWaitMs小于等于0时，永远等待，直到集群有新的Leader可用时返回。
+     * @throws TimeoutException 如果超过最大等待时间仍然没有Leader选举出来，则抛出此异常。
      */
-    void waitForClusterReady(long maxWaitMs) throws InterruptedException, TimeoutException;
-    default void waitForClusterReady() throws InterruptedException {
+    void waitForClusterReady(long maxWaitMs) throws TimeoutException;
+
+    /**
+     * 等待Leader选举出来,直到集群有新的Leader可用时返回。
+     */
+    default void waitForClusterReady() {
         try {
             waitForClusterReady(0L);
         } catch (TimeoutException ignored){}
