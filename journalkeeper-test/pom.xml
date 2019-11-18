@@ -96,15 +96,4 @@
             <artifactId>slf4j-simple</artifactId>
         </dependency>
     </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <artifactId>maven-jar-plugin</artifactId>
-                <configuration>
-                    <classesDirectory>dummy</classesDirectory>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
 </project>
