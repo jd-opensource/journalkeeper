@@ -32,6 +32,12 @@
         <name>JournalKeeper Community</name>
         <url>http://www.journalkeeper.io</url>
     </organization>
+    <developers>
+        <developer>
+            <name>LiYue</name>
+            <email>liyue2008@gmail.com</email>
+        </developer>
+    </developers>
 
     <distributionManagement>
         <snapshotRepository>
@@ -248,6 +254,8 @@
                     <pushChanges>false</pushChanges>
                     <mavenExecutorId>forked-path</mavenExecutorId>
                     <arguments>-Dgpg.passphrase=${gpg.passphrase}</arguments>
+                    <tagNameFormat>@{project.version}</tagNameFormat>
+                    <autoVersionSubmodules>true</autoVersionSubmodules>
                 </configuration>
                 <dependencies>
                     <dependency>
