@@ -1,6 +1,7 @@
 # JournalKeeper
 
 ![License](https://img.shields.io/github/license/chubaostream/journalkeeper)
+![Release](https://img.shields.io/github/v/release/chubaostream/journalkeeper)
 ![Maven Central](https://img.shields.io/maven-central/v/io.journalkeeper/journalkeeper?color=blue)
 ![Last commit](https://img.shields.io/github/last-commit/chubaostream/journalkeeper)
 ![Travis](https://img.shields.io/travis/chubaostream/journalkeeper)
