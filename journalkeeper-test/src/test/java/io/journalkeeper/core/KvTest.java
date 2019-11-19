@@ -695,12 +695,16 @@ public class KvTest {
 
     @Test
     public void monitorTest() throws Exception {
+
         int nodes = 5;
         Path path = TestPathUtils.prepareBaseDir("monitorTest");
-        List<KvServer> servers = createServers(nodes, path);
         SimpleMonitorCollector simpleMonitorCollector = ServiceSupport.load(MonitorCollector.class, SimpleMonitorCollector.class.getCanonicalName());
         Assert.assertNotNull(simpleMonitorCollector);
+        for (MonitoredServer monitoredServer : simpleMonitorCollector.getMonitoredServers()) {
+            simpleMonitorCollector.removeServer(monitoredServer);
+        }
 
+        List<KvServer> servers = createServers(nodes, path);
         Collection<MonitoredServer> monitoredServers = simpleMonitorCollector.getMonitoredServers();
         Assert.assertEquals(nodes, monitoredServers.size());
         Collection<ServerMonitorInfo> monitorInfos = simpleMonitorCollector.collectAll();
