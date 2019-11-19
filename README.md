@@ -1,10 +1,10 @@
 # JournalKeeper
 
-![License](https://img.shields.io/github/license/chubaostream/journalkeeper)
-![Release](https://img.shields.io/github/v/release/chubaostream/journalkeeper)
-![Maven Central](https://img.shields.io/maven-central/v/io.journalkeeper/journalkeeper?color=blue)
-![Last commit](https://img.shields.io/github/last-commit/chubaostream/journalkeeper)
-![Travis](https://img.shields.io/travis/chubaostream/journalkeeper)
+[![License](https://img.shields.io/github/license/chubaostream/journalkeeper)](./LICENSE)
+[![Release](https://img.shields.io/github/v/release/chubaostream/journalkeeper)](https://github.com/chubaostream/journalkeeper/releases)
+[![Maven Central](https://img.shields.io/maven-central/v/io.journalkeeper/journalkeeper?color=blue)](https://search.maven.org/search?q=io.journalkeeper)
+[![Last commit](https://img.shields.io/github/last-commit/chubaostream/journalkeeper)](https://github.com/chubaostream/journalkeeper/commits)
+[![Travis](https://img.shields.io/travis/chubaostream/journalkeeper)](https://travis-ci.org/chubaostream/journalkeeper)
 
 JournalKeeper is a high performance, highly reliable, strong and consistent distributed streaming data storage cluster. The JournalKeeper log consistency algorithm is derived from the RAFT consistency algorithm and has been extended and improved to be more suitable for very large scale clusters with better performance. It clearly divides the system into three parts: consistency log, state machine and storage, so that each part can conform to the principle of single responsibility. JournalKeeper clearly defines system boundaries, using a more systematic and structured description method to define this algorithm, making it easy to implement and apply it to engineering practice.
 
