@@ -789,6 +789,20 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         journalTransactionManager.applyEntry(journalEntry);
     }
 
+    // for monitor only
+    int getRequestQueueSize() {
+        return pendingUpdateStateRequests.size();
+    }
+
+    boolean isWriteEnabled() {
+        return writeEnabled.get();
+    }
+
+    List<Leader.ReplicationDestination> getFollowers() {
+        return Collections.unmodifiableList(followers);
+    }
+
+
     private static class UpdateStateRequestResponse {
         private final UpdateClusterStateRequest request;
         private final ResponseFuture responseFuture;

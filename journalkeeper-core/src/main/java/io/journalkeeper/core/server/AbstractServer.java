@@ -1051,6 +1051,21 @@ public abstract class AbstractServer<E, ER, Q, QR>
         onPrintMetric();
     }
 
+
+    // for monitor only
+
+    URI getLeaderUri() {
+        return leaderUri;
+    }
+
+    VoterConfigurationStateMachine getVotersConfigStateMachine() {
+        return votersConfigStateMachine;
+    }
+
+    Journal getJournal() {
+        return journal;
+    }
+
     /**
      * Server当前集群配置的状态机，线程安全。包括二个状态：
      * 普通状态：常态。

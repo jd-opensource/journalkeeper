@@ -17,11 +17,14 @@ import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.VoterState;
-import io.journalkeeper.core.client.DefaultAdminClient;
+import io.journalkeeper.core.monitor.SimpleMonitorCollector;
 import io.journalkeeper.examples.kv.KvClient;
 import io.journalkeeper.examples.kv.KvServer;
+import io.journalkeeper.monitor.MonitorCollector;
+import io.journalkeeper.monitor.MonitoredServer;
+import io.journalkeeper.monitor.ServerMonitorInfo;
 import io.journalkeeper.utils.net.NetworkingUtils;
-import io.journalkeeper.utils.state.StateServer;
+import io.journalkeeper.utils.spi.ServiceSupport;
 import io.journalkeeper.utils.test.TestPathUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -31,7 +34,13 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
@@ -684,7 +693,26 @@ public class KvTest {
         TestPathUtils.destroyBaseDir(path.toFile());
     }
 
+    @Test
+    public void monitorTest() throws Exception {
+        int nodes = 5;
+        Path path = TestPathUtils.prepareBaseDir("monitorTest");
+        List<KvServer> servers = createServers(nodes, path);
+        SimpleMonitorCollector simpleMonitorCollector = ServiceSupport.load(MonitorCollector.class, SimpleMonitorCollector.class.getCanonicalName());
+        Assert.assertNotNull(simpleMonitorCollector);
 
+        Collection<MonitoredServer> monitoredServers = simpleMonitorCollector.getMonitoredServers();
+        Assert.assertEquals(nodes, monitoredServers.size());
+        Collection<ServerMonitorInfo> monitorInfos = simpleMonitorCollector.collectAll();
+        Assert.assertEquals(nodes, monitorInfos.size());
+
+        for (ServerMonitorInfo monitorInfo : monitorInfos) {
+            logger.info("ServerMonitorInfo: {}.", monitorInfo);
+        }
+
+        stopServers(servers);
+
+    }
 
     private void stopServers(List<KvServer> kvServers) {
         for(KvServer kvServer: kvServers) {
@@ -739,10 +767,4 @@ public class KvTest {
         }
         return kvServers;
     }
-
-
-
-
-
-
 }

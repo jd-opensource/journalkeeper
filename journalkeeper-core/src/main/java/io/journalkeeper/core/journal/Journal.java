@@ -34,6 +34,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -56,7 +57,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     private static final Logger logger = LoggerFactory.getLogger(Journal.class);
     private static final String PARTITION_PATH = "index";
     private static final String INDEX_PATH = "index/all";
-    private static final int INDEX_STORAGE_SIZE = Long.BYTES;
+    public static final int INDEX_STORAGE_SIZE = Long.BYTES;
     private static final String JOURNAL_PROPERTIES_PATTERN = "^persistence\\.journal\\.(.*)$";
     private static final String INDEX_PROPERTIES_PATTERN = "^persistence\\.index\\.(.*)$";
     private static final Properties DEFAULT_JOURNAL_PROPERTIES = new Properties();
@@ -1044,6 +1045,23 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         indexPersistence.close();
         journalPersistence.close();
 
+    }
+
+    // For monitor only
+
+    public long flushedIndex() {
+        return indexPersistence.flushed() / INDEX_STORAGE_SIZE;
+    }
+
+    public JournalPersistence getJournalPersistence() {
+        return journalPersistence;
+    }
+    public JournalPersistence getIndexPersistence() {
+        return indexPersistence;
+    }
+
+    public Map<Integer, JournalPersistence> getPartitionMap() {
+        return Collections.unmodifiableMap(partitionMap);
     }
 
 

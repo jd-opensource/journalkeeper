@@ -244,6 +244,10 @@ class Follower extends ServerStateMachine implements StateServer {
         this.readyForStartPreferredLeaderElection = readyForStartPreferredLeaderElection;
     }
 
+    int getReplicationQueueSize() {
+        return pendingAppendEntriesRequests.size();
+    }
+
     static class ReplicationRequestResponse {
         private final AsyncAppendEntriesRequest request;
         private final CompletableFuture<AsyncAppendEntriesResponse> responseFuture;

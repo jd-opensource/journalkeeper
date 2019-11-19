@@ -849,6 +849,38 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
 
     }
 
+    // for monitor only
+    VoterState getVoterState() {
+        return voterState.getState();
+    }
+    URI getLastVote() {
+        return votedFor;
+    }
+
+    long getElectionTimeoutMs() {
+        return electionTimeoutMs;
+    }
+
+    long getLastHeartbeat() {
+        return lastHeartbeat;
+    }
+
+    URI getPreferredLeader() {
+        return preferredLeader;
+    }
+
+    Leader getLeader() {
+        return leader;
+    }
+
+    Follower getFollower() {
+        return follower;
+    }
+
+    long getNextElectionTime() {
+        return nextElectionTime;
+    }
+
     private static class VoterStateMachine {
         private VoterState state = VoterState.FOLLOWER;
 
