@@ -46,9 +46,11 @@ import io.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.swing.*;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -200,13 +202,14 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 GetServerStateResponse r = invokeParentsRpc(
                         rpc -> rpc.getServerState(new GetServerStateRequest(lastIncludedIndex, offset))
                 ).get();
-                state.installSerializedData(r.getData(), r.getOffset());
+                state.installSerializedTrunk(r.getData(), r.getOffset(), r.isDone());
                 if(done = r.isDone()) {
 
-                    state.installFinish(r.getLastIncludedIndex() + 1, r.getLastIncludedTerm());
                     journal.compact(state.lastApplied());
-
-                    State<E, ER, Q, QR> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
+                    Path snapshotPath = snapshotsPath().resolve(String.valueOf(state.lastApplied()));
+                    state.dump(snapshotPath);
+                    State<E, ER, Q, QR> snapshot = stateFactory.createState();
+                    snapshot.recover(snapshotPath, journal, properties);
                     snapshots.put(snapshot.lastApplied(), snapshot);
                 }
 

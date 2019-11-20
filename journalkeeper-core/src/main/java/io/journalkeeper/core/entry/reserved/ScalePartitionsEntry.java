@@ -14,6 +14,7 @@
 package io.journalkeeper.core.entry.reserved;
 
 import java.io.Serializable;
+import java.util.Set;
 
 import static io.journalkeeper.core.entry.reserved.ReservedEntryType.TYPE_SCALE_PARTITIONS;
 
@@ -21,16 +22,17 @@ import static io.journalkeeper.core.entry.reserved.ReservedEntryType.TYPE_SCALE_
  * @author LiYue
  * Date: 2019-05-09
  */
+
 public class ScalePartitionsEntry extends ReservedEntry implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    private final int [] partitions;
-    public ScalePartitionsEntry(int[] partitions) {
+    private final Set<Integer> partitions;
+    public ScalePartitionsEntry(Set<Integer> partitions) {
         super(TYPE_SCALE_PARTITIONS);
         this.partitions = partitions;
     }
 
-    public int[] getPartitions() {
+    public Set<Integer> getPartitions() {
         return partitions;
     }
 }

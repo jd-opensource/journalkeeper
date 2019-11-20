@@ -21,10 +21,16 @@ import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
+import io.journalkeeper.core.api.StateResult;
 import io.journalkeeper.core.entry.reserved.*;
+import io.journalkeeper.core.exception.JournalException;
 import io.journalkeeper.core.exception.RecoverException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.metric.DummyMetric;
+import io.journalkeeper.core.state.ConfigState;
+import io.journalkeeper.core.state.JournalKeeperState;
+import io.journalkeeper.core.state.InternalState;
+import io.journalkeeper.core.state.StateQueryResult;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.exceptions.NoSuchSnapshotException;
@@ -71,7 +77,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -82,7 +87,6 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.SortedMap;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -93,19 +97,12 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.concurrent.locks.StampedLock;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
-import static io.journalkeeper.core.api.RaftJournal.RAFT_PARTITION;
+import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
 import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITIONS_START;
-import static io.journalkeeper.core.entry.reserved.ReservedEntryType.*;
 import static io.journalkeeper.core.server.ThreadNames.FLUSH_JOURNAL_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.PRINT_METRIC_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
@@ -122,11 +119,6 @@ import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
 public abstract class AbstractServer<E, ER, Q, QR>
         implements ServerRpc, RaftServer, ServerRpcProvider, MetricProvider {
     private static final Logger logger = LoggerFactory.getLogger(AbstractServer.class);
-    /**
-     * 当前集群配置
-     */
-    protected VoterConfigurationStateMachine votersConfigStateMachine;
-
 
     @Override
     public URI serverUri() {
@@ -136,7 +128,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     /**
      * 节点上的最新状态 和 被状态机执行的最大日志条目的索引值（从 0 开始递增）
      */
-    protected final State<E, ER, Q, QR> state;
+    protected final JournalKeeperState<E, ER, Q, QR> state;
 
     protected final ScheduledExecutorService scheduledExecutor;
 
@@ -157,7 +149,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     /**
      * 存放节点上所有状态快照的稀疏数组，数组的索引（key）就是快照对应的日志位置的索引
      */
-    protected final NavigableMap<Long, State<E, ER, Q, QR>> snapshots = new ConcurrentSkipListMap<>();
+    protected final NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> snapshots = new ConcurrentSkipListMap<>();
 
     /**
      * 当前LEADER节点地址
@@ -188,11 +180,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
      */
     protected MetadataPersistence metadataPersistence;
 
-    /**
-     * 状态读写锁
-     * 读取状态是加乐观锁或读锁，变更状态时加写锁。
-     */
-    protected final StampedLock stateLock = new StampedLock();
 
     protected void enable(){
         this.available = true;
@@ -226,23 +213,18 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     protected final EventBus eventBus;
 
-    protected final Lock scalePartitionLock = new ReentrantLock(true);
-    protected final Lock compactLock = new ReentrantLock(true);
-
     protected final Threads threads = ThreadsFactory.create();
 
     private final JMetricFactory metricFactory;
     private final Map<String, JMetric> metricMap;
     private final static JMetric DUMMY_METRIC = new DummyMetric();
 
-    private final static String METRIC_EXEC_STATE_MACHINE = "EXEC_STATE_MACHINE";
     private final static String METRIC_APPLY_ENTRIES = "APPLY_ENTRIES";
 
-    private final JMetric execStateMachineMetric;
     private final JMetric applyEntriesMetric;
 
-    private final Properties properties;
-    private final StateFactory<E, ER, Q, QR> stateFactory;
+    protected final Properties properties;
+    protected final StateFactory<E, ER, Q, QR> stateFactory;
     protected final JournalEntryParser journalEntryParser;
     protected final VoterConfigManager voterConfigManager;
 
@@ -257,7 +239,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         this.config = toConfig(properties);
         this.threads.createThread(buildStateMachineThread());
         this.threads.createThread(buildFlushJournalThread());
-        this.state = stateFactory.createState();
+        this.state = new JournalKeeperState<>(stateFactory);
         this.entrySerializer = entrySerializer;
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
@@ -277,7 +259,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
             this.metricFactory = null;
             this.metricMap = null;
         }
-        execStateMachineMetric = getMetric(METRIC_EXEC_STATE_MACHINE);
         applyEntriesMetric = getMetric(METRIC_APPLY_ENTRIES);
 
 
@@ -289,6 +270,8 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 persistenceFactory,
                 bufferPool, journalEntryParser);
 
+        state.addInterceptor(ReservedEntryType.TYPE_SCALE_PARTITIONS, this::scalePartitions);
+        state.addInterceptor(ReservedEntryType.TYPE_LEADER_ANNOUNCEMENT, this::announceLeader);
     }
 
     private AsyncLoopThread buildStateMachineThread() {
@@ -323,15 +306,15 @@ public abstract class AbstractServer<E, ER, Q, QR>
     }
 
     @Override
-    public synchronized void init(URI uri, List<URI> voters, Set<Integer> partitions) throws IOException {
+    public synchronized void init(URI uri, List<URI> voters, Set<Integer> partitions, URI preferredLeader) throws IOException {
         ReservedPartition.validatePartitions(partitions);
         this.uri = uri;
-        votersConfigStateMachine = new VoterConfigurationStateMachine(voters);
         createMissingDirectories();
+        state.init(statePath(), new InternalState(new ConfigState(voters), partitions, preferredLeader));
         metadataPersistence.recover(metadataPath());
         lastSavedServerMetadata = createServerMetadata();
         Set<Integer> partitionsWithReserved = new HashSet<>(partitions);
-        partitionsWithReserved.add(RAFT_PARTITION);
+        partitionsWithReserved.add(INTERNAL_PARTITION);
         lastSavedServerMetadata.setPartitions(partitionsWithReserved);
         metadataPersistence.save(lastSavedServerMetadata);
 
@@ -415,67 +398,20 @@ public abstract class AbstractServer<E, ER, Q, QR>
      *
      */
     private void applyEntries()  {
-        while ( this.serverState == ServerState.RUNNING && state.lastApplied() < journal.commitIndex()) {
+        while (this.serverState == ServerState.RUNNING && state.lastApplied() < journal.commitIndex()) {
             applyEntriesMetric.start();
 
             takeASnapShotIfNeed();
             JournalEntry journalEntry = journal.read(state.lastApplied());
-            Map<String, String> customizedEventData = new HashMap<>();
-            ER result = null;
-            if(journalEntry.getPartition() < RESERVED_PARTITIONS_START) {
-                E entry = entrySerializer.parse(journalEntry.getPayload().getBytes());
-                long stamp = stateLock.writeLock();
-                try {
-                    execStateMachineMetric.start();
-                    result = state.execute(entry, journalEntry.getPartition(),
-                            state.lastApplied(), journalEntry.getBatchSize(), customizedEventData);
-                    execStateMachineMetric.end(journalEntry.getLength());
-                } finally {
-                    stateLock.unlockWrite(stamp);
-                }
-            } else if (journalEntry.getPartition() == RAFT_PARTITION){
-                applyRaftPartition(journalEntry.getPayload().getBytes());
-            } else {
-                applyReservedPartition(journalEntry, state.lastApplied());
-            }
+            StateResult<ER> stateResult = state.applyEntry(journalEntry, entrySerializer);
+            afterStateChanged(stateResult.getUserResult());
 
-
-            state.next();
-            afterStateChanged(result);
-
-            Map<String, String> parameters = new HashMap<>(customizedEventData.size() + 1);
-            customizedEventData.forEach(parameters::put);
+            Map<String, String> parameters = new HashMap<>(stateResult.getEventData().size() + 1);
+            stateResult.getEventData().forEach(parameters::put);
             parameters.put("lastApplied", String.valueOf(state.lastApplied()));
             fireEvent(EventType.ON_STATE_CHANGE, parameters);
             applyEntriesMetric.end(journalEntry.getLength());
         }
-    }
-
-    protected void applyReservedPartition(JournalEntry journalEntry, long index) {};
-
-    protected void applyRaftPartition(byte [] reservedEntry) {
-        ReservedEntryType type = ReservedEntriesSerializeSupport.parseEntryType(reservedEntry);
-        logger.info("Apply reserved entry, type: {}", type);
-        switch (type) {
-            case TYPE_COMPACT_JOURNAL:
-                // TODO: 删除日志之前需要找到一个快照
-                compactJournalAsync(ReservedEntriesSerializeSupport.parse(reservedEntry, CompactJournalEntry.class).getCompactIndices());
-                break;
-            case TYPE_SCALE_PARTITIONS:
-                scalePartitions(ReservedEntriesSerializeSupport.parse(reservedEntry, ScalePartitionsEntry.class).getPartitions());
-                break;
-            case TYPE_LEADER_ANNOUNCEMENT:
-                LeaderAnnouncementEntry leaderAnnouncementEntry = ReservedEntriesSerializeSupport.parse(reservedEntry);
-                fireOnLeaderChangeEvent(leaderAnnouncementEntry.getTerm());
-                break;
-            case TYPE_UPDATE_VOTERS_S1:
-            case TYPE_UPDATE_VOTERS_S2:
-            case TYPE_SET_PREFERRED_LEADER:
-                break;
-            default:
-                logger.warn("Invalid reserved entry type: {}.", type);
-        }
-        flushState();
     }
 
     private void fireOnLeaderChangeEvent(int term) {
@@ -485,39 +421,43 @@ public abstract class AbstractServer<E, ER, Q, QR>
         fireEvent(EventType.ON_LEADER_CHANGE, eventData);
     }
 
-    private void scalePartitions(int[] partitions) {
-        try {
-            scalePartitionLock.lock();
-
-            journal.rePartition(
-                    Stream.concat(IntStream.of(RAFT_PARTITION).boxed(),
-                            Arrays.stream(partitions).boxed())
-                            .collect(Collectors.toSet()));
-            //TODO: request flush metadata
-        } finally {
-            scalePartitionLock.unlock();
-        }
-
+    private void announceLeader(ReservedEntryType type, byte [] internalEntry) {
+        LeaderAnnouncementEntry leaderAnnouncementEntry = ReservedEntriesSerializeSupport.parse(internalEntry);
+        fireOnLeaderChangeEvent(leaderAnnouncementEntry.getTerm());
     }
 
-    private void compactJournalAsync(Map<Integer, Long> compactIndices) {
-        asyncExecutor.submit(() -> {
-            try {
-                compactLock.lock();
-                journal.compactByPartition(compactIndices);
-            } catch (IOException e) {
-                logger.warn("Compact journal exception: ", e);
-            } finally {
-                compactLock.unlock();
+    private void scalePartitions(ReservedEntryType type, byte [] internalEntry) {
+        ScalePartitionsEntry scalePartitionsEntry = ReservedEntriesSerializeSupport.parse(internalEntry);
+        Set<Integer> partitions = scalePartitionsEntry.getPartitions();
+        try {
+            Set<Integer> currentPartitions = journal.getPartitions();
+            currentPartitions.removeIf(p -> p >= RESERVED_PARTITIONS_START);
+
+            for (int partition : partitions) {
+                if (!currentPartitions.contains(partition)) {
+                    journal.addPartition(partition);
+                }
             }
 
-        });
+            List<Integer> toBeRemoved = new ArrayList<>();
+            for (Integer partition: currentPartitions) {
+                if (!partitions.contains(partition)) {
+                    toBeRemoved.add(partition);
+                }
+            }
+            for (Integer partition : toBeRemoved) {
+                journal.removePartition(partition);
+            }
+            logger.info("Journal repartitioned, partitions: {}, path: {}.",
+                    journal.getPartitions(), journalPath().toAbsolutePath().toString());
+        } catch (IOException e) {
+            throw new JournalException(e);
+        }
     }
 
     protected void fireEvent(int eventType, Map<String, String> eventData) {
         eventBus.fireEvent(new Event(eventType, eventData));
     }
-
 
     /**
      * 当状态变化后触发事件
@@ -528,46 +468,29 @@ public abstract class AbstractServer<E, ER, Q, QR>
      * 如果需要，保存一次快照
      */
     private void takeASnapShotIfNeed() {
-        if(config.getSnapshotStep() > 0) {
-            asyncExecutor.submit(() -> {
-                try {
-                    synchronized (snapshots) {
-                        if (config.getSnapshotStep() > 0 && (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep())) {
-
-                            State<E, ER, Q, QR> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
-                            snapshots.put(snapshot.lastApplied(), snapshot);
-                        }
-                    }
-                } catch (IOException e) {
-                    logger.warn("Take snapshot exception: ", e);
-                }
-            });
-        }
+//        if(config.getSnapshotStep() > 0) {
+//            asyncExecutor.submit(() -> {
+//                try {
+//                    synchronized (snapshots) {
+//                        if (config.getSnapshotStep() > 0 && (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep())) {
+//
+//                            State<E, ER, Q, QR> snapshot = state.dump(snapshotsPath().resolve(String.valueOf(state.lastApplied())));
+//                            snapshots.put(snapshot.lastApplied(), snapshot);
+//                        }
+//                    }
+//                } catch (IOException e) {
+//                    logger.warn("Take snapshot exception: ", e);
+//                }
+//            });
+//        }
     }
 
     @Override
     public CompletableFuture<QueryStateResponse> queryServerState(QueryStateRequest request) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                QueryStateResponse response;
-                long stamp = stateLock.tryOptimisticRead();
-                response = new QueryStateResponse(
-                        resultSerializer.serialize(
-                            state.query(querySerializer.parse(request.getQuery())).get()),
-                        state.lastApplied());
-                if(!stateLock.validate(stamp)) {
-                    stamp = stateLock.readLock();
-                    try {
-                        response = new QueryStateResponse(
-                                resultSerializer.serialize(
-                                        state.query(querySerializer.parse(request.getQuery())).get()),
-                                state.lastApplied());
-
-                    } finally {
-                        stateLock.unlockRead(stamp);
-                    }
-                }
-                return response;
+                StateQueryResult<QR> queryResult = state.queryUserState(querySerializer.parse(request.getQuery()));
+                return new QueryStateResponse(resultSerializer.serialize(queryResult.getResult()), queryResult.getLastApplied());
             } catch (Throwable throwable) {
                 return new QueryStateResponse(throwable);
             }
@@ -593,62 +516,38 @@ public abstract class AbstractServer<E, ER, Q, QR>
                     throw new IndexOverflowException();
                 }
 
-
-                long stamp = stateLock.tryOptimisticRead();
                 if (request.getIndex() == state.lastApplied()) {
-                    try {
-                        return new QueryStateResponse(
-                                resultSerializer.serialize(
-                                        state.query(querySerializer.parse(request.getQuery())).get()),
-                                state.lastApplied());
-                    } catch (Throwable throwable) {
-                        return new QueryStateResponse(throwable);
-                    }
-                }
-                if(!stateLock.validate(stamp)) {
-                    stamp = stateLock.readLock();
-                    try {
-                        if (request.getIndex() == state.lastApplied()) {
-                            try {
-                                return new QueryStateResponse(
-                                        resultSerializer.serialize(
-                                                state.query(querySerializer.parse(request.getQuery())).get()),
-                                        state.lastApplied());
-                            } catch (Throwable throwable) {
-                                return new QueryStateResponse(throwable);
-                            }
-                        }
-                    } finally {
-                        stateLock.unlockRead(stamp);
+                    StateQueryResult<QR> queryResult = state.queryUserState(querySerializer.parse(request.getQuery()));
+                    if(queryResult.getLastApplied() == request.getIndex()) {
+                        return new QueryStateResponse(resultSerializer.serialize(queryResult.getResult()), queryResult.getLastApplied());
                     }
                 }
 
+                JournalKeeperState<E, ER, Q, QR> snapshot;
+                Map.Entry<Long, JournalKeeperState<E, ER, Q, QR>> nearestSnapshot = snapshots.floorEntry(request.getIndex());
+                if (null == nearestSnapshot) {
+                    throw new IndexUnderflowException();
+                }
 
-                State<E, ER, Q, QR> requestState = snapshots.get(request.getIndex());
-
-                if (null == requestState) {
-                    Map.Entry<Long, State<E, ER, Q, QR>> nearestSnapshot = snapshots.floorEntry(request.getIndex());
-                    if (null == nearestSnapshot) {
-                        throw new IndexUnderflowException();
-                    }
-
-                    List<JournalEntry> toBeExecutedEntries = new ArrayList<>(journal.batchRead(nearestSnapshot.getKey(), (int) (request.getIndex() - nearestSnapshot.getKey())));
+                if(request.getIndex() == nearestSnapshot.getKey()) {
+                    snapshot = nearestSnapshot.getValue();
+                } else {
+                    snapshot = new JournalKeeperState<>(stateFactory);
                     Path tempSnapshotPath = snapshotsPath().resolve(String.valueOf(request.getIndex()));
-                    if(Files.exists(tempSnapshotPath)) {
+                    if (Files.exists(tempSnapshotPath)) {
                         throw new ConcurrentModificationException(String.format("A snapshot of position %d is creating, please retry later.", request.getIndex()));
                     }
-                    requestState = state.takeASnapshot(tempSnapshotPath, journal);
-                    for (int i = 0; i < toBeExecutedEntries.size(); i++) {
-                        JournalEntry entry = toBeExecutedEntries.get(i);
-                        requestState.execute(entrySerializer.parse(entry.getPayload().getBytes()), entry.getPartition(),
-                                nearestSnapshot.getKey() + i, entry.getBatchSize(), new HashMap<>());
+                    nearestSnapshot.getValue().dump(tempSnapshotPath);
+                    snapshot.recover(tempSnapshotPath, journal, properties);
+
+                    while (snapshot.lastApplied() < request.getIndex()) {
+                        snapshot.applyEntry(journal.read(snapshot.lastApplied()), entrySerializer);
                     }
-                    if(requestState instanceof Flushable) {
-                        ((Flushable ) requestState).flush();
-                    }
-                    snapshots.putIfAbsent(request.getIndex(), requestState);
+                    snapshot.flush();
+
+                    snapshots.putIfAbsent(request.getIndex(), snapshot);
                 }
-                return new QueryStateResponse(resultSerializer.serialize(requestState.query(querySerializer.parse(request.getQuery())).get()));
+                return new QueryStateResponse(resultSerializer.serialize(snapshot.queryUserState(querySerializer.parse(request.getQuery())).getResult()));
             } catch (Throwable throwable) {
                 return new QueryStateResponse(throwable);
             }
@@ -692,7 +591,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     public CompletableFuture<GetServersResponse> getServers() {
         return CompletableFuture.supplyAsync(() ->
                 new GetServersResponse(
-                        new ClusterConfiguration(leaderUri, votersConfigStateMachine.voters(), observers)),
+                        new ClusterConfiguration(leaderUri, state.voters(), observers)),
                 asyncExecutor);
     }
 
@@ -705,11 +604,11 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 if (snapshotIndex < 0) {
                     snapshotIndex = snapshots.lastKey();
                 }
-                State<E, ER, Q, QR> state = snapshots.get(snapshotIndex);
+                JournalKeeperState<E, ER, Q, QR> state = snapshots.get(snapshotIndex);
                 if (null != state) {
                     byte [] data;
                     try {
-                        data = state.readSerializedData(request.getOffset(),config.getGetStateBatchSize());
+                        data = state.readSerializedTrunk(request.getOffset(),config.getGetStateBatchSize());
                     } catch (IOException e) {
                         throw new CompletionException(e);
                     }
@@ -863,21 +762,21 @@ public abstract class AbstractServer<E, ER, Q, QR>
      */
     private void recoverVoterConfig() {
         boolean isRecoveredFromJournal = false;
-        for(long index = journal.maxIndex(RAFT_PARTITION) - 1;
-            index >= journal.minIndex(RAFT_PARTITION);
+        for(long index = journal.maxIndex(INTERNAL_PARTITION) - 1;
+            index >= journal.minIndex(INTERNAL_PARTITION);
             index --) {
-            JournalEntry entry = journal.readByPartition(RAFT_PARTITION, index);
+            JournalEntry entry = journal.readByPartition(INTERNAL_PARTITION, index);
             ReservedEntryType type = ReservedEntriesSerializeSupport.parseEntryType(entry.getPayload().getBytes());
 
             if(type == ReservedEntryType.TYPE_UPDATE_VOTERS_S1) {
                 UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(entry.getPayload().getBytes());
-                votersConfigStateMachine = new VoterConfigurationStateMachine(
-                        updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew());
+                state.setConfigState(new ConfigState(
+                        updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew()));
                 isRecoveredFromJournal = true;
                 break;
             } else if(type == ReservedEntryType.TYPE_UPDATE_VOTERS_S2) {
                 UpdateVotersS2Entry updateVotersS2Entry = ReservedEntriesSerializeSupport.parse(entry.getPayload().getBytes());
-                votersConfigStateMachine = new VoterConfigurationStateMachine(updateVotersS2Entry.getConfigNew());
+                state.setConfigState(new ConfigState(updateVotersS2Entry.getConfigNew()));
                 isRecoveredFromJournal = true;
                 break;
             }
@@ -888,7 +787,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         } else {
             logger.info("No voters config entry found in journal, Using config in the metadata.");
         }
-        logger.info(votersConfigStateMachine.toString());
+        logger.info(state.getInternalState().getConfigState().toString());
     }
 
 
@@ -909,18 +808,12 @@ public abstract class AbstractServer<E, ER, Q, QR>
                         entry -> entry.getFileName().toString().matches("\\d+")
                     ).spliterator(), false)
                 .map(path -> {
-                    State<E, ER, Q, QR> snapshot = stateFactory.createState();
+                    JournalKeeperState<E, ER, Q, QR> snapshot = new JournalKeeperState<>(stateFactory);
                     snapshot.recover(path, journal, properties);
                     if(Long.parseLong(path.getFileName().toString()) == snapshot.lastApplied()) {
                         return snapshot;
                     } else {
-                        if(snapshot instanceof Closeable) {
-                            try {
-                                ((Closeable) snapshot).close();
-                            } catch (IOException e) {
-                                logger.warn("Exception: ", e);
-                            }
-                        }
+                        snapshot.close();
                         return null;
                     }
                 }).filter(Objects::nonNull)
@@ -928,27 +821,27 @@ public abstract class AbstractServer<E, ER, Q, QR>
     }
 
     protected void onMetadataRecovered(ServerMetadata metadata) {
-        if(lastSavedServerMetadata.isJointConsensus()) {
-            votersConfigStateMachine = new VoterConfigurationStateMachine(
-                    lastSavedServerMetadata.getOldVoters(),
-                    lastSavedServerMetadata.getVoters()
-            );
-        } else {
-            votersConfigStateMachine =
-                    new VoterConfigurationStateMachine(lastSavedServerMetadata.getVoters());
-        }
+//        if(lastSavedServerMetadata.isJointConsensus()) {
+//            votersConfigStateMachine = new ConfigState(
+//                    lastSavedServerMetadata.getOldVoters(),
+//                    lastSavedServerMetadata.getVoters()
+//            );
+//        } else {
+//            votersConfigStateMachine =
+//                    new ConfigState(lastSavedServerMetadata.getVoters());
+//        }
         this.uri = metadata.getThisServer();
 
-        if(metadata.getPartitions() == null ) {
-            metadata.setPartitions(new HashSet<>());
-        }
+//        if(metadata.getPartitions() == null ) {
+//            metadata.setPartitions(new HashSet<>());
+//        }
 
-        if(metadata.getPartitions().isEmpty()) {
-            metadata.getPartitions().addAll(
-                    Stream.of(RaftJournal.DEFAULT_PARTITION, RAFT_PARTITION)
-                            .collect(Collectors.toSet())
-            );
-        }
+//        if(metadata.getPartitions().isEmpty()) {
+//            metadata.getPartitions().addAll(
+//                    Stream.of(RaftJournal.DEFAULT_PARTITION, INTERNAL_PARTITION)
+//                            .collect(Collectors.toSet())
+//            );
+//        }
 
     }
 
@@ -958,11 +851,11 @@ public abstract class AbstractServer<E, ER, Q, QR>
         ServerMetadata serverMetadata = new ServerMetadata();
         serverMetadata.setInitialized(true);
         serverMetadata.setThisServer(uri);
-        VoterConfigurationStateMachine config = votersConfigStateMachine.clone();
-        serverMetadata.setPartitions(journal.getPartitions());
-        serverMetadata.setVoters(config.configNew);
-        serverMetadata.setOldVoters(config.configOld);
-        serverMetadata.setJointConsensus(config.jointConsensus);
+//        ConfigState config = votersConfigStateMachine.clone();
+//        serverMetadata.setPartitions(journal.getPartitions());
+//        serverMetadata.setVoters(config.getConfigNew());
+//        serverMetadata.setOldVoters(config.getConfigOld());
+//        serverMetadata.setJointConsensus(config.isJointConsensus());
         serverMetadata.setCommitIndex(journal.commitIndex());
         return serverMetadata;
     }
@@ -1004,8 +897,8 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     public void compact(long indexExclusive) throws IOException {
         if(config.getSnapshotStep() > 0) {
-            Map.Entry<Long, State<E, ER, Q, QR>> nearestEntry = snapshots.floorEntry(indexExclusive);
-            SortedMap<Long, State<E, ER, Q, QR>> toBeRemoved = snapshots.headMap(nearestEntry.getKey());
+            Map.Entry<Long, JournalKeeperState<E, ER, Q, QR>> nearestEntry = snapshots.floorEntry(indexExclusive);
+            SortedMap<Long, JournalKeeperState<E, ER, Q, QR>> toBeRemoved = snapshots.headMap(nearestEntry.getKey());
             while (!toBeRemoved.isEmpty()) {
                 toBeRemoved.remove(toBeRemoved.firstKey()).clear();
             }
@@ -1015,7 +908,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         }
     }
 
-    public State<E, ER, Q, QR> getState() {
+    public JournalKeeperState<E, ER, Q, QR> getState() {
         return state;
     }
 
@@ -1058,187 +951,8 @@ public abstract class AbstractServer<E, ER, Q, QR>
         return leaderUri;
     }
 
-    VoterConfigurationStateMachine getVotersConfigStateMachine() {
-        return votersConfigStateMachine;
-    }
-
     Journal getJournal() {
         return journal;
-    }
-
-    /**
-     * Server当前集群配置的状态机，线程安全。包括二个状态：
-     * 普通状态：常态。
-     * 共同一致状态：变更进群配置过程中的中间状态。
-     */
-    protected static class VoterConfigurationStateMachine {
-        private final List<URI> configNew = new ArrayList<>(3);
-        private final List<URI> configOld = new ArrayList<>(3);
-        private boolean jointConsensus;
-        private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
-
-        // all voters include configNew and configOld
-        private List<URI> allVoters = new ArrayList<>(3);
-
-        private VoterConfigurationStateMachine(List<URI> configOld, List<URI> configNew) {
-            jointConsensus = true;
-            this.configOld.addAll(configOld);
-            this.configNew.addAll(configNew);
-
-            buildAllVoters();
-        }
-
-        private void buildAllVoters() {
-            allVoters = Stream.concat(configNew.stream(), configOld.stream())
-                    .distinct()
-                    .collect(Collectors.toList());
-        }
-
-        private VoterConfigurationStateMachine(List<URI> configNew) {
-            jointConsensus = false;
-            this.configNew.addAll(configNew);
-            buildAllVoters();
-        }
-
-        protected List<URI> getConfigNew() {
-            rwLock.readLock().lock();
-            try {
-                return new ArrayList<>(configNew);
-            } finally {
-                rwLock.readLock().unlock();
-            }
-        }
-
-        protected List<URI> getConfigOld() {
-            rwLock.readLock().lock();
-            try {
-                return new ArrayList<>(configOld);
-            } finally {
-                rwLock.readLock().unlock();
-            }
-        }
-
-        protected boolean isJointConsensus() {
-            rwLock.readLock().lock();
-            try {
-                return jointConsensus;
-            } finally {
-                rwLock.readLock().unlock();
-            }
-        }
-
-        protected List<URI> voters() {
-            rwLock.readLock().lock();
-            try {
-                return allVoters;
-            } finally {
-                rwLock.readLock().unlock();
-            }
-        }
-
-        protected void toNewConfig(Callable appendEntryCallable) throws Exception {
-            rwLock.writeLock().lock();
-            try {
-                if(!jointConsensus) {
-                    throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == true, actual: false.");
-                }
-                appendEntryCallable.call();
-                jointConsensus = false;
-                configOld.clear();
-                buildAllVoters();
-
-            }finally {
-                rwLock.writeLock().unlock();
-            }
-        }
-
-        protected void toJointConsensus(List<URI> configNew, Callable appendEntryCallable) throws Exception {
-            rwLock.writeLock().lock();
-            try {
-                if(jointConsensus) {
-                    throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == false, actual: true.");
-                }
-
-                appendEntryCallable.call();
-                jointConsensus = true;
-                this.configOld.addAll(this.configNew);
-                this.configNew.clear();
-                this.configNew.addAll(configNew);
-                buildAllVoters();
-
-            }finally {
-                rwLock.writeLock().unlock();
-            }
-        }
-
-        @Override
-        protected VoterConfigurationStateMachine clone() {
-            rwLock.readLock().lock();
-            try {
-                if(jointConsensus) {
-                    return new VoterConfigurationStateMachine(new ArrayList<>(configOld), new ArrayList<>(configNew));
-                } else {
-                    return new VoterConfigurationStateMachine(new ArrayList<>(configNew));
-                }
-
-            } finally {
-                rwLock.readLock().unlock();
-            }
-        }
-
-        @Override
-        public String toString() {
-            rwLock.readLock().lock();
-            try {
-                String str = "Voters config: jointConsensus: " +
-                        jointConsensus + ", ";
-                if(jointConsensus) {
-                    str += "old config: [" +
-                            configOld.stream().map(URI::toString).collect(Collectors.joining(", ")) + "], ";
-                    str += "new config: [" +
-                            configNew.stream().map(URI::toString).collect(Collectors.joining(", ")) + "].";
-                } else {
-                    str += "config: [" +
-                            configNew.stream().map(URI::toString).collect(Collectors.joining(", ")) + "].";
-                }
-                return str;
-            } finally {
-                rwLock.readLock().unlock();
-            }
-        }
-
-        public void rollbackToOldConfig() {
-            rwLock.writeLock().lock();
-            try {
-                if(!jointConsensus) {
-                    throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == true, actual: false.");
-                }
-                jointConsensus = false;
-                configNew.clear();
-                configNew.addAll(configOld);
-                configOld.clear();
-                buildAllVoters();
-
-            }finally {
-                rwLock.writeLock().unlock();
-            }
-        }
-
-        public void rollbackToJointConsensus(List<URI> configOld) {
-            rwLock.writeLock().lock();
-            try {
-                if(jointConsensus) {
-                    throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == false, actual: true.");
-                }
-
-                jointConsensus = true;
-                this.configOld.addAll(configOld);
-                buildAllVoters();
-
-            }finally {
-                rwLock.writeLock().unlock();
-            }
-        }
     }
 
 

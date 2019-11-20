@@ -19,7 +19,7 @@ import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
-import io.journalkeeper.core.api.UpdateRequest;
+import io.journalkeeper.core.api.StateResult;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.entry.DefaultJournalEntryParser;
 import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
@@ -57,7 +57,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -96,7 +95,7 @@ public class VoterTest {
             voter.updateClusterState(new UpdateClusterStateRequest(
                     ReservedEntriesSerializeSupport
                             .serialize(new ScalePartitionsEntry(partitions)),
-                    RaftJournal.RAFT_PARTITION, 1)).get();
+                    RaftJournal.INTERNAL_PARTITION, 1)).get();
 
 
             byte[] entry = ByteUtils.createFixedSizeBytes(entrySize);
@@ -145,7 +144,7 @@ public class VoterTest {
             voter.updateClusterState(new UpdateClusterStateRequest(
                     ReservedEntriesSerializeSupport
                             .serialize(new ScalePartitionsEntry(partitions)),
-                    RaftJournal.RAFT_PARTITION, 1)).get();
+                    RaftJournal.INTERNAL_PARTITION, 1)).get();
 
 
             byte[] entry = ByteUtils.createFixedSizeBytes(entrySize);
@@ -284,36 +283,20 @@ public class VoterTest {
 
 
     static class EchoState implements State<byte[], byte[], byte[], byte[]> {
-        private AtomicLong lastApplied = new AtomicLong(0L);
         private AtomicInteger term = new AtomicInteger(0);
         @Override
-        public byte [] execute(byte[] entry, int partition, long index, int batchSize, Map<String, String> eventParams) {
-            return entry;
+        public StateResult<byte []> execute(byte[] entry, int partition, long index, int batchSize) {
+            return new StateResult<>(entry);
         }
 
-        @Override
-        public long lastApplied() {
-            return lastApplied.get();
-        }
-
-        @Override
-        public int lastIncludedTerm() {
-            return term.get();
-        }
 
         @Override
         public void recover(Path path, RaftJournal raftJournal, Properties properties) {
-            lastApplied = new AtomicLong(0L);
             term = new AtomicInteger(0);
         }
 
         @Override
-        public State<byte[], byte[], byte[], byte[]> takeASnapshot(Path path, RaftJournal raftJournal) throws IOException {
-            return null;
-        }
-
-        @Override
-        public byte[] readSerializedData(long offset, int size) throws IOException {
+        public byte[] readSerializedTrunk(long offset, int size) throws IOException {
             return new byte[0];
         }
 
@@ -323,33 +306,18 @@ public class VoterTest {
         }
 
         @Override
-        public void installSerializedData(byte[] data, long offset) throws IOException {
+        public void installSerializedTrunk(byte[] data, long offset, boolean isDone) throws IOException {
 
         }
 
-        @Override
-        public void installFinish(long lastApplied, int lastIncludedTerm) {
-
-        }
 
         @Override
         public void clear() {
 
         }
-
         @Override
-        public void next() {
-            lastApplied.incrementAndGet();
-        }
-
-        @Override
-        public void skip() {
-
-        }
-
-        @Override
-        public CompletableFuture<byte[]> query(byte[] query) {
-            return CompletableFuture.supplyAsync(() ->new byte[0]);
+        public byte[] query(byte[] query) {
+            return new byte[0];
         }
     }
 

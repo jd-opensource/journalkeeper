@@ -44,7 +44,6 @@ public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, F
     private static final Logger logger = LoggerFactory.getLogger(LocalState.class);
     public final static short CRLF = ByteBuffer.wrap(new byte[] {0x0D, 0x0A}).getShort();
 
-    protected StateMetadata stateMetadata = null;
     protected Path path;
     protected Properties properties;
     protected final StateFactory<E, ER, Q, QR> factory;
@@ -58,23 +57,10 @@ public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, F
     }
 
     @Override
-    public long lastApplied() {
-        return null == stateMetadata ? 0 : stateMetadata.getLastApplied();
-    }
-
-    @Override
-    public int lastIncludedTerm() {
-        return null == stateMetadata ? 0 : stateMetadata.getLastIncludedTerm();
-    }
-
-    @Override
     public final void recover(Path path, RaftJournal raftJournal, Properties properties) {
         this.path = path;
         this.properties = properties;
         try {
-            stateMetadata = new StateMetadata(path.resolve(metadataPath()).toFile());
-            stateMetadata.recover();
-
             Files.createDirectories(localStatePath());
             try {
                 stateFilesLock.writeLock().lock();
@@ -113,8 +99,8 @@ public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, F
         ).stream().map(File::toPath).collect(Collectors.toList());
     }
 
-    @Override
-    public State<E, ER, Q, QR> takeASnapshot(Path destPath, RaftJournal raftJournal) throws IOException {
+    // TODO: 删除我
+    public void dump(Path destPath) throws IOException {
         try {
             stateFilesLock.writeLock().lock();
             flushState(localStatePath());
@@ -124,7 +110,6 @@ public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, F
         try {
             stateFilesLock.readLock().lock();
 
-            State<E, ER, Q, QR> state = factory.createState();
             List<Path> srcFiles = listAllFiles();
 
             List<Path> destFiles = srcFiles.stream()
@@ -138,9 +123,6 @@ public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, F
                 Files.createDirectories(destFile.getParent());
                 Files.copy(srcFile, destFile);
             }
-
-            state.recover(destPath, raftJournal, properties);
-            return state;
         } finally {
             stateFilesLock.readLock().unlock();
         }
@@ -159,7 +141,7 @@ public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, F
      */
 
     @Override
-    public byte[] readSerializedData(long startOffset, int size) throws IOException {
+    public byte[] readSerializedTrunk(long startOffset, int size) throws IOException {
         long headerSize = serializedHeaderSize();
 
         if(startOffset < headerSize) {
@@ -248,7 +230,7 @@ public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, F
 
     private NavigableMap<Long, Path> installingFiles = new TreeMap<>();
     @Override
-    public void installSerializedData(byte[] data, long offset) throws IOException {
+    public void installSerializedTrunk(byte[] data, long offset, boolean isLastTrunk) throws IOException {
         if(offset == 0L) {
             installSerializedHeader(data);
 
@@ -327,23 +309,7 @@ public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, F
     }
 
     @Override
-    public void installFinish(long lastApplied, int lastIncludedTerm) {
-        try {
-            try (StateMetadata stateMetadata = new StateMetadata(path.resolve(metadataPath()).toFile())) {
-                stateMetadata.setLastApplied(lastApplied);
-                stateMetadata.setLastIncludedTerm(lastIncludedTerm);
-                stateMetadata.flush();
-            }
-
-        } catch (IOException e) {
-            logger.warn("Install state exception: ", e);
-        }
-    }
-
-    @Override
     public final void flush() throws IOException {
-        stateMetadata.flush();
-
         try {
             stateFilesLock.writeLock().lock();
             flushState(localStatePath());
@@ -355,21 +321,10 @@ public abstract class LocalState<E, ER, Q, QR> implements State<E, ER, Q, QR>, F
     protected void flushState(Path statePath) throws IOException {};
     @Override
     public void clear() {
-        stateMetadata.setLastApplied(0L);
-        stateMetadata.setLastIncludedTerm(0);
         try {
             FileUtils.cleanDirectory(path.toFile());
         } catch (IOException e) {
             throw new StateInstallException(e);
         }
     }
-
-    @Override
-    public void next() {
-        stateMetadata.setLastApplied(stateMetadata.getLastApplied() + 1);
-    }
-
-    @Override
-    public void skip() {}
-
 }

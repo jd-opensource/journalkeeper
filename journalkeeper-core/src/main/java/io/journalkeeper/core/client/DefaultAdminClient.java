@@ -32,7 +32,6 @@ import io.journalkeeper.rpc.client.ConvertRollRequest;
 import io.journalkeeper.rpc.client.GetServerStatusResponse;
 import io.journalkeeper.rpc.client.GetServersResponse;
 import io.journalkeeper.rpc.client.UpdateVotersRequest;
-import io.journalkeeper.utils.threads.NamedThreadFactory;
 
 import java.net.URI;
 import java.util.Collections;
@@ -40,8 +39,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 
 /**
  * @author LiYue
@@ -93,7 +90,7 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
 
     private CompletableFuture<Void> update(byte [] entry) {
         return update(
-                Collections.singletonList(new SerializedUpdateRequest(entry, RaftJournal.RAFT_PARTITION, 1)),
+                Collections.singletonList(new SerializedUpdateRequest(entry, RaftJournal.INTERNAL_PARTITION, 1)),
                 ResponseConfig.REPLICATION,
                 VoidSerializer.getInstance()
         ).thenApply(list -> list.get(0));

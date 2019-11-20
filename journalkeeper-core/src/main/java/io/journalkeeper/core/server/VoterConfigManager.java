@@ -20,6 +20,7 @@ import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.entry.reserved.*;
 import io.journalkeeper.core.journal.Journal;
+import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
@@ -34,14 +35,14 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
-import static io.journalkeeper.core.api.RaftJournal.RAFT_PARTITION;
+import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
 import static io.journalkeeper.core.entry.reserved.ReservedEntryType.*;
 
 /**
  * @author LiYue
  * Date: 2019-09-10
  */
-class VoterConfigManager {
+public class VoterConfigManager {
     private static final Logger logger = LoggerFactory.getLogger(VoterConfigManager.class);
 
     private final JournalEntryParser journalEntryParser;
@@ -51,7 +52,7 @@ class VoterConfigManager {
     }
 
     boolean maybeUpdateLeaderConfig(SerializedUpdateRequest request,
-                                    AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine,
+                                    ConfigState votersConfigStateMachine,
                                     Journal journal,
                                     Callable appendEntryCallable,
                                     URI serverUri,
@@ -59,7 +60,7 @@ class VoterConfigManager {
                                     int replicationParallelism,
                                     Map<URI, JMetric> appendEntriesRpcMetricMap) throws Exception {
         // 如果是配置变更请求，立刻更新当前配置
-        if(request.getPartition() == RAFT_PARTITION){
+        if(request.getPartition() == INTERNAL_PARTITION){
             ReservedEntryType entryType = ReservedEntriesSerializeSupport.parseEntryType(request.getEntry());
             if (entryType == TYPE_UPDATE_VOTERS_S1) {
                 UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(request.getEntry());
@@ -111,14 +112,14 @@ class VoterConfigManager {
 
     // 如果要删除部分未提交的日志，并且待删除的这部分存在配置变更日志，则需要回滚配置
     void maybeRollbackConfig(long startIndex, Journal journal,
-                             AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine) {
+                             ConfigState votersConfigStateMachine) {
         if(startIndex >= journal.maxIndex()) {
             return;
         }
-        long index = journal.maxIndex(RAFT_PARTITION);
+        long index = journal.maxIndex(INTERNAL_PARTITION);
         long startOffset = journal.readOffset(startIndex);
-        while (--index >= journal.minIndex(RAFT_PARTITION)) {
-            JournalEntry entry = journal.readByPartition(RAFT_PARTITION, index);
+        while (--index >= journal.minIndex(INTERNAL_PARTITION)) {
+            JournalEntry entry = journal.readByPartition(INTERNAL_PARTITION, index);
             if (entry.getOffset() < startOffset) {
                 break;
             }
@@ -132,10 +133,10 @@ class VoterConfigManager {
         }
     }
     // 非Leader（Follower和Observer）复制日志到本地后，如果日志中包含配置变更，则立即变更配置
-    void maybeUpdateNonLeaderConfig(List<byte []> entries, AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine) throws Exception {
+    void maybeUpdateNonLeaderConfig(List<byte []> entries, ConfigState votersConfigStateMachine) throws Exception {
         for (byte[] rawEntry : entries) {
             JournalEntry entryHeader = journalEntryParser.parseHeader(rawEntry);
-            if(entryHeader.getPartition() == RAFT_PARTITION) {
+            if(entryHeader.getPartition() == INTERNAL_PARTITION) {
                 int headerLength = journalEntryParser.headerLength();
                 ReservedEntryType entryType = ReservedEntriesSerializeSupport.parseEntryType(rawEntry, headerLength, rawEntry.length - headerLength);
                 if (entryType == TYPE_UPDATE_VOTERS_S1) {
@@ -151,7 +152,7 @@ class VoterConfigManager {
     }
 
     void applyReservedEntry(ReservedEntryType type, byte [] reservedEntry, VoterState voterState,
-                                      AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine,
+                                      ConfigState votersConfigStateMachine,
                                       ClientServerRpc clientServerRpc, URI serverUri, StateServer server) {
         switch (type) {
             case TYPE_UPDATE_VOTERS_S1:
@@ -162,7 +163,7 @@ class VoterConfigManager {
                             clientServerRpc.updateClusterState(new UpdateClusterStateRequest(
                                     Collections.singletonList(
                                             new SerializedUpdateRequest(
-                                                    s2Entry, RAFT_PARTITION, 1
+                                                    s2Entry, INTERNAL_PARTITION, 1
                                             )
                                     )
                                     , false, ResponseConfig.ONE_WAY));

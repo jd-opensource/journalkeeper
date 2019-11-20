@@ -64,7 +64,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-import static io.journalkeeper.core.api.RaftJournal.RAFT_PARTITION;
+import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
 
 
 /**
@@ -130,37 +130,17 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         this.config = toConfig(properties);
 
+        state.addInterceptor(ReservedEntryType.TYPE_UPDATE_VOTERS_S1, this::applyUpdateVotersInternalEntry);
+        state.addInterceptor(ReservedEntryType.TYPE_UPDATE_VOTERS_S2, this::applyUpdateVotersInternalEntry);
 
         electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
     }
 
-    @Override
-    protected void applyRaftPartition(byte [] reservedEntry) {
-        super.applyRaftPartition(reservedEntry);
-        ReservedEntryType type = ReservedEntriesSerializeSupport.parseEntryType(reservedEntry);
-        switch (type) {
-            case TYPE_UPDATE_VOTERS_S1:
-            case TYPE_UPDATE_VOTERS_S2:
-                voterConfigManager.applyReservedEntry(type, reservedEntry, voterState(), votersConfigStateMachine,
-                        this, serverUri(), this);
-                break;
-            case TYPE_SET_PREFERRED_LEADER:
-                SetPreferredLeaderEntry setPreferredLeaderEntry = ReservedEntriesSerializeSupport.parse(reservedEntry);
-                URI old = preferredLeader;
-                preferredLeader = setPreferredLeaderEntry.getPreferredLeader();
-                logger.info("Set preferred leader from {} to {}, {}.", old, preferredLeader, voterInfo());
-                break;
-            default:
-        }
 
+    private void applyUpdateVotersInternalEntry(ReservedEntryType type, byte [] internalEntry) {
+        voterConfigManager.applyReservedEntry(type, internalEntry, voterState(), votersConfigStateMachine,
+                this, serverUri(), this);
 
-    }
-
-    @Override
-    protected void applyReservedPartition(JournalEntry journalEntry, long index) {
-        if(voterState() == VoterState.LEADER && leader != null) {
-            leader.applyReservedPartition(journalEntry);
-        }
     }
 
     @Override
@@ -385,7 +365,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
             byte [] payload = ReservedEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(term));
             JournalEntry journalEntry = journalEntryParser.createJournalEntry(payload);
             journalEntry.setTerm(term);
-            journalEntry.setPartition(RAFT_PARTITION);
+            journalEntry.setPartition(INTERNAL_PARTITION);
             journal.append(journalEntry);
         }
 
@@ -695,7 +675,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         return CompletableFuture.supplyAsync(
                 () -> new UpdateVotersS1Entry(request.getOldConfig(), request.getNewConfig()), asyncExecutor)
                 .thenApply(ReservedEntriesSerializeSupport::serialize)
-                .thenApply(entry -> new UpdateClusterStateRequest(new SerializedUpdateRequest(entry, RAFT_PARTITION, 1)))
+                .thenApply(entry -> new UpdateClusterStateRequest(new SerializedUpdateRequest(entry, INTERNAL_PARTITION, 1)))
                 .thenCompose(this::updateClusterState)
                 .thenAccept(response -> {
                     if(!response.success()) {

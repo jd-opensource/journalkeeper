@@ -16,6 +16,7 @@ package io.journalkeeper.core.server;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.journal.Journal;
+import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
@@ -54,7 +55,7 @@ class Follower extends ServerStateMachine implements StateServer {
     /**
      * 当前集群配置
      */
-    private final AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine;
+    private final ConfigState votersConfigStateMachine;
 
     private final Threads threads;
 
@@ -71,7 +72,7 @@ class Follower extends ServerStateMachine implements StateServer {
     private final long heartbeatIntervalMs;
 
     private boolean readyForStartPreferredLeaderElection = false;
-    Follower(Journal journal, State state, URI serverUri, int currentTerm, VoterConfigManager voterConfigManager, AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine, Threads threads, int cachedRequests, long heartbeatIntervalMs) {
+    Follower(Journal journal, State state, URI serverUri, int currentTerm, VoterConfigManager voterConfigManager, ConfigState votersConfigStateMachine, Threads threads, int cachedRequests, long heartbeatIntervalMs) {
         super(true);
         this.state = state;
         this.voterConfigManager = voterConfigManager;

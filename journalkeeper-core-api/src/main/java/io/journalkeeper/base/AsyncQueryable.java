@@ -22,11 +22,11 @@ import java.util.concurrent.CompletableFuture;
  * @param <Q> 查询条件
  * @param <R> 查询结果
  */
-public interface Queryable<Q, R> {
+public interface AsyncQueryable<Q, R> {
     /**
      * 查询
      * @param query 查询条件
      * @return 查询结果
      */
-    R query(Q query);
+    CompletableFuture<R> query(Q query);
 }

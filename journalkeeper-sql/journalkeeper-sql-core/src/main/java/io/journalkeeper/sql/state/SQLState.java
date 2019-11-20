@@ -97,10 +97,7 @@ public class SQLState extends LocalState<WriteRequest, WriteResponse, ReadReques
     }
 
     @Override
-    public CompletableFuture<ReadResponse> query(ReadRequest request) {
-        CompletableFuture<ReadResponse> future = new CompletableFuture<>();
-        ReadResponse response = handler.handleRead(request);
-        future.complete(response);
-        return future;
+    public ReadResponse query(ReadRequest request) {
+       return handler.handleRead(request);
     }
 }

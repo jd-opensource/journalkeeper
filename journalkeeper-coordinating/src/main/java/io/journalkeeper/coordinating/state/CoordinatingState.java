@@ -71,10 +71,7 @@ public class CoordinatingState extends LocalState<WriteRequest, WriteResponse, R
     }
 
     @Override
-    public CompletableFuture<ReadResponse> query(ReadRequest request) {
-        CompletableFuture<ReadResponse> future = new CompletableFuture<>();
-        ReadResponse response = handler.handle(request);
-        future.complete(response);
-        return future;
+    public ReadResponse query(ReadRequest request) {
+        return handler.handle(request);
     }
 }

@@ -29,7 +29,7 @@ public interface RaftJournal {
     /**
      * JournalKeeper自用的保留分区，RAFT选举相关的操作日志都写入到这个分区中。
      */
-    int RAFT_PARTITION = Short.MAX_VALUE;
+    int INTERNAL_PARTITION = Short.MAX_VALUE;
     /**
      * 保留起始分区，这个分区号之后（含）的分区为保留分区，不允许用户使用。
      */

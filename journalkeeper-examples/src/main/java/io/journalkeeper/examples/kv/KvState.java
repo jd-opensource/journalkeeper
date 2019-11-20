@@ -17,6 +17,7 @@ package io.journalkeeper.examples.kv;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import io.journalkeeper.core.api.RaftJournal;
+import io.journalkeeper.core.api.StateResult;
 import io.journalkeeper.core.state.LocalState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,7 +65,7 @@ public class KvState extends LocalState<KvEntry, Void, KvQuery, KvResult> {
     }
 
     @Override
-    public Void execute(KvEntry entry, int partition, long index, int batchSize, Map<String, String> eventParams) {
+    public StateResult<Void> execute(KvEntry entry, int partition, long index, int batchSize) {
         switch (entry.getCmd()) {
             case KvEntry.CMD_SET:
                 stateMap.put(entry.getKey(), entry.getValue());
@@ -78,14 +79,12 @@ public class KvState extends LocalState<KvEntry, Void, KvQuery, KvResult> {
         } catch (IOException e) {
             logger.warn("Exception:", e);
         }
-        return null;
+        return new StateResult<>(null);
     }
 
     @Override
-    public CompletableFuture<KvResult> query(KvQuery query) {
-        return CompletableFuture.completedFuture(null)
-                .thenApply(ignored -> {
-            try {
+    public KvResult query(KvQuery query) {
+        try{
                 switch (query.getCmd()) {
                     case KvQuery.CMD_GET:
                         logger.info("Query: {}", query.getKey());
@@ -101,6 +100,5 @@ public class KvState extends LocalState<KvEntry, Void, KvQuery, KvResult> {
                 logger.warn("NullPointer Exception: statMap is null: {}, query.getKey() is null: {}", stateMap == null, query.getKey() == null);
                 throw e;
             }
-        });
     }
 }

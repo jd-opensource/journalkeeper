@@ -1017,7 +1017,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         return new HashSet<>(partitionMap.keySet());
     }
 
-    private void addPartition(int partition) throws IOException {
+    public void addPartition(int partition) throws IOException {
         synchronized (partitionMap) {
             if (!partitionMap.containsKey(partition)) {
                 JournalPersistence partitionPersistence = persistenceFactory.createJournalPersistenceInstance();
@@ -1027,7 +1027,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         }
     }
 
-    private void removePartition(int partition) throws IOException {
+    public void removePartition(int partition) throws IOException {
         synchronized (partitionMap) {
             JournalPersistence removedPersistence;
             if ((removedPersistence = partitionMap.remove(partition)) != null) {

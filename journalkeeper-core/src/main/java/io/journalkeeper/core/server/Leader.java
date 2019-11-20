@@ -18,9 +18,11 @@ import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.SerializedUpdateRequest;
-import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.journal.Journal;
+import io.journalkeeper.core.state.ApplyReservedEntryInterceptor;
+import io.journalkeeper.core.state.ConfigState;
+import io.journalkeeper.core.state.JournalKeeperState;
 import io.journalkeeper.core.transaction.JournalTransactionManager;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.metric.JMetric;
@@ -39,8 +41,28 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -95,18 +117,18 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     /**
      * 存放节点上所有状态快照的稀疏数组，数组的索引（key）就是快照对应的日志位置的索引
      */
-    private final Map<Long, State<E, ER, Q, QR>> immutableSnapshots;
+    private final Map<Long, JournalKeeperState<E, ER, Q, QR>> immutableSnapshots;
 
     private final URI serverUri;
     private final int currentTerm;
     /**
      * 当前集群配置
      */
-    private final AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine;
+    private final ConfigState votersConfigStateMachine;
     /**
      * 节点上的最新状态 和 被状态机执行的最大日志条目的索引值（从 0 开始递增）
      */
-    protected final State state;
+    protected final JournalKeeperState state;
     private JMetric updateClusterStateMetric;
     private JMetric appendJournalMetric;
     private final Map<URI, JMetric> appendEntriesRpcMetricMap;
@@ -124,9 +146,10 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private final JournalEntryParser journalEntryParser;
 
     private final JournalTransactionManager journalTransactionManager;
-    Leader(Journal journal, State state, Map<Long, State<E, ER, Q, QR>> immutableSnapshots,
+    private final ApplyReservedEntryInterceptor journalTransactionInterceptor;
+    Leader(Journal journal, JournalKeeperState state, Map<Long, JournalKeeperState<E, ER, Q, QR>> immutableSnapshots,
            int currentTerm,
-           AbstractServer.VoterConfigurationStateMachine votersConfigStateMachine,
+           ConfigState votersConfigStateMachine,
            URI serverUri,
            int cacheRequests, long heartbeatIntervalMs, long rpcTimeoutMs, int replicationParallelism, int replicationBatchSize,
            Serializer<ER> entryResultSerializer,
@@ -134,7 +157,12 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
            ServerRpcProvider serverRpcProvider,
            ClientServerRpc server,
            ExecutorService asyncExecutor,
-           ScheduledExecutorService scheduledExecutor, VoterConfigManager voterConfigManager, MetricProvider metricProvider, CheckTermInterceptor checkTermInterceptor, JournalEntryParser journalEntryParser, long transactionTimeoutMs) {
+           ScheduledExecutorService scheduledExecutor,
+           VoterConfigManager voterConfigManager,
+           MetricProvider metricProvider,
+           CheckTermInterceptor checkTermInterceptor,
+           JournalEntryParser journalEntryParser,
+           long transactionTimeoutMs) {
 
         super(true);
         this.pendingUpdateStateRequests = new LinkedBlockingQueue<>(cacheRequests);
@@ -161,7 +189,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.journal = journal;
         this.heartbeatIntervalMs = heartbeatIntervalMs;
         this.journalTransactionManager = new JournalTransactionManager(journal, server, scheduledExecutor, transactionTimeoutMs);
-
+        this.journalTransactionInterceptor = (journalEntry, index) -> journalTransactionManager.applyEntry(journalEntry);
     }
 
     private AsyncLoopThread buildLeaderAppendJournalEntryThread() {
@@ -665,13 +693,14 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.threads.startThread(LEADER_REPLICATION_THREAD);
 
         journalTransactionManager.start();
+        state.addInterceptor(this.journalTransactionInterceptor);
     }
 
     @Override
     protected void doStop() {
         super.doStop();
         mayBeWaitingForAppendJournals();
-
+        state.removeInterceptor(this.journalTransactionInterceptor);
         journalTransactionManager.stop();
         this.threads.stopThread(LEADER_APPEND_ENTRY_THREAD);
         this.threads.stopThread(LEADER_CALLBACK_THREAD);
@@ -785,7 +814,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         return journalTransactionManager.getOpeningTransactions();
     }
 
-    void applyReservedPartition(JournalEntry journalEntry) {
+    void applyReservedPartition(JournalEntry journalEntry, long index) {
         journalTransactionManager.applyEntry(journalEntry);
     }
 

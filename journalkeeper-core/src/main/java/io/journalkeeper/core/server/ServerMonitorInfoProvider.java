@@ -17,6 +17,7 @@ import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.journal.Journal;
+import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.monitor.FollowerMonitorInfo;
 import io.journalkeeper.monitor.JournalMonitorInfo;
 import io.journalkeeper.monitor.JournalPartitionMonitorInfo;
@@ -141,7 +142,7 @@ public class ServerMonitorInfoProvider implements MonitoredServer {
         return destInfo;
     }
 
-    private NodeMonitorInfo collectNodeMonitorInfo(AbstractServer.VoterConfigurationStateMachine voterConfigurationStateMachine) {
+    private NodeMonitorInfo collectNodeMonitorInfo(ConfigState voterConfigurationStateMachine) {
         NodeMonitorInfo nodeMonitorInfo = null;
         if (null != voterConfigurationStateMachine) {
             nodeMonitorInfo = new NodeMonitorInfo();

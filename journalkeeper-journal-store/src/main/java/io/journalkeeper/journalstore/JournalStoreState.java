@@ -15,6 +15,7 @@ package io.journalkeeper.journalstore;
 
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.StateFactory;
+import io.journalkeeper.core.api.StateResult;
 import io.journalkeeper.core.state.LocalState;
 import io.journalkeeper.utils.threads.NamedThreadFactory;
 import org.slf4j.Logger;
@@ -31,9 +32,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
-import static io.journalkeeper.core.api.RaftJournal.RAFT_PARTITION;
 import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITIONS_START;
+import static io.journalkeeper.journalstore.JournalStoreQuery.CMD_QUERY_ENTRIES;
 import static io.journalkeeper.journalstore.JournalStoreQuery.CMD_QUERY_INDEX;
+import static io.journalkeeper.journalstore.JournalStoreQuery.CMD_QUERY_PARTITIONS;
 
 /**
  * @author LiYue
@@ -75,80 +77,78 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
     }
 
     @Override
-    public Long execute(byte [] entry, int partition, long lastApplied, int batchSize, Map<String, String> eventData) {
+    public StateResult<Long> execute(byte [] entry, int partition, long lastApplied, int batchSize) {
         long partitionIndex = appliedIndices.getOrDefault(partition, 0L) ;
         appliedIndices.put(partition, partitionIndex + batchSize);
         long minIndex = journal.minIndex(partition);
         long maxIndex = appliedIndices.getOrDefault(partition, 0L);
+        StateResult<Long> result = new StateResult<>(partitionIndex);
+        Map<String, String> eventData = result.getEventData();
         eventData.put("partition", String.valueOf(partition));
         eventData.put("minIndex", String.valueOf(minIndex));
         eventData.put("maxIndex", String.valueOf(maxIndex));
-        return partitionIndex ;
+        return result ;
     }
 
     @Override
-    public CompletableFuture<JournalStoreQueryResult> query(JournalStoreQuery query) {
-        switch (query.getCmd()) {
-            case JournalStoreQuery.CMD_QUERY_ENTRIES:
-                return queryEntries(query.getPartition(), query.getIndex(), query.getSize());
-            case JournalStoreQuery.CMD_QUERY_PARTITIONS:
-                return queryPartitions();
-            case CMD_QUERY_INDEX:
-                return queryIndex(query.getPartition(), query.getTimestamp());
-            default:
-                return CompletableFuture.supplyAsync(() -> {
-                   throw new QueryJournalStoreException(String.format("Invalid command type: %d.", query.getCmd()));
-                });
+    public JournalStoreQueryResult query(JournalStoreQuery query) {
+        try {
+            switch (query.getCmd()) {
+                case CMD_QUERY_ENTRIES:
+                    return queryEntries(query.getPartition(), query.getIndex(), query.getSize());
+                case CMD_QUERY_PARTITIONS:
+                    return queryPartitions();
+                case CMD_QUERY_INDEX:
+                    return queryIndex(query.getPartition(), query.getTimestamp());
+                default:
+                    throw new QueryJournalStoreException(String.format("Invalid command type: %d.", query.getCmd()));
+
+            }
+        } catch (Throwable e) {
+            return new JournalStoreQueryResult(e, query.getCmd());
         }
     }
 
-    private CompletableFuture<JournalStoreQueryResult> queryIndex(int partition, long timestamp) {
+    private JournalStoreQueryResult queryIndex(int partition, long timestamp) {
 
-        return CompletableFuture.supplyAsync(() -> journal.queryIndexByTimestamp(partition, timestamp), stateQueryExecutor)
-                .thenApply(JournalStoreQueryResult::new)
-                .exceptionally(e -> new JournalStoreQueryResult(e, CMD_QUERY_INDEX));
+        return  new JournalStoreQueryResult(journal.queryIndexByTimestamp(partition, timestamp));
     }
 
-    private CompletableFuture<JournalStoreQueryResult> queryPartitions() {
+    private JournalStoreQueryResult queryPartitions() {
         Set<Integer> partitions = journal.getPartitions();
         partitions.removeIf(partition -> partition >= RESERVED_PARTITIONS_START);
-
-        return CompletableFuture.completedFuture(null)
-                .thenApply(ignored ->
+        return
             new JournalStoreQueryResult(
                     partitions.stream()
                     .collect(Collectors.toMap(
                             Integer::intValue,
                             partition -> new JournalStoreQueryResult.Boundary(journal.minIndex(partition), appliedIndices.getOrDefault(partition, 0L))
-                    ))));
+                    )));
     }
 
 
 
-    private CompletableFuture<JournalStoreQueryResult> queryEntries(int partition, long index, int size) {
-        return CompletableFuture.completedFuture(null)
-                .thenApply(ignored ->  {
-                    long maxAppliedIndex = appliedIndices.getOrDefault(partition, 0L);
-                    int safeSize;
-                    if(index > maxAppliedIndex || index > journal.maxIndex(partition)) {
-                        return new JournalStoreQueryResult(null, null, JournalStoreQuery.CMD_QUERY_ENTRIES, index, JournalStoreQueryResult.CODE_OVERFLOW);
-                    }
+    private JournalStoreQueryResult queryEntries(int partition, long index, int size) {
+        long maxAppliedIndex = appliedIndices.getOrDefault(partition, 0L);
+        int safeSize;
+        if(index > maxAppliedIndex || index > journal.maxIndex(partition)) {
+            return new JournalStoreQueryResult(null, null, CMD_QUERY_ENTRIES, index, JournalStoreQueryResult.CODE_OVERFLOW);
+        }
 
-                    if(index < journal.minIndex(partition)) {
-                        return new JournalStoreQueryResult(null, null, JournalStoreQuery.CMD_QUERY_ENTRIES, index, JournalStoreQueryResult.CODE_UNDERFLOW);
-                    }
+        if(index < journal.minIndex(partition)) {
+            return new JournalStoreQueryResult(null, null, CMD_QUERY_ENTRIES, index, JournalStoreQueryResult.CODE_UNDERFLOW);
+        }
 
-                    if(index == journal.maxIndex(partition)) {
-                        return new JournalStoreQueryResult(Collections.emptyList());
-                    }
+        if(index == journal.maxIndex(partition)) {
+            return new JournalStoreQueryResult(Collections.emptyList());
+        }
 
-                    if(index + size >= maxAppliedIndex) {
-                        safeSize = (int) (maxAppliedIndex - index);
-                    } else {
-                        safeSize = size;
-                    }
-                    return new JournalStoreQueryResult(journal.batchReadByPartition(partition, index, safeSize));
-                })
-                .exceptionally(e -> new JournalStoreQueryResult(e.getCause(), JournalStoreQuery.CMD_QUERY_ENTRIES));
+        if(index + size >= maxAppliedIndex) {
+            safeSize = (int) (maxAppliedIndex - index);
+        } else {
+            safeSize = size;
+        }
+        return new JournalStoreQueryResult(journal.batchReadByPartition(partition, index, safeSize));
+
     }
 }
