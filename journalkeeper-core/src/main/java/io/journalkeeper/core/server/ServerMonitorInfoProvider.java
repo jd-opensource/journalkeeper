@@ -18,6 +18,7 @@ import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.state.ConfigState;
+import io.journalkeeper.core.state.JournalKeeperState;
 import io.journalkeeper.monitor.FollowerMonitorInfo;
 import io.journalkeeper.monitor.JournalMonitorInfo;
 import io.journalkeeper.monitor.JournalPartitionMonitorInfo;
@@ -62,7 +63,7 @@ public class ServerMonitorInfoProvider implements MonitoredServer {
         AbstractServer abstractServer = server.getServer();
         if (null != abstractServer) {
             serverMonitorInfo.setLeader(abstractServer.getLeaderUri());
-            NodeMonitorInfo nodeMonitorInfo = collectNodeMonitorInfo(abstractServer.getVotersConfigStateMachine());
+            NodeMonitorInfo nodeMonitorInfo = collectNodeMonitorInfo(abstractServer.getState().getConfigState());
             serverMonitorInfo.setNodes(nodeMonitorInfo);
             JournalMonitorInfo journalMonitorInfo = collectJournalMonitorInfo(abstractServer.getJournal(), abstractServer.getState());
             serverMonitorInfo.setJournal(journalMonitorInfo);
@@ -157,7 +158,7 @@ public class ServerMonitorInfoProvider implements MonitoredServer {
         return nodeMonitorInfo;
     }
 
-    private JournalMonitorInfo collectJournalMonitorInfo(Journal journal, State state) {
+    private JournalMonitorInfo collectJournalMonitorInfo(Journal journal, JournalKeeperState state) {
         JournalMonitorInfo journalMonitorInfo = new JournalMonitorInfo();
         if(null != journal) {
             journalMonitorInfo.setMinIndex(journal.minIndex());

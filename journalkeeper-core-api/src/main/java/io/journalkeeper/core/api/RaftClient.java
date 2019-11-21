@@ -14,7 +14,6 @@
 package io.journalkeeper.core.api;
 
 import io.journalkeeper.base.AsyncQueryable;
-import io.journalkeeper.base.Queryable;
 import io.journalkeeper.core.api.transaction.TransactionClient;
 import io.journalkeeper.utils.event.Watchable;
 

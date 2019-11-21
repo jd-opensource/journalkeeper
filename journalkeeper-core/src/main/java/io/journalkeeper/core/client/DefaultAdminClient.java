@@ -38,6 +38,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -81,7 +82,7 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
         return this.update(ReservedEntriesSerializeSupport.serialize(new CompactJournalEntry(toIndices)));
     }
     @Override
-    public CompletableFuture<Void> scalePartitions(int[] partitions) {
+    public CompletableFuture<Void> scalePartitions(Set<Integer> partitions) {
 
         ReservedPartition.validatePartitions(partitions);
 

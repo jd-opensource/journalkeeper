@@ -16,16 +16,16 @@ public class InternalState {
     private ConfigState configState;
     private URI preferredLeader = null;
     private Set<Integer> partitions;
+    private long lastIncludedIndex;
+    private int lastIncludedTerm;
 
-    public InternalState(ConfigState configState) {
-        this.configState = configState;
-        this.partitions = new HashSet<>(Collections.singleton(DEFAULT_PARTITION));
-    }
 
     public InternalState(ConfigState configState, Set<Integer> partitions, URI preferredLeader) {
         this.configState = configState;
         this.partitions = partitions;
         this.preferredLeader = preferredLeader;
+        this.lastIncludedIndex = -1L;
+        this.lastIncludedTerm = -1;
     }
     public URI getPreferredLeader() {
         return preferredLeader;
@@ -36,7 +36,7 @@ public class InternalState {
     }
 
     public Set<Integer> getPartitions() {
-        return partitions;
+        return Collections.unmodifiableSet(partitions);
     }
 
     public ConfigState getConfigState() {
@@ -49,5 +49,25 @@ public class InternalState {
 
     public void setConfigState(ConfigState configState) {
         this.configState = configState;
+    }
+
+    public long getLastIncludedIndex() {
+        return lastIncludedIndex;
+    }
+
+    public void setLastIncludedIndex(long lastIncludedIndex) {
+        this.lastIncludedIndex = lastIncludedIndex;
+    }
+
+    public int getLastIncludedTerm() {
+        return lastIncludedTerm;
+    }
+
+    public void setLastIncludedTerm(int lastIncludedTerm) {
+        this.lastIncludedTerm = lastIncludedTerm;
+    }
+
+    public void next() {
+        lastIncludedIndex ++;
     }
 }

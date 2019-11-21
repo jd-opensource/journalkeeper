@@ -46,9 +46,11 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -58,6 +60,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * @author LiYue
@@ -86,7 +89,7 @@ public class VoterTest {
         try {
             int count = 10 * 1024 * 1024;
             int entrySize = 1024;
-            int[] partitions = {2};
+            Set<Integer> partitions = Stream.of(2).collect(Collectors.toSet());
 
             while(voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
@@ -100,23 +103,22 @@ public class VoterTest {
 
             byte[] entry = ByteUtils.createFixedSizeBytes(entrySize);
             long t0 = System.nanoTime();
-
-            for (int i = 0; i < partitions.length; i++) {
-                UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, partitions[i], 1);
+            for (Integer partition : partitions) {
+                UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, partition, 1);
 
                 for (long l = 0; l < count; l++) {
                     voter.updateClusterState(request);
                 }
-            }
 
+            }
 
             long t1 = System.nanoTime();
             long takesMs = (t1 - t0) / 1000000;
             logger.info("Write finished. " +
                             "Write takes: {}ms, {}ps, tps: {}.",
                     takesMs,
-                    Format.formatSize( 1000L * partitions.length * entrySize * count  / takesMs),
-                    1000L * partitions.length * count  / takesMs);
+                    Format.formatSize( 1000L * partitions.size() * entrySize * count  / takesMs),
+                    1000L * partitions.size() * count  / takesMs);
 
         } finally {
             voter.stop();
@@ -135,7 +137,7 @@ public class VoterTest {
             int count = 10 * 1024 * 1024;
             int entrySize = 1024;
             int threads = 1;
-            int[] partitions = {2, 3, 4, 5, 6};
+            Set<Integer> partitions = Stream.of(2, 3, 4, 5, 6).collect(Collectors.toSet());
 
             while(voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
@@ -155,11 +157,14 @@ public class VoterTest {
             JMetricFactory factory = ServiceSupport.load(JMetricFactory.class);
             JMetric metric = factory.create("WRITE");
 
-
+            Iterator<Integer> partitionsIterator = partitions.iterator();
             for (int i = 0; i < threads; i++) {
-                final int finalI = i;
+                if (!partitionsIterator.hasNext()) {
+                    partitionsIterator = partitions.iterator();
+                }
+                int partition = partitionsIterator.next();
+
                 Thread t = new Thread(() -> {
-                    int partition = partitions[finalI % partitions.length];
                     UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, partition, 1);
                     while (currentCount.incrementAndGet() <= count) {
                         try {
@@ -285,38 +290,18 @@ public class VoterTest {
     static class EchoState implements State<byte[], byte[], byte[], byte[]> {
         private AtomicInteger term = new AtomicInteger(0);
         @Override
-        public StateResult<byte []> execute(byte[] entry, int partition, long index, int batchSize) {
+        public StateResult<byte []> execute(byte[] entry, int partition, long index, int batchSize, RaftJournal raftJournal) {
             return new StateResult<>(entry);
         }
 
 
         @Override
-        public void recover(Path path, RaftJournal raftJournal, Properties properties) {
+        public void recover(Path path, Properties properties) {
             term = new AtomicInteger(0);
         }
 
         @Override
-        public byte[] readSerializedTrunk(long offset, int size) throws IOException {
-            return new byte[0];
-        }
-
-        @Override
-        public long serializedDataSize() {
-            return 0;
-        }
-
-        @Override
-        public void installSerializedTrunk(byte[] data, long offset, boolean isDone) throws IOException {
-
-        }
-
-
-        @Override
-        public void clear() {
-
-        }
-        @Override
-        public byte[] query(byte[] query) {
+        public byte[] query(byte[] query, RaftJournal raftJournal) {
             return new byte[0];
         }
     }

@@ -28,7 +28,6 @@ import java.net.URI;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.Properties;
 
 /**
  * @author LiYue
@@ -43,53 +42,42 @@ public class MetadataStoreTest {
         ServerMetadata writeMetadata = createServerMetadata();
         // voters is not set
 
-        MetadataStore writeStore = new MetadataStore();
-        writeStore.recover(path);
-        writeStore.save(writeMetadata);
+        JsonDoubleCopiesPersistence writeStore = new JsonDoubleCopiesPersistence();
+        writeStore.save(path, writeMetadata);
 
-        MetadataStore readStore = new MetadataStore();
-        ServerMetadata readMetadata = readStore.recover(path);
+        JsonDoubleCopiesPersistence readStore = new JsonDoubleCopiesPersistence();
+        ServerMetadata readMetadata = readStore.load(path, ServerMetadata.class);
 
-        checkServerMetadataEquals(writeMetadata, readMetadata);
+        Assert.assertEquals(writeMetadata, readMetadata);
 
-    }
-
-    private void checkServerMetadataEquals(ServerMetadata writeMetadata, ServerMetadata readMetadata) {
-        Assert.assertEquals(writeMetadata.getCommitIndex(), readMetadata.getCommitIndex());
-        Assert.assertEquals(writeMetadata.getCurrentTerm(), readMetadata.getCurrentTerm());
-        Assert.assertEquals(writeMetadata.getParents(), readMetadata.getParents());
-        Assert.assertEquals(writeMetadata.getThisServer(), readMetadata.getThisServer());
-        Assert.assertEquals(writeMetadata.getVotedFor(), readMetadata.getVotedFor());
-        Assert.assertEquals(writeMetadata.getVoters(), readMetadata.getVoters());
     }
 
     @Test
     public void brokenFileTest() throws IOException {
         ServerMetadata writeMetadata = createServerMetadata();
 
-        MetadataStore writeStore = new MetadataStore();
-        writeStore.recover(path);
-        writeStore.save(writeMetadata);
+        JsonDoubleCopiesPersistence writeStore = new JsonDoubleCopiesPersistence();
+        writeStore.save(path, writeMetadata);
 
-        try(RandomAccessFile raf = new RandomAccessFile(path.resolve(MetadataStore.FIRST_COPY).toFile(),"rw"); FileChannel fileChannel = raf.getChannel()) {
+        try(RandomAccessFile raf = new RandomAccessFile(writeStore.getCopy(path, JsonDoubleCopiesPersistence.FIRST_COPY).toFile(),"rw"); FileChannel fileChannel = raf.getChannel()) {
             fileChannel.truncate(fileChannel.size() - 10);
         }
 
-        MetadataStore readStore = new MetadataStore();
-        ServerMetadata readMetadata = readStore.recover(path);
+        JsonDoubleCopiesPersistence readStore = new JsonDoubleCopiesPersistence();
+        ServerMetadata readMetadata = readStore.load(path, ServerMetadata.class);
 
-        checkServerMetadataEquals(writeMetadata, readMetadata);
+        Assert.assertEquals(writeMetadata, readMetadata);
 
-        writeStore.save(writeMetadata);
+        writeStore.save(path, writeMetadata);
 
-        try(RandomAccessFile raf = new RandomAccessFile(path.resolve(MetadataStore.SECOND_COPY).toFile(),"rw"); FileChannel fileChannel = raf.getChannel()) {
+        try(RandomAccessFile raf = new RandomAccessFile(writeStore.getCopy(path, JsonDoubleCopiesPersistence.SECOND_COPY).toFile(),"rw"); FileChannel fileChannel = raf.getChannel()) {
             fileChannel.truncate(fileChannel.size() - 10);
         }
 
-        readStore = new MetadataStore();
-        readMetadata = readStore.recover(path);
+        readStore = new JsonDoubleCopiesPersistence();
+        readMetadata = readStore.load(path, ServerMetadata.class);
 
-        checkServerMetadataEquals(writeMetadata, readMetadata);
+        Assert.assertEquals(writeMetadata, readMetadata);
 
     }
 
@@ -111,7 +99,7 @@ public class MetadataStoreTest {
     @Before
     public void before() throws Exception {
         prepareBaseDir();
-
+        path = path.resolve("metadata");
     }
 
     @After

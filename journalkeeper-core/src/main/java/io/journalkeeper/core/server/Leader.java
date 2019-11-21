@@ -122,10 +122,6 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private final URI serverUri;
     private final int currentTerm;
     /**
-     * 当前集群配置
-     */
-    private final ConfigState votersConfigStateMachine;
-    /**
      * 节点上的最新状态 和 被状态机执行的最大日志条目的索引值（从 0 开始递增）
      */
     protected final JournalKeeperState state;
@@ -149,7 +145,6 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private final ApplyReservedEntryInterceptor journalTransactionInterceptor;
     Leader(Journal journal, JournalKeeperState state, Map<Long, JournalKeeperState<E, ER, Q, QR>> immutableSnapshots,
            int currentTerm,
-           ConfigState votersConfigStateMachine,
            URI serverUri,
            int cacheRequests, long heartbeatIntervalMs, long rpcTimeoutMs, int replicationParallelism, int replicationBatchSize,
            Serializer<ER> entryResultSerializer,
@@ -167,7 +162,6 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         super(true);
         this.pendingUpdateStateRequests = new LinkedBlockingQueue<>(cacheRequests);
         this.state = state;
-        this.votersConfigStateMachine = votersConfigStateMachine;
         this.serverUri = serverUri;
         this.replicationParallelism = replicationParallelism;
         this.replicationBatchSize = replicationBatchSize;
@@ -243,7 +237,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         try {
 
             if(request.getRequests().size() == 1  && voterConfigManager.maybeUpdateLeaderConfig(request.getRequests().get(0),
-                    votersConfigStateMachine,journal, () -> doAppendJournalEntryCallable(request, responseFuture),
+                    state.getConfigState(),journal, () -> doAppendJournalEntryCallable(request, responseFuture),
                     serverUri, followers, replicationParallelism, appendEntriesRpcMetricMap)) {
                 return;
             }
@@ -489,6 +483,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
      * 5.3 log[N].term == currentTerm
      */
     private void leaderUpdateCommitIndex() throws InterruptedException, ExecutionException, IOException {
+        ConfigState configState = state.getConfigState();
         List<ReplicationDestination> finalFollowers = new ArrayList<>(followers);
         long N = 0L;
         if (finalFollowers.isEmpty()) {
@@ -510,16 +505,16 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
             }
 
             if (isAnyFollowerMatchIndexUpdated) {
-                if (votersConfigStateMachine.isJointConsensus()) {
+                if (configState.isJointConsensus()) {
                     long[] sortedMatchIndexInOldConfig = finalFollowers.stream()
-                            .filter(follower -> votersConfigStateMachine.getConfigOld().contains(follower.getUri()))
+                            .filter(follower -> configState.getConfigOld().contains(follower.getUri()))
                             .mapToLong(ReplicationDestination::getMatchIndex)
                             .sorted().toArray();
                     long nInOldConfig = sortedMatchIndexInOldConfig.length > 0 ?
                             sortedMatchIndexInOldConfig[sortedMatchIndexInOldConfig.length / 2] : journal.maxIndex();
 
                     long[] sortedMatchIndexInNewConfig = finalFollowers.stream()
-                            .filter(follower -> votersConfigStateMachine.getConfigNew().contains(follower.getUri()))
+                            .filter(follower -> configState.getConfigNew().contains(follower.getUri()))
                             .mapToLong(ReplicationDestination::getMatchIndex)
                             .sorted().toArray();
                     long nInNewConfig = sortedMatchIndexInNewConfig.length > 0 ?
@@ -670,7 +665,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     protected void doStart() {
         super.doStart();
         // 初始化followers
-        this.followers.addAll(this.votersConfigStateMachine.voters().stream()
+        this.followers.addAll(state.getConfigState().voters().stream()
                 .filter(uri -> !uri.equals(serverUri))
                 .map(uri -> new ReplicationDestination(uri, journal.maxIndex(), replicationParallelism))
                 .collect(Collectors.toList()));

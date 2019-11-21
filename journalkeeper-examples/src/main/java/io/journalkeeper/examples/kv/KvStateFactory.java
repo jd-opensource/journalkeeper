@@ -23,6 +23,6 @@ import io.journalkeeper.core.api.StateFactory;
 public class KvStateFactory implements StateFactory<KvEntry, Void, KvQuery, KvResult> {
     @Override
     public State<KvEntry, Void, KvQuery, KvResult> createState() {
-        return new KvState(this);
+        return new KvState();
     }
 }

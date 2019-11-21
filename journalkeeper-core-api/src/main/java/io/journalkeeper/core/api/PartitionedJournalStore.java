@@ -19,6 +19,7 @@ import io.journalkeeper.utils.event.Watchable;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -156,7 +157,7 @@ public interface PartitionedJournalStore extends Watchable {
      * 列出当前所有分区，由小到大排序。
      * @return 当前所有分区
      */
-    CompletableFuture<int []> listPartitions();
+    CompletableFuture<Set<Integer>> listPartitions();
 
     /**
      * 根据JournalEntry存储时间获取索引。

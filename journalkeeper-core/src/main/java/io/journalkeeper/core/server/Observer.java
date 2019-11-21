@@ -16,8 +16,8 @@ package io.journalkeeper.core.server;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ServerStatus;
-import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
+import io.journalkeeper.core.state.JournalKeeperState;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.exceptions.NotVoterException;
 import io.journalkeeper.metric.JMetric;
@@ -46,7 +46,6 @@ import io.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.swing.*;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
@@ -152,7 +151,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
             journal.appendBatchRaw(response.getEntries());
 
-            voterConfigManager.maybeUpdateNonLeaderConfig(response.getEntries(), votersConfigStateMachine);
+            voterConfigManager.maybeUpdateNonLeaderConfig(response.getEntries(), state.getConfigState());
 //            commitIndex.addAndGet(response.getEntries().size());
             journal.commit(journal.maxIndex());
             // 唤醒状态机线程
@@ -182,7 +181,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
             state.clear();
 
             // 删除所有快照
-            for(State<E, ER, Q, QR> snapshot: snapshots.values()) {
+            for(JournalKeeperState<E, ER, Q, QR> snapshot: snapshots.values()) {
                 try {
                     if (snapshot instanceof Closeable) {
                         ((Closeable) snapshot).close();
@@ -208,8 +207,8 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                     journal.compact(state.lastApplied());
                     Path snapshotPath = snapshotsPath().resolve(String.valueOf(state.lastApplied()));
                     state.dump(snapshotPath);
-                    State<E, ER, Q, QR> snapshot = stateFactory.createState();
-                    snapshot.recover(snapshotPath, journal, properties);
+                    JournalKeeperState<E, ER, Q, QR> snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
+                    snapshot.recover(snapshotPath, properties);
                     snapshots.put(snapshot.lastApplied(), snapshot);
                 }
 

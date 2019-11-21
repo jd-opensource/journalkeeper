@@ -14,20 +14,19 @@
 package io.journalkeeper.journalstore;
 
 import io.journalkeeper.core.api.RaftJournal;
-import io.journalkeeper.core.api.StateFactory;
+import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateResult;
-import io.journalkeeper.core.state.LocalState;
 import io.journalkeeper.utils.threads.NamedThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Flushable;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
@@ -41,26 +40,23 @@ import static io.journalkeeper.journalstore.JournalStoreQuery.CMD_QUERY_PARTITIO
  * @author LiYue
  * Date: 2019-05-09
  */
-public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> {
+public class JournalStoreState implements State<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> , Flushable {
     private static final Logger logger = LoggerFactory.getLogger(JournalStoreState.class);
     private final static String STATE_FILE_NAME = "applied_indices";
-    private RaftJournal journal;
     private AppliedIndicesFile appliedIndices;
     private ExecutorService stateQueryExecutor = Executors.newSingleThreadExecutor(new NamedThreadFactory("JournalStoreQueryThread"));
-    protected JournalStoreState(StateFactory<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> stateFactory) {
-        super(stateFactory);
-    }
-
+    private Path path;
     @Override
-    protected void recoverLocalState(Path path, RaftJournal raftJournal, Properties properties) throws IOException{
-        this.journal = raftJournal;
+    public void recover(Path path, Properties properties) throws IOException{
+        this.path = path;
         appliedIndices = recoverAppliedIndices(path.resolve(STATE_FILE_NAME));
     }
 
     @Override
-    protected void flushState(Path statePath) throws IOException {
-        super.flushState(statePath);
-        flushAppliedIndices(statePath.resolve(STATE_FILE_NAME));
+    public void flush() {
+        if(null != path) {
+            flushAppliedIndices(path.resolve(STATE_FILE_NAME));
+        }
     }
 
     private void flushAppliedIndices(Path path) {
@@ -77,7 +73,7 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
     }
 
     @Override
-    public StateResult<Long> execute(byte [] entry, int partition, long lastApplied, int batchSize) {
+    public StateResult<Long> execute(byte [] entry, int partition, long lastApplied, int batchSize, RaftJournal journal) {
         long partitionIndex = appliedIndices.getOrDefault(partition, 0L) ;
         appliedIndices.put(partition, partitionIndex + batchSize);
         long minIndex = journal.minIndex(partition);
@@ -91,15 +87,15 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
     }
 
     @Override
-    public JournalStoreQueryResult query(JournalStoreQuery query) {
+    public JournalStoreQueryResult query(JournalStoreQuery query, RaftJournal journal) {
         try {
             switch (query.getCmd()) {
                 case CMD_QUERY_ENTRIES:
-                    return queryEntries(query.getPartition(), query.getIndex(), query.getSize());
+                    return queryEntries(query.getPartition(), query.getIndex(), query.getSize(), journal);
                 case CMD_QUERY_PARTITIONS:
-                    return queryPartitions();
+                    return queryPartitions(journal);
                 case CMD_QUERY_INDEX:
-                    return queryIndex(query.getPartition(), query.getTimestamp());
+                    return queryIndex(query.getPartition(), query.getTimestamp(), journal);
                 default:
                     throw new QueryJournalStoreException(String.format("Invalid command type: %d.", query.getCmd()));
 
@@ -109,12 +105,12 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
         }
     }
 
-    private JournalStoreQueryResult queryIndex(int partition, long timestamp) {
+    private JournalStoreQueryResult queryIndex(int partition, long timestamp, RaftJournal journal) {
 
         return  new JournalStoreQueryResult(journal.queryIndexByTimestamp(partition, timestamp));
     }
 
-    private JournalStoreQueryResult queryPartitions() {
+    private JournalStoreQueryResult queryPartitions(RaftJournal journal) {
         Set<Integer> partitions = journal.getPartitions();
         partitions.removeIf(partition -> partition >= RESERVED_PARTITIONS_START);
         return
@@ -128,7 +124,7 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
 
 
 
-    private JournalStoreQueryResult queryEntries(int partition, long index, int size) {
+    private JournalStoreQueryResult queryEntries(int partition, long index, int size, RaftJournal journal) {
         long maxAppliedIndex = appliedIndices.getOrDefault(partition, 0L);
         int safeSize;
         if(index > maxAppliedIndex || index > journal.maxIndex(partition)) {
@@ -150,5 +146,12 @@ public class JournalStoreState extends LocalState<byte [], Long, JournalStoreQue
         }
         return new JournalStoreQueryResult(journal.batchReadByPartition(partition, index, safeSize));
 
+    }
+
+    @Override
+    public void close() {
+        if(null != appliedIndices) {
+            appliedIndices.close();
+        }
     }
 }

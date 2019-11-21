@@ -16,8 +16,10 @@ package io.journalkeeper.core.entry.reserved;
 import io.journalkeeper.base.Serializer;
 
 import java.nio.ByteBuffer;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * @author LiYue
@@ -32,7 +34,7 @@ import java.util.List;
  */
 public class ScalePartitionsEntrySerializer implements Serializer<ScalePartitionsEntry> {
     private int sizeOf(ScalePartitionsEntry scalePartitionsEntry) {
-        return Byte.BYTES + Short.BYTES * scalePartitionsEntry.getPartitions().length;
+        return Byte.BYTES + Short.BYTES * scalePartitionsEntry.getPartitions().size();
     }
 
     @Override
@@ -49,10 +51,10 @@ public class ScalePartitionsEntrySerializer implements Serializer<ScalePartition
     @Override
     public ScalePartitionsEntry parse(byte[] bytes) {
         ByteBuffer buffer = ByteBuffer.wrap(bytes, Byte.BYTES, bytes.length - Byte.BYTES);
-        List<Integer> partitionList = new LinkedList<>();
+        Set<Integer> partitions = new HashSet<>();
         while (buffer.hasRemaining()) {
-            partitionList.add(Short.valueOf(buffer.getShort()).intValue());
+            partitions.add(Short.valueOf(buffer.getShort()).intValue());
         }
-        return new ScalePartitionsEntry(partitionList.stream().mapToInt(Integer::intValue).toArray());
+        return new ScalePartitionsEntry(partitions);
     }
 }

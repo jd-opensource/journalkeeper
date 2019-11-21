@@ -19,7 +19,6 @@ import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
-import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.StateResult;
 import io.journalkeeper.core.entry.reserved.*;
@@ -29,7 +28,6 @@ import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.metric.DummyMetric;
 import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.core.state.JournalKeeperState;
-import io.journalkeeper.core.state.InternalState;
 import io.journalkeeper.core.state.StateQueryResult;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
@@ -97,8 +95,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
@@ -119,6 +115,11 @@ import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
 public abstract class AbstractServer<E, ER, Q, QR>
         implements ServerRpc, RaftServer, ServerRpcProvider, MetricProvider {
     private static final Logger logger = LoggerFactory.getLogger(AbstractServer.class);
+
+    private static final String STATE_PATH = "state";
+    private static final String SNAPSHOTS_PATH = "snapshots";
+    private static final String METADATA_PATH = "metadata";
+    private static final String METADATA_FILE = "metadata";
 
     @Override
     public URI serverUri() {
@@ -239,7 +240,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
         this.config = toConfig(properties);
         this.threads.createThread(buildStateMachineThread());
         this.threads.createThread(buildFlushJournalThread());
-        this.state = new JournalKeeperState<>(stateFactory);
         this.entrySerializer = entrySerializer;
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
@@ -269,6 +269,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         journal = new Journal(
                 persistenceFactory,
                 bufferPool, journalEntryParser);
+        this.state = new JournalKeeperState<>(stateFactory, metadataPersistence);
 
         state.addInterceptor(ReservedEntryType.TYPE_SCALE_PARTITIONS, this::scalePartitions);
         state.addInterceptor(ReservedEntryType.TYPE_LEADER_ANNOUNCEMENT, this::announceLeader);
@@ -306,34 +307,24 @@ public abstract class AbstractServer<E, ER, Q, QR>
     }
 
     @Override
-    public synchronized void init(URI uri, List<URI> voters, Set<Integer> partitions, URI preferredLeader) throws IOException {
-        ReservedPartition.validatePartitions(partitions);
+    public synchronized void init(URI uri, List<URI> voters, Set<Integer> userPartitions, URI preferredLeader) throws IOException {
+        ReservedPartition.validatePartitions(userPartitions);
         this.uri = uri;
-        createMissingDirectories();
-        state.init(statePath(), new InternalState(new ConfigState(voters), partitions, preferredLeader));
-        metadataPersistence.recover(metadataPath());
+        Set<Integer> partitions = new HashSet<>(userPartitions);
+        partitions.add(INTERNAL_PARTITION);
+        state.init(statePath(),voters, partitions, preferredLeader);
         lastSavedServerMetadata = createServerMetadata();
-        Set<Integer> partitionsWithReserved = new HashSet<>(partitions);
-        partitionsWithReserved.add(INTERNAL_PARTITION);
-        lastSavedServerMetadata.setPartitions(partitionsWithReserved);
-        metadataPersistence.save(lastSavedServerMetadata);
-
+        metadataPersistence.save(metadataFile(),lastSavedServerMetadata);
     }
 
     @Override
     public boolean isInitialized() {
         try {
-            ServerMetadata  metadata = metadataPersistence.recover(metadataPath());
+            ServerMetadata  metadata = metadataPersistence.load(metadataFile(), ServerMetadata.class);
             return metadata != null && metadata.isInitialized();
         } catch (Exception e) {
             return false;
         }
-    }
-
-    private void createMissingDirectories() throws IOException {
-        Files.createDirectories(metadataPath());
-        Files.createDirectories(statePath());
-        Files.createDirectories(snapshotsPath());
     }
 
     private Config toConfig(Properties properties) {
@@ -378,14 +369,17 @@ public abstract class AbstractServer<E, ER, Q, QR>
     }
 
     protected Path snapshotsPath() {
-        return workingDir().resolve("snapshots");
+        return workingDir().resolve(SNAPSHOTS_PATH);
     }
 
     protected Path statePath() {
-        return workingDir().resolve("state");
+        return workingDir().resolve(STATE_PATH);
     }
     protected Path metadataPath() {
-        return workingDir().resolve("metadata");
+        return workingDir().resolve(METADATA_PATH);
+    }
+    protected Path metadataFile() {
+        return workingDir().resolve(METADATA_PATH).resolve(METADATA_FILE);
     }
 
     /**
@@ -403,7 +397,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
             takeASnapShotIfNeed();
             JournalEntry journalEntry = journal.read(state.lastApplied());
-            StateResult<ER> stateResult = state.applyEntry(journalEntry, entrySerializer);
+            StateResult<ER> stateResult = state.applyEntry(journalEntry, entrySerializer, journal);
             afterStateChanged(stateResult.getUserResult());
 
             Map<String, String> parameters = new HashMap<>(stateResult.getEventData().size() + 1);
@@ -489,7 +483,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     public CompletableFuture<QueryStateResponse> queryServerState(QueryStateRequest request) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                StateQueryResult<QR> queryResult = state.queryUserState(querySerializer.parse(request.getQuery()));
+                StateQueryResult<QR> queryResult = state.query(querySerializer.parse(request.getQuery()), journal);
                 return new QueryStateResponse(resultSerializer.serialize(queryResult.getResult()), queryResult.getLastApplied());
             } catch (Throwable throwable) {
                 return new QueryStateResponse(throwable);
@@ -517,7 +511,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 }
 
                 if (request.getIndex() == state.lastApplied()) {
-                    StateQueryResult<QR> queryResult = state.queryUserState(querySerializer.parse(request.getQuery()));
+                    StateQueryResult<QR> queryResult = state.query(querySerializer.parse(request.getQuery()), journal);
                     if(queryResult.getLastApplied() == request.getIndex()) {
                         return new QueryStateResponse(resultSerializer.serialize(queryResult.getResult()), queryResult.getLastApplied());
                     }
@@ -532,22 +526,22 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 if(request.getIndex() == nearestSnapshot.getKey()) {
                     snapshot = nearestSnapshot.getValue();
                 } else {
-                    snapshot = new JournalKeeperState<>(stateFactory);
+                    snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
                     Path tempSnapshotPath = snapshotsPath().resolve(String.valueOf(request.getIndex()));
                     if (Files.exists(tempSnapshotPath)) {
                         throw new ConcurrentModificationException(String.format("A snapshot of position %d is creating, please retry later.", request.getIndex()));
                     }
                     nearestSnapshot.getValue().dump(tempSnapshotPath);
-                    snapshot.recover(tempSnapshotPath, journal, properties);
+                    snapshot.recover(tempSnapshotPath, properties);
 
                     while (snapshot.lastApplied() < request.getIndex()) {
-                        snapshot.applyEntry(journal.read(snapshot.lastApplied()), entrySerializer);
+                        snapshot.applyEntry(journal.read(snapshot.lastApplied()), entrySerializer, journal);
                     }
                     snapshot.flush();
 
                     snapshots.putIfAbsent(request.getIndex(), snapshot);
                 }
-                return new QueryStateResponse(resultSerializer.serialize(snapshot.queryUserState(querySerializer.parse(request.getQuery())).getResult()));
+                return new QueryStateResponse(resultSerializer.serialize(snapshot.query(querySerializer.parse(request.getQuery()), journal).getResult()));
             } catch (Throwable throwable) {
                 return new QueryStateResponse(throwable);
             }
@@ -667,7 +661,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
             }
             ServerMetadata metadata = createServerMetadata();
             if (!metadata.equals(lastSavedServerMetadata)) {
-                metadataPersistence.save(metadata);
+                metadataPersistence.save(metadataFile(), metadata);
                 lastSavedServerMetadata = metadata;
             }
         } catch(Throwable e) {
@@ -738,17 +732,17 @@ public abstract class AbstractServer<E, ER, Q, QR>
      */
     @Override
     public synchronized void recover() throws IOException {
-        lastSavedServerMetadata = metadataPersistence.recover(metadataPath());
+        lastSavedServerMetadata = metadataPersistence.load(metadataFile(), ServerMetadata.class);
         if(lastSavedServerMetadata == null || !lastSavedServerMetadata.isInitialized()) {
             throw new RecoverException(
                     String.format("Recover failed! Cause: metadata is not initialized. Metadata path: %s.",
-                            metadataPath().toString()));
+                            metadataFile().toString()));
         }
         onMetadataRecovered(lastSavedServerMetadata);
-        recoverJournal(lastSavedServerMetadata.getPartitions(), lastSavedServerMetadata.getCommitIndex());
-        onJournalRecovered(journal);
-        state.recover(statePath(), journal, properties);
+        state.recover(statePath(), properties);
         recoverSnapshots();
+        recoverJournal(state.getPartitions(), lastSavedServerMetadata.getCommitIndex());
+        onJournalRecovered(journal);
     }
 
     protected void onJournalRecovered(Journal journal) {
@@ -787,7 +781,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         } else {
             logger.info("No voters config entry found in journal, Using config in the metadata.");
         }
-        logger.info(state.getInternalState().getConfigState().toString());
+        logger.info(state.getConfigState().toString());
     }
 
 
@@ -808,8 +802,8 @@ public abstract class AbstractServer<E, ER, Q, QR>
                         entry -> entry.getFileName().toString().matches("\\d+")
                     ).spliterator(), false)
                 .map(path -> {
-                    JournalKeeperState<E, ER, Q, QR> snapshot = new JournalKeeperState<>(stateFactory);
-                    snapshot.recover(path, journal, properties);
+                    JournalKeeperState<E, ER, Q, QR> snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
+                    snapshot.recover(path, properties);
                     if(Long.parseLong(path.getFileName().toString()) == snapshot.lastApplied()) {
                         return snapshot;
                     } else {

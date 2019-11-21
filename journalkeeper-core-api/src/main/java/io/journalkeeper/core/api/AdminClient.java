@@ -20,6 +20,7 @@ import java.io.Closeable;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -72,7 +73,7 @@ public interface AdminClient extends Watchable, ClusterReadyAware, ServerConfigA
      * @param partitions 新分区配置
      * @return 执行成功返回null，失败抛出异常。
      */
-    CompletableFuture<Void> scalePartitions(int[] partitions);
+    CompletableFuture<Void> scalePartitions(Set<Integer> partitions);
 
     /**
      * 获取节点当前状态

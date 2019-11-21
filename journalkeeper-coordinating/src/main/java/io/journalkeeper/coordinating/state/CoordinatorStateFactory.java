@@ -30,6 +30,6 @@ public class CoordinatorStateFactory implements StateFactory<WriteRequest, Write
 
     @Override
     public State<WriteRequest, WriteResponse, ReadRequest, ReadResponse> createState() {
-        return new CoordinatingState(this);
+        return new CoordinatingState();
     }
 }

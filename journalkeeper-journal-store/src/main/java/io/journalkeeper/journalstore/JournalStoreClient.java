@@ -128,10 +128,10 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
     }
 
     @Override
-    public CompletableFuture<int[]> listPartitions() {
+    public CompletableFuture<Set<Integer>> listPartitions() {
         return raftClient.query(JournalStoreQuery.createQueryPartitions())
                 .thenApply(JournalStoreQueryResult::getBoundaries)
-                .thenApply(boundaries -> boundaries.keySet().stream().mapToInt(Integer::intValue).toArray());
+                .thenApply(Map::keySet);
     }
 
     @Override

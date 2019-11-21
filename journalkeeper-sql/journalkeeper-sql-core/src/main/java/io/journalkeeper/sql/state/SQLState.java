@@ -14,8 +14,9 @@
 package io.journalkeeper.sql.state;
 
 import io.journalkeeper.core.api.RaftJournal;
+import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
-import io.journalkeeper.core.state.LocalState;
+import io.journalkeeper.core.api.StateResult;
 import io.journalkeeper.sql.client.domain.ReadRequest;
 import io.journalkeeper.sql.client.domain.ReadResponse;
 import io.journalkeeper.sql.client.domain.WriteRequest;
@@ -32,16 +33,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
-import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * SQLState
  * author: gaohaoxiang
  * date: 2019/8/1
  */
-public class SQLState extends LocalState<WriteRequest, WriteResponse, ReadRequest, ReadResponse> {
+public class SQLState implements State<WriteRequest, WriteResponse, ReadRequest, ReadResponse> {
 
     private static final Logger logger = LoggerFactory.getLogger(SQLState.class);
 
@@ -49,12 +48,9 @@ public class SQLState extends LocalState<WriteRequest, WriteResponse, ReadReques
     private SQLExecutor executor;
     private SQLStateHandler handler;
 
-    protected SQLState(StateFactory<WriteRequest, WriteResponse, ReadRequest, ReadResponse> stateFactory) {
-        super(stateFactory);
-    }
 
     @Override
-    protected void recoverLocalState(Path path, RaftJournal raftJournal, Properties properties) throws IOException {
+    public void recover(Path path, Properties properties) throws IOException {
         this.executor = SQLExecutorManager.getExecutor(properties.getProperty(SQLConfigs.EXECUTOR_TYPE)).create(path, properties);
         if (this.executor == null) {
             throw new IllegalArgumentException("executor not exist");
@@ -86,18 +82,18 @@ public class SQLState extends LocalState<WriteRequest, WriteResponse, ReadReques
     }
 
     @Override
-    public WriteResponse execute(WriteRequest request, int partition, long index, int batchSize, Map<String, String> eventParams) {
+    public StateResult<WriteResponse> execute(WriteRequest request, int partition, long index, int batchSize, RaftJournal raftJournal) {
         WriteResponse response = handler.handleWrite(request);
-
-        eventParams.put("type", String.valueOf(request.getType()));
+        StateResult<WriteResponse> result = new StateResult<>(response);
+        result.getEventData().put("type", String.valueOf(request.getType()));
         // TODO 参数处理
 //        eventParams.put("sql", request.getSql());
 //        eventParams.put("params", request.getParams().toString());
-        return response;
+        return result;
     }
 
     @Override
-    public ReadResponse query(ReadRequest request) {
+    public ReadResponse query(ReadRequest request, RaftJournal raftJournal) {
        return handler.handleRead(request);
     }
 }

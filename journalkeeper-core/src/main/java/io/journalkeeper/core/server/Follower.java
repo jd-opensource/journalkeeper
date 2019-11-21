@@ -17,6 +17,7 @@ import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.state.ConfigState;
+import io.journalkeeper.core.state.JournalKeeperState;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
@@ -48,15 +49,10 @@ class Follower extends ServerStateMachine implements StateServer {
     /**
      * 节点上的最新状态 和 被状态机执行的最大日志条目的索引值（从 0 开始递增）
      */
-    protected final State state;
+    protected final JournalKeeperState state;
     private final URI serverUri;
     private final int currentTerm;
     private final VoterConfigManager voterConfigManager;
-    /**
-     * 当前集群配置
-     */
-    private final ConfigState votersConfigStateMachine;
-
     private final Threads threads;
 
     /**
@@ -69,19 +65,16 @@ class Follower extends ServerStateMachine implements StateServer {
      */
     private long leaderMaxIndex = -1L;
 
-    private final long heartbeatIntervalMs;
 
     private boolean readyForStartPreferredLeaderElection = false;
-    Follower(Journal journal, State state, URI serverUri, int currentTerm, VoterConfigManager voterConfigManager, ConfigState votersConfigStateMachine, Threads threads, int cachedRequests, long heartbeatIntervalMs) {
+    Follower(Journal journal, JournalKeeperState state, URI serverUri, int currentTerm, VoterConfigManager voterConfigManager, Threads threads, int cachedRequests) {
         super(true);
         this.state = state;
         this.voterConfigManager = voterConfigManager;
-        this.votersConfigStateMachine = votersConfigStateMachine;
         this.threads = threads;
         pendingAppendEntriesRequests = new PriorityBlockingQueue<>(cachedRequests,
                 Comparator.comparing(ReplicationRequestResponse::getPrevLogTerm)
                         .thenComparing(ReplicationRequestResponse::getPrevLogIndex));
-        this.heartbeatIntervalMs = heartbeatIntervalMs;
 
         threads.createThread(buildVoterReplicationHandlerThread());
         this.journal = journal;
@@ -129,12 +122,12 @@ class Follower extends ServerStateMachine implements StateServer {
                             final long startIndex = request.getPrevLogIndex() + 1;
 
                             // 如果要删除部分未提交的日志，并且待删除的这部分存在配置变更日志，则需要回滚配置
-                            voterConfigManager.maybeRollbackConfig(startIndex, journal, votersConfigStateMachine);
+                            voterConfigManager.maybeRollbackConfig(startIndex, journal, state.getConfigState());
 
                             journal.compareOrAppendRaw(request.getEntries(), startIndex);
 
                             // 非Leader（Follower和Observer）复制日志到本地后，如果日志中包含配置变更，则立即变更配置
-                            voterConfigManager.maybeUpdateNonLeaderConfig(request.getEntries(), votersConfigStateMachine);
+                            voterConfigManager.maybeUpdateNonLeaderConfig(request.getEntries(), state.getConfigState());
 
                             response = new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
                                     currentTerm, request.getEntries().size());

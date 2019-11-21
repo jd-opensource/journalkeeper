@@ -67,22 +67,22 @@ public class JournalStoreTest {
 
     @Test
     public void writeReadSyncOneNode() throws Exception{
-        writeReadTest(1, new int [] {2}, 1024, 1,  32 , false);
+        writeReadTest(1, Stream.of(2).collect(Collectors.toSet()), 1024, 1,  32 , false);
     }
 
     @Test
     public void writeReadSyncTripleNodes() throws Exception{
-        writeReadTest(3, new int [] {2, 3, 4, 5, 6}, 1024, 32, 32 , false);
+        writeReadTest(3, Stream.of(2, 3, 4, 5, 6).collect(Collectors.toSet()), 1024, 32, 32 , false);
     }
 
     @Test
     public void writeReadAsyncOneNode() throws Exception{
-        writeReadTest(1, new int [] {2}, 1024, 1,  32 , true);
+        writeReadTest(1, Stream.of(2).collect(Collectors.toSet()), 1024, 1,  32 , true);
     }
 
     @Test
     public void writeReadAsyncTripleNodes() throws Exception{
-        writeReadTest(3, new int [] {2, 3, 4, 5, 6}, 1024, 32, 32 , true);
+        writeReadTest(3, Stream.of(2, 3, 4, 5, 6).collect(Collectors.toSet()), 1024, 32, 32 , true);
     }
 
     @Test
@@ -97,7 +97,7 @@ public class JournalStoreTest {
     public void scalePartitionTest() throws IOException, ExecutionException, InterruptedException {
         List<JournalStoreServer> servers = createServers(1, base);
         JournalStoreClient client = servers.get(0).createClient();
-        Set<Integer> readPartitions = Arrays.stream(client.listPartitions().get()).boxed().collect(Collectors.toSet());
+        Set<Integer> readPartitions = client.listPartitions().get();
         Assert.assertEquals(Collections.singleton(DEFAULT_PARTITION), readPartitions);
         stopServers(servers);
         after();
@@ -107,14 +107,13 @@ public class JournalStoreTest {
         servers = createServers(1, base, partitions);
 
         client = servers.get(0).createClient();
-        readPartitions = Arrays.stream(client.listPartitions().get()).boxed().collect(Collectors.toSet());
+        readPartitions = client.listPartitions().get();
         Assert.assertEquals(partitions, readPartitions);
-        int [] intPartitions = new int [] {2, 3, 7, 8};
+        partitions = Stream.of(2, 3, 7, 8).collect(Collectors.toSet());
         AdminClient adminClient = servers.get(0).getAdminClient();
-        adminClient.scalePartitions(intPartitions).get();
-        int [] readIntPartitions = client.listPartitions().get();
-        Arrays.sort(readIntPartitions);
-        Assert.assertArrayEquals(intPartitions, readIntPartitions);
+        adminClient.scalePartitions(partitions).get();
+        Set<Integer> readIntPartitions = client.listPartitions().get();
+        Assert.assertEquals(partitions, readIntPartitions);
         stopServers(servers);
 
         after();
@@ -131,7 +130,7 @@ public class JournalStoreTest {
         journalStoreServer.start();
 
         client = journalStoreServer.createLocalClient();
-        readPartitions = Arrays.stream(client.listPartitions().get()).boxed().collect(Collectors.toSet());
+        readPartitions = client.listPartitions().get();
         Assert.assertEquals(partitions, readPartitions);
 
         journalStoreServer.stop();
@@ -141,7 +140,7 @@ public class JournalStoreTest {
         journalStoreServer.start();
 
         client = journalStoreServer.createLocalClient();
-        readPartitions = Arrays.stream(client.listPartitions().get()).boxed().collect(Collectors.toSet());
+        readPartitions = client.listPartitions().get();
         Assert.assertEquals(partitions, readPartitions);
 
         journalStoreServer.stop();
@@ -189,7 +188,7 @@ public class JournalStoreTest {
      * @param batchSize 每批数据条数
      * @param batchCount 批数
      */
-    private void writeReadTest(int nodes, int [] partitions, int entrySize, int batchSize, int batchCount, boolean async) throws Exception {
+    private void writeReadTest(int nodes, Set<Integer> partitions, int entrySize, int batchSize, int batchCount, boolean async) throws Exception {
         List<JournalStoreServer> servers = createServers(nodes, base);
         try {
             JournalStoreClient client = servers.get(0).createClient();
@@ -214,8 +213,8 @@ public class JournalStoreTest {
             logger.info("Replication finished. " +
                     "Write takes: {}ms, {}ps, tps: {}.",
                      (t1 - t0) / 1000000,
-                    Format.formatSize( 1000000000L * partitions.length * entrySize * batchCount  / (t1 - t0)),
-                    1000000000L * partitions.length * batchCount  / (t1 - t0));
+                    Format.formatSize( 1000000000L * partitions.size() * entrySize * batchCount  / (t1 - t0)),
+                    1000000000L * partitions.size() * batchCount  / (t1 - t0));
 
 
             // read
@@ -236,8 +235,8 @@ public class JournalStoreTest {
             logger.info("Read finished. " +
                             "Takes: {}ms {}ps, tps: {}.",
                     (t1 - t0) / 1000000,
-                    Format.formatSize( 1000000000L * partitions.length * entrySize * batchCount  / (t1 - t0)),
-                    1000000000L * partitions.length * batchCount  / (t1 - t0));
+                    Format.formatSize( 1000000000L * partitions.size() * entrySize * batchCount  / (t1 - t0)),
+                    1000000000L * partitions.size() * batchCount  / (t1 - t0));
         } finally {
             stopServers(servers);
 
@@ -561,9 +560,9 @@ public class JournalStoreTest {
 
 
 
-    private void asyncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException {
+    private void asyncWrite(Set<Integer> partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException {
         ExecutorService executors = Executors.newFixedThreadPool(10, new NamedThreadFactory("ClientRetryThreads"));
-        CountDownLatch latch = new CountDownLatch(partitions.length * batchCount);
+        CountDownLatch latch = new CountDownLatch(partitions.size() * batchCount);
         final List<Throwable> exceptions = Collections.synchronizedList(new LinkedList<>());
         long t0 = System.nanoTime();
         // write
@@ -576,7 +575,7 @@ public class JournalStoreTest {
         logger.info("Async write finished. " +
                         "Takes: {}ms {}ps.",
                 (t1 - t0) / 1000000,
-                Format.formatSize( 1000000000L * partitions.length * rawEntries.length * batchCount  / (t1 - t0)));
+                Format.formatSize( 1000000000L * partitions.size() * rawEntries.length * batchCount  / (t1 - t0)));
 
         while (!latch.await(1, TimeUnit.SECONDS)) {
             Thread.yield();
@@ -606,7 +605,7 @@ public class JournalStoreTest {
                 });
     }
 
-    private void syncWrite(int[] partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException, ExecutionException {
+    private void syncWrite(Set<Integer> partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException, ExecutionException {
         // write
         for (int partition : partitions) {
             for (int i = 0; i < batchCount; i++) {

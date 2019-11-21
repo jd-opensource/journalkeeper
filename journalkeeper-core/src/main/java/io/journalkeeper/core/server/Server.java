@@ -112,8 +112,8 @@ public class Server<E, ER, Q, QR>
     }
 
     @Override
-    public void init(URI uri, List<URI> voters, Set<Integer> partitions) throws IOException {
-        server.init(uri, voters, partitions);
+    public void init(URI uri, List<URI> voters, Set<Integer> partitions, URI preferredLeader) throws IOException {
+        server.init(uri, voters, partitions, preferredLeader);
     }
 
     @Override

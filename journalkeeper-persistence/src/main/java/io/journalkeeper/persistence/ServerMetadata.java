@@ -26,39 +26,25 @@ import java.util.Set;
  */
 public class ServerMetadata {
     private long commitIndex = 0L;
-    private List<URI> voters;
     private List<URI> parents;
     private int currentTerm = 0;
     private URI votedFor;
     private URI thisServer;
-    private Set<Integer> partitions;
-
-    private List<URI> oldVoters;
-    private boolean jointConsensus = false;
-    private URI preferredLeader;
     private boolean initialized = false;
 
     public long getCommitIndex() {
         return commitIndex;
     }
 
-    public synchronized void setCommitIndex(long commitIndex) {
+    public void setCommitIndex(long commitIndex) {
         this.commitIndex = commitIndex;
-    }
-
-    public List<URI> getVoters() {
-        return voters;
-    }
-
-    public synchronized void setVoters(List<URI> voters) {
-        this.voters = voters;
     }
 
     public List<URI> getParents() {
         return parents;
     }
 
-    public synchronized void setParents(List<URI> parents) {
+    public void setParents(List<URI> parents) {
         this.parents = parents;
     }
 
@@ -66,7 +52,7 @@ public class ServerMetadata {
         return currentTerm;
     }
 
-    public synchronized void setCurrentTerm(int currentTerm) {
+    public void setCurrentTerm(int currentTerm) {
         this.currentTerm = currentTerm;
     }
 
@@ -74,7 +60,7 @@ public class ServerMetadata {
         return votedFor;
     }
 
-    public synchronized void setVotedFor(URI votedFor) {
+    public void setVotedFor(URI votedFor) {
         this.votedFor = votedFor;
     }
 
@@ -82,41 +68,8 @@ public class ServerMetadata {
         return thisServer;
     }
 
-    public synchronized void setThisServer(URI thisServer) {
+    public void setThisServer(URI thisServer) {
         this.thisServer = thisServer;
-    }
-
-
-    public Set<Integer> getPartitions() {
-        return partitions;
-    }
-
-    public synchronized void setPartitions(Set<Integer> partitions) {
-        this.partitions = partitions;
-    }
-
-    public List<URI> getOldVoters() {
-        return oldVoters;
-    }
-
-    public synchronized void setOldVoters(List<URI> oldVoters) {
-        this.oldVoters = oldVoters;
-    }
-
-    public boolean isJointConsensus() {
-        return jointConsensus;
-    }
-
-    public synchronized void setJointConsensus(boolean jointConsensus) {
-        this.jointConsensus = jointConsensus;
-    }
-
-    public URI getPreferredLeader() {
-        return preferredLeader;
-    }
-
-    public void setPreferredLeader(URI preferredLeader) {
-        this.preferredLeader = preferredLeader;
     }
 
     public boolean isInitialized() {
@@ -128,44 +81,32 @@ public class ServerMetadata {
     }
 
     @Override
-    public synchronized ServerMetadata clone() {
-        ServerMetadata clone = new ServerMetadata();
-        clone.commitIndex = this.commitIndex;
-        clone.voters = new ArrayList<>(this.voters);
-        clone.parents = new ArrayList<>(this.parents);
-        clone.currentTerm = this.currentTerm;
-        clone.votedFor = this.votedFor;
-        clone.thisServer = this.thisServer;
-        clone.partitions = new HashSet<>(this.partitions);
-        clone.oldVoters = new ArrayList<>(this.oldVoters);
-        clone.jointConsensus = this.jointConsensus;
-        clone.initialized = this.initialized;
-        clone.preferredLeader = this.preferredLeader;
-        return clone;
+    public String toString() {
+        return "ServerMetadata{" +
+                "commitIndex=" + commitIndex +
+                ", parents=" + parents +
+                ", currentTerm=" + currentTerm +
+                ", votedFor=" + votedFor +
+                ", thisServer=" + thisServer +
+                ", initialized=" + initialized +
+                '}';
     }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        ServerMetadata that = (ServerMetadata) o;
-        return commitIndex == that.commitIndex &&
-                currentTerm == that.currentTerm &&
-                jointConsensus == that.jointConsensus &&
-                initialized == that.initialized &&
-                Objects.equals(voters, that.voters) &&
-                Objects.equals(parents, that.parents) &&
-                Objects.equals(votedFor, that.votedFor) &&
-                Objects.equals(thisServer, that.thisServer) &&
-                Objects.equals(partitions, that.partitions) &&
-                Objects.equals(oldVoters, that.oldVoters) &&
-                Objects.equals(preferredLeader, that.preferredLeader);
+        ServerMetadata metadata = (ServerMetadata) o;
+        return commitIndex == metadata.commitIndex &&
+                currentTerm == metadata.currentTerm &&
+                initialized == metadata.initialized &&
+                Objects.equals(parents, metadata.parents) &&
+                Objects.equals(votedFor, metadata.votedFor) &&
+                Objects.equals(thisServer, metadata.thisServer);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(commitIndex, voters, parents, currentTerm, votedFor, thisServer, partitions, oldVoters, jointConsensus, preferredLeader);
+        return Objects.hash(commitIndex, parents, currentTerm, votedFor, thisServer, initialized);
     }
-
-
 }
