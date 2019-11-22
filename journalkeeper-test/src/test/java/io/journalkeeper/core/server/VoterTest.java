@@ -22,8 +22,8 @@ import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.StateResult;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.entry.DefaultJournalEntryParser;
-import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
-import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
+import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
+import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.metric.JMetricFactory;
 import io.journalkeeper.metric.JMetricSupport;
@@ -48,10 +48,8 @@ import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -96,7 +94,7 @@ public class VoterTest {
             }
 
             voter.updateClusterState(new UpdateClusterStateRequest(
-                    ReservedEntriesSerializeSupport
+                    InternalEntriesSerializeSupport
                             .serialize(new ScalePartitionsEntry(partitions)),
                     RaftJournal.INTERNAL_PARTITION, 1)).get();
 
@@ -144,7 +142,7 @@ public class VoterTest {
             }
 
             voter.updateClusterState(new UpdateClusterStateRequest(
-                    ReservedEntriesSerializeSupport
+                    InternalEntriesSerializeSupport
                             .serialize(new ScalePartitionsEntry(partitions)),
                     RaftJournal.INTERNAL_PARTITION, 1)).get();
 

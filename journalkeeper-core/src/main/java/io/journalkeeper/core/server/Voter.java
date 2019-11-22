@@ -33,10 +33,11 @@ import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;
-import io.journalkeeper.core.entry.reserved.*;
+import io.journalkeeper.core.entry.internal.*;
 import io.journalkeeper.core.exception.UpdateConfigurationException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.state.ConfigState;
+import io.journalkeeper.core.state.JournalKeeperState;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.persistence.ServerMetadata;
 import io.journalkeeper.rpc.client.*;
@@ -44,6 +45,8 @@ import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
 import io.journalkeeper.rpc.server.DisableLeaderWriteResponse;
+import io.journalkeeper.rpc.server.InstallSnapshotRequest;
+import io.journalkeeper.rpc.server.InstallSnapshotResponse;
 import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
 import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
@@ -51,8 +54,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.NavigableMap;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -128,14 +133,14 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         this.config = toConfig(properties);
 
-        state.addInterceptor(ReservedEntryType.TYPE_UPDATE_VOTERS_S1, this::applyUpdateVotersInternalEntry);
-        state.addInterceptor(ReservedEntryType.TYPE_UPDATE_VOTERS_S2, this::applyUpdateVotersInternalEntry);
+        state.addInterceptor(InternalEntryType.TYPE_UPDATE_VOTERS_S1, this::applyUpdateVotersInternalEntry);
+        state.addInterceptor(InternalEntryType.TYPE_UPDATE_VOTERS_S2, this::applyUpdateVotersInternalEntry);
 
         electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
     }
 
 
-    private void applyUpdateVotersInternalEntry(ReservedEntryType type, byte [] internalEntry) {
+    private void applyUpdateVotersInternalEntry(InternalEntryType type, byte [] internalEntry) {
         voterConfigManager.applyReservedEntry(type, internalEntry, voterState(), state.getConfigState(),
                 this, serverUri(), this);
 
@@ -356,12 +361,12 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                     config.getReplicationParallelism(),config.getReplicationBatchSize(),
                     entryResultSerializer,threads,
                     this, this, asyncExecutor, scheduledExecutor, voterConfigManager, this, this,
-                    this.journalEntryParser, config.getTransactionTimeoutMs());
+                    this.journalEntryParser, config.getTransactionTimeoutMs(), snapshots);
             leader.start();
             this.leaderUri = this.uri;
             // Leader announcement
             int term = currentTerm.get();
-            byte [] payload = ReservedEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(term));
+            byte [] payload = InternalEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(term));
             JournalEntry journalEntry = journalEntryParser.createJournalEntry(payload);
             journalEntry.setTerm(term);
             journalEntry.setPartition(INTERNAL_PARTITION);
@@ -403,7 +408,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
 
             follower = new Follower(journal, state, uri, currentTerm.get(),
                     voterConfigManager, threads,
-                    config.getCacheRequests());
+                    snapshots, config.getCacheRequests());
             follower.start();
 
             this.electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
@@ -534,6 +539,58 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
             }
             return new DisableLeaderWriteResponse(currentTerm.get());
         }, asyncExecutor).exceptionally(DisableLeaderWriteResponse::new);
+    }
+
+    //Receiver implementation:
+    //1. Reply immediately if term < currentTerm
+    //2. Create new snapshot file if first chunk (offset is 0)
+    //3. Write data into snapshot file at given offset
+    //4. Reply and wait for more data chunks if done is false
+    //5. Save snapshot file, discard any existing or partial snapshot
+    //with a smaller index
+    //6. If existing log entry has same index and term as snapshot’s
+    //last included entry, retain log entries following it and reply
+    //7. Discard the entire log
+    //8. Reset state machine using snapshot contents (and load
+    //snapshot’s cluster configuration)
+    @Override
+    public CompletableFuture<InstallSnapshotResponse> installSnapshot(InstallSnapshotRequest request) {
+        JournalKeeperState<E, ER, Q, QR> snapshot;
+        if(checkTerm(request.getTerm())) {
+            return CompletableFuture.completedFuture(new InstallSnapshotResponse(currentTerm.get()));
+        }
+        try {
+            if (voterState.getState() == VoterState.FOLLOWER && null != follower) {
+                long lastApplied = request.getLastIncludedIndex() + 1;
+                Path snapshotPath = snapshotsPath().resolve(String.valueOf(request.getLastIncludedIndex() + 1));
+                partialSnapshot.installTrunk(request, snapshotPath);
+
+                if(request.isDone()) {
+
+                    // discard any existing snapshot with a same or smaller index
+                    NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> headMap = snapshots.headMap(lastApplied, true);
+                    while (!headMap.isEmpty()) {
+                        snapshot = headMap.remove(headMap.firstKey());
+                        snapshot.close();
+                        snapshot.clear();
+                    }
+
+                    // add the installed snapshot to snapshots.
+                    snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
+                    snapshot.recover(snapshotPath, properties);
+                    snapshots.put(lastApplied, snapshot);
+
+                    // If existing log entry has same index and term as snapshot’s
+                    // last included entry, retain log entries following it.
+
+                }
+
+            }
+            return null;
+        } catch (Throwable t) {
+            logger.warn("Install snapshot exception!", t);
+            return CompletableFuture.completedFuture(new InstallSnapshotResponse(t));
+        }
     }
 
     @Override
@@ -673,7 +730,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     public CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request) {
         return CompletableFuture.supplyAsync(
                 () -> new UpdateVotersS1Entry(request.getOldConfig(), request.getNewConfig()), asyncExecutor)
-                .thenApply(ReservedEntriesSerializeSupport::serialize)
+                .thenApply(InternalEntriesSerializeSupport::serialize)
                 .thenApply(entry -> new UpdateClusterStateRequest(new SerializedUpdateRequest(entry, INTERNAL_PARTITION, 1)))
                 .thenCompose(this::updateClusterState)
                 .thenAccept(response -> {

@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.core.server;
 
+import io.journalkeeper.base.ReplicableIterator;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
@@ -31,6 +32,9 @@ import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
+import io.journalkeeper.rpc.server.InstallSnapshotRequest;
+import io.journalkeeper.rpc.server.InstallSnapshotResponse;
+import io.journalkeeper.rpc.server.ServerRpc;
 import io.journalkeeper.utils.state.ServerStateMachine;
 import io.journalkeeper.utils.state.StateServer;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
@@ -48,6 +52,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
@@ -143,6 +148,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     private final JournalTransactionManager journalTransactionManager;
     private final ApplyReservedEntryInterceptor journalTransactionInterceptor;
+    private final NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> snapshots;
     Leader(Journal journal, JournalKeeperState state, Map<Long, JournalKeeperState<E, ER, Q, QR>> immutableSnapshots,
            int currentTerm,
            URI serverUri,
@@ -157,7 +163,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
            MetricProvider metricProvider,
            CheckTermInterceptor checkTermInterceptor,
            JournalEntryParser journalEntryParser,
-           long transactionTimeoutMs) {
+           long transactionTimeoutMs, NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> snapshots) {
 
         super(true);
         this.pendingUpdateStateRequests = new LinkedBlockingQueue<>(cacheRequests);
@@ -176,6 +182,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.metricProvider = metricProvider;
         this.checkTermInterceptor = checkTermInterceptor;
         this.journalEntryParser = journalEntryParser;
+        this.snapshots = snapshots;
         this.replicationCallbacks = new RingBufferBelt(rpcTimeoutMs, cacheRequests);
         this.flushCallbacks = new RingBufferBelt(rpcTimeoutMs, cacheRequests);
         this.appendEntriesRpcMetricMap = new HashMap<>(2);
@@ -592,28 +599,82 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                         follower.addResponse(response);
                         break;
                     }
-                } else if (response.getEntryCount() > 0) {
-                    // 失败且不是心跳
+                } else {
+                    // 失败
                     if (follower.getRepStartIndex() == response.getJournalIndex()) {
                         // 需要回退
-                        int rollbackSize = (int) Math.min(replicationBatchSize, follower.repStartIndex - journal.minIndex());
+                        int rollbackSize = (int) Math.min(replicationBatchSize, follower.getRepStartIndex() - snapshots.firstKey());
                         follower.repStartIndex -= rollbackSize;
+
+                        // 如果回退到最小位置，先安装快照
+                        if(follower.getRepStartIndex() == snapshots.firstKey()) {
+                            installSnapshot(follower, snapshots.firstEntry().getValue());
+                        }
+
                         sendAppendEntriesRequest(follower,
                                 new AsyncAppendEntriesRequest(currentTerm, serverUri,
                                         follower.repStartIndex - 1,
-                                        journal.getTerm(follower.repStartIndex - 1),
+                                        getTerm(follower.repStartIndex - 1),
                                         journal.readRaw(follower.repStartIndex, rollbackSize),
                                         journal.commitIndex(), journal.maxIndex()));
+
+                        if (response.getEntryCount() > 0) {
+                            delaySendAsyncAppendEntriesRpc(follower, new AsyncAppendEntriesRequest(currentTerm, serverUri,
+                                    response.getJournalIndex() - 1,
+                                    journal.getTerm(response.getJournalIndex() - 1),
+                                    journal.readRaw(response.getJournalIndex(), response.getEntryCount()),
+                                    journal.commitIndex(), journal.maxIndex()));
+                        }
+
+
+                    } else if (response.getEntryCount() > 0 && follower.getRepStartIndex() < response.getJournalIndex()) {
+                        delaySendAsyncAppendEntriesRpc(follower, new AsyncAppendEntriesRequest(currentTerm, serverUri,
+                                response.getJournalIndex() - 1,
+                                journal.getTerm(response.getJournalIndex() - 1),
+                                journal.readRaw(response.getJournalIndex(), response.getEntryCount()),
+                                journal.commitIndex(), journal.maxIndex()));
                     }
-                    delaySendAsyncAppendEntriesRpc(follower, new AsyncAppendEntriesRequest(currentTerm, serverUri,
-                            response.getJournalIndex() - 1,
-                            journal.getTerm(response.getJournalIndex() - 1),
-                            journal.readRaw(response.getJournalIndex(), response.getEntryCount()),
-                            journal.commitIndex(), journal.maxIndex()));
                 }
             }
         }
         return isMatchIndexUpdated;
+    }
+    private int getTerm(long index) {
+        try {
+            return journal.getTerm(index);
+        } catch (IndexUnderflowException e) {
+            if(index  + 1 == snapshots.firstKey()) {
+                return snapshots.firstEntry().getValue().lastIncludedTerm();
+            } else {
+                throw e;
+            }
+        }
+    }
+
+    private void installSnapshot(ReplicationDestination follower, JournalKeeperState<E,ER,Q,QR> snapshot) {
+
+        try {
+            logger.info("Install snapshot to {} ...", follower.getUri());
+            ServerRpc rpc = serverRpcProvider.getServerRpc(follower.getUri()).get(heartbeatIntervalMs, TimeUnit.MILLISECONDS);
+            int offset = 0;
+            ReplicableIterator iterator = snapshot.iterator();
+            while (iterator.hasMoreTrunks()) {
+                byte [] trunk = iterator.nextTrunk();
+                InstallSnapshotRequest request = new InstallSnapshotRequest(
+                        currentTerm, serverUri, snapshot.lastIncludedIndex(), snapshot.lastIncludedTerm(),
+                        offset, trunk, !iterator.hasMoreTrunks()
+                );
+                InstallSnapshotResponse response = rpc.installSnapshot(request).get();
+                if(!response.success()) {
+                    logger.warn("Install snapshot to {} failed! Cause: {}.", follower.getUri(), response.errorString());
+                    return;
+                }
+                offset += trunk.length;
+            }
+            logger.info("Install snapshot to {} success!", follower.getUri());
+        } catch (Throwable t) {
+            logger.warn("Install snapshot to {} failed!", follower.getUri(), t);
+        }
     }
 
     private void callback() {
@@ -729,9 +790,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     }
 
     private void removeAppendEntriesRpcMetrics() {
-        appendEntriesRpcMetricMap.forEach((followerUri, metric) -> {
-            metricProvider.removeMetric(getMetricName(METRIC_APPEND_ENTRIES_RPC, followerUri));
-        });
+        appendEntriesRpcMetricMap.forEach((followerUri, metric) ->
+                metricProvider.removeMetric(getMetricName(METRIC_APPEND_ENTRIES_RPC, followerUri)));
     }
 
     private static String getMetricName(String prefix, URI followerUri) {

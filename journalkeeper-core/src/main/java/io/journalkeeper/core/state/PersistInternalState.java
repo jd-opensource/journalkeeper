@@ -2,6 +2,7 @@ package io.journalkeeper.core.state;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -10,12 +11,14 @@ import java.util.Set;
  */
 public class PersistInternalState {
     private URI preferredLeader = null;
-    private Set<Integer> partitions;
+    private Map<Integer /* partition */, Long /* lastIncludedIndex of the partition */> partitionIndices;
     private long lastIncludedIndex;
     private int lastIncludedTerm;
     private List<URI> configNew ;
     private List<URI> configOld ;
     private boolean jointConsensus;
+    private long minOffset;
+    private long snapshotTimestamp;
 
 
     public URI getPreferredLeader() {
@@ -26,12 +29,12 @@ public class PersistInternalState {
         this.preferredLeader = preferredLeader;
     }
 
-    public Set<Integer> getPartitions() {
-        return partitions;
+    public Map<Integer, Long> getPartitionIndices() {
+        return partitionIndices;
     }
 
-    public void setPartitions(Set<Integer> partitions) {
-        this.partitions = partitions;
+    public void setPartitionIndices(Map<Integer, Long> partitionIndices) {
+        this.partitionIndices = partitionIndices;
     }
 
     public long getLastIncludedIndex() {
@@ -81,9 +84,14 @@ public class PersistInternalState {
         } else {
             configState = new ConfigState(configNew);
         }
-        InternalState internalState = new InternalState(configState, partitions, preferredLeader);
+        InternalState internalState = new InternalState();
+        internalState.setConfigState(configState);
+        internalState.setPartitionIndices(getPartitionIndices());
+        internalState.setPreferredLeader(getPreferredLeader());
         internalState.setLastIncludedTerm(getLastIncludedTerm());
         internalState.setLastIncludedIndex(getLastIncludedIndex());
+        internalState.setMinOffset(getMinOffset());
+        internalState.setSnapshotTimestamp(getSnapshotTimestamp());
         return internalState;
     }
 
@@ -95,8 +103,26 @@ public class PersistInternalState {
 
         setLastIncludedIndex(internalState.getLastIncludedIndex());
         setLastIncludedTerm(internalState.getLastIncludedTerm());
-        setPartitions(internalState.getPartitions());
+        setPartitionIndices(internalState.getPartitionIndices());
         setPreferredLeader(internalState.getPreferredLeader());
+        setMinOffset(internalState.getMinOffset());
+        setSnapshotTimestamp(internalState.getSnapshotTimestamp());
         return this;
+    }
+
+    public long getMinOffset() {
+        return minOffset;
+    }
+
+    public void setMinOffset(long minOffset) {
+        this.minOffset = minOffset;
+    }
+
+    public long getSnapshotTimestamp() {
+        return snapshotTimestamp;
+    }
+
+    public void setSnapshotTimestamp(long snapshotTimestamp) {
+        this.snapshotTimestamp = snapshotTimestamp;
     }
 }

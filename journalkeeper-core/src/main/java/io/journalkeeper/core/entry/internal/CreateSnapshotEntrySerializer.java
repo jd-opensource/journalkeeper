@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.entry.reserved;
+package io.journalkeeper.core.entry.internal;
 
 import io.journalkeeper.base.Serializer;
 
@@ -21,21 +21,18 @@ import java.nio.ByteBuffer;
  * @author LiYue
  * Date: 2019-05-09
  */
-public class LeaderAnnouncementEntrySerializer implements Serializer<LeaderAnnouncementEntry> {
+public class CreateSnapshotEntrySerializer implements Serializer<CreateSnapshotEntry> {
 
     @Override
-    public byte[] serialize(LeaderAnnouncementEntry entry) {
+    public byte[] serialize(CreateSnapshotEntry entry) {
         byte [] buffer = new byte[Byte.BYTES + Integer.BYTES];
         ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
-        byteBuffer.put((byte) ReservedEntryType.TYPE_LEADER_ANNOUNCEMENT.value());
-        byteBuffer.putInt(entry.getTerm());
+        byteBuffer.put((byte) InternalEntryType.TYPE_CREATE_SNAPSHOT.value());
         return buffer;
     }
 
     @Override
-    public LeaderAnnouncementEntry parse(byte[] bytes) {
-        ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
-        int term =  byteBuffer.getInt(Byte.BYTES);
-        return new LeaderAnnouncementEntry(term);
+    public CreateSnapshotEntry parse(byte[] bytes) {
+        return new CreateSnapshotEntry();
     }
 }

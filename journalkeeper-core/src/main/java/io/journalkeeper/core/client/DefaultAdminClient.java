@@ -21,11 +21,10 @@ import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
-import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
-import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
-import io.journalkeeper.core.entry.reserved.ReservedPartition;
-import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
-import io.journalkeeper.core.entry.reserved.SetPreferredLeaderEntry;
+import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
+import io.journalkeeper.core.entry.internal.ReservedPartition;
+import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
+import io.journalkeeper.core.entry.internal.SetPreferredLeaderEntry;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
@@ -36,7 +35,6 @@ import io.journalkeeper.rpc.client.UpdateVotersRequest;
 import java.net.URI;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -78,15 +76,11 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
     }
 
     @Override
-    public CompletableFuture<Void> compact(Map<Integer, Long> toIndices) {
-        return this.update(ReservedEntriesSerializeSupport.serialize(new CompactJournalEntry(toIndices)));
-    }
-    @Override
     public CompletableFuture<Void> scalePartitions(Set<Integer> partitions) {
 
         ReservedPartition.validatePartitions(partitions);
 
-        return this.update(ReservedEntriesSerializeSupport.serialize(new ScalePartitionsEntry(partitions)));
+        return this.update(InternalEntriesSerializeSupport.serialize(new ScalePartitionsEntry(partitions)));
     }
 
     private CompletableFuture<Void> update(byte [] entry) {
@@ -105,7 +99,7 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
 
     @Override
     public CompletableFuture<Void> setPreferredLeader(URI preferredLeader) {
-        return this.update(ReservedEntriesSerializeSupport.serialize(new SetPreferredLeaderEntry(preferredLeader)));
+        return this.update(InternalEntriesSerializeSupport.serialize(new SetPreferredLeaderEntry(preferredLeader)));
     }
 
 

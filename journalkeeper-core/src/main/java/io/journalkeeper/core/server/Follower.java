@@ -13,12 +13,9 @@
  */
 package io.journalkeeper.core.server;
 
-import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.journal.Journal;
-import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.core.state.JournalKeeperState;
-import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
@@ -33,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Comparator;
+import java.util.NavigableMap;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -43,7 +41,7 @@ import static io.journalkeeper.core.server.ThreadNames.*;
  * @author LiYue
  * Date: 2019-09-10
  */
-class Follower extends ServerStateMachine implements StateServer {
+class Follower<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private static final Logger logger = LoggerFactory.getLogger(Follower.class);
     private final Journal journal;
     /**
@@ -54,8 +52,7 @@ class Follower extends ServerStateMachine implements StateServer {
     private final int currentTerm;
     private final VoterConfigManager voterConfigManager;
     private final Threads threads;
-
-    /**
+    private final NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> snapshots;    /**
      * 待处理的asyncAppendEntries Request，按照request中的preLogTerm和prevLogIndex排序。
      */
     private final BlockingQueue<ReplicationRequestResponse> pendingAppendEntriesRequests;
@@ -67,11 +64,12 @@ class Follower extends ServerStateMachine implements StateServer {
 
 
     private boolean readyForStartPreferredLeaderElection = false;
-    Follower(Journal journal, JournalKeeperState state, URI serverUri, int currentTerm, VoterConfigManager voterConfigManager, Threads threads, int cachedRequests) {
+    Follower(Journal journal, JournalKeeperState<E, ER, Q, QR> state, URI serverUri, int currentTerm, VoterConfigManager voterConfigManager, Threads threads, NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> snapshots, int cachedRequests) {
         super(true);
         this.state = state;
         this.voterConfigManager = voterConfigManager;
         this.threads = threads;
+        this.snapshots = snapshots;
         pendingAppendEntriesRequests = new PriorityBlockingQueue<>(cachedRequests,
                 Comparator.comparing(ReplicationRequestResponse::getPrevLogTerm)
                         .thenComparing(ReplicationRequestResponse::getPrevLogIndex));
@@ -99,6 +97,19 @@ class Follower extends ServerStateMachine implements StateServer {
                 journal.maxIndex(), journal.commitIndex(), state.lastApplied(), serverUri.toString());
     }
 
+    private int getTerm(long index) {
+        try {
+            return journal.getTerm(index);
+        } catch (IndexUnderflowException e) {
+            if(index  + 1 == snapshots.firstKey()) {
+                return snapshots.firstEntry().getValue().lastIncludedTerm();
+            } else {
+                throw e;
+            }
+        }
+    }
+
+
     /**
      * 1. 如果 term < currentTerm返回 false
      * 如果 term > currentTerm且节点当前的状态不是FOLLOWER，将节点当前的状态转换为FOLLOWER；
@@ -112,65 +123,51 @@ class Follower extends ServerStateMachine implements StateServer {
         ReplicationRequestResponse rr = pendingAppendEntriesRequests.take();
         AsyncAppendEntriesRequest request = rr.getRequest();
         AsyncAppendEntriesResponse response = null;
+
+        // Reply false if log doesn’t contain an entry at prevLogIndex
+        // whose term matches prevLogTerm
+        if(request.getPrevLogIndex() < journal.minIndex() ||
+                request.getPrevLogIndex() >= journal.maxIndex() ||
+                journal.getTerm(rr.getPrevLogIndex()) != request.getPrevLogTerm()
+            ) {
+            response = new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
+                    currentTerm, request.getEntries().size());
+            rr.getResponseFuture().complete(response);
+            return;
+        }
+
         try {
 
-            try {
-                if (null != request.getEntries() && request.getEntries().size() > 0) {
-                    if (rr.getPrevLogIndex() < journal.minIndex() || journal.getTerm(rr.getPrevLogIndex()) == request.getPrevLogTerm()) {
-                        // 处理复制请求
-                        try {
-                            final long startIndex = request.getPrevLogIndex() + 1;
+            //  If an existing entry conflicts with a new one (same index
+            //  but different terms), delete the existing entry and all that
+            //  follow it
+            //  Append any new entries not already in the log
 
-                            // 如果要删除部分未提交的日志，并且待删除的这部分存在配置变更日志，则需要回滚配置
-                            voterConfigManager.maybeRollbackConfig(startIndex, journal, state.getConfigState());
+            if (null != request.getEntries() && request.getEntries().size() > 0) {
+                final long startIndex = request.getPrevLogIndex() + 1;
 
-                            journal.compareOrAppendRaw(request.getEntries(), startIndex);
+                // 如果要删除部分未提交的日志，并且待删除的这部分存在配置变更日志，则需要回滚配置
+                voterConfigManager.maybeRollbackConfig(startIndex, journal, state.getConfigState());
 
-                            // 非Leader（Follower和Observer）复制日志到本地后，如果日志中包含配置变更，则立即变更配置
-                            voterConfigManager.maybeUpdateNonLeaderConfig(request.getEntries(), state.getConfigState());
+                journal.compareOrAppendRaw(request.getEntries(), startIndex);
 
-                            response = new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
-                                    currentTerm, request.getEntries().size());
-
-                            if(leaderMaxIndex < request.getMaxIndex()) {
-                                leaderMaxIndex = request.getMaxIndex();
-                            }
-                        } catch (Throwable t) {
-                            logger.warn("Handle replication request exception! {}", voterInfo(), t);
-                            response = new AsyncAppendEntriesResponse(t);
-                        }
-
-                    } else {
-                        response = new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
-                                currentTerm, request.getEntries().size());
-                    }
-                }
-
-                // 心跳已经回复过响应，不需要再返回响应
-                // 但是心跳也需要更新提交位置
-
-            } catch (IndexOverflowException | IndexUnderflowException ignored) {
-                response = new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
-                        currentTerm, request.getEntries().size());
-            }
-            if(null != response) {
-                rr.getResponseFuture().complete(response);
-                if (request.getEntries() != null && !request.getEntries().isEmpty()) {
-
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("Send appendEntriesResponse, success: {}, journalIndex: {}, entryCount: {}, term: {}, " +
-                                        "{}.",
-                                response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
-                                voterInfo());
-                    }
-                }
+                // 非Leader（Follower和Observer）复制日志到本地后，如果日志中包含配置变更，则立即变更配置
+                voterConfigManager.maybeUpdateNonLeaderConfig(request.getEntries(), state.getConfigState());
             }
 
+            // If leaderCommit > commitIndex, set commitIndex =
+            // min(leaderCommit, index of last new entry)
             if (request.getLeaderCommit() > journal.commitIndex()) {
                 journal.commit(Math.min(request.getLeaderCommit(), journal.maxIndex()));
                 threads.wakeupThread(STATE_MACHINE_THREAD);
-
             }
+
+            if (leaderMaxIndex < request.getMaxIndex()) {
+                leaderMaxIndex = request.getMaxIndex();
+            }
+            response = new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
+                    currentTerm, request.getEntries().size());
+            rr.getResponseFuture().complete(response);
         } catch (Throwable t) {
 
             logger.warn("Exception when handle AsyncReplicationRequest, " +
@@ -179,7 +176,7 @@ class Follower extends ServerStateMachine implements StateServer {
                     request.getTerm(), request.getLeader(), request.getPrevLogIndex(),
                     request.getPrevLogTerm(), request.getEntries().size(),
                     request.getLeaderCommit(), voterInfo(), t);
-            throw t;
+            rr.responseFuture.complete(new AsyncAppendEntriesResponse(t));
         }
 
     }
@@ -190,11 +187,11 @@ class Follower extends ServerStateMachine implements StateServer {
         ReplicationRequestResponse requestResponse = new ReplicationRequestResponse(request);
         if(serverState() == ServerState.RUNNING) {
             pendingAppendEntriesRequests.add(requestResponse);
-            if (request.getEntries() == null || request.getEntries().size() == 0) {
-                // 心跳直接返回成功
-                requestResponse.getResponseFuture().complete(new AsyncAppendEntriesResponse(true, request.getPrevLogIndex() + 1,
-                        currentTerm, request.getEntries().size()));
-            }
+//            if (request.getEntries() == null || request.getEntries().size() == 0) {
+//                // 心跳直接返回成功
+//                requestResponse.getResponseFuture().complete(new AsyncAppendEntriesResponse(true, request.getPrevLogIndex() + 1,
+//                        currentTerm, request.getEntries().size()));
+//            }
         } else {
             requestResponse.getResponseFuture().complete(
                     new AsyncAppendEntriesResponse(

@@ -11,21 +11,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.entry.reserved;
+package io.journalkeeper.core.entry.internal;
+
+import java.io.Serializable;
+
+import static io.journalkeeper.core.entry.internal.InternalEntryType.TYPE_LEADER_ANNOUNCEMENT;
 
 /**
  * @author LiYue
  * Date: 2019-05-09
  */
-public abstract class ReservedEntry {
-
-    private final ReservedEntryType type;
-
-    protected ReservedEntry(ReservedEntryType type) {
-        this.type = type;
+public class LeaderAnnouncementEntry extends InternalEntry implements Serializable {
+    private static final long serialVersionUID = 2L;
+    private final int term;
+    public LeaderAnnouncementEntry(int term) {
+        super(TYPE_LEADER_ANNOUNCEMENT);
+        this.term = term;
     }
 
-    public ReservedEntryType getType() {
-        return type;
+    public int getTerm() {
+        return term;
     }
 }

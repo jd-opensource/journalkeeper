@@ -11,17 +11,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.exception;
+package io.journalkeeper.core.entry.internal;
 
 /**
  * @author LiYue
- * Date: 2019-03-25
+ * Date: 2019-05-09
  */
-public class StateInstallException extends RuntimeException {
-    public StateInstallException(String msg) {
-        super(msg);
-    }
-    public StateInstallException(){}
-    public StateInstallException(Throwable throwable){super(throwable);}
+public abstract class InternalEntry {
 
+    private final InternalEntryType type;
+
+    protected InternalEntry(InternalEntryType type) {
+        this.type = type;
+    }
+
+    public InternalEntryType getType() {
+        return type;
+    }
 }

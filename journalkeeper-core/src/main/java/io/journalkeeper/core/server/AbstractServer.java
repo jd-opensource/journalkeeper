@@ -17,14 +17,14 @@ import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
-import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.StateResult;
-import io.journalkeeper.core.entry.reserved.*;
+import io.journalkeeper.core.entry.internal.*;
 import io.journalkeeper.core.exception.JournalException;
 import io.journalkeeper.core.exception.RecoverException;
 import io.journalkeeper.core.journal.Journal;
+import io.journalkeeper.core.journal.JournalSnapshot;
 import io.journalkeeper.core.metric.DummyMetric;
 import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.core.state.JournalKeeperState;
@@ -161,11 +161,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
      * 观察者节点
      */
     protected List<URI> observers;
-
-
-
-    //TODO: Log Compaction, install snapshot rpc
-    protected ScheduledFuture flushStateFuture, compactionFuture;
+    protected ScheduledFuture flushStateFuture;
 
     /**
      * 可用状态
@@ -228,6 +224,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     protected final StateFactory<E, ER, Q, QR> stateFactory;
     protected final JournalEntryParser journalEntryParser;
     protected final VoterConfigManager voterConfigManager;
+    protected final PartialSnapshot partialSnapshot = new PartialSnapshot();
 
     protected AbstractServer(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer,
                              Serializer<ER> entryResultSerializer, Serializer<Q> querySerializer,
@@ -271,8 +268,9 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 bufferPool, journalEntryParser);
         this.state = new JournalKeeperState<>(stateFactory, metadataPersistence);
 
-        state.addInterceptor(ReservedEntryType.TYPE_SCALE_PARTITIONS, this::scalePartitions);
-        state.addInterceptor(ReservedEntryType.TYPE_LEADER_ANNOUNCEMENT, this::announceLeader);
+        state.addInterceptor(InternalEntryType.TYPE_SCALE_PARTITIONS, this::scalePartitions);
+        state.addInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT, this::announceLeader);
+        state.addInterceptor(InternalEntryType.TYPE_CREATE_SNAPSHOT, this::createSnapShot);
     }
 
     private AsyncLoopThread buildStateMachineThread() {
@@ -313,8 +311,14 @@ public abstract class AbstractServer<E, ER, Q, QR>
         Set<Integer> partitions = new HashSet<>(userPartitions);
         partitions.add(INTERNAL_PARTITION);
         state.init(statePath(),voters, partitions, preferredLeader);
+        createFistSnapshot(voters, partitions, preferredLeader);
         lastSavedServerMetadata = createServerMetadata();
         metadataPersistence.save(metadataFile(),lastSavedServerMetadata);
+    }
+
+    private void createFistSnapshot(List<URI> voters, Set<Integer> partitions, URI preferredLeader) throws IOException {
+        JournalKeeperState<E, ER, Q, QR> snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
+        snapshot.init(snapshotsPath().resolve(String.valueOf(0L)), voters, partitions, preferredLeader);
     }
 
     @Override
@@ -324,6 +328,18 @@ public abstract class AbstractServer<E, ER, Q, QR>
             return metadata != null && metadata.isInitialized();
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    int getTerm(long index) {
+        try {
+            return journal.getTerm(index);
+        } catch (IndexUnderflowException e) {
+            if(index  + 1 == snapshots.firstKey()) {
+                return snapshots.firstEntry().getValue().lastIncludedTerm();
+            } else {
+                throw e;
+            }
         }
     }
 
@@ -395,7 +411,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
         while (this.serverState == ServerState.RUNNING && state.lastApplied() < journal.commitIndex()) {
             applyEntriesMetric.start();
 
-            takeASnapShotIfNeed();
             JournalEntry journalEntry = journal.read(state.lastApplied());
             StateResult<ER> stateResult = state.applyEntry(journalEntry, entrySerializer, journal);
             afterStateChanged(stateResult.getUserResult());
@@ -415,13 +430,13 @@ public abstract class AbstractServer<E, ER, Q, QR>
         fireEvent(EventType.ON_LEADER_CHANGE, eventData);
     }
 
-    private void announceLeader(ReservedEntryType type, byte [] internalEntry) {
-        LeaderAnnouncementEntry leaderAnnouncementEntry = ReservedEntriesSerializeSupport.parse(internalEntry);
+    private void announceLeader(InternalEntryType type, byte [] internalEntry) {
+        LeaderAnnouncementEntry leaderAnnouncementEntry = InternalEntriesSerializeSupport.parse(internalEntry);
         fireOnLeaderChangeEvent(leaderAnnouncementEntry.getTerm());
     }
 
-    private void scalePartitions(ReservedEntryType type, byte [] internalEntry) {
-        ScalePartitionsEntry scalePartitionsEntry = ReservedEntriesSerializeSupport.parse(internalEntry);
+    private void scalePartitions(InternalEntryType type, byte [] internalEntry) {
+        ScalePartitionsEntry scalePartitionsEntry = InternalEntriesSerializeSupport.parse(internalEntry);
         Set<Integer> partitions = scalePartitionsEntry.getPartitions();
         try {
             Set<Integer> currentPartitions = journal.getPartitions();
@@ -461,23 +476,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
     /**
      * 如果需要，保存一次快照
      */
-    private void takeASnapShotIfNeed() {
-//        if(config.getSnapshotStep() > 0) {
-//            asyncExecutor.submit(() -> {
-//                try {
-//                    synchronized (snapshots) {
-//                        if (config.getSnapshotStep() > 0 && (snapshots.isEmpty() || state.lastApplied() - snapshots.lastKey() > config.getSnapshotStep())) {
-//
-//                            State<E, ER, Q, QR> snapshot = state.dump(snapshotsPath().resolve(String.valueOf(state.lastApplied())));
-//                            snapshots.put(snapshot.lastApplied(), snapshot);
-//                        }
-//                    }
-//                } catch (IOException e) {
-//                    logger.warn("Take snapshot exception: ", e);
-//                }
-//            });
-//        }
-    }
 
     @Override
     public CompletableFuture<QueryStateResponse> queryServerState(QueryStateRequest request) {
@@ -548,6 +546,28 @@ public abstract class AbstractServer<E, ER, Q, QR>
         }, asyncExecutor);
     }
 
+    private void createSnapShot(InternalEntryType type, byte [] internalEntry) {
+        if (type == InternalEntryType.TYPE_CREATE_SNAPSHOT) {
+            createSnapshot();
+        }
+    }
+    private void createSnapshot() {
+        createSnapshot(state.lastApplied());
+    }
+    private void createSnapshot(long lastApplied) {
+        Path snapshotPath = snapshotsPath().resolve(String.valueOf(lastApplied));
+        try {
+            state.dump(snapshotPath);
+            JournalKeeperState<E, ER, Q, QR> snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
+            snapshot.recover(snapshotPath, properties);
+            snapshot.createJournalSnapshot(journal);
+
+            snapshots.put(snapshot.lastApplied(), snapshot);
+        } catch (IOException e) {
+            logger.warn("Create snapshot exception! Snapshot: {}.", snapshotPath, e);
+        }
+    }
+
     @Override
     public void watch(EventWatcher eventWatcher) {
         this.eventBus.watch(eventWatcher);
@@ -589,30 +609,31 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 asyncExecutor);
     }
 
+    // TODO
     @Override
     public CompletableFuture<GetServerStateResponse> getServerState(GetServerStateRequest request) {
         return CompletableFuture.supplyAsync(() -> {
-            if(!snapshots.isEmpty()) {
-
-                long snapshotIndex = request.getLastIncludedIndex() + 1;
-                if (snapshotIndex < 0) {
-                    snapshotIndex = snapshots.lastKey();
-                }
-                JournalKeeperState<E, ER, Q, QR> state = snapshots.get(snapshotIndex);
-                if (null != state) {
-                    byte [] data;
-                    try {
-                        data = state.readSerializedTrunk(request.getOffset(),config.getGetStateBatchSize());
-                    } catch (IOException e) {
-                        throw new CompletionException(e);
-                    }
-                    return new GetServerStateResponse(
-                            state.lastIncludedIndex(), state.lastIncludedTerm(),
-                            request.getOffset(),
-                            data,
-                            request.getOffset() + data.length >= state.serializedDataSize());
-                }
-            }
+//            if(!snapshots.isEmpty()) {
+//
+//                long snapshotIndex = request.getLastIncludedIndex() + 1;
+//                if (snapshotIndex < 0) {
+//                    snapshotIndex = snapshots.lastKey();
+//                }
+//                JournalKeeperState<E, ER, Q, QR> state = snapshots.get(snapshotIndex);
+//                if (null != state) {
+//                    byte [] data;
+//                    try {
+//                        data = state.readSerializedTrunk(request.getOffset(),config.getGetStateBatchSize());
+//                    } catch (IOException e) {
+//                        throw new CompletionException(e);
+//                    }
+//                    return new GetServerStateResponse(
+//                            state.lastIncludedIndex(), state.lastIncludedTerm(),
+//                            request.getOffset(),
+//                            data,
+//                            request.getOffset() + data.length >= state.serializedDataSize());
+//                }
+//            }
             return new GetServerStateResponse(new NoSuchSnapshotException());
         }, asyncExecutor).exceptionally(GetServerStateResponse::new);
     }
@@ -741,7 +762,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         onMetadataRecovered(lastSavedServerMetadata);
         state.recover(statePath(), properties);
         recoverSnapshots();
-        recoverJournal(state.getPartitions(), lastSavedServerMetadata.getCommitIndex());
+        recoverJournal(state.getPartitions(), snapshots.firstEntry().getValue().getJournalSnapshot(), lastSavedServerMetadata.getCommitIndex());
         onJournalRecovered(journal);
     }
 
@@ -760,16 +781,16 @@ public abstract class AbstractServer<E, ER, Q, QR>
             index >= journal.minIndex(INTERNAL_PARTITION);
             index --) {
             JournalEntry entry = journal.readByPartition(INTERNAL_PARTITION, index);
-            ReservedEntryType type = ReservedEntriesSerializeSupport.parseEntryType(entry.getPayload().getBytes());
+            InternalEntryType type = InternalEntriesSerializeSupport.parseEntryType(entry.getPayload().getBytes());
 
-            if(type == ReservedEntryType.TYPE_UPDATE_VOTERS_S1) {
-                UpdateVotersS1Entry updateVotersS1Entry = ReservedEntriesSerializeSupport.parse(entry.getPayload().getBytes());
+            if(type == InternalEntryType.TYPE_UPDATE_VOTERS_S1) {
+                UpdateVotersS1Entry updateVotersS1Entry = InternalEntriesSerializeSupport.parse(entry.getPayload().getBytes());
                 state.setConfigState(new ConfigState(
                         updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew()));
                 isRecoveredFromJournal = true;
                 break;
-            } else if(type == ReservedEntryType.TYPE_UPDATE_VOTERS_S2) {
-                UpdateVotersS2Entry updateVotersS2Entry = ReservedEntriesSerializeSupport.parse(entry.getPayload().getBytes());
+            } else if(type == InternalEntryType.TYPE_UPDATE_VOTERS_S2) {
+                UpdateVotersS2Entry updateVotersS2Entry = InternalEntriesSerializeSupport.parse(entry.getPayload().getBytes());
                 state.setConfigState(new ConfigState(updateVotersS2Entry.getConfigNew()));
                 isRecoveredFromJournal = true;
                 break;
@@ -785,8 +806,8 @@ public abstract class AbstractServer<E, ER, Q, QR>
     }
 
 
-    private void recoverJournal(Set<Integer> partitions, long commitIndex) throws IOException {
-        journal.recover(journalPath(), commitIndex, properties);
+    private void recoverJournal(Set<Integer> partitions, JournalSnapshot journalSnapshot, long commitIndex) throws IOException {
+        journal.recover(journalPath(), commitIndex, journalSnapshot,  properties);
         journal.rePartition(partitions);
     }
 
@@ -890,16 +911,15 @@ public abstract class AbstractServer<E, ER, Q, QR>
     }
 
     public void compact(long indexExclusive) throws IOException {
-        if(config.getSnapshotStep() > 0) {
             Map.Entry<Long, JournalKeeperState<E, ER, Q, QR>> nearestEntry = snapshots.floorEntry(indexExclusive);
-            SortedMap<Long, JournalKeeperState<E, ER, Q, QR>> toBeRemoved = snapshots.headMap(nearestEntry.getKey());
-            while (!toBeRemoved.isEmpty()) {
-                toBeRemoved.remove(toBeRemoved.firstKey()).clear();
+            if(null != nearestEntry) {
+                SortedMap<Long, JournalKeeperState<E, ER, Q, QR>> toBeRemoved = snapshots.headMap(nearestEntry.getKey(), false);
+                while (!toBeRemoved.isEmpty()) {
+                    toBeRemoved.remove(toBeRemoved.firstKey()).clear();
+                }
+
+                journal.compact(nearestEntry.getValue().getJournalSnapshot());
             }
-            journal.compact(nearestEntry.getKey());
-        } else {
-            journal.compact(indexExclusive);
-        }
     }
 
     public JournalKeeperState<E, ER, Q, QR> getState() {

@@ -11,26 +11,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.entry.reserved;
+package io.journalkeeper.core.entry.internal;
 
 import java.io.Serializable;
-import java.util.Map;
+import java.net.URI;
 
-import static io.journalkeeper.core.entry.reserved.ReservedEntryType.TYPE_COMPACT_JOURNAL;
+import static io.journalkeeper.core.entry.internal.InternalEntryType.TYPE_SET_PREFERRED_LEADER;
 
 /**
  * @author LiYue
- * Date: 2019-05-09
+ * Date: 2019-09-11
  */
-public class CompactJournalEntry extends ReservedEntry implements Serializable {
+public class SetPreferredLeaderEntry extends InternalEntry implements Serializable {
     private static final long serialVersionUID = 1L;
-    private final Map<Integer, Long> compactIndices;
-    public CompactJournalEntry(Map<Integer, Long> compactIndices) {
-        super(TYPE_COMPACT_JOURNAL);
-        this.compactIndices = compactIndices;
+    private final URI preferredLeader;
+    public SetPreferredLeaderEntry(URI preferredLeader) {
+        super(TYPE_SET_PREFERRED_LEADER);
+        this.preferredLeader = preferredLeader;
     }
 
-    public Map<Integer, Long> getCompactIndices() {
-        return compactIndices;
+    public URI getPreferredLeader() {
+        return preferredLeader;
     }
 }
