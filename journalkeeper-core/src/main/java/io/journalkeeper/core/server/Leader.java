@@ -602,30 +602,34 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                 } else {
                     // 失败
                     if (follower.getRepStartIndex() == response.getJournalIndex()) {
-                        // 需要回退
-                        int rollbackSize = (int) Math.min(replicationBatchSize, follower.getRepStartIndex() - snapshots.firstKey());
-                        follower.repStartIndex -= rollbackSize;
 
                         // 如果回退到最小位置，先安装快照
-                        if(follower.getRepStartIndex() == snapshots.firstKey()) {
+                        if(follower.getRepStartIndex() <= snapshots.firstKey()) {
                             installSnapshot(follower, snapshots.firstEntry().getValue());
-                        }
+                            follower.setRepStartIndex(snapshots.firstKey());
+                            follower.setNextIndex(snapshots.firstKey());
 
-                        sendAppendEntriesRequest(follower,
-                                new AsyncAppendEntriesRequest(currentTerm, serverUri,
-                                        follower.repStartIndex - 1,
-                                        getTerm(follower.repStartIndex - 1),
-                                        journal.readRaw(follower.repStartIndex, rollbackSize),
+                        } else {
+                            // 需要回退
+                            int rollbackSize = (int) Math.min(replicationBatchSize, follower.getRepStartIndex() - snapshots.firstKey());
+                            follower.repStartIndex -= rollbackSize;
+
+
+                            sendAppendEntriesRequest(follower,
+                                    new AsyncAppendEntriesRequest(currentTerm, serverUri,
+                                            follower.repStartIndex - 1,
+                                            getTerm(follower.repStartIndex - 1),
+                                            journal.readRaw(follower.repStartIndex, rollbackSize),
+                                            journal.commitIndex(), journal.maxIndex()));
+
+                            if (response.getEntryCount() > 0) {
+                                delaySendAsyncAppendEntriesRpc(follower, new AsyncAppendEntriesRequest(currentTerm, serverUri,
+                                        response.getJournalIndex() - 1,
+                                        journal.getTerm(response.getJournalIndex() - 1),
+                                        journal.readRaw(response.getJournalIndex(), response.getEntryCount()),
                                         journal.commitIndex(), journal.maxIndex()));
-
-                        if (response.getEntryCount() > 0) {
-                            delaySendAsyncAppendEntriesRpc(follower, new AsyncAppendEntriesRequest(currentTerm, serverUri,
-                                    response.getJournalIndex() - 1,
-                                    journal.getTerm(response.getJournalIndex() - 1),
-                                    journal.readRaw(response.getJournalIndex(), response.getEntryCount()),
-                                    journal.commitIndex(), journal.maxIndex()));
+                            }
                         }
-
 
                     } else if (response.getEntryCount() > 0 && follower.getRepStartIndex() < response.getJournalIndex()) {
                         delaySendAsyncAppendEntriesRpc(follower, new AsyncAppendEntriesRequest(currentTerm, serverUri,

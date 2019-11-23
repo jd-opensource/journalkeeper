@@ -583,6 +583,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                     // If existing log entry has same index and term as snapshot’s
                     // last included entry, retain log entries following it.
 
+                    // TODO: 没做完
                 }
 
             }

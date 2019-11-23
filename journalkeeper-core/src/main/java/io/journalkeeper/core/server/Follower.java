@@ -128,7 +128,7 @@ class Follower<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         // whose term matches prevLogTerm
         if(request.getPrevLogIndex() < journal.minIndex() ||
                 request.getPrevLogIndex() >= journal.maxIndex() ||
-                journal.getTerm(rr.getPrevLogIndex()) != request.getPrevLogTerm()
+                getTerm(rr.getPrevLogIndex()) != request.getPrevLogTerm()
             ) {
             response = new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
                     currentTerm, request.getEntries().size());
