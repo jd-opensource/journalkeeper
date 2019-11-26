@@ -13,8 +13,6 @@
  */
 package io.journalkeeper.core.api;
 
-import io.journalkeeper.base.Replicable;
-
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -66,6 +64,7 @@ public interface State<
      * 恢复数据
      * @param path 存放state文件的路径
      * @param properties 属性
+     * @throws IOException 发生IO异常时抛出
      */
     void recover(Path path, Properties properties) throws IOException;
 

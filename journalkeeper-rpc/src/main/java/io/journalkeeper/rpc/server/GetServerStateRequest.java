@@ -19,18 +19,18 @@ package io.journalkeeper.rpc.server;
  */
 public class GetServerStateRequest {
     private final long lastIncludedIndex;
-    private final long offset;
+    private final int iteratorId;
 
-    public GetServerStateRequest(long lastIncludedIndex, long offset) {
+    public GetServerStateRequest(long lastIncludedIndex, int iteratorId) {
         this.lastIncludedIndex = lastIncludedIndex;
-        this.offset = offset;
+        this.iteratorId = iteratorId;
     }
 
     public long getLastIncludedIndex() {
         return lastIncludedIndex;
     }
 
-    public long getOffset() {
-        return offset;
+    public int getIteratorId() {
+        return iteratorId;
     }
 }

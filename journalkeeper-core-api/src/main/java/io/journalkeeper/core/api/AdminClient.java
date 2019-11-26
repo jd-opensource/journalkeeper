@@ -13,13 +13,10 @@
  */
 package io.journalkeeper.core.api;
 
-import com.sun.org.apache.xpath.internal.operations.Bool;
 import io.journalkeeper.utils.event.Watchable;
 
-import java.io.Closeable;
 import java.net.URI;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -84,6 +81,13 @@ public interface AdminClient extends Watchable, ClusterReadyAware, ServerConfigA
      * @return 执行成功返回null，失败抛出异常。
      */
     CompletableFuture<Void> setPreferredLeader(URI preferredLeader);
+
+    /**
+     * 创建一个快照
+     *
+     * @return 快照位置
+     */
+    CompletableFuture<Void> takeSnapshot();
 
     void stop();
 

@@ -1,3 +1,16 @@
+/**
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.journalkeeper.core.state;
 
 import io.journalkeeper.base.Replicable;
@@ -16,9 +29,7 @@ import io.journalkeeper.core.exception.StateRecoverException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.journal.JournalSnapshot;
 import io.journalkeeper.persistence.MetadataPersistence;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.filefilter.DirectoryFileFilter;
-import org.apache.commons.io.filefilter.RegexFileFilter;
+import io.journalkeeper.utils.files.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,7 +52,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.StampedLock;
-import java.util.stream.Collectors;
 
 import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
 import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITIONS_START;
@@ -133,13 +143,17 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable {
     private void flushInternalState(Path internalStateFile, InternalState internalState ) throws IOException {
         metadataPersistence.save(internalStateFile, new PersistInternalState().fromInternalState(internalState));
     }
-    public void recover(Path path, Properties properties) {
+
+    public void recover(Path path, Properties properties)  {
         this.path = path;
         this.properties = properties;
         stateFilesLock.writeLock().lock();
         try {
+            Files.createDirectories(path);
             this.internalState = recoverInternalState(internalStateFile(path));
             this.userState = userStateFactory.createState();
+            Path userStatePath = path.resolve(USER_STATE_PATH);
+            Files.createDirectories(userStatePath);
             userState.recover(path.resolve(USER_STATE_PATH), properties);
         } catch (IOException e) {
             throw new StateRecoverException(e);
@@ -168,6 +182,7 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable {
     public void removeInterceptor(ApplyReservedEntryInterceptor interceptor) {
         reservedEntryInterceptors.remove(interceptor);
     }
+
     public Path getPath() {
         return path;
     }
@@ -263,34 +278,19 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable {
         try {
             stateFilesLock.readLock().lock();
 
-            List<Path> srcFiles = listAllFiles();
-
-            List<Path> destFiles = srcFiles.stream()
-                    .map(src -> path.relativize(src))
-                    .map(destPath::resolve)
-                    .collect(Collectors.toList());
-            Files.createDirectories(destPath);
-            for (int i = 0; i < destFiles.size(); i++) {
-                Path srcFile = srcFiles.get(i);
-                Path destFile = destFiles.get(i);
-                Files.createDirectories(destFile.getParent());
-                Files.copy(srcFile, destFile);
-            }
+            FileUtils.dump(path, destPath);
         } finally {
             stateFilesLock.readLock().unlock();
         }
     }
 
+
     /**
      * 列出所有复制时需要拷贝的文件。
      * @return 所有需要复制的文件的Path
      */
-    private List<Path> listAllFiles() {
-        return FileUtils.listFiles(
-                path.toFile(),
-                new RegexFileFilter("^(.*?)"),
-                DirectoryFileFilter.DIRECTORY
-        ).stream().map(File::toPath).collect(Collectors.toList());
+    private List<Path> listAllFiles(Path path) throws IOException {
+        return FileUtils.listAllFiles(path);
     }
 
     public List<URI> voters() {
@@ -298,8 +298,8 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable {
     }
 
     @Override
-    public ReplicableIterator iterator() {
-        return new FolderTrunkIterator(path, listAllFiles(), MAX_TRUNK_SIZE);
+    public ReplicableIterator iterator() throws IOException {
+        return new FolderTrunkIterator(path, listAllFiles(path), MAX_TRUNK_SIZE, lastIncludedIndex(), lastIncludedTerm());
     }
 
 
@@ -311,8 +311,8 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable {
         userState.close();
     }
 
-    public void clear() throws IOException{
-        FileUtils.cleanDirectory(path.toFile());
+    public void clear() throws IOException {
+        FileUtils.deleteFolder(path);
     }
 
     public ConfigState getConfigState() {
@@ -327,9 +327,10 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable {
         return internalState.getPreferredLeader();
     }
 
-    public JournalSnapshot getJournalSnapshot() {return internalState;}
+    public JournalSnapshot getJournalSnapshot() {return internalState;
+    }
 
-    public void createJournalSnapshot(Journal journal) throws IOException {
+    public void createSnapshot(Journal journal) throws IOException {
         internalState.setSnapshotTimestamp(System.currentTimeMillis());
         internalState.setMinOffset(
                 journal.maxIndex() == internalState.minIndex() ? journal.maxOffset():
@@ -340,4 +341,15 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable {
         flushInternalState();
     }
 
+    public long timestamp() {
+        return internalState.getSnapshotTimestamp();
+    }
+
+    @Override
+    public String toString() {
+        return "JournalKeeperState{" +
+                "internalState=" + internalState +
+                ", path=" + path +
+                '}';
+    }
 }

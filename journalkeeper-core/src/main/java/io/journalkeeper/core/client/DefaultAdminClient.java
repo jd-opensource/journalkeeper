@@ -21,6 +21,7 @@ import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
+import io.journalkeeper.core.entry.internal.CreateSnapshotEntry;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.ReservedPartition;
 import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
@@ -102,5 +103,9 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
         return this.update(InternalEntriesSerializeSupport.serialize(new SetPreferredLeaderEntry(preferredLeader)));
     }
 
+    @Override
+    public CompletableFuture<Void> takeSnapshot() {
+        return this.update(InternalEntriesSerializeSupport.serialize(new CreateSnapshotEntry()));
+    }
 
 }

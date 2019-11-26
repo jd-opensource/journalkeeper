@@ -27,7 +27,11 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.Properties;
+import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -379,9 +383,10 @@ public class PositioningStore implements JournalPersistence,Closeable {
     }
 
     @Override
-    public void close() {
+    public void close() throws IOException {
         for(StoreFile storeFile : storeFileMap.values()) {
-            storeFile.unload();
+            storeFile.flush();
+            storeFile.forceUnload();
         }
         bufferPool.removePreLoad(config.fileDataSize);
     }
@@ -461,6 +466,12 @@ public class PositioningStore implements JournalPersistence,Closeable {
         }
     }
 
-
-
+    @Override
+    public String toString() {
+        return "PositioningStore{" +
+                "flushPosition=" + flushPosition +
+                ", writePosition(max)=" + writePosition +
+                ", leftPosition(min)=" + leftPosition +
+                '}';
+    }
 }

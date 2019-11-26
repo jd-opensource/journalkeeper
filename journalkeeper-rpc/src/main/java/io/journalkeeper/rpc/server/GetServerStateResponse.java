@@ -26,20 +26,23 @@ public class GetServerStateResponse extends BaseResponse {
     private final long offset;
     private final byte [] data;
     private final boolean done;
+    private final int iteratorId;
 
-    private GetServerStateResponse(Throwable exception, long lastIncludedIndex, int lastIncludedTerm, long offset, byte[] data, boolean done) {
+    private GetServerStateResponse(Throwable exception, long lastIncludedIndex, int lastIncludedTerm, long offset, byte[] data, boolean done, int iteratorId) {
         super(exception);
         this.lastIncludedIndex = lastIncludedIndex;
         this.lastIncludedTerm = lastIncludedTerm;
         this.offset = offset;
         this.data = data;
         this.done = done;
+        this.iteratorId = iteratorId;
     }
     public GetServerStateResponse(Throwable exception) {
-        this(exception, -1L, -1, -1L, null, false);
+        this(exception, -1L, -1, -1L, null, false, -1);
     }
-    public GetServerStateResponse(long lastIncludedIndex, int lastIncludedTerm, long offset, byte[] data, boolean done) {
-        this(null, lastIncludedIndex, lastIncludedTerm, offset, data, done);
+
+    public GetServerStateResponse(long lastIncludedIndex, int lastIncludedTerm, long offset, byte[] data, boolean done, int iteratorId) {
+        this(null, lastIncludedIndex, lastIncludedTerm, offset, data, done, iteratorId);
     }
 
     public long getLastIncludedIndex() {
@@ -60,5 +63,9 @@ public class GetServerStateResponse extends BaseResponse {
 
     public boolean isDone() {
         return done;
+    }
+
+    public int getIteratorId() {
+        return iteratorId;
     }
 }

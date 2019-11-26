@@ -17,9 +17,12 @@ import io.journalkeeper.base.ReplicableIterator;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
+import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.VoterState;
+import io.journalkeeper.core.entry.internal.CreateSnapshotEntry;
+import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.state.ApplyReservedEntryInterceptor;
 import io.journalkeeper.core.state.ConfigState;
@@ -66,6 +69,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -86,6 +91,7 @@ import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
  */
 class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private static final Logger logger = LoggerFactory.getLogger(Leader.class);
+    private static final int SNAPSHOT_PERIOD_SEC = 60;
 
     /**
      * 客户端更新状态请求队列
@@ -149,11 +155,13 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private final JournalTransactionManager journalTransactionManager;
     private final ApplyReservedEntryInterceptor journalTransactionInterceptor;
     private final NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> snapshots;
+    private final int snapshotIntervalSec;
+    private ScheduledFuture takeSnapshotFuture;
     Leader(Journal journal, JournalKeeperState state, Map<Long, JournalKeeperState<E, ER, Q, QR>> immutableSnapshots,
            int currentTerm,
            URI serverUri,
            int cacheRequests, long heartbeatIntervalMs, long rpcTimeoutMs, int replicationParallelism, int replicationBatchSize,
-           Serializer<ER> entryResultSerializer,
+           int snapshotIntervalSec, Serializer<ER> entryResultSerializer,
            Threads threads,
            ServerRpcProvider serverRpcProvider,
            ClientServerRpc server,
@@ -174,6 +182,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.rpcTimeoutMs = rpcTimeoutMs;
         this.currentTerm = currentTerm;
         this.immutableSnapshots = immutableSnapshots;
+        this.snapshotIntervalSec = snapshotIntervalSec;
         this.threads = threads;
         this.serverRpcProvider = serverRpcProvider;
         this.asyncExecutor = asyncExecutor;
@@ -754,11 +763,36 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
         journalTransactionManager.start();
         state.addInterceptor(this.journalTransactionInterceptor);
+
+        if (snapshotIntervalSec > 0) {
+            takeSnapshotFuture = scheduledExecutor.scheduleAtFixedRate(this::takeSnapshotPeriodically,
+                    ThreadLocalRandom.current().nextLong(0, SNAPSHOT_PERIOD_SEC),
+                    SNAPSHOT_PERIOD_SEC, TimeUnit.SECONDS);
+        }
+    }
+
+    private void takeSnapshotPeriodically() {
+        if (state.lastApplied() > snapshots.lastKey()) {
+            logger.info("Send create snapshot request.");
+            updateClusterState(
+                    new UpdateClusterStateRequest(
+                            new SerializedUpdateRequest(InternalEntriesSerializeSupport.serialize(
+                                    new CreateSnapshotEntry()), RaftJournal.INTERNAL_PARTITION, 1
+                            )
+                    )
+            );
+        } else {
+            logger.info("No entry since last snapshot, no need to create a new snapshot.");
+        }
+
     }
 
     @Override
     protected void doStop() {
         super.doStop();
+        if (takeSnapshotFuture != null) {
+            takeSnapshotFuture.cancel(true);
+        }
         mayBeWaitingForAppendJournals();
         state.removeInterceptor(this.journalTransactionInterceptor);
         journalTransactionManager.stop();
@@ -942,7 +976,6 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         /**
          * 所有在途的日志复制请求中日志位置的最小值（初始化为nextIndex）
          */
-        // TODO: 删除日志的时候不能超过repStartIndex。
         private long repStartIndex;
         /**
          * 上次从FOLLOWER收到心跳（asyncAppendEntries）成功响应的时间戳

@@ -17,6 +17,7 @@ import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.SerializedUpdateRequest;
+import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.StateResult;
@@ -71,6 +72,7 @@ public class VoterTest {
     @Before
     public void before() throws IOException {
         base = TestPathUtils.prepareBaseDir();
+//        System.setProperty("PreloadBufferPool.PrintMetricIntervalMs", "1000");
     }
 
     @After
@@ -241,19 +243,55 @@ public class VoterTest {
         } finally {
             voter.stop();
         }
+    }
 
 
+    // Running this test case takes about 4 minutes.
+    @Ignore
+    @Test
+    public void journalCompactionTest() throws Exception {
+        Properties properties = new Properties();
+        properties.put("snapshot_interval_sec", "30");
+        properties.put("journal_retention_min", "1");
+//        properties.setProperty("enable_metric", "true");
+//        properties.setProperty("print_metric_interval_sec", "3");
+        Server<byte[], byte[], byte[], byte[]> voter = createVoter(properties);
+        try {
+            while (voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
+                Thread.sleep(50L);
+            }
 
+            for (int i = 0; i < 4 * 60; i++) {
+                byte[] byteArray = ByteUtils.createFixedSizeBytes(1024);
+                voter.updateClusterState(new UpdateClusterStateRequest(
+                        byteArray, RaftJournal.DEFAULT_PARTITION, 1
+                ));
+                Thread.sleep(1000L);
+            }
+            ServerStatus serverStatus = voter.getServerStatus().get().getServerStatus();
+            logger.info("{}.", serverStatus);
+            Assert.assertNotEquals(0L, serverStatus.getMinIndex());
+
+        } finally {
+            voter.stop();
+        }
     }
 
 
     private Server<byte[], byte[], byte[], byte[]> createVoter() throws IOException {
+        return createVoter(null);
+    }
+
+    private Server<byte[], byte[], byte[], byte[]> createVoter(Properties customProperties) throws IOException {
         StateFactory<byte [], byte [], byte [], byte []> stateFactory = new NoopStateFactory();
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(4, new NamedThreadFactory("JournalKeeper-Scheduled-Executor"));
         ExecutorService asyncExecutorService = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors() * 2, new NamedThreadFactory("JournalKeeper-Async-Executor"));
         BytesSerializer bytesSerializer = new BytesSerializer();
         Properties properties = new Properties();
         properties.setProperty("working_dir", base.toString());
+        if (null != customProperties) {
+            properties.putAll(customProperties);
+        }
 //        properties.setProperty("enable_metric", "true");
 //        properties.setProperty("print_metric_interval_sec", "3");
 //        properties.setProperty("cache_requests", String.valueOf(1024L * 1024 * 5));

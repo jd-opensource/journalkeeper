@@ -13,7 +13,6 @@
  */
 package io.journalkeeper.rpc.handler;
 
-import io.journalkeeper.rpc.remoting.transport.command.support.DefaultCommandHandlerFactory;
 import io.journalkeeper.rpc.remoting.transport.command.support.UriRoutedCommandHandlerFactory;
 import io.journalkeeper.rpc.server.ServerRpc;
 
@@ -47,6 +46,7 @@ public class ServerRpcCommandHandlerRegistry {
         factory.register(uri, new GetServerEntriesHandler(serverRpc));
         factory.register(uri, new GetServerStateHandler(serverRpc));
         factory.register(uri, new DisableLeaderWriteRequestHandler(serverRpc));
+        factory.register(uri, new InstallSnapshotHandler(serverRpc));
 
     }
 }

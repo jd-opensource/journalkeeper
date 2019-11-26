@@ -33,14 +33,28 @@ import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;
-import io.journalkeeper.core.entry.internal.*;
+import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
+import io.journalkeeper.core.entry.internal.InternalEntryType;
+import io.journalkeeper.core.entry.internal.LeaderAnnouncementEntry;
+import io.journalkeeper.core.entry.internal.UpdateVotersS1Entry;
 import io.journalkeeper.core.exception.UpdateConfigurationException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.core.state.JournalKeeperState;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.persistence.ServerMetadata;
-import io.journalkeeper.rpc.client.*;
+import io.journalkeeper.rpc.client.CompleteTransactionRequest;
+import io.journalkeeper.rpc.client.CompleteTransactionResponse;
+import io.journalkeeper.rpc.client.CreateTransactionResponse;
+import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
+import io.journalkeeper.rpc.client.GetServerStatusResponse;
+import io.journalkeeper.rpc.client.LastAppliedResponse;
+import io.journalkeeper.rpc.client.QueryStateRequest;
+import io.journalkeeper.rpc.client.QueryStateResponse;
+import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
+import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
+import io.journalkeeper.rpc.client.UpdateVotersRequest;
+import io.journalkeeper.rpc.client.UpdateVotersResponse;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
@@ -54,10 +68,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.NavigableMap;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -159,6 +171,15 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 properties.getProperty(
                         Config.ELECTION_TIMEOUT_KEY,
                         String.valueOf(Config.DEFAULT_ELECTION_TIMEOUT_MS))));
+        config.setSnapshotIntervalSec(Integer.parseInt(
+                properties.getProperty(
+                        Config.SNAPSHOT_INTERVAL_SEC_KEY,
+                        String.valueOf(AbstractServer.Config.DEFAULT_SNAPSHOT_INTERVAL_SEC))));
+        config.setJournalRetentionMin(Integer.parseInt(
+                properties.getProperty(
+                        Config.JOURNAL_RETENTION_MIN_KEY,
+                        String.valueOf(AbstractServer.Config.DEFAULT_JOURNAL_RETENTION_MIN))));
+
         config.setHeartbeatIntervalMs(Long.parseLong(
                 properties.getProperty(
                         Config.HEARTBEAT_INTERVAL_KEY,
@@ -179,10 +200,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 properties.getProperty(
                         Config.CACHE_REQUESTS_KEY,
                         String.valueOf(Config.DEFAULT_CACHE_REQUESTS))));
-        config.setSnapshotStep(Integer.parseInt(
-                properties.getProperty(
-                        AbstractServer.Config.SNAPSHOT_STEP_KEY,
-                        String.valueOf(AbstractServer.Config.DEFAULT_SNAPSHOT_STEP))));
         config.setRpcTimeoutMs(Long.parseLong(
                 properties.getProperty(
                         AbstractServer.Config.RPC_TIMEOUT_MS_KEY,
@@ -353,13 +370,13 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
      */
     private void convertToLeader() {
         synchronized (voterState) {
+            VoterState oldState = voterState.getState();
             voterState.convertToLeader();
-            logger.info("Convert to LEADER, {}.", voterInfo());
 
             this.leader = new Leader<>(journal, state, snapshots,currentTerm.get(),
                     uri, config.getCacheRequests(), config.getHeartbeatIntervalMs(), config.getRpcTimeoutMs(),
                     config.getReplicationParallelism(),config.getReplicationBatchSize(),
-                    entryResultSerializer,threads,
+                    config.getSnapshotIntervalSec(), entryResultSerializer, threads,
                     this, this, asyncExecutor, scheduledExecutor, voterConfigManager, this, this,
                     this.journalEntryParser, config.getTransactionTimeoutMs(), snapshots);
             leader.start();
@@ -371,6 +388,8 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
             journalEntry.setTerm(term);
             journalEntry.setPartition(INTERNAL_PARTITION);
             journal.append(journalEntry);
+            logger.info("Convert voter state from {} to LEADER, {}.", oldState, voterInfo());
+
         }
 
     }
@@ -559,40 +578,25 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         if(checkTerm(request.getTerm())) {
             return CompletableFuture.completedFuture(new InstallSnapshotResponse(currentTerm.get()));
         }
-        try {
-            if (voterState.getState() == VoterState.FOLLOWER && null != follower) {
-                long lastApplied = request.getLastIncludedIndex() + 1;
-                Path snapshotPath = snapshotsPath().resolve(String.valueOf(request.getLastIncludedIndex() + 1));
-                partialSnapshot.installTrunk(request, snapshotPath);
-
-                if(request.isDone()) {
-
-                    // discard any existing snapshot with a same or smaller index
-                    NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> headMap = snapshots.headMap(lastApplied, true);
-                    while (!headMap.isEmpty()) {
-                        snapshot = headMap.remove(headMap.firstKey());
-                        snapshot.close();
-                        snapshot.clear();
-                    }
-
-                    // add the installed snapshot to snapshots.
-                    snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
-                    snapshot.recover(snapshotPath, properties);
-                    snapshots.put(lastApplied, snapshot);
-
-                    // If existing log entry has same index and term as snapshot’s
-                    // last included entry, retain log entries following it.
-
-                    // TODO: 没做完
-                }
-
-            }
-            return null;
-        } catch (Throwable t) {
-            logger.warn("Install snapshot exception!", t);
-            return CompletableFuture.completedFuture(new InstallSnapshotResponse(t));
-        }
+        return installSnapshotAsync(request);
     }
+
+    private CompletableFuture<InstallSnapshotResponse> installSnapshotAsync(InstallSnapshotRequest request) {
+        return CompletableFuture.supplyAsync(() -> {
+            InstallSnapshotResponse response;
+
+            try {
+                installSnapshot(request.getOffset(), request.getLastIncludedIndex(),
+                        request.getLastIncludedTerm(), request.getData(), request.isDone());
+                response = new InstallSnapshotResponse(currentTerm.get());
+            } catch (Throwable t) {
+                logger.warn("Install snapshot exception!", t);
+                response = new InstallSnapshotResponse(t);
+            }
+            return response;
+        }, asyncExecutor);
+    }
+
 
     @Override
     public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
@@ -943,7 +947,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         }
     }
 
-    //TODO: 继承AbstractServer.Config的属性没有解析
     public static class Config extends AbstractServer.Config {
         public final static long DEFAULT_HEARTBEAT_INTERVAL_MS = 100L;
         public final static long DEFAULT_ELECTION_TIMEOUT_MS = 300L;

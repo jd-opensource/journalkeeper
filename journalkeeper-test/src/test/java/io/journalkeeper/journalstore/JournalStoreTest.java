@@ -17,7 +17,6 @@ import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ResponseConfig;
-import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.entry.DefaultJournalEntryParser;
 import io.journalkeeper.core.entry.JournalEntryParseSupport;
@@ -38,8 +37,25 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -52,8 +68,6 @@ import static io.journalkeeper.core.api.RaftJournal.DEFAULT_PARTITION;
 public class JournalStoreTest {
     private static final Logger logger = LoggerFactory.getLogger(JournalStoreTest.class);
     private Path base = null;
-//    AbstractServer<List<byte[]>,JournalStoreQuery, List<byte[]>>
-
 
     @Before
     public void before() throws IOException {
@@ -88,9 +102,13 @@ public class JournalStoreTest {
     @Test
     public void maxPositionTest() throws IOException, ExecutionException, InterruptedException {
         List<JournalStoreServer> servers = createServers(1, base);
-        JournalStoreClient client = servers.get(0).createClient();
-        Map<Integer, Long> maxIndices = client.maxIndices().get();
-        Assert.assertEquals(0L, (long) maxIndices.get(0));
+        try {
+            JournalStoreClient client = servers.get(0).createClient();
+            Map<Integer, Long> maxIndices = client.maxIndices().get();
+            Assert.assertEquals(0L, (long) maxIndices.get(0));
+        } finally {
+            stopServers(servers);
+        }
     }
 
     @Test
@@ -144,6 +162,7 @@ public class JournalStoreTest {
         Assert.assertEquals(partitions, readPartitions);
 
         journalStoreServer.stop();
+
 
     }
     @Test

@@ -26,13 +26,14 @@ import sun.nio.ch.DirectBuffer;
 
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -223,10 +224,13 @@ public class PreloadBufferPool {
 
     private void destroyOne(ByteBuffer byteBuffer) {
         usedSize.getAndAdd(-1 * byteBuffer.capacity());
+//        logger.info("Release direct {}/{}",
+//                Format.formatSize(byteBuffer.capacity()),
+//                Format.formatSize(usedSize.get()));
         releaseIfDirect(byteBuffer);
     }
 
-    private void preLoadBuffer() {
+    private synchronized void preLoadBuffer() {
 
         for(PreLoadCache preLoadCache: bufferCache.values()) {
             try {
@@ -239,6 +243,10 @@ public class PreloadBufferPool {
 
     private ByteBuffer createOne(int size) {
         reserveMemory(size);
+//        logger.info("Allocate direct {}/{}",
+//                Format.formatSize(size),
+//                Format.formatSize(usedSize.get()));
+
         return ByteBuffer.allocateDirect(size);
     }
 
@@ -248,7 +256,10 @@ public class PreloadBufferPool {
                     .filter(p -> p.cache.size() > 0)
                     .findAny().orElse(null);
             if (null != preLoadCache) {
-                destroyOne(preLoadCache.cache.remove());
+                try {
+                    destroyOne(preLoadCache.cache.remove());
+                } catch (NoSuchElementException ignored) {
+                }
             } else {
                 break;
             }
@@ -269,7 +280,6 @@ public class PreloadBufferPool {
                 throw new OutOfMemoryError();
             }
         }
-
         if (usedSize.addAndGet(size) > maxMemorySize * EVICT_RATIO) {
             threads.wakeupThread(EVICT_THREAD);
         }

@@ -15,7 +15,6 @@ package io.journalkeeper.sql.state;
 
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.State;
-import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.StateResult;
 import io.journalkeeper.sql.client.domain.ReadRequest;
 import io.journalkeeper.sql.client.domain.ReadResponse;

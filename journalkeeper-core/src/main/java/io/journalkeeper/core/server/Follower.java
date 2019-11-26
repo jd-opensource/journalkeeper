@@ -35,7 +35,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.PriorityBlockingQueue;
 
-import static io.journalkeeper.core.server.ThreadNames.*;
+import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
+import static io.journalkeeper.core.server.ThreadNames.VOTER_REPLICATION_REQUESTS_HANDLER_THREAD;
 
 /**
  * @author LiYue
@@ -126,7 +127,7 @@ class Follower<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
         // Reply false if log doesn’t contain an entry at prevLogIndex
         // whose term matches prevLogTerm
-        if(request.getPrevLogIndex() < journal.minIndex() ||
+        if (request.getPrevLogIndex() < journal.minIndex() - 1 ||
                 request.getPrevLogIndex() >= journal.maxIndex() ||
                 getTerm(rr.getPrevLogIndex()) != request.getPrevLogTerm()
             ) {

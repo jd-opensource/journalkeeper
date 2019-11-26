@@ -11,11 +11,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.server;
+package io.journalkeeper.core.strategy;
+
+import io.journalkeeper.core.journal.Journal;
+
+import java.util.SortedMap;
 
 /**
+ * Journal 删除策略
+ *
  * @author LiYue
- * Date: 2019/11/20
+ * Date: 2019/11/25
  */
-public class StateManager {
+public interface JournalCompactionStrategy {
+    long calculateCompactionIndex(SortedMap<Long /* snapshot index */, Long /* snapshot timestamp */> snapshotTimestamps, Journal journal);
 }

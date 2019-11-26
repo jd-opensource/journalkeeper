@@ -585,8 +585,6 @@ public class JournalTest {
 
     }
 
-    // TODO: recoverPartitionsTest： 需要增加测试恢复分区索引的测试用例
-
     @Test
     public void recoverTest() throws IOException, InterruptedException {
 
@@ -743,7 +741,7 @@ public class JournalTest {
     }
 
     private Journal createJournal(long commitIndex) throws IOException, InterruptedException {
-//        System.setProperty("PreloadBufferPool.PrintMetricIntervalMs", "1000");
+//        System.setProperty("PreloadBufferPool.PrintMetricIntervalMs", "500");
         Properties properties = new Properties();
         return createJournal(commitIndex, properties);
     }

@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.core.server;
 
+import io.journalkeeper.base.ReplicableIterator;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.JournalEntry;
@@ -20,7 +21,13 @@ import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.StateResult;
-import io.journalkeeper.core.entry.internal.*;
+import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
+import io.journalkeeper.core.entry.internal.InternalEntryType;
+import io.journalkeeper.core.entry.internal.LeaderAnnouncementEntry;
+import io.journalkeeper.core.entry.internal.ReservedPartition;
+import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
+import io.journalkeeper.core.entry.internal.UpdateVotersS1Entry;
+import io.journalkeeper.core.entry.internal.UpdateVotersS2Entry;
 import io.journalkeeper.core.exception.JournalException;
 import io.journalkeeper.core.exception.RecoverException;
 import io.journalkeeper.core.journal.Journal;
@@ -29,6 +36,8 @@ import io.journalkeeper.core.metric.DummyMetric;
 import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.core.state.JournalKeeperState;
 import io.journalkeeper.core.state.StateQueryResult;
+import io.journalkeeper.core.strategy.DefaultJournalCompactionStrategy;
+import io.journalkeeper.core.strategy.JournalCompactionStrategy;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.exceptions.NoSuchSnapshotException;
@@ -55,10 +64,12 @@ import io.journalkeeper.rpc.server.GetServerStateRequest;
 import io.journalkeeper.rpc.server.GetServerStateResponse;
 import io.journalkeeper.rpc.server.ServerRpc;
 import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
+import io.journalkeeper.utils.ThreadSafeFormat;
 import io.journalkeeper.utils.event.Event;
 import io.journalkeeper.utils.event.EventBus;
 import io.journalkeeper.utils.event.EventType;
 import io.journalkeeper.utils.event.EventWatcher;
+import io.journalkeeper.utils.spi.ServiceLoadException;
 import io.journalkeeper.utils.spi.ServiceSupport;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
@@ -84,7 +95,7 @@ import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
-import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -95,6 +106,8 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
@@ -120,7 +133,8 @@ public abstract class AbstractServer<E, ER, Q, QR>
     private static final String SNAPSHOTS_PATH = "snapshots";
     private static final String METADATA_PATH = "metadata";
     private static final String METADATA_FILE = "metadata";
-
+    private static final String PARTIAL_SNAPSHOT_PATH = "partial_snapshot";
+    private static final int COMPACT_PERIOD_SEC = 60;
     @Override
     public URI serverUri() {
         return uri;
@@ -161,7 +175,8 @@ public abstract class AbstractServer<E, ER, Q, QR>
      * 观察者节点
      */
     protected List<URI> observers;
-    protected ScheduledFuture flushStateFuture;
+    protected final PartialSnapshot partialSnapshot;
+    private final Map<Integer, ReplicableIterator> snapshotIteratorMap = new ConcurrentHashMap<>();
 
     /**
      * 可用状态
@@ -224,54 +239,9 @@ public abstract class AbstractServer<E, ER, Q, QR>
     protected final StateFactory<E, ER, Q, QR> stateFactory;
     protected final JournalEntryParser journalEntryParser;
     protected final VoterConfigManager voterConfigManager;
-    protected final PartialSnapshot partialSnapshot = new PartialSnapshot();
-
-    protected AbstractServer(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer,
-                             Serializer<ER> entryResultSerializer, Serializer<Q> querySerializer,
-                             Serializer<QR> resultSerializer,
-                             JournalEntryParser journalEntryParser, ScheduledExecutorService scheduledExecutor,
-                             ExecutorService asyncExecutor, ServerRpcAccessPoint serverRpcAccessPoint, Properties properties){
-        this.journalEntryParser = journalEntryParser;
-        this.scheduledExecutor = scheduledExecutor;
-        this.asyncExecutor = asyncExecutor;
-        this.config = toConfig(properties);
-        this.threads.createThread(buildStateMachineThread());
-        this.threads.createThread(buildFlushJournalThread());
-        this.entrySerializer = entrySerializer;
-        this.querySerializer = querySerializer;
-        this.resultSerializer = resultSerializer;
-        this.entryResultSerializer = entryResultSerializer;
-        this.serverRpcAccessPoint = serverRpcAccessPoint;
-        this.properties = properties;
-        this.stateFactory = stateFactory;
-        this.voterConfigManager = new VoterConfigManager(journalEntryParser);
-        // init metrics
-        if(config.isEnableMetric()) {
-            this.metricFactory = ServiceSupport.load(JMetricFactory.class);
-            this.metricMap = new ConcurrentHashMap<>();
-            if(config.getPrintMetricIntervalSec() > 0) {
-                this.threads.createThread(buildPrintMetricThread());
-            }
-        } else {
-            this.metricFactory = null;
-            this.metricMap = null;
-        }
-        applyEntriesMetric = getMetric(METRIC_APPLY_ENTRIES);
-
-
-        this.eventBus = new EventBus(config.getRpcTimeoutMs());
-        persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
-        metadataPersistence = persistenceFactory.createMetadataPersistenceInstance();
-        bufferPool = ServiceSupport.load(BufferPool.class);
-        journal = new Journal(
-                persistenceFactory,
-                bufferPool, journalEntryParser);
-        this.state = new JournalKeeperState<>(stateFactory, metadataPersistence);
-
-        state.addInterceptor(InternalEntryType.TYPE_SCALE_PARTITIONS, this::scalePartitions);
-        state.addInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT, this::announceLeader);
-        state.addInterceptor(InternalEntryType.TYPE_CREATE_SNAPSHOT, this::createSnapShot);
-    }
+    private final AtomicInteger nextSnapshotIteratorId = new AtomicInteger();
+    private ScheduledFuture flushStateFuture;
+    private ScheduledFuture compactJournalFuture;
 
     private AsyncLoopThread buildStateMachineThread() {
         return ThreadBuilder.builder()
@@ -316,10 +286,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         metadataPersistence.save(metadataFile(),lastSavedServerMetadata);
     }
 
-    private void createFistSnapshot(List<URI> voters, Set<Integer> partitions, URI preferredLeader) throws IOException {
-        JournalKeeperState<E, ER, Q, QR> snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
-        snapshot.init(snapshotsPath().resolve(String.valueOf(0L)), voters, partitions, preferredLeader);
-    }
+    private JournalCompactionStrategy journalCompactionStrategy;
 
     @Override
     public boolean isInitialized() {
@@ -343,41 +310,59 @@ public abstract class AbstractServer<E, ER, Q, QR>
         }
     }
 
-    private Config toConfig(Properties properties) {
-        Config config = new Config();
-        config.setSnapshotStep(Integer.parseInt(
-                properties.getProperty(
-                        Config.SNAPSHOT_STEP_KEY,
-                        String.valueOf(Config.DEFAULT_SNAPSHOT_STEP))));
-        config.setRpcTimeoutMs(Long.parseLong(
-                properties.getProperty(
-                        Config.RPC_TIMEOUT_MS_KEY,
-                        String.valueOf(Config.DEFAULT_RPC_TIMEOUT_MS))));
-        config.setFlushIntervalMs(Long.parseLong(
-                properties.getProperty(
-                        Config.FLUSH_INTERVAL_MS_KEY,
-                        String.valueOf(Config.DEFAULT_FLUSH_INTERVAL_MS))));
+    protected AbstractServer(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer,
+                             Serializer<ER> entryResultSerializer, Serializer<Q> querySerializer,
+                             Serializer<QR> resultSerializer,
+                             JournalEntryParser journalEntryParser, ScheduledExecutorService scheduledExecutor,
+                             ExecutorService asyncExecutor, ServerRpcAccessPoint serverRpcAccessPoint, Properties properties) {
+        this.journalEntryParser = journalEntryParser;
+        this.scheduledExecutor = scheduledExecutor;
+        this.asyncExecutor = asyncExecutor;
+        this.config = toConfig(properties);
+        this.threads.createThread(buildStateMachineThread());
+        this.threads.createThread(buildFlushJournalThread());
+        this.entrySerializer = entrySerializer;
+        this.querySerializer = querySerializer;
+        this.resultSerializer = resultSerializer;
+        this.entryResultSerializer = entryResultSerializer;
+        this.serverRpcAccessPoint = serverRpcAccessPoint;
+        this.properties = properties;
+        this.stateFactory = stateFactory;
+        this.voterConfigManager = new VoterConfigManager(journalEntryParser);
 
-        config.setWorkingDir(Paths.get(
-                properties.getProperty(Config.WORKING_DIR_KEY,
-                        config.getWorkingDir().normalize().toString())));
+        try {
+            journalCompactionStrategy = ServiceSupport.load(JournalCompactionStrategy.class);
+        } catch (ServiceLoadException ignored) {
+            journalCompactionStrategy = new DefaultJournalCompactionStrategy(config.getJournalRetentionMin());
+        }
+        logger.info("Using JournalCompactionStrategy: {}.", journalCompactionStrategy.getClass().getCanonicalName());
+        // init metrics
+        if (config.isEnableMetric()) {
+            this.metricFactory = ServiceSupport.load(JMetricFactory.class);
+            this.metricMap = new ConcurrentHashMap<>();
+            if (config.getPrintMetricIntervalSec() > 0) {
+                this.threads.createThread(buildPrintMetricThread());
+            }
+        } else {
+            this.metricFactory = null;
+            this.metricMap = null;
+        }
+        applyEntriesMetric = getMetric(METRIC_APPLY_ENTRIES);
 
-        config.setGetStateBatchSize(Integer.parseInt(
-                properties.getProperty(
-                        Config.GET_STATE_BATCH_SIZE_KEY,
-                        String.valueOf(Config.DEFAULT_GET_STATE_BATCH_SIZE))));
 
-        config.setEnableMetric(Boolean.parseBoolean(
-                properties.getProperty(
-                        Config.ENABLE_METRIC_KEY,
-                        String.valueOf(Config.DEFAULT_ENABLE_METRIC))));
+        this.eventBus = new EventBus(config.getRpcTimeoutMs());
+        persistenceFactory = ServiceSupport.load(PersistenceFactory.class);
+        metadataPersistence = persistenceFactory.createMetadataPersistenceInstance();
+        bufferPool = ServiceSupport.load(BufferPool.class);
+        journal = new Journal(
+                persistenceFactory,
+                bufferPool, journalEntryParser);
+        this.state = new JournalKeeperState<>(stateFactory, metadataPersistence);
 
-        config.setPrintMetricIntervalSec(Integer.parseInt(
-                properties.getProperty(
-                        Config.PRINT_METRIC_INTERVAL_SEC_KEY,
-                        String.valueOf(Config.DEFAULT_PRINT_METRIC_INTERVAL_SEC))));
-
-        return config;
+        this.partialSnapshot = new PartialSnapshot(partialSnapshotPath());
+        state.addInterceptor(InternalEntryType.TYPE_SCALE_PARTITIONS, this::scalePartitions);
+        state.addInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT, this::announceLeader);
+        state.addInterceptor(InternalEntryType.TYPE_CREATE_SNAPSHOT, this::createSnapShot);
     }
 
     protected Path workingDir() {
@@ -388,11 +373,14 @@ public abstract class AbstractServer<E, ER, Q, QR>
         return workingDir().resolve(SNAPSHOTS_PATH);
     }
 
+    private void createFistSnapshot(List<URI> voters, Set<Integer> partitions, URI preferredLeader) throws IOException {
+        JournalKeeperState<E, ER, Q, QR> snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
+        snapshot.init(snapshotsPath().resolve(String.valueOf(0L)), voters, partitions, preferredLeader);
+        ;
+    }
+
     protected Path statePath() {
         return workingDir().resolve(STATE_PATH);
-    }
-    protected Path metadataPath() {
-        return workingDir().resolve(METADATA_PATH);
     }
     protected Path metadataFile() {
         return workingDir().resolve(METADATA_PATH).resolve(METADATA_FILE);
@@ -551,22 +539,48 @@ public abstract class AbstractServer<E, ER, Q, QR>
             createSnapshot();
         }
     }
-    private void createSnapshot() {
-        createSnapshot(state.lastApplied());
-    }
-    private void createSnapshot(long lastApplied) {
-        Path snapshotPath = snapshotsPath().resolve(String.valueOf(lastApplied));
-        try {
-            state.dump(snapshotPath);
-            JournalKeeperState<E, ER, Q, QR> snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
-            snapshot.recover(snapshotPath, properties);
-            snapshot.createJournalSnapshot(journal);
 
-            snapshots.put(snapshot.lastApplied(), snapshot);
-        } catch (IOException e) {
-            logger.warn("Create snapshot exception! Snapshot: {}.", snapshotPath, e);
-        }
+    private Config toConfig(Properties properties) {
+        Config config = new Config();
+        config.setSnapshotIntervalSec(Integer.parseInt(
+                properties.getProperty(
+                        Config.SNAPSHOT_INTERVAL_SEC_KEY,
+                        String.valueOf(Config.DEFAULT_SNAPSHOT_INTERVAL_SEC))));
+        config.setJournalRetentionMin(Integer.parseInt(
+                properties.getProperty(
+                        Config.JOURNAL_RETENTION_MIN_KEY,
+                        String.valueOf(Config.DEFAULT_JOURNAL_RETENTION_MIN))));
+        config.setRpcTimeoutMs(Long.parseLong(
+                properties.getProperty(
+                        Config.RPC_TIMEOUT_MS_KEY,
+                        String.valueOf(Config.DEFAULT_RPC_TIMEOUT_MS))));
+        config.setFlushIntervalMs(Long.parseLong(
+                properties.getProperty(
+                        Config.FLUSH_INTERVAL_MS_KEY,
+                        String.valueOf(Config.DEFAULT_FLUSH_INTERVAL_MS))));
+
+        config.setWorkingDir(Paths.get(
+                properties.getProperty(Config.WORKING_DIR_KEY,
+                        config.getWorkingDir().normalize().toString())));
+
+        config.setGetStateBatchSize(Integer.parseInt(
+                properties.getProperty(
+                        Config.GET_STATE_BATCH_SIZE_KEY,
+                        String.valueOf(Config.DEFAULT_GET_STATE_BATCH_SIZE))));
+
+        config.setEnableMetric(Boolean.parseBoolean(
+                properties.getProperty(
+                        Config.ENABLE_METRIC_KEY,
+                        String.valueOf(Config.DEFAULT_ENABLE_METRIC))));
+
+        config.setPrintMetricIntervalSec(Integer.parseInt(
+                properties.getProperty(
+                        Config.PRINT_METRIC_INTERVAL_SEC_KEY,
+                        String.valueOf(Config.DEFAULT_PRINT_METRIC_INTERVAL_SEC))));
+
+        return config;
     }
+
 
     @Override
     public void watch(EventWatcher eventWatcher) {
@@ -609,32 +623,59 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 asyncExecutor);
     }
 
-    // TODO
+    protected Path partialSnapshotPath() {
+        return workingDir().resolve(PARTIAL_SNAPSHOT_PATH);
+    }
+
+    private void createSnapshot() {
+        long lastApplied = state.lastApplied();
+        logger.info("Creating snapshot at index: {}...", lastApplied);
+        Path snapshotPath = snapshotsPath().resolve(String.valueOf(lastApplied));
+        try {
+            state.dump(snapshotPath);
+            JournalKeeperState<E, ER, Q, QR> snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
+            snapshot.recover(snapshotPath, properties);
+            snapshot.createSnapshot(journal);
+            snapshots.put(snapshot.lastApplied(), snapshot);
+            logger.info("Snapshot at index: {} created, {}.", lastApplied, snapshot);
+
+        } catch (IOException e) {
+            logger.warn("Create snapshot exception! Snapshot: {}.", snapshotPath, e);
+        }
+    }
+
     @Override
     public CompletableFuture<GetServerStateResponse> getServerState(GetServerStateRequest request) {
         return CompletableFuture.supplyAsync(() -> {
-//            if(!snapshots.isEmpty()) {
-//
-//                long snapshotIndex = request.getLastIncludedIndex() + 1;
-//                if (snapshotIndex < 0) {
-//                    snapshotIndex = snapshots.lastKey();
-//                }
-//                JournalKeeperState<E, ER, Q, QR> state = snapshots.get(snapshotIndex);
-//                if (null != state) {
-//                    byte [] data;
-//                    try {
-//                        data = state.readSerializedTrunk(request.getOffset(),config.getGetStateBatchSize());
-//                    } catch (IOException e) {
-//                        throw new CompletionException(e);
-//                    }
-//                    return new GetServerStateResponse(
-//                            state.lastIncludedIndex(), state.lastIncludedTerm(),
-//                            request.getOffset(),
-//                            data,
-//                            request.getOffset() + data.length >= state.serializedDataSize());
-//                }
-//            }
-            return new GetServerStateResponse(new NoSuchSnapshotException());
+            try {
+                int iteratorId;
+                if (request.getIteratorId() >= 0) {
+                    iteratorId = request.getIteratorId();
+                } else {
+                    long snapshotIndex = request.getLastIncludedIndex() + 1;
+                    JournalKeeperState<E, ER, Q, QR> snapshot = snapshots.get(snapshotIndex);
+                    if (null != snapshot) {
+                        ReplicableIterator iterator = snapshot.iterator();
+                        iteratorId = nextSnapshotIteratorId.getAndIncrement();
+                        snapshotIteratorMap.put(iteratorId, iterator);
+                        scheduledExecutor.schedule(() -> snapshotIteratorMap.remove(iteratorId), 1, TimeUnit.MINUTES);
+                    } else {
+                        throw new NoSuchSnapshotException();
+                    }
+                }
+                ReplicableIterator iterator = snapshotIteratorMap.get(iteratorId);
+                if (null != iterator) {
+                    return new GetServerStateResponse(
+                            iterator.lastIncludedIndex(), iterator.lastIncludedTerm(),
+                            iterator.offset(), iterator.nextTrunk(), iterator.hasMoreTrunks(), iteratorId
+                    );
+                } else {
+                    throw new NoSuchSnapshotException();
+                }
+            } catch (Throwable t) {
+                logger.warn("GetServerState exception!", t);
+                return new GetServerStateResponse(t);
+            }
         }, asyncExecutor).exceptionally(GetServerStateResponse::new);
     }
 
@@ -653,6 +694,10 @@ public abstract class AbstractServer<E, ER, Q, QR>
         flushStateFuture = scheduledExecutor.scheduleAtFixedRate(this::flushState,
                 ThreadLocalRandom.current().nextLong(10L, 50L),
                 config.getFlushIntervalMs(), TimeUnit.MILLISECONDS);
+
+        compactJournalFuture = scheduledExecutor.scheduleAtFixedRate(this::compactJournalPeriodically,
+                ThreadLocalRandom.current().nextLong(0, COMPACT_PERIOD_SEC),
+                COMPACT_PERIOD_SEC, TimeUnit.SECONDS);
         this.serverState = ServerState.RUNNING;
     }
 
@@ -709,11 +754,13 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 threads.stopThread(PRINT_METRIC_THREAD);
             }
 
+            stopAndWaitScheduledFeature(compactJournalFuture, 1000L);
             stopAndWaitScheduledFeature(flushStateFuture, 1000L);
             if(persistenceFactory instanceof Closeable) {
                 ((Closeable) persistenceFactory).close();
             }
             flushAll();
+            journal.close();
             this.serverState = ServerState.STOPPED;
         } catch (Throwable t) {
             t.printStackTrace();
@@ -889,9 +936,9 @@ public abstract class AbstractServer<E, ER, Q, QR>
                     try {
                         throw e;
                     } catch (CompletionException ce) {
-                        return new GetServerEntriesResponse(ce.getCause());
+                        return new GetServerEntriesResponse(ce.getCause(), journal.minIndex(), state.lastApplied());
                     } catch (Throwable throwable) {
-                        return new GetServerEntriesResponse(throwable);
+                        return new GetServerEntriesResponse(throwable, journal.minIndex(), state.lastApplied());
                     }
                 });
     }
@@ -910,16 +957,58 @@ public abstract class AbstractServer<E, ER, Q, QR>
         return config.getRpcTimeoutMs();
     }
 
-    public void compact(long indexExclusive) throws IOException {
-            Map.Entry<Long, JournalKeeperState<E, ER, Q, QR>> nearestEntry = snapshots.floorEntry(indexExclusive);
-            if(null != nearestEntry) {
-                SortedMap<Long, JournalKeeperState<E, ER, Q, QR>> toBeRemoved = snapshots.headMap(nearestEntry.getKey(), false);
-                while (!toBeRemoved.isEmpty()) {
-                    toBeRemoved.remove(toBeRemoved.firstKey()).clear();
-                }
+    public void compact(long indexExclusive) {
+        Long index = snapshots.floorKey(indexExclusive);
+        if (null != index) {
+            logger.info("Request compact journal to {}, found a floor snapshot at index: {}.", indexExclusive, index);
+            compactJournalToSnapshot(index);
+        } else {
+            logger.warn("Request compact journal to {}, no snapshot found which less than or equal {}, " +
+                            "nothing to compact!",
+                    indexExclusive, indexExclusive);
+        }
+    }
 
-                journal.compact(nearestEntry.getValue().getJournalSnapshot());
+    private void compactJournalPeriodically() {
+        long index = journalCompactionStrategy.calculateCompactionIndex(
+                snapshots.entrySet().stream().collect(
+                        Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().timestamp(),
+                                (v1, v2) -> {
+                                    throw new RuntimeException(String.format("Duplicate key for values %s and %s", v1, v2));
+                                },
+                                TreeMap::new)
+                ), journal
+        );
+
+        if (index > snapshots.firstKey()) {
+            compactJournalToSnapshot(index);
+        }
+
+    }
+
+    private void compactJournalToSnapshot(long index) {
+        logger.info("Compact journal to index: {}...", index);
+        try {
+            JournalKeeperState<E, ER, Q, QR> snapshot = snapshots.get(index);
+            if (null != snapshot) {
+                JournalSnapshot journalSnapshot = snapshot.getJournalSnapshot();
+                logger.info("Compact journal entries, journal snapshot: {}, journal: {}...", journalSnapshot, journal);
+                journal.compact(snapshot.getJournalSnapshot());
+                logger.info("Compact journal finished, journal: {}.", journal);
+
+                NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> headMap = snapshots.headMap(index, false);
+                while (!headMap.isEmpty()) {
+                    snapshot = headMap.remove(headMap.firstKey());
+                    logger.info("Discard snapshot: {}.", snapshot.getPath());
+                    snapshot.close();
+                    snapshot.clear();
+                }
+            } else {
+                logger.warn("Compact journal failed! Cause no snapshot at index: {}.", index);
             }
+        } catch (Throwable e) {
+            logger.warn("Compact journal exception!", e);
+        }
     }
 
     public JournalKeeperState<E, ER, Q, QR> getState() {
@@ -969,40 +1058,112 @@ public abstract class AbstractServer<E, ER, Q, QR>
         return journal;
     }
 
+    void installSnapshot(long offset, long lastIncludedIndex, int lastIncludedTerm, byte[] data, boolean isDone) throws IOException {
+        synchronized (partialSnapshot) {
+            logger.info("Install snapshot, offset: {}, lastIncludedIndex: {}, lastIncludedTerm: {}, data length: {}, isDone: {}... " +
+                            "journal minIndex: {}, maxIndex: {}, commitIndex: {}...",
+                    ThreadSafeFormat.formatWithComma(offset),
+                    ThreadSafeFormat.formatWithComma(lastIncludedIndex),
+                    lastIncludedTerm,
+                    data.length,
+                    isDone,
+                    ThreadSafeFormat.formatWithComma(journal.minIndex()),
+                    ThreadSafeFormat.formatWithComma(journal.maxIndex()),
+                    ThreadSafeFormat.formatWithComma(journal.commitIndex())
+            );
+
+            JournalKeeperState<E, ER, Q, QR> snapshot;
+            long lastApplied = lastIncludedIndex + 1;
+            Path snapshotPath = snapshotsPath().resolve(String.valueOf(lastApplied));
+            partialSnapshot.installTrunk(offset, data, snapshotPath);
+
+            if (isDone) {
+                logger.info("All snapshot files received, discard any existing snapshot with a same or smaller index...");
+                // discard any existing snapshot with a same or smaller index
+                NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> headMap = snapshots.headMap(lastApplied, true);
+                while (!headMap.isEmpty()) {
+                    snapshot = headMap.remove(headMap.firstKey());
+                    logger.info("Discard snapshot: {}.", snapshot.getPath());
+                    snapshot.close();
+                    snapshot.clear();
+                }
+                logger.info("add the installed snapshot to snapshots: {}...", snapshotPath);
+                partialSnapshot.finish();
+                // add the installed snapshot to snapshots.
+                snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
+                snapshot.recover(snapshotPath, properties);
+                snapshots.put(lastApplied, snapshot);
+
+                logger.info("New installed snapshot: {}.", snapshot.getJournalSnapshot());
+                // If existing log entry has same index and term as snapshot’s
+                // last included entry, retain log entries following it.
+                // Discard the entire log
+
+                logger.info("Compact journal entries, journal: {}...", journal);
+                threads.stopThread(ThreadNames.FLUSH_JOURNAL_THREAD);
+                if (journal.minIndex() >= lastIncludedIndex &&
+                        lastIncludedIndex < journal.maxIndex() &&
+                        journal.getTerm(lastIncludedIndex) == lastIncludedTerm) {
+                    journal.compact(snapshot.getJournalSnapshot());
+
+                } else {
+                    journal.clear(snapshot.getJournalSnapshot());
+                }
+                threads.startThread(ThreadNames.FLUSH_JOURNAL_THREAD);
+                logger.info("Compact journal finished, journal: {}.", journal);
+
+                // Reset state machine using snapshot contents (and load
+                // snapshot’s cluster configuration)
+
+                logger.info("Use the new installed snapshot as server's state...");
+                threads.stopThread(ThreadNames.STATE_MACHINE_THREAD);
+                state.close();
+                state.clear();
+                snapshot.dump(statePath());
+                state.recover(statePath(), properties);
+                threads.startThread(ThreadNames.STATE_MACHINE_THREAD);
+                logger.info("Install snapshot successfully!");
+            }
+        }
+    }
 
     /**
      * This method will be invoked when metric
      */
     protected void onPrintMetric() {}
     public static class Config {
-        public final static int DEFAULT_SNAPSHOT_STEP = 0;
+        public final static int DEFAULT_SNAPSHOT_INTERVAL_SEC = 0;
         public final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;
         public final static long DEFAULT_FLUSH_INTERVAL_MS = 50L;
         public final static int DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;
         public final static boolean DEFAULT_ENABLE_METRIC = false;
         public final static int DEFAULT_PRINT_METRIC_INTERVAL_SEC = 0;
+        public final static int DEFAULT_JOURNAL_RETENTION_MIN = 0;
 
-        public final static String SNAPSHOT_STEP_KEY = "snapshot_step";
+        public final static String SNAPSHOT_INTERVAL_SEC_KEY = "snapshot_interval_sec";
         public final static String RPC_TIMEOUT_MS_KEY = "rpc_timeout_ms";
         public final static String FLUSH_INTERVAL_MS_KEY = "flush_interval_ms";
         public final static String WORKING_DIR_KEY = "working_dir";
         public final static String GET_STATE_BATCH_SIZE_KEY = "get_state_batch_size";
         public final static String ENABLE_METRIC_KEY = "enable_metric";
         public final static String PRINT_METRIC_INTERVAL_SEC_KEY = "print_metric_interval_sec";
+        public final static String JOURNAL_RETENTION_MIN_KEY = "journal_retention_min";
 
-        private int snapshotStep = DEFAULT_SNAPSHOT_STEP;
+        private int snapshotIntervalSec = DEFAULT_SNAPSHOT_INTERVAL_SEC;
         private long rpcTimeoutMs = DEFAULT_RPC_TIMEOUT_MS;
         private long flushIntervalMs = DEFAULT_FLUSH_INTERVAL_MS;
         private Path workingDir = Paths.get(System.getProperty("user.dir")).resolve("journalkeeper");
         private int getStateBatchSize = DEFAULT_GET_STATE_BATCH_SIZE;
         private boolean enableMetric = DEFAULT_ENABLE_METRIC;
         private int printMetricIntervalSec = DEFAULT_PRINT_METRIC_INTERVAL_SEC;
-        int getSnapshotStep() {
-            return snapshotStep;
+        private int journalRetentionMin = DEFAULT_JOURNAL_RETENTION_MIN;
+
+        int getSnapshotIntervalSec() {
+            return snapshotIntervalSec;
         }
 
-        void setSnapshotStep(int snapshotStep) {
-            this.snapshotStep = snapshotStep;
+        void setSnapshotIntervalSec(int snapshotIntervalSec) {
+            this.snapshotIntervalSec = snapshotIntervalSec;
         }
 
         long getRpcTimeoutMs() {
@@ -1051,6 +1212,14 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
         public void setPrintMetricIntervalSec(int printMetricIntervalSec) {
             this.printMetricIntervalSec = printMetricIntervalSec;
+        }
+
+        public int getJournalRetentionMin() {
+            return journalRetentionMin;
+        }
+
+        public void setJournalRetentionMin(int journalRetentionMin) {
+            this.journalRetentionMin = journalRetentionMin;
         }
     }
 }

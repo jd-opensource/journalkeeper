@@ -22,7 +22,28 @@ import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.exceptions.NotLeaderException;
-import io.journalkeeper.rpc.client.*;
+import io.journalkeeper.rpc.client.AddPullWatchResponse;
+import io.journalkeeper.rpc.client.ClientServerRpc;
+import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
+import io.journalkeeper.rpc.client.CompleteTransactionRequest;
+import io.journalkeeper.rpc.client.CompleteTransactionResponse;
+import io.journalkeeper.rpc.client.ConvertRollRequest;
+import io.journalkeeper.rpc.client.ConvertRollResponse;
+import io.journalkeeper.rpc.client.CreateTransactionResponse;
+import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
+import io.journalkeeper.rpc.client.GetServerStatusResponse;
+import io.journalkeeper.rpc.client.GetServersResponse;
+import io.journalkeeper.rpc.client.LastAppliedResponse;
+import io.journalkeeper.rpc.client.PullEventsRequest;
+import io.journalkeeper.rpc.client.PullEventsResponse;
+import io.journalkeeper.rpc.client.QueryStateRequest;
+import io.journalkeeper.rpc.client.QueryStateResponse;
+import io.journalkeeper.rpc.client.RemovePullWatchRequest;
+import io.journalkeeper.rpc.client.RemovePullWatchResponse;
+import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
+import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
+import io.journalkeeper.rpc.client.UpdateVotersRequest;
+import io.journalkeeper.rpc.client.UpdateVotersResponse;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
@@ -31,6 +52,8 @@ import io.journalkeeper.rpc.server.GetServerEntriesRequest;
 import io.journalkeeper.rpc.server.GetServerEntriesResponse;
 import io.journalkeeper.rpc.server.GetServerStateRequest;
 import io.journalkeeper.rpc.server.GetServerStateResponse;
+import io.journalkeeper.rpc.server.InstallSnapshotRequest;
+import io.journalkeeper.rpc.server.InstallSnapshotResponse;
 import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
 import io.journalkeeper.rpc.server.ServerRpc;
@@ -51,11 +74,23 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.argThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * @author LiYue
@@ -549,7 +584,7 @@ public class RpcTest {
 
         GetServerStateRequest request = new GetServerStateRequest(
                 6666666L,
-                87444L
+                -1
                 );
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         GetServerStateResponse response, serverResponse;
@@ -558,7 +593,7 @@ public class RpcTest {
                 883,
                 899334545L,
                 ByteUtils.createRandomSizeBytes(1024 * 1024 * 10),
-                false);
+                false, 666);
         // Test success response
         when(serverRpcMock.getServerState(any(GetServerStateRequest.class)))
                 .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
@@ -569,11 +604,12 @@ public class RpcTest {
         Assert.assertEquals(serverResponse.getOffset(), response.getOffset());
         Assert.assertArrayEquals(serverResponse.getData(), response.getData());
         Assert.assertEquals(serverResponse.isDone(), response.isDone());
+        Assert.assertEquals(serverResponse.getIteratorId(), response.getIteratorId());
 
         verify(serverRpcMock).getServerState(
                 argThat((GetServerStateRequest r) ->
                                 r.getLastIncludedIndex() == request.getLastIncludedIndex() &&
-                                r.getOffset() == request.getOffset()
+                                        r.getIteratorId() == request.getIteratorId()
                 ));
 
     }
@@ -620,6 +656,41 @@ public class RpcTest {
                 argThat((CompleteTransactionRequest r) ->
                                 Objects.equals(r.getTransactionId(), request.getTransactionId()) &&
                                 r.isCommitOrAbort() == request.isCommitOrAbort()
+                ));
+    }
+
+    @Test
+    public void testInstallSnapshot() throws ExecutionException, InterruptedException {
+        // leader’s term
+        final int term = 666;
+        final int responseTerm = 888;
+
+        // so follower can redirect clients
+        final URI leaderId = URI.create("jk://localhost:8888");
+        // the snapshot replaces all entries up through and including this index
+        final long lastIncludedIndex = -1L;
+        // term of lastIncludedIndex
+        final int lastIncludedTerm = -1;
+        // byte offset where chunk is positioned in the snapshot file
+        final int offset = 0;
+        // raw bytes of the snapshot chunk, starting at offset
+        final byte[] data = ByteUtils.createFixedSizeBytes(1024);
+        // true if this is the last chunk
+        final boolean done = false;
+
+        InstallSnapshotRequest request = new InstallSnapshotRequest(term, leaderId, lastIncludedIndex, lastIncludedTerm, offset, data, done);
+
+        ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
+        InstallSnapshotResponse response, serverResponse;
+        serverResponse = new InstallSnapshotResponse(responseTerm);
+        // Test success response
+        when(serverRpcMock.installSnapshot(any(InstallSnapshotRequest.class)))
+                .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
+        response = serverRpc.installSnapshot(request).get();
+        Assert.assertTrue(response.success());
+
+        verify(serverRpcMock).installSnapshot(
+                argThat((InstallSnapshotRequest r) -> Objects.equals(request, r)
                 ));
     }
 
@@ -675,6 +746,7 @@ public class RpcTest {
         Assert.assertEquals(serverResponse.getTransactionIds(), response.getTransactionIds());
 
     }
+
 
     private static boolean testListOfBytesEquals(List<byte[]> entries, List<byte[]> entries1) {
         if(entries.size() == entries1.size()) {

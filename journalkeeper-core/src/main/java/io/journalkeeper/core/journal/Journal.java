@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -145,19 +146,38 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             );
         }
 
-        if(!partitionMap.keySet().equals(journalSnapshot.partitionMinIndices().keySet())) {
-            throw new IllegalArgumentException(
-                    String.format("Partition mismatch! Partitions of journal: %s, partitions given: %s.",
-                            partitionMap.keySet(),
-                            journalSnapshot.partitionMinIndices().keySet()
-                    )
-            );
-        }
-
         // 删除分区索引
-        for (Map.Entry<Integer, JournalPersistence> entry : partitionMap.entrySet()) {
-            long minPartitionIndices = journalSnapshot.partitionMinIndices().get(entry.getKey());
-            entry.getValue().compact(minPartitionIndices * INDEX_STORAGE_SIZE);
+        Map<Integer /* partition */ , Long /* min index of the partition */> partitionMinIndices = journalSnapshot.partitionMinIndices();
+        synchronized (partitionMap) {
+
+
+            Iterator<Map.Entry<Integer, JournalPersistence>> iterator = partitionMap.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<Integer, JournalPersistence> entry = iterator.next();
+                int partition = entry.getKey();
+                JournalPersistence partitionPersistence = entry.getValue();
+
+                if (partitionMinIndices.containsKey(partition)) {
+                    long minPartitionIndices = partitionMinIndices.get(entry.getKey());
+                    partitionPersistence.compact(minPartitionIndices * INDEX_STORAGE_SIZE);
+                } else {
+                    journalPersistence.close();
+                    journalPersistence.delete();
+                    iterator.remove();
+                }
+
+            }
+
+            for (Map.Entry<Integer, Long> entry : partitionMinIndices.entrySet()) {
+                int partition = entry.getKey();
+                if (!partitionMap.containsKey(partition)) {
+                    JournalPersistence partitionPersistence = persistenceFactory.createJournalPersistenceInstance();
+                    partitionPersistence.recover(basePath.resolve(PARTITION_PATH).resolve(String.valueOf(partition)),
+                            partitionMinIndices.get(partition) * INDEX_STORAGE_SIZE,
+                            indexProperties);
+                    partitionMap.put(partition, partitionPersistence);
+                }
+            }
         }
 
         // 删除全局索引
@@ -194,6 +214,39 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         }
 
         return maxIndex();
+    }
+
+    /**
+     * 清空整个Journal
+     *
+     * @param snapshot 清空后Journal的起始位置
+     * @throws IOException 发生IO异常时抛出
+     */
+    public void clear(JournalSnapshot snapshot) throws IOException {
+        commitIndex.set(snapshot.minIndex());
+        Map<Integer /* partition */ , Long /* min index of the partition */> partitionMinIndices = snapshot.partitionMinIndices();
+        synchronized (partitionMap) {
+
+
+            Iterator<Map.Entry<Integer, JournalPersistence>> iterator = partitionMap.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<Integer, JournalPersistence> entry = iterator.next();
+                int partition = entry.getKey();
+                JournalPersistence partitionPersistence = entry.getValue();
+                journalPersistence.close();
+                journalPersistence.delete();
+                iterator.remove();
+            }
+
+            for (Map.Entry<Integer, Long> entry : partitionMinIndices.entrySet()) {
+                int partition = entry.getKey();
+                JournalPersistence partitionPersistence = persistenceFactory.createJournalPersistenceInstance();
+                partitionPersistence.recover(basePath.resolve(PARTITION_PATH).resolve(String.valueOf(partition)),
+                        partitionMinIndices.get(partition) * INDEX_STORAGE_SIZE,
+                        indexProperties);
+                partitionMap.put(partition, partitionPersistence);
+            }
+        }
     }
 
     /**
@@ -944,6 +997,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             JournalPersistence removedPersistence;
             if ((removedPersistence = partitionMap.remove(partition)) != null) {
                 logger.info("Partition removed: {}, journal: {}.", partition, basePath.toAbsolutePath().toString());
+                removedPersistence.close();
                 removedPersistence.delete();
             }
         }
@@ -988,17 +1042,27 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             int partition = entry.getKey();
             JournalPersistence partitionPersistence = entry.getValue();
             long index = maxIndex(partition);
-            while (index >= minIndex(partition)) {
+            while (--index >= minIndex(partition)) {
                 long offset = readOffset(partitionPersistence, index);
                 if (offset < journalOffset) {
 
-                   break;
+                    break;
                 }
-                index --;
             }
 
             partitionIndices.put(partition, index + 1);
         }
         return partitionIndices;
+    }
+
+    @Override
+    public String toString() {
+        return "Journal{" +
+                "commitIndex=" + commitIndex +
+                ", indexPersistence=" + indexPersistence +
+                ", journalPersistence=" + journalPersistence +
+                ", partitionMap=" + partitionMap +
+                ", basePath=" + basePath +
+                '}';
     }
 }
