@@ -28,4 +28,5 @@ public interface ServerRpc extends ClientServerRpc {
     CompletableFuture<GetServerEntriesResponse> getServerEntries(GetServerEntriesRequest request);
     CompletableFuture<GetServerStateResponse> getServerState(GetServerStateRequest request);
     CompletableFuture<DisableLeaderWriteResponse> disableLeaderWrite(DisableLeaderWriteRequest request);
+    CompletableFuture<InstallSnapshotResponse> installSnapshot(InstallSnapshotRequest request);
 }

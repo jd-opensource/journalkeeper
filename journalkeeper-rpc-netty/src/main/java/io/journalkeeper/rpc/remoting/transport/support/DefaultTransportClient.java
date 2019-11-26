@@ -117,7 +117,6 @@ public class DefaultTransportClient extends TransportClientSupport implements Tr
     @Override
     protected void doStart() throws Exception {
         super.doStart();
-        // TODO 延迟和调度时间参数化
         this.clearTimer.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {

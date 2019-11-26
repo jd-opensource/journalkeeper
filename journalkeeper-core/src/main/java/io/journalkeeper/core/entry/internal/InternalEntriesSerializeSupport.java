@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.entry.reserved;
+package io.journalkeeper.core.entry.internal;
 
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.exception.SerializeException;
@@ -24,21 +24,21 @@ import java.util.Map;
  * @author LiYue
  * Date: 2019-08-27
  */
-public class ReservedEntriesSerializeSupport {
-    private static Map<Class<? extends ReservedEntry>, Serializer<? extends ReservedEntry>> serializerMap = new HashMap<>();
-    private static Map<ReservedEntryType, Class<? extends ReservedEntry>> typeMap = new HashMap<>();
+public class InternalEntriesSerializeSupport {
+    private static Map<Class<? extends InternalEntry>, Serializer<? extends InternalEntry>> serializerMap = new HashMap<>();
+    private static Map<InternalEntryType, Class<? extends InternalEntry>> typeMap = new HashMap<>();
 
     static {
-        registerType(ReservedEntryType.TYPE_LEADER_ANNOUNCEMENT, LeaderAnnouncementEntry.class, new LeaderAnnouncementEntrySerializer());
-        registerType(ReservedEntryType.TYPE_COMPACT_JOURNAL, CompactJournalEntry.class, new CompactJournalEntrySerializer());
-        registerType(ReservedEntryType.TYPE_SCALE_PARTITIONS, ScalePartitionsEntry.class, new ScalePartitionsEntrySerializer());
-        registerType(ReservedEntryType.TYPE_UPDATE_VOTERS_S1, UpdateVotersS1Entry.class, new UpdateVotersS1EntrySerializer());
-        registerType(ReservedEntryType.TYPE_UPDATE_VOTERS_S2, UpdateVotersS2Entry.class, new UpdateVotersS2EntrySerializer());
-        registerType(ReservedEntryType.TYPE_SET_PREFERRED_LEADER, SetPreferredLeaderEntry.class, new SetPreferredLeaderEntrySerializer());
+        registerType(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT, LeaderAnnouncementEntry.class, new LeaderAnnouncementEntrySerializer());
+        registerType(InternalEntryType.TYPE_CREATE_SNAPSHOT, CreateSnapshotEntry.class, new CreateSnapshotEntrySerializer());
+        registerType(InternalEntryType.TYPE_SCALE_PARTITIONS, ScalePartitionsEntry.class, new ScalePartitionsEntrySerializer());
+        registerType(InternalEntryType.TYPE_UPDATE_VOTERS_S1, UpdateVotersS1Entry.class, new UpdateVotersS1EntrySerializer());
+        registerType(InternalEntryType.TYPE_UPDATE_VOTERS_S2, UpdateVotersS2Entry.class, new UpdateVotersS2EntrySerializer());
+        registerType(InternalEntryType.TYPE_SET_PREFERRED_LEADER, SetPreferredLeaderEntry.class, new SetPreferredLeaderEntrySerializer());
     }
 
     @SuppressWarnings("unchecked")
-    public static  <E extends ReservedEntry> E parse(byte [] buffer, Class<E> eClass) {
+    public static  <E extends InternalEntry> E parse(byte [] buffer, Class<E> eClass) {
         Object entry =  serializerMap.get(eClass).parse(buffer);
         if (eClass.isAssignableFrom(entry.getClass())) {
             return (E) entry;
@@ -48,7 +48,7 @@ public class ReservedEntriesSerializeSupport {
     }
 
     @SuppressWarnings("unchecked")
-    public static  <E extends ReservedEntry> E parse(byte [] buffer, int offset, int length, Class<E> eClass) {
+    public static  <E extends InternalEntry> E parse(byte [] buffer, int offset, int length, Class<E> eClass) {
         byte [] body = offset == 0 ? buffer : Arrays.copyOfRange(buffer, offset, offset + length);
         Object entry =  serializerMap.get(eClass).parse(body);
         if (eClass.isAssignableFrom(entry.getClass())) {
@@ -58,8 +58,8 @@ public class ReservedEntriesSerializeSupport {
         }
     }
 
-    public static  <E extends ReservedEntry> E parse(byte [] buffer) {
-        ReservedEntryType type = parseEntryType(buffer);
+    public static  <E extends InternalEntry> E parse(byte [] buffer) {
+        InternalEntryType type = parseEntryType(buffer);
         @SuppressWarnings("unchecked")
         Class<E> eClass = (Class<E> )typeMap.get(type);
         if(null == eClass) {
@@ -70,8 +70,8 @@ public class ReservedEntriesSerializeSupport {
 
     }
 
-    public static  <E extends ReservedEntry> E parse(byte [] buffer, int offset, int length) {
-        ReservedEntryType type = parseEntryType(buffer, offset, length);
+    public static  <E extends InternalEntry> E parse(byte [] buffer, int offset, int length) {
+        InternalEntryType type = parseEntryType(buffer, offset, length);
         @SuppressWarnings("unchecked")
         Class<E> eClass = (Class<E> )typeMap.get(type);
         if(null == eClass) {
@@ -82,7 +82,7 @@ public class ReservedEntriesSerializeSupport {
 
     }
 
-    public static <E extends ReservedEntry> byte [] serialize(E  entry) {
+    public static <E extends InternalEntry> byte [] serialize(E  entry) {
         @SuppressWarnings("unchecked")
         Serializer<E> serializer = (Serializer<E>) serializerMap.get(entry.getClass());
         if(serializer == null) {
@@ -92,15 +92,15 @@ public class ReservedEntriesSerializeSupport {
         return serializer.serialize(entry);
     }
 
-    public static ReservedEntryType parseEntryType(byte [] buffer) {
-        return ReservedEntryType.valueOf(buffer[0]);
+    public static InternalEntryType parseEntryType(byte [] buffer) {
+        return InternalEntryType.valueOf(buffer[0]);
     }
 
-    public static ReservedEntryType parseEntryType(byte [] buffer, int offset, int length) {
-        return ReservedEntryType.valueOf(buffer[offset]);
+    public static InternalEntryType parseEntryType(byte [] buffer, int offset, int length) {
+        return InternalEntryType.valueOf(buffer[offset]);
     }
 
-    private static <E extends ReservedEntry> void registerType(ReservedEntryType type, Class<E> eClass, Serializer<E> serializer) {
+    private static <E extends InternalEntry> void registerType(InternalEntryType type, Class<E> eClass, Serializer<E> serializer) {
         serializerMap.put(eClass, serializer);
         typeMap.put(type, eClass);
     }

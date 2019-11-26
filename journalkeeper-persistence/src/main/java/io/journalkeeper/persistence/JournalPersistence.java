@@ -14,7 +14,6 @@
 package io.journalkeeper.persistence;
 
 import java.io.Closeable;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -30,6 +29,12 @@ public interface JournalPersistence extends Closeable {
      * @return 最小位置
      */
     long min();
+
+    /**
+     * 物理最小位置，初始化为0
+     * @return 物理最小位置
+     */
+    long physicalMin();
 
     /**
      * 最大位置， 初始化为0
@@ -50,8 +55,8 @@ public interface JournalPersistence extends Closeable {
     default void flush() throws IOException {};
     /**
      * 截断最新的日志。
-     * 如果givenMax不在最大最小位置之间，则清空所有数据，并将最大最小位置置为givenMax
      * @param givenMax 新的最大位置.
+     * @throws IllegalArgumentException 如果givenMax不在最大最小位置之间时抛出此异常
      * @throws IOException 发生IO异常时抛出
      */
     void truncate(long givenMax) throws IOException;
@@ -86,10 +91,21 @@ public interface JournalPersistence extends Closeable {
     /**
      * 从指定Path恢复Journal，如果没有则创建一个空的。
      * @param path journal存放路径
+     * @param min 逻辑最小位置
      * @param properties 属性
      * @throws IOException 发生IO异常时抛出
      */
-    void recover(Path path, Properties properties) throws IOException;
+    void recover(Path path, long min, Properties properties) throws IOException;
+
+    /**
+     * 从指定Path恢复Journal，如果没有则创建一个空的。给定最小位置0.
+     * @param path journal存放路径
+     * @param properties 属性
+     * @throws IOException 发生IO异常时抛出
+     */
+    default void recover(Path path, Properties properties) throws IOException {
+        recover(path, 0L, properties);
+    }
 
     /**
      * 清空所有数据

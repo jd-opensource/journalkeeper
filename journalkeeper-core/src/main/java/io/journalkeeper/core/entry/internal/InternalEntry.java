@@ -11,26 +11,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.entry.reserved;
-
-import java.io.Serializable;
-
-import static io.journalkeeper.core.entry.reserved.ReservedEntryType.TYPE_SCALE_PARTITIONS;
+package io.journalkeeper.core.entry.internal;
 
 /**
  * @author LiYue
  * Date: 2019-05-09
  */
-public class ScalePartitionsEntry extends ReservedEntry implements Serializable {
-    private static final long serialVersionUID = 1L;
+public abstract class InternalEntry {
 
-    private final int [] partitions;
-    public ScalePartitionsEntry(int[] partitions) {
-        super(TYPE_SCALE_PARTITIONS);
-        this.partitions = partitions;
+    private final InternalEntryType type;
+
+    protected InternalEntry(InternalEntryType type) {
+        this.type = type;
     }
 
-    public int[] getPartitions() {
-        return partitions;
+    public InternalEntryType getType() {
+        return type;
     }
 }

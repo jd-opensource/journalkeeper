@@ -104,4 +104,16 @@ public class ServerStatus {
     public int hashCode() {
         return Objects.hash(roll, minIndex, maxIndex, commitIndex, lastApplied, voterState);
     }
+
+    @Override
+    public String toString() {
+        return "ServerStatus{" +
+                "roll=" + roll +
+                ", minIndex=" + minIndex +
+                ", maxIndex=" + maxIndex +
+                ", commitIndex=" + commitIndex +
+                ", lastApplied=" + lastApplied +
+                ", voterState=" + voterState +
+                '}';
+    }
 }

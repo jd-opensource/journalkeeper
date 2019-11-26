@@ -17,7 +17,8 @@ package io.journalkeeper.examples.kv;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import io.journalkeeper.core.api.RaftJournal;
-import io.journalkeeper.core.state.LocalState;
+import io.journalkeeper.core.api.State;
+import io.journalkeeper.core.api.StateResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,7 +31,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
 
 
 /**
@@ -38,18 +38,15 @@ import java.util.concurrent.CompletableFuture;
  * @author LiYue
  * Date: 2019-04-03
  */
-public class KvState extends LocalState<KvEntry, Void, KvQuery, KvResult> {
+public class KvState implements State<KvEntry, Void, KvQuery, KvResult> {
     private static final Logger logger = LoggerFactory.getLogger(KvState.class);
     private Map<String, String> stateMap = new HashMap<>();
     private final static String FILENAME = "map";
     private final Gson gson = new Gson();
     private Path statePath;
-    public KvState(KvStateFactory stateFactory) {
-        super(stateFactory);
-    }
 
     @Override
-    protected void recoverLocalState(Path statePath, RaftJournal raftJournal, Properties properties) {
+    public void recover(Path statePath, Properties properties) {
         this.statePath = statePath;
         try {
             stateMap =  gson.fromJson(new String(Files.readAllBytes(statePath.resolve(FILENAME)), StandardCharsets.UTF_8),
@@ -64,7 +61,7 @@ public class KvState extends LocalState<KvEntry, Void, KvQuery, KvResult> {
     }
 
     @Override
-    public Void execute(KvEntry entry, int partition, long index, int batchSize, Map<String, String> eventParams) {
+    public StateResult<Void> execute(KvEntry entry, int partition, long index, int batchSize, RaftJournal journal) {
         switch (entry.getCmd()) {
             case KvEntry.CMD_SET:
                 stateMap.put(entry.getKey(), entry.getValue());
@@ -78,14 +75,12 @@ public class KvState extends LocalState<KvEntry, Void, KvQuery, KvResult> {
         } catch (IOException e) {
             logger.warn("Exception:", e);
         }
-        return null;
+        return new StateResult<>(null);
     }
 
     @Override
-    public CompletableFuture<KvResult> query(KvQuery query) {
-        return CompletableFuture.completedFuture(null)
-                .thenApply(ignored -> {
-            try {
+    public KvResult query(KvQuery query, RaftJournal journal) {
+        try{
                 switch (query.getCmd()) {
                     case KvQuery.CMD_GET:
                         logger.info("Query: {}", query.getKey());
@@ -101,6 +96,5 @@ public class KvState extends LocalState<KvEntry, Void, KvQuery, KvResult> {
                 logger.warn("NullPointer Exception: statMap is null: {}, query.getKey() is null: {}", stateMap == null, query.getKey() == null);
                 throw e;
             }
-        });
     }
 }

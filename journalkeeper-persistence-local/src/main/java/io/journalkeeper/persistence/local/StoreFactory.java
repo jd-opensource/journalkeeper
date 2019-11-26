@@ -17,13 +17,13 @@ import io.journalkeeper.persistence.JournalPersistence;
 import io.journalkeeper.persistence.MetadataPersistence;
 import io.journalkeeper.persistence.PersistenceFactory;
 import io.journalkeeper.persistence.local.journal.PositioningStore;
-import io.journalkeeper.persistence.local.metadata.MetadataStore;
+import io.journalkeeper.persistence.local.metadata.JsonDoubleCopiesPersistence;
 
 public class StoreFactory implements PersistenceFactory {
 
     @Override
     public MetadataPersistence createMetadataPersistenceInstance() {
-        return new MetadataStore();
+        return new JsonDoubleCopiesPersistence();
     }
 
     @Override

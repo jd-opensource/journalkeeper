@@ -11,48 +11,44 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.entry.reserved;
+package io.journalkeeper.core.entry.internal;
 
 import io.journalkeeper.base.Serializer;
 
 import java.nio.ByteBuffer;
-import java.util.LinkedList;
-import java.util.List;
 
 /**
  * @author LiYue
  * Date: 2019-05-09
  *
- * Type: 1 byte
- * Partition: 2 bytes
- * Partition: 2 bytes
- * Partition: 2 bytes
+ * Type:                                    1 byte
+ * preferred leader URI String
+ *  Length of the URI String in bytes:    2 bytes
+ *  URI String in bytes                   variable length
  * ...
  *
  */
-public class ScalePartitionsEntrySerializer implements Serializer<ScalePartitionsEntry> {
-    private int sizeOf(ScalePartitionsEntry scalePartitionsEntry) {
-        return Byte.BYTES + Short.BYTES * scalePartitionsEntry.getPartitions().length;
+public class SetPreferredLeaderEntrySerializer implements Serializer<SetPreferredLeaderEntry> {
+    private int sizeOf(SetPreferredLeaderEntry entry) {
+        return Byte.BYTES +  // Type:                              1 byte
+                Short.BYTES  +  // Length of the URI String in bytes: 2 bytes
+                entry.getPreferredLeader().toASCIIString().length(); // URI String in bytes: variable length
     }
 
     @Override
-    public byte[] serialize(ScalePartitionsEntry entry) {
+    public byte[] serialize(SetPreferredLeaderEntry entry) {
         byte [] bytes = new byte[sizeOf(entry)];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         buffer.put((byte) entry.getType().value());
-        for (int partition : entry.getPartitions()) {
-            buffer.putShort((short) partition);
-        }
+        UriSerializeSupport.serializerUri(buffer, entry.getPreferredLeader());
         return bytes;
     }
 
+
     @Override
-    public ScalePartitionsEntry parse(byte[] bytes) {
+    public SetPreferredLeaderEntry parse(byte[] bytes) {
         ByteBuffer buffer = ByteBuffer.wrap(bytes, Byte.BYTES, bytes.length - Byte.BYTES);
-        List<Integer> partitionList = new LinkedList<>();
-        while (buffer.hasRemaining()) {
-            partitionList.add(Short.valueOf(buffer.getShort()).intValue());
-        }
-        return new ScalePartitionsEntry(partitionList.stream().mapToInt(Integer::intValue).toArray());
+        return new SetPreferredLeaderEntry(UriSerializeSupport.parseUri(buffer));
     }
+
 }

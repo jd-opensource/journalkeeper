@@ -57,4 +57,9 @@ public class ServerRpcStub  extends ClientServerRpcStub implements ServerRpc {
     public CompletableFuture<DisableLeaderWriteResponse> disableLeaderWrite(DisableLeaderWriteRequest request) {
         return sendRequest(request, RpcTypes.DISABLE_LEADER_WRITE_REQUEST);
     }
+
+    @Override
+    public CompletableFuture<InstallSnapshotResponse> installSnapshot(InstallSnapshotRequest request) {
+        return sendRequest(request, RpcTypes.INSTALL_SNAPSHOT_REQUEST);
+    }
 }

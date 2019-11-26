@@ -18,7 +18,6 @@ import io.journalkeeper.persistence.JournalPersistence;
 import io.journalkeeper.persistence.TooManyBytesException;
 import io.journalkeeper.utils.ThreadSafeFormat;
 import io.journalkeeper.utils.buffer.PreloadBufferPool;
-import io.journalkeeper.utils.format.Format;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,7 +27,11 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.Properties;
+import java.util.SortedMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -65,17 +68,19 @@ public class PositioningStore implements JournalPersistence,Closeable {
             if (givenMax == max()) return;
             logger.info("Truncate to position: {}, min: {}, max: {}, flushed: {}, path: {}...",
                     ThreadSafeFormat.formatWithComma(givenMax),
-                    ThreadSafeFormat.formatWithComma(leftPosition.get()),
-                    ThreadSafeFormat.formatWithComma(writePosition.get()),
+                    ThreadSafeFormat.formatWithComma(min()),
+                    ThreadSafeFormat.formatWithComma(max()),
                     ThreadSafeFormat.formatWithComma(flushPosition.get()),
                     base.getAbsolutePath());
 
-            if (givenMax <= leftPosition.get() || givenMax > max()) {
-                clearData();
-                this.leftPosition.set(givenMax);
-                this.writePosition.set(givenMax);
-                this.flushPosition.set(givenMax);
-                resetWriteStoreFile();
+            if (givenMax < min() || givenMax > max()) {
+                throw new IllegalArgumentException(
+                        String.format("GivenMax %s should between [%s, %s]!",
+                                ThreadSafeFormat.formatWithComma(givenMax),
+                                ThreadSafeFormat.formatWithComma(min()),
+                                ThreadSafeFormat.formatWithComma(max())
+                                )
+                );
             } else if (givenMax < max()) {
                 rollbackFiles(givenMax);
                 this.writePosition.set(givenMax);
@@ -136,20 +141,20 @@ public class PositioningStore implements JournalPersistence,Closeable {
             }
         }
     }
-
-    public void recover(Path path, Properties properties) throws IOException {
+    public void recover(Path path, long min, Properties properties) throws IOException {
         Files.createDirectories(path);
         this.base = path.toFile();
         this.config = toConfig(properties);
 
         bufferPool.addPreLoad(config.getFileDataSize(), config.getCachedFileCoreCount(), config.getCachedFileMaxCount());
 
-        recoverFileMap();
+        recoverFileMap(min);
 
-        long recoverPosition = this.storeFileMap.isEmpty()? 0L : this.storeFileMap.lastKey() + this.storeFileMap.lastEntry().getValue().fileDataSize();
+        long recoverPosition = this.storeFileMap.isEmpty()? min : this.storeFileMap.lastKey() + this.storeFileMap.lastEntry().getValue().fileDataSize();
         flushPosition.set(recoverPosition);
         writePosition.set(recoverPosition);
-        leftPosition.set(this.storeFileMap.isEmpty()? 0L : this.storeFileMap.firstKey());
+
+        leftPosition.set(this.storeFileMap.isEmpty()? min : this.storeFileMap.firstKey());
 
         resetWriteStoreFile();
         logger.info("Store loaded, left: {}, right: {},  base: {}.",
@@ -188,13 +193,17 @@ public class PositioningStore implements JournalPersistence,Closeable {
         return config;
     }
 
-    private void recoverFileMap() {
+    private void recoverFileMap(long min) {
         File[] files = base.listFiles(file -> file.isFile() && file.getName().matches("\\d+"));
         long filePosition;
         if(null != files) {
             for (File file : files) {
                 filePosition = Long.parseLong(file.getName());
-                storeFileMap.put(filePosition, new LocalStoreFile(filePosition, base, config.getFileHeaderSize(), bufferPool, config.getFileDataSize()));
+                if(filePosition >= min || filePosition + file.length() - config.getFileHeaderSize() > min) {
+                    storeFileMap.put(filePosition, new LocalStoreFile(filePosition, base, config.getFileHeaderSize(), bufferPool, config.getFileDataSize()));
+                } else {
+                    logger.info("Ignore file {}, cause file position is smaller than given min position {}.", file.getAbsolutePath(), min);
+                }
             }
         }
 
@@ -219,7 +228,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
         }
 
         // Wait for flush
-        waitForFlush();
+        maybeWaitForFlush();
 
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         if (null == writeStoreFile) writeStoreFile = createStoreFile(writePosition.get());
@@ -231,7 +240,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
     }
 
 
-    private void waitForFlush() {
+    private void maybeWaitForFlush() {
         while (config.getMaxDirtySize() > 0 && max() - flushed() > config.getMaxDirtySize()) {
             Thread.yield();
         }
@@ -241,6 +250,11 @@ public class PositioningStore implements JournalPersistence,Closeable {
     @Override
     public long min() {
         return leftPosition.get();
+    }
+
+    @Override
+    public long physicalMin() {
+        return storeFileMap.isEmpty() ? min() : storeFileMap.firstKey();
     }
 
     @Override
@@ -300,9 +314,9 @@ public class PositioningStore implements JournalPersistence,Closeable {
 
     private void checkReadPosition(long position){
         long p;
-        if((p = leftPosition.get()) > position) {
+        if((p = min()) > position) {
             throw new PositionUnderflowException(position, p);
-        } else if(position >= (p = writePosition.get())) {
+        } else if(position >= (p = max())) {
             throw new PositionOverflowException(position, p);
         }
 
@@ -314,9 +328,19 @@ public class PositioningStore implements JournalPersistence,Closeable {
      */
     public long compact(long givenMin) throws IOException {
         synchronized (fileMapMutex) {
+            if( givenMin <= min()) {
+                return 0L;
+            }
+            if (givenMin > flushPosition.get()) {
+                throw new IllegalArgumentException(
+                        String.format("GivenMax %s should less than flush position %s!",
+                                ThreadSafeFormat.formatWithComma(givenMin),
+                                ThreadSafeFormat.formatWithComma(flushPosition.get())
+                        )
+                );
+            }
 
-            if (givenMin > flushPosition.get()) givenMin = flushPosition.get();
-
+            leftPosition.set(givenMin);
             Iterator<Map.Entry<Long, StoreFile>> iterator =
                     storeFileMap.entrySet().iterator();
             long deleteSize = 0L;
@@ -327,10 +351,7 @@ public class PositioningStore implements JournalPersistence,Closeable {
                 long start = entry.getKey();
                 long fileDataSize = storeFile.hasPage() ? storeFile.writePosition() : storeFile.fileDataSize();
 
-                // 至少保留一个文件
-                if (storeFileMap.size() < 2 || start + fileDataSize > givenMin) break;
-                leftPosition.getAndAdd(fileDataSize);
-                if (flushPosition.get() < leftPosition.get()) flushPosition.set(leftPosition.get());
+                if (start + fileDataSize > givenMin) break;
                 iterator.remove();
                 forceDeleteStoreFile(storeFile);
                 deleteSize += fileDataSize;
@@ -362,9 +383,10 @@ public class PositioningStore implements JournalPersistence,Closeable {
     }
 
     @Override
-    public void close() {
+    public void close() throws IOException {
         for(StoreFile storeFile : storeFileMap.values()) {
-            storeFile.unload();
+            storeFile.flush();
+            storeFile.forceUnload();
         }
         bufferPool.removePreLoad(config.fileDataSize);
     }
@@ -444,6 +466,12 @@ public class PositioningStore implements JournalPersistence,Closeable {
         }
     }
 
-
-
+    @Override
+    public String toString() {
+        return "PositioningStore{" +
+                "flushPosition=" + flushPosition +
+                ", writePosition(max)=" + writePosition +
+                ", leftPosition(min)=" + leftPosition +
+                '}';
+    }
 }

@@ -13,13 +13,11 @@
  */
 package io.journalkeeper.core.api;
 
-import com.sun.org.apache.xpath.internal.operations.Bool;
 import io.journalkeeper.utils.event.Watchable;
 
-import java.io.Closeable;
 import java.net.URI;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -61,18 +59,11 @@ public interface AdminClient extends Watchable, ClusterReadyAware, ServerConfigA
     CompletableFuture<Void> convertRoll(URI uri, RaftServer.Roll roll);
 
     /**
-     * 压缩WAL。删除指定位置之前的WAL日志。
-     * @param toIndices 每个分区的安全删除位置。
-     * @return 执行成功返回null，失败抛出异常。
-     */
-    CompletableFuture<Void> compact(Map<Integer, Long> toIndices);
-
-    /**
      * 变更集群分区配置
      * @param partitions 新分区配置
      * @return 执行成功返回null，失败抛出异常。
      */
-    CompletableFuture<Void> scalePartitions(int[] partitions);
+    CompletableFuture<Void> scalePartitions(Set<Integer> partitions);
 
     /**
      * 获取节点当前状态
@@ -90,6 +81,13 @@ public interface AdminClient extends Watchable, ClusterReadyAware, ServerConfigA
      * @return 执行成功返回null，失败抛出异常。
      */
     CompletableFuture<Void> setPreferredLeader(URI preferredLeader);
+
+    /**
+     * 创建一个快照
+     *
+     * @return 快照位置
+     */
+    CompletableFuture<Void> takeSnapshot();
 
     void stop();
 

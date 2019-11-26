@@ -11,26 +11,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.entry.reserved;
+package io.journalkeeper.core.entry.internal;
 
 import java.io.Serializable;
-import java.util.Map;
+import java.util.Set;
 
-import static io.journalkeeper.core.entry.reserved.ReservedEntryType.TYPE_COMPACT_JOURNAL;
+import static io.journalkeeper.core.entry.internal.InternalEntryType.TYPE_SCALE_PARTITIONS;
 
 /**
  * @author LiYue
  * Date: 2019-05-09
  */
-public class CompactJournalEntry extends ReservedEntry implements Serializable {
+
+public class ScalePartitionsEntry extends InternalEntry implements Serializable {
     private static final long serialVersionUID = 1L;
-    private final Map<Integer, Long> compactIndices;
-    public CompactJournalEntry(Map<Integer, Long> compactIndices) {
-        super(TYPE_COMPACT_JOURNAL);
-        this.compactIndices = compactIndices;
+
+    private final Set<Integer> partitions;
+    public ScalePartitionsEntry(Set<Integer> partitions) {
+        super(TYPE_SCALE_PARTITIONS);
+        this.partitions = partitions;
     }
 
-    public Map<Integer, Long> getCompactIndices() {
-        return compactIndices;
+    public Set<Integer> getPartitions() {
+        return partitions;
     }
 }

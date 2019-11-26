@@ -23,6 +23,6 @@ import java.util.Properties;
  * Date: 2019-03-15
  */
 public interface MetadataPersistence {
-    void save(ServerMetadata serverMetadata) throws IOException;
-    ServerMetadata recover(Path path) throws IOException;
+    <M> void save(Path path, M metadata) throws IOException;
+    <M> M load(Path path, Class<M> classType) throws IOException;
 }

@@ -19,7 +19,7 @@ import io.journalkeeper.metric.JMetric;
  * @author LiYue
  * Date: 2019-09-10
  */
-interface MetricProvider {
+public interface MetricProvider {
     /**
      * This method returns the metric instance of given name, instance will be created if not exists.
      * if config.isEnableMetric() equals false, just return a dummy metric.

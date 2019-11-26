@@ -16,15 +16,26 @@ package io.journalkeeper.core.server;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ServerStatus;
-import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
+import io.journalkeeper.core.exception.InstallSnapshotException;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.exceptions.NotVoterException;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.persistence.ServerMetadata;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.StatusCode;
-import io.journalkeeper.rpc.client.*;
+import io.journalkeeper.rpc.client.CompleteTransactionRequest;
+import io.journalkeeper.rpc.client.CompleteTransactionResponse;
+import io.journalkeeper.rpc.client.CreateTransactionResponse;
+import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
+import io.journalkeeper.rpc.client.GetServerStatusResponse;
+import io.journalkeeper.rpc.client.LastAppliedResponse;
+import io.journalkeeper.rpc.client.QueryStateRequest;
+import io.journalkeeper.rpc.client.QueryStateResponse;
+import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
+import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
+import io.journalkeeper.rpc.client.UpdateVotersRequest;
+import io.journalkeeper.rpc.client.UpdateVotersResponse;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
@@ -33,6 +44,8 @@ import io.journalkeeper.rpc.server.GetServerEntriesRequest;
 import io.journalkeeper.rpc.server.GetServerEntriesResponse;
 import io.journalkeeper.rpc.server.GetServerStateRequest;
 import io.journalkeeper.rpc.server.GetServerStateResponse;
+import io.journalkeeper.rpc.server.InstallSnapshotRequest;
+import io.journalkeeper.rpc.server.InstallSnapshotResponse;
 import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
 import io.journalkeeper.rpc.server.ServerRpc;
@@ -46,7 +59,6 @@ import io.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Arrays;
@@ -141,6 +153,9 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
         replicationMetric.start();
         long traffic = 0L;
+        if (journal.commitIndex() == 0L) {
+            installSnapshot(0L);
+        }
         GetServerEntriesResponse response =
                 invokeParentsRpc(
                         rpc -> rpc.getServerEntries(new GetServerEntriesRequest(journal.commitIndex(),config.getPullBatchSize()))
@@ -150,7 +165,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
             journal.appendBatchRaw(response.getEntries());
 
-            voterConfigManager.maybeUpdateNonLeaderConfig(response.getEntries(), votersConfigStateMachine);
+            voterConfigManager.maybeUpdateNonLeaderConfig(response.getEntries(), state.getConfigState());
 //            commitIndex.addAndGet(response.getEntries().size());
             journal.commit(journal.maxIndex());
             // 唤醒状态机线程
@@ -159,7 +174,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
 
         } else if( response.getStatusCode() == StatusCode.INDEX_UNDERFLOW){
-            reset();
+            installSnapshot(response.getMinIndex());
         } else if( response.getStatusCode() != StatusCode.INDEX_OVERFLOW){
             logger.warn("Pull entry failed! {}", response.errorString());
         }
@@ -167,55 +182,25 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
     }
 
-    private void reset() throws InterruptedException, ExecutionException, IOException {
-//      INDEX_UNDERFLOW：Observer的提交位置已经落后目标节点太多，这时需要重置Observer，重置过程中不能提供读服务：
-//        1. 删除log中所有日志和snapshots中的所有快照；
-//        2. 将目标节点提交位置对应的状态复制到Observer上：parentServer.getServerState()，更新属性commitIndex和lastApplied值为返回值中的lastApplied。
-        disable();
-        try {
-            // 删除状态
-            if(state instanceof Closeable) {
-                ((Closeable) state).close();
+    private void installSnapshot(long index) throws InterruptedException, ExecutionException, IOException {
+        // Observer的提交位置已经落后目标节点太多，这时需要安装快照：
+        // 复制远端服务器的最新状态到当前状态
+        long lastIncludedIndex = index - 1;
+        int iteratorId = -1;
+        boolean done;
+        do {
+            int finalIteratorId = iteratorId;
+            GetServerStateResponse r = invokeParentsRpc(
+                    rpc -> rpc.getServerState(new GetServerStateRequest(lastIncludedIndex, finalIteratorId))
+            ).get();
+            if (r.success()) {
+                installSnapshot(r.getOffset(), r.getLastIncludedIndex(), r.getLastIncludedTerm(), r.getData(), r.isDone());
+                iteratorId = r.getIteratorId();
+                done = r.isDone();
+            } else {
+                throw new InstallSnapshotException(r.errorString());
             }
-            state.clear();
-
-            // 删除所有快照
-            for(State<E, ER, Q, QR> snapshot: snapshots.values()) {
-                try {
-                    if (snapshot instanceof Closeable) {
-                        ((Closeable) snapshot).close();
-                    }
-                    snapshot.clear();
-                } catch (Exception e) {
-                    logger.warn("Clear snapshot at index: {} exception: ", snapshot.lastApplied(), e);
-                }
-            }
-            snapshots.clear();
-
-            // 复制远端服务器的最新状态到当前状态
-            long lastIncludedIndex = -1;
-            long offset = 0;
-            boolean done;
-            do {
-                GetServerStateResponse r = invokeParentsRpc(
-                        rpc -> rpc.getServerState(new GetServerStateRequest(lastIncludedIndex, offset))
-                ).get();
-                state.installSerializedData(r.getData(), r.getOffset());
-                if(done = r.isDone()) {
-
-                    state.installFinish(r.getLastIncludedIndex() + 1, r.getLastIncludedTerm());
-                    journal.compact(state.lastApplied());
-
-                    State<E, ER, Q, QR> snapshot = state.takeASnapshot(snapshotsPath().resolve(String.valueOf(state.lastApplied())), journal);
-                    snapshots.put(snapshot.lastApplied(), snapshot);
-                }
-
-            } while (!done);
-
-
-        } finally {
-            enable();
-        }
+        } while (!done);
     }
 
     @Override
@@ -300,6 +285,11 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     @Override
     public CompletableFuture<DisableLeaderWriteResponse> disableLeaderWrite(DisableLeaderWriteRequest request) {
         return CompletableFuture.completedFuture(new DisableLeaderWriteResponse(new NotVoterException()));
+    }
+
+    @Override
+    public CompletableFuture<InstallSnapshotResponse> installSnapshot(InstallSnapshotRequest request) {
+        return CompletableFuture.completedFuture(new InstallSnapshotResponse(new NotVoterException()));
     }
 
     @Override

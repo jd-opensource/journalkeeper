@@ -11,25 +11,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.entry.reserved;
+package io.journalkeeper.rpc.server;
 
-import java.io.Serializable;
-
-import static io.journalkeeper.core.entry.reserved.ReservedEntryType.TYPE_LEADER_ANNOUNCEMENT;
+import io.journalkeeper.rpc.BaseResponse;
 
 /**
  * @author LiYue
- * Date: 2019-05-09
+ * Date: 2019-03-14
  */
-public class LeaderAnnouncementEntry extends ReservedEntry implements Serializable {
-    private static final long serialVersionUID = 2L;
-    private final int term;
-    public LeaderAnnouncementEntry(int term) {
-        super(TYPE_LEADER_ANNOUNCEMENT);
+public class InstallSnapshotResponse extends BaseResponse implements Termed{
+    private InstallSnapshotResponse(Throwable exception, int term) {
+        super(exception);
         this.term = term;
     }
+
+    public InstallSnapshotResponse(int term) {
+        this(null, term);
+    }
+
+    public InstallSnapshotResponse(Throwable exception) {
+        this(exception, -1);
+    }
+
+
+    private final int term;
+
+
 
     public int getTerm() {
         return term;
     }
+
 }

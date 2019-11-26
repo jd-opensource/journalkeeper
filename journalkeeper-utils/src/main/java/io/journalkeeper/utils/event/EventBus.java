@@ -19,7 +19,11 @@ import io.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -80,9 +84,7 @@ public class EventBus implements Watchable {
     }
 
     private void removeTimeoutPullWatchers() {
-        // TODO 多次超时才移除
-//        pullEventWatchers.entrySet().removeIf(entry -> entry.getValue().lastPullTimestamp + pullEventWatcherTimeout < System.currentTimeMillis());
-        pullEventWatchers.entrySet().removeIf(entry -> entry.getValue().lastPullTimestamp + pullEventWatcherTimeout * 3 < System.currentTimeMillis());
+        pullEventWatchers.entrySet().removeIf(entry -> entry.getValue().lastPullTimestamp + pullEventWatcherTimeout < System.currentTimeMillis());
     }
 
     /**

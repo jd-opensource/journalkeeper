@@ -29,6 +29,8 @@ import io.journalkeeper.rpc.server.GetServerEntriesRequest;
 import io.journalkeeper.rpc.server.GetServerEntriesResponse;
 import io.journalkeeper.rpc.server.GetServerStateRequest;
 import io.journalkeeper.rpc.server.GetServerStateResponse;
+import io.journalkeeper.rpc.server.InstallSnapshotRequest;
+import io.journalkeeper.rpc.server.InstallSnapshotResponse;
 import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
 import io.journalkeeper.rpc.server.ServerRpc;
@@ -112,8 +114,8 @@ public class Server<E, ER, Q, QR>
     }
 
     @Override
-    public void init(URI uri, List<URI> voters, Set<Integer> partitions) throws IOException {
-        server.init(uri, voters, partitions);
+    public void init(URI uri, List<URI> voters, Set<Integer> partitions, URI preferredLeader) throws IOException {
+        server.init(uri, voters, partitions, preferredLeader);
     }
 
     @Override
@@ -255,6 +257,11 @@ public class Server<E, ER, Q, QR>
     @Override
     public CompletableFuture<DisableLeaderWriteResponse> disableLeaderWrite(DisableLeaderWriteRequest request) {
         return server.disableLeaderWrite(request);
+    }
+
+    @Override
+    public CompletableFuture<InstallSnapshotResponse> installSnapshot(InstallSnapshotRequest request) {
+        return server.installSnapshot(request);
     }
 
     private void addMonitorProviderToCollectors() {

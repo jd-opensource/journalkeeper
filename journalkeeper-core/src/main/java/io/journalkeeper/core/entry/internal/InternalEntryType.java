@@ -11,11 +11,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.entry.reserved;
+package io.journalkeeper.core.entry.internal;
 
-public enum ReservedEntryType {
+public enum InternalEntryType {
     TYPE_LEADER_ANNOUNCEMENT(0),
-    TYPE_COMPACT_JOURNAL(1),
+    TYPE_CREATE_SNAPSHOT(1),
     TYPE_SCALE_PARTITIONS(2),
     TYPE_UPDATE_VOTERS_S1(3),
     TYPE_UPDATE_VOTERS_S2(4),
@@ -23,7 +23,7 @@ public enum ReservedEntryType {
     TYPE_SET_PREFERRED_LEADER(6);
     private int value;
 
-    ReservedEntryType(int value) {
+    InternalEntryType(int value) {
         this.value = value;
     }
 
@@ -31,12 +31,12 @@ public enum ReservedEntryType {
         return value;
     }
 
-    public static ReservedEntryType valueOf(final int value) {
+    public static InternalEntryType valueOf(final int value) {
         switch (value) {
             case 0:
                 return TYPE_LEADER_ANNOUNCEMENT;
             case 1:
-                return TYPE_COMPACT_JOURNAL;
+                return TYPE_CREATE_SNAPSHOT;
             case 2:
                 return TYPE_SCALE_PARTITIONS;
             case 3:
@@ -48,7 +48,7 @@ public enum ReservedEntryType {
             case 6:
                 return TYPE_SET_PREFERRED_LEADER;
             default:
-                throw new IllegalArgumentException("Illegal ReservedEntryType value!");
+                throw new IllegalArgumentException("Illegal InternalEntryType value!");
         }
     }
 

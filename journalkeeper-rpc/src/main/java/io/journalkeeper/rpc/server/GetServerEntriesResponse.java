@@ -29,6 +29,10 @@ public class GetServerEntriesResponse extends BaseResponse {
     private final long minIndex;
     private final long lastApplied;
 
+    public GetServerEntriesResponse(Throwable exception, long minIndex, long lastApplied) {
+        this(exception, null, minIndex, lastApplied);
+    }
+
     public GetServerEntriesResponse(Throwable exception) {
         this(exception, null, -1L, -1L);
     }

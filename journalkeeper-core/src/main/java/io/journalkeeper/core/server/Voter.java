@@ -33,16 +33,34 @@ import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;
-import io.journalkeeper.core.entry.reserved.*;
+import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
+import io.journalkeeper.core.entry.internal.InternalEntryType;
+import io.journalkeeper.core.entry.internal.LeaderAnnouncementEntry;
+import io.journalkeeper.core.entry.internal.UpdateVotersS1Entry;
 import io.journalkeeper.core.exception.UpdateConfigurationException;
 import io.journalkeeper.core.journal.Journal;
+import io.journalkeeper.core.state.ConfigState;
+import io.journalkeeper.core.state.JournalKeeperState;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.persistence.ServerMetadata;
-import io.journalkeeper.rpc.client.*;
+import io.journalkeeper.rpc.client.CompleteTransactionRequest;
+import io.journalkeeper.rpc.client.CompleteTransactionResponse;
+import io.journalkeeper.rpc.client.CreateTransactionResponse;
+import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
+import io.journalkeeper.rpc.client.GetServerStatusResponse;
+import io.journalkeeper.rpc.client.LastAppliedResponse;
+import io.journalkeeper.rpc.client.QueryStateRequest;
+import io.journalkeeper.rpc.client.QueryStateResponse;
+import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
+import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
+import io.journalkeeper.rpc.client.UpdateVotersRequest;
+import io.journalkeeper.rpc.client.UpdateVotersResponse;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
 import io.journalkeeper.rpc.server.DisableLeaderWriteResponse;
+import io.journalkeeper.rpc.server.InstallSnapshotRequest;
+import io.journalkeeper.rpc.server.InstallSnapshotResponse;
 import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
 import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
@@ -64,7 +82,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-import static io.journalkeeper.core.api.RaftJournal.RAFT_PARTITION;
+import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
 
 
 /**
@@ -119,9 +137,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     private Leader<E, ER, Q, QR> leader;
     private Follower follower;
 
-    private URI preferredLeader = null;
-
-
     Voter(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
                  Serializer<Q> querySerializer, Serializer<QR> resultSerializer,
                  JournalEntryParser journalEntryParser,
@@ -130,37 +145,17 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         this.config = toConfig(properties);
 
+        state.addInterceptor(InternalEntryType.TYPE_UPDATE_VOTERS_S1, this::applyUpdateVotersInternalEntry);
+        state.addInterceptor(InternalEntryType.TYPE_UPDATE_VOTERS_S2, this::applyUpdateVotersInternalEntry);
 
         electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
     }
 
-    @Override
-    protected void applyRaftPartition(byte [] reservedEntry) {
-        super.applyRaftPartition(reservedEntry);
-        ReservedEntryType type = ReservedEntriesSerializeSupport.parseEntryType(reservedEntry);
-        switch (type) {
-            case TYPE_UPDATE_VOTERS_S1:
-            case TYPE_UPDATE_VOTERS_S2:
-                voterConfigManager.applyReservedEntry(type, reservedEntry, voterState(), votersConfigStateMachine,
-                        this, serverUri(), this);
-                break;
-            case TYPE_SET_PREFERRED_LEADER:
-                SetPreferredLeaderEntry setPreferredLeaderEntry = ReservedEntriesSerializeSupport.parse(reservedEntry);
-                URI old = preferredLeader;
-                preferredLeader = setPreferredLeaderEntry.getPreferredLeader();
-                logger.info("Set preferred leader from {} to {}, {}.", old, preferredLeader, voterInfo());
-                break;
-            default:
-        }
 
+    private void applyUpdateVotersInternalEntry(InternalEntryType type, byte [] internalEntry) {
+        voterConfigManager.applyReservedEntry(type, internalEntry, voterState(), state.getConfigState(),
+                this, serverUri(), this);
 
-    }
-
-    @Override
-    protected void applyReservedPartition(JournalEntry journalEntry, long index) {
-        if(voterState() == VoterState.LEADER && leader != null) {
-            leader.applyReservedPartition(journalEntry);
-        }
     }
 
     @Override
@@ -176,6 +171,15 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 properties.getProperty(
                         Config.ELECTION_TIMEOUT_KEY,
                         String.valueOf(Config.DEFAULT_ELECTION_TIMEOUT_MS))));
+        config.setSnapshotIntervalSec(Integer.parseInt(
+                properties.getProperty(
+                        Config.SNAPSHOT_INTERVAL_SEC_KEY,
+                        String.valueOf(AbstractServer.Config.DEFAULT_SNAPSHOT_INTERVAL_SEC))));
+        config.setJournalRetentionMin(Integer.parseInt(
+                properties.getProperty(
+                        Config.JOURNAL_RETENTION_MIN_KEY,
+                        String.valueOf(AbstractServer.Config.DEFAULT_JOURNAL_RETENTION_MIN))));
+
         config.setHeartbeatIntervalMs(Long.parseLong(
                 properties.getProperty(
                         Config.HEARTBEAT_INTERVAL_KEY,
@@ -196,10 +200,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 properties.getProperty(
                         Config.CACHE_REQUESTS_KEY,
                         String.valueOf(Config.DEFAULT_CACHE_REQUESTS))));
-        config.setSnapshotStep(Integer.parseInt(
-                properties.getProperty(
-                        AbstractServer.Config.SNAPSHOT_STEP_KEY,
-                        String.valueOf(AbstractServer.Config.DEFAULT_SNAPSHOT_STEP))));
         config.setRpcTimeoutMs(Long.parseLong(
                 properties.getProperty(
                         AbstractServer.Config.RPC_TIMEOUT_MS_KEY,
@@ -281,7 +281,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         int lastLogTerm = journal.getTerm(lastLogIndex);
 
         RequestVoteRequest request = new RequestVoteRequest(currentTerm.get(), uri, lastLogIndex, lastLogTerm, fromPreferredLeader);
-        List<URI> destinations =  votersConfigStateMachine.voters().stream()
+        List<URI> destinations =  state.getConfigState().voters().stream()
                 .filter(uri -> !uri.equals(this.uri)).collect(Collectors.toList());
 
         final AtomicBoolean isWinTheElection = new AtomicBoolean(false);
@@ -330,20 +330,21 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     }
 
     private void updateVotes(AtomicBoolean isWinTheElection, AtomicInteger votesGrantedInNewConfig, AtomicInteger votesGrantedInOldConfig, URI destination) {
-        if(votersConfigStateMachine.getConfigNew().contains(destination)) {
+        ConfigState configState = state.getConfigState();
+        if(configState.getConfigNew().contains(destination)) {
             votesGrantedInNewConfig.incrementAndGet();
         }
-        if(votersConfigStateMachine.getConfigOld().contains(destination)) {
+        if(configState.getConfigOld().contains(destination)) {
             votesGrantedInOldConfig.incrementAndGet();
         }
 
         boolean win;
 
-        if (votersConfigStateMachine.isJointConsensus()) {
-            win  = votesGrantedInNewConfig.get() >= votersConfigStateMachine.getConfigNew().size() / 2 + 1 &&
-                    votesGrantedInOldConfig.get() >= votersConfigStateMachine.getConfigOld().size() / 2 + 1;
+        if (configState.isJointConsensus()) {
+            win  = votesGrantedInNewConfig.get() >= configState.getConfigNew().size() / 2 + 1 &&
+                    votesGrantedInOldConfig.get() >= configState.getConfigOld().size() / 2 + 1;
         } else {
-            win = votesGrantedInNewConfig.get() >= votersConfigStateMachine.getConfigNew().size() / 2 + 1;
+            win = votesGrantedInNewConfig.get() >= configState.getConfigNew().size() / 2 + 1;
         }
         if(isWinTheElection.compareAndSet(false, win) && win) {
             convertToLeader();
@@ -369,24 +370,26 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
      */
     private void convertToLeader() {
         synchronized (voterState) {
+            VoterState oldState = voterState.getState();
             voterState.convertToLeader();
-            logger.info("Convert to LEADER, {}.", voterInfo());
 
-            this.leader = new Leader<>(journal, state, snapshots,currentTerm.get(), votersConfigStateMachine,
+            this.leader = new Leader<>(journal, state, snapshots,currentTerm.get(),
                     uri, config.getCacheRequests(), config.getHeartbeatIntervalMs(), config.getRpcTimeoutMs(),
                     config.getReplicationParallelism(),config.getReplicationBatchSize(),
-                    entryResultSerializer,threads,
+                    config.getSnapshotIntervalSec(), entryResultSerializer, threads,
                     this, this, asyncExecutor, scheduledExecutor, voterConfigManager, this, this,
-                    this.journalEntryParser, config.getTransactionTimeoutMs());
+                    this.journalEntryParser, config.getTransactionTimeoutMs(), snapshots);
             leader.start();
             this.leaderUri = this.uri;
             // Leader announcement
             int term = currentTerm.get();
-            byte [] payload = ReservedEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(term));
+            byte [] payload = InternalEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(term));
             JournalEntry journalEntry = journalEntryParser.createJournalEntry(payload);
             journalEntry.setTerm(term);
-            journalEntry.setPartition(RAFT_PARTITION);
+            journalEntry.setPartition(INTERNAL_PARTITION);
             journal.append(journalEntry);
+            logger.info("Convert voter state from {} to LEADER, {}.", oldState, voterInfo());
+
         }
 
     }
@@ -423,8 +426,8 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
             }
 
             follower = new Follower(journal, state, uri, currentTerm.get(),
-                    voterConfigManager, votersConfigStateMachine, threads,
-                    config.getCacheRequests(), config.getHeartbeatIntervalMs());
+                    voterConfigManager, threads,
+                    snapshots, config.getCacheRequests());
             follower.start();
 
             this.electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
@@ -557,6 +560,44 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         }, asyncExecutor).exceptionally(DisableLeaderWriteResponse::new);
     }
 
+    //Receiver implementation:
+    //1. Reply immediately if term < currentTerm
+    //2. Create new snapshot file if first chunk (offset is 0)
+    //3. Write data into snapshot file at given offset
+    //4. Reply and wait for more data chunks if done is false
+    //5. Save snapshot file, discard any existing or partial snapshot
+    //with a smaller index
+    //6. If existing log entry has same index and term as snapshot’s
+    //last included entry, retain log entries following it and reply
+    //7. Discard the entire log
+    //8. Reset state machine using snapshot contents (and load
+    //snapshot’s cluster configuration)
+    @Override
+    public CompletableFuture<InstallSnapshotResponse> installSnapshot(InstallSnapshotRequest request) {
+        JournalKeeperState<E, ER, Q, QR> snapshot;
+        if(checkTerm(request.getTerm())) {
+            return CompletableFuture.completedFuture(new InstallSnapshotResponse(currentTerm.get()));
+        }
+        return installSnapshotAsync(request);
+    }
+
+    private CompletableFuture<InstallSnapshotResponse> installSnapshotAsync(InstallSnapshotRequest request) {
+        return CompletableFuture.supplyAsync(() -> {
+            InstallSnapshotResponse response;
+
+            try {
+                installSnapshot(request.getOffset(), request.getLastIncludedIndex(),
+                        request.getLastIncludedTerm(), request.getData(), request.isDone());
+                response = new InstallSnapshotResponse(currentTerm.get());
+            } catch (Throwable t) {
+                logger.warn("Install snapshot exception!", t);
+                response = new InstallSnapshotResponse(t);
+            }
+            return response;
+        }, asyncExecutor);
+    }
+
+
     @Override
     public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
         Leader<E, ER, Q, QR> finalLeader = leader;
@@ -573,7 +614,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     @Override
     public CompletableFuture<QueryStateResponse> queryClusterState(QueryStateRequest request) {
         return waitLeadership()
-                .thenCompose(aVoid -> state.query(querySerializer.parse(request.getQuery())))
+                .thenApply(aVoid -> state.query(querySerializer.parse(request.getQuery()), journal).getResult())
                 .thenApply(resultSerializer::serialize)
                 .thenApply(QueryStateResponse::new)
                 .exceptionally(exception -> {
@@ -694,8 +735,8 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     public CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request) {
         return CompletableFuture.supplyAsync(
                 () -> new UpdateVotersS1Entry(request.getOldConfig(), request.getNewConfig()), asyncExecutor)
-                .thenApply(ReservedEntriesSerializeSupport::serialize)
-                .thenApply(entry -> new UpdateClusterStateRequest(new SerializedUpdateRequest(entry, RAFT_PARTITION, 1)))
+                .thenApply(InternalEntriesSerializeSupport::serialize)
+                .thenApply(entry -> new UpdateClusterStateRequest(new SerializedUpdateRequest(entry, INTERNAL_PARTITION, 1)))
                 .thenCompose(this::updateClusterState)
                 .thenAccept(response -> {
                     if(!response.success()) {
@@ -800,7 +841,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         ServerMetadata serverMetadata = super.createServerMetadata();
         serverMetadata.setCurrentTerm(currentTerm.get());
         serverMetadata.setVotedFor(votedFor);
-        serverMetadata.setPreferredLeader(preferredLeader);
         return serverMetadata;
     }
 
@@ -809,8 +849,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         super.onMetadataRecovered(metadata);
         this.currentTerm.set(metadata.getCurrentTerm());
         this.votedFor = metadata.getVotedFor();
-        this.preferredLeader = metadata.getPreferredLeader();
-
     }
 
     private String voterInfo() {
@@ -821,7 +859,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     }
 
     private boolean checkPreferredLeader() {
-        if (voterState().equals(VoterState.FOLLOWER) && serverUri().equals(preferredLeader) && null != follower &&
+        if (voterState().equals(VoterState.FOLLOWER) && serverUri().equals(state.getPreferredLeader()) && null != follower &&
                 follower.getLeaderMaxIndex() - journal.maxIndex() < PREFERRED_LEADER_IN_SYNC_THRESHOLD && follower.getLeaderMaxIndex() > 0) {
             // 给当前LEADER发RPC，停服。
             logger.info("Send DisableLeaderWriteRequest to {}, {}", leaderUri, voterInfo());
@@ -844,7 +882,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         // 等待数据完全同步
         // 发起选举，等待赢得足够的选票，成功新的LEADER
 
-        return (voterState().equals(VoterState.FOLLOWER) && serverUri().equals(preferredLeader) && null != follower &&
+        return (voterState().equals(VoterState.FOLLOWER) && serverUri().equals(state.getPreferredLeader()) && null != follower &&
                 follower.isReadyForStartPreferredLeaderElection() && follower.getLeaderMaxIndex() == journal.maxIndex());
 
     }
@@ -866,7 +904,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     }
 
     URI getPreferredLeader() {
-        return preferredLeader;
+        return state.getPreferredLeader();
     }
 
     Leader getLeader() {
@@ -909,7 +947,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         }
     }
 
-    //TODO: 继承AbstractServer.Config的属性没有解析
     public static class Config extends AbstractServer.Config {
         public final static long DEFAULT_HEARTBEAT_INTERVAL_MS = 100L;
         public final static long DEFAULT_ELECTION_TIMEOUT_MS = 300L;

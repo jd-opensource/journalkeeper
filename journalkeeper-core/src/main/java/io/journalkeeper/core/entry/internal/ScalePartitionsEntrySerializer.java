@@ -11,13 +11,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.entry.reserved;
+package io.journalkeeper.core.entry.internal;
 
 import io.journalkeeper.base.Serializer;
 
 import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * @author LiYue
@@ -25,37 +25,34 @@ import java.util.Map;
  *
  * Type: 1 byte
  * Partition: 2 bytes
- * To index: 8 bytes
  * Partition: 2 bytes
- * To index: 8 bytes
  * Partition: 2 bytes
- * To index: 8 bytes
  * ...
  *
  */
-public class CompactJournalEntrySerializer implements Serializer<CompactJournalEntry> {
-    private int sizeOf(CompactJournalEntry compactJournalEntry) {
-        return Byte.BYTES +  (Short.BYTES + Long.BYTES) * compactJournalEntry.getCompactIndices().size();    }
+public class ScalePartitionsEntrySerializer implements Serializer<ScalePartitionsEntry> {
+    private int sizeOf(ScalePartitionsEntry scalePartitionsEntry) {
+        return Byte.BYTES + Short.BYTES * scalePartitionsEntry.getPartitions().size();
+    }
 
     @Override
-    public byte[] serialize(CompactJournalEntry entry) {
+    public byte[] serialize(ScalePartitionsEntry entry) {
         byte [] bytes = new byte[sizeOf(entry)];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         buffer.put((byte) entry.getType().value());
-        entry.getCompactIndices().forEach((partition, index) -> {
-            buffer.putShort(partition.shortValue());
-            buffer.putLong(index);
-        });
+        for (int partition : entry.getPartitions()) {
+            buffer.putShort((short) partition);
+        }
         return bytes;
     }
 
     @Override
-    public CompactJournalEntry parse(byte[] bytes) {
+    public ScalePartitionsEntry parse(byte[] bytes) {
         ByteBuffer buffer = ByteBuffer.wrap(bytes, Byte.BYTES, bytes.length - Byte.BYTES);
-        Map<Integer, Long> toIndices = new HashMap<>();
+        Set<Integer> partitions = new HashSet<>();
         while (buffer.hasRemaining()) {
-            toIndices.put((int) buffer.getShort(), buffer.getLong());
+            partitions.add(Short.valueOf(buffer.getShort()).intValue());
         }
-        return new CompactJournalEntry(toIndices);
+        return new ScalePartitionsEntry(partitions);
     }
 }

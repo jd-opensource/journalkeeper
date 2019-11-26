@@ -17,7 +17,7 @@ import io.journalkeeper.core.BootStrap;
 import io.journalkeeper.core.api.*;
 import io.journalkeeper.core.api.transaction.TransactionalJournalStore;
 import io.journalkeeper.core.entry.DefaultJournalEntryParser;
-import io.journalkeeper.core.entry.reserved.ReservedPartition;
+import io.journalkeeper.core.entry.internal.ReservedPartition;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.utils.event.EventWatcher;
@@ -28,7 +28,6 @@ import java.net.URI;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
@@ -128,10 +127,10 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
     }
 
     @Override
-    public CompletableFuture<int[]> listPartitions() {
+    public CompletableFuture<Set<Integer>> listPartitions() {
         return raftClient.query(JournalStoreQuery.createQueryPartitions())
                 .thenApply(JournalStoreQueryResult::getBoundaries)
-                .thenApply(boundaries -> boundaries.keySet().stream().mapToInt(Integer::intValue).toArray());
+                .thenApply(Map::keySet);
     }
 
     @Override

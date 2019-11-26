@@ -69,6 +69,8 @@ public class RpcTypes {
     public final static int GET_SERVER_STATE_RESPONSE = -104;
     public final static int DISABLE_LEADER_WRITE_REQUEST = 105;
     public final static int DISABLE_LEADER_WRITE_RESPONSE = -105;
+    public final static int INSTALL_SNAPSHOT_REQUEST = 106;
+    public final static int INSTALL_SNAPSHOT_RESPONSE = -106;
 
 
 }

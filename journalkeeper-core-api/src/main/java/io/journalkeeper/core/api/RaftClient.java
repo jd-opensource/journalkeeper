@@ -13,7 +13,7 @@
  */
 package io.journalkeeper.core.api;
 
-import io.journalkeeper.base.Queryable;
+import io.journalkeeper.base.AsyncQueryable;
 import io.journalkeeper.core.api.transaction.TransactionClient;
 import io.journalkeeper.utils.event.Watchable;
 
@@ -33,7 +33,7 @@ import java.util.concurrent.CompletableFuture;
  * @param <ER> 更新执行结果
  *
  */
-public interface RaftClient<E, ER, Q, QR> extends Queryable<Q, QR>, Watchable, ClusterReadyAware, ServerConfigAware, TransactionClient<E> {
+public interface RaftClient<E, ER, Q, QR> extends AsyncQueryable<Q, QR>, Watchable, ClusterReadyAware, ServerConfigAware, TransactionClient<E> {
 
     /**
      * 写入操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。

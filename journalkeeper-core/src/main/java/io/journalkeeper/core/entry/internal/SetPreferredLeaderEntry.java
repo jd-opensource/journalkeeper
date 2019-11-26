@@ -11,18 +11,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.entry.reserved;
+package io.journalkeeper.core.entry.internal;
 
 import java.io.Serializable;
 import java.net.URI;
 
-import static io.journalkeeper.core.entry.reserved.ReservedEntryType.TYPE_SET_PREFERRED_LEADER;
+import static io.journalkeeper.core.entry.internal.InternalEntryType.TYPE_SET_PREFERRED_LEADER;
 
 /**
  * @author LiYue
  * Date: 2019-09-11
  */
-public class SetPreferredLeaderEntry extends ReservedEntry implements Serializable {
+public class SetPreferredLeaderEntry extends InternalEntry implements Serializable {
     private static final long serialVersionUID = 1L;
     private final URI preferredLeader;
     public SetPreferredLeaderEntry(URI preferredLeader) {

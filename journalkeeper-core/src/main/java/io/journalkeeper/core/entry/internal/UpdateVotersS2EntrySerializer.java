@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.entry.reserved;
+package io.journalkeeper.core.entry.internal;
 
 import io.journalkeeper.base.Serializer;
 
@@ -21,8 +21,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.stream.Stream;
 
-import static io.journalkeeper.core.entry.reserved.UriSerializeSupport.parseUriList;
-import static io.journalkeeper.core.entry.reserved.UriSerializeSupport.serializeUriList;
+import static io.journalkeeper.core.entry.internal.UriSerializeSupport.parseUriList;
+import static io.journalkeeper.core.entry.internal.UriSerializeSupport.serializeUriList;
 
 /**
  * @author LiYue
@@ -43,20 +43,20 @@ import static io.journalkeeper.core.entry.reserved.UriSerializeSupport.serialize
  * ...
  *
  */
-public class UpdateVotersS1EntrySerializer implements Serializer<UpdateVotersS1Entry> {
-    private int sizeOf(UpdateVotersS1Entry entry) {
+public class UpdateVotersS2EntrySerializer implements Serializer<UpdateVotersS2Entry> {
+    private int sizeOf(UpdateVotersS2Entry entry) {
         return Byte.BYTES +  // Type:                              1 byte
                 Short.BYTES * 2 +  // Size of the Old Config List: 2 bytes
                 Short.BYTES * 2 +  // Size of the New Config List: 2 bytes
                 Stream.concat(entry.getConfigNew().stream(), entry.getConfigOld().stream())
-                .map(URI::toASCIIString)
-                .map(s -> s.getBytes(StandardCharsets.US_ASCII))
-                .mapToInt(b -> b.length + Short.BYTES)
-                .sum();
+                        .map(URI::toASCIIString)
+                        .map(s -> s.getBytes(StandardCharsets.US_ASCII))
+                        .mapToInt(b -> b.length + Short.BYTES)
+                        .sum();
     }
 
     @Override
-    public byte[] serialize(UpdateVotersS1Entry entry) {
+    public byte[] serialize(UpdateVotersS2Entry entry) {
         byte [] bytes = new byte[sizeOf(entry)];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         buffer.put((byte) entry.getType().value());
@@ -70,13 +70,13 @@ public class UpdateVotersS1EntrySerializer implements Serializer<UpdateVotersS1E
 
 
     @Override
-    public UpdateVotersS1Entry parse(byte[] bytes) {
+    public UpdateVotersS2Entry parse(byte[] bytes) {
         ByteBuffer buffer = ByteBuffer.wrap(bytes, Byte.BYTES, bytes.length - Byte.BYTES);
 
         List<URI> configOld = parseUriList(buffer);
         List<URI> configNew = parseUriList(buffer);
 
-        return new UpdateVotersS1Entry(configOld, configNew);
+        return new UpdateVotersS2Entry(configOld, configNew);
     }
 
 }
