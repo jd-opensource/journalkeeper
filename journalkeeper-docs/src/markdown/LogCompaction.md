@@ -13,12 +13,14 @@
 2. Internal State：JournalKeeper自身的状态数据
    1. lastIncludedIndex & lastIncludedTerm：快照指向的上一条日志的索引序号和这条日志的任期；
    2. config：集群配置，即集群中有哪些节点；
-   3. partitions：集群的分区
-   4. preferredLeader：推荐Leader
+   3. partitions & indices：Journal的分区配置和每个分区当前的索引序号
+   4. minOffset：Journal当前最小偏移量
+   5. preferredLeader：推荐Leader
+   6. timestamp：快照的时间戳
 
 ## 快照初始化
 
-每个节点在初始化时都需要创建一个初始快照，lastIncludedIndex的初始值为-1，lastIncludedTerm的初始值为-1。
+每个节点在初始化时都需要创建一个初始快照，这个初始化快照随着节点第一次初始化生成。lastIncludedIndex的初始值为-1，lastIncludedTerm的初始值为-1。
 
 ### 同步创建快照
 
