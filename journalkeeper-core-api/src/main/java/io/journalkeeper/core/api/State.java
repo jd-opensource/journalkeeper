@@ -26,29 +26,29 @@ import java.util.Properties;
  * 可选实现：
  * {@link java.io.Flushable}：将状态机中未持久化的输入写入磁盘；
  *
+ * @param <Q> 状态查询条件类型
+ * @param <QR> 状态查询结果类型
+ * @param <E> 操作命令的类型
+ * @param <ER> 状态机执行结果类型
  *
  * @author LiYue
  * Date: 2019-03-20
  */
-public interface State<
-        E, // 操作日志类型
-        ER, // 状态机执行操作日志后返回结果类型
-        Q, // 查询接口请求参数的类型
-        QR // 查询接口返回查询结果类型
-        > {
+public interface State<E, ER, Q, QR> {
     /**
-     * 在状态state上执行命令entries。要求：
-     * 1. 线性语义
-     * 2. 原子性
-     * 3. 幂等性
-     *
+     * 在状态state上执行命令entries，JournalKeeper保证执行操作命令的线性语义。要求：
+     * <ul>
+     *     <li>原子性</li>
+     *     <li>幂等性</li>
+     * </ul>
      * 成功返回执行结果，否则抛异常。
+     *
      * @param entry 待执行的命令
      * @param partition 分区
      * @param index entry在Journal中的索引序号
      * @param batchSize 如果当前entry是一个批量entry，batchSize为这批entry的数量，否则为1；
      * @param journal 当前的journal
-     * @return 执行结果
+     * @return 执行结果。See {@link StateResult}
      */
     StateResult<ER> execute(E entry, int partition, long index, int batchSize, RaftJournal journal);
 
@@ -61,7 +61,7 @@ public interface State<
     QR query(Q query, RaftJournal journal);
 
     /**
-     * 恢复数据
+     * 从磁盘中恢复状态机中的状态数据，在状态机启动的时候调用。
      * @param path 存放state文件的路径
      * @param properties 属性
      * @throws IOException 发生IO异常时抛出
