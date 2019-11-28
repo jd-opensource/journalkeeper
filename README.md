@@ -5,7 +5,7 @@
 
 [中文版](./README_cn.md)
 
-JournalKeeper is a high performance, highly reliable, strong and consistent distributed streaming data storage cluster. The JournalKeeper log consistency algorithm is derived from the RAFT consistency algorithm and has been extended and improved to be more suitable for very large scale clusters with better performance. It clearly divides the system into three parts: consistency log, state machine and storage, so that each part can conform to the principle of single responsibility. JournalKeeper clearly defines system boundaries, using a more systematic and structured description method to define this algorithm, making it easy to implement and apply it to engineering practice.
+JournalKeeper is a high performance, highly reliable, strong consistent distributed streaming data storage cluster. The JournalKeeper log consistency algorithm is derived from the RAFT consistency algorithm and has been extended and improved to be more suitable for very large scale clusters with better performance. It clearly divides the system into three parts: consistency log, state machine and storage, so that each part can conform to the principle of single responsibility. JournalKeeper clearly defines system boundaries, using a more systematic and structured description method to define this algorithm, making it easy to implement and apply it to engineering practice.
 
 ## What is JournalKeeper？
 
