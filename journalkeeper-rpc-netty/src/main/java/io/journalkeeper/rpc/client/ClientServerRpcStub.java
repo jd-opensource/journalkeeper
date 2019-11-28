@@ -207,12 +207,12 @@ public class ClientServerRpcStub implements ClientServerRpc {
         try {
             AddPullWatchResponse addPullWatchResponse = addPullWatch().get();
             if (addPullWatchResponse.success()) {
+                eventBus = new EventBus();
                 this.pullWatchId = addPullWatchResponse.getPullWatchId();
                 this.ackSequence = -1L;
                 long pullInterval = addPullWatchResponse.getPullIntervalMs();
                 pullEventThread = buildPullEventsThread(pullInterval);
                 pullEventThread.start();
-                eventBus = new EventBus();
             } else {
                 throw new RpcException(addPullWatchResponse);
             }

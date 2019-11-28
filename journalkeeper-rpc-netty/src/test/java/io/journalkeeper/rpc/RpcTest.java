@@ -85,6 +85,7 @@ import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.argThat;
@@ -446,9 +447,16 @@ public class RpcTest {
 
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
 
+        AtomicBoolean addWatchFinished = new AtomicBoolean(false);
+        AtomicBoolean alreadySendEvents = new AtomicBoolean(false);
         when(serverRpcMock.pullEvents(any(PullEventsRequest.class)))
-                .thenReturn(CompletableFuture.supplyAsync(() -> new PullEventsResponse(pullEvents)))
-                .thenReturn(CompletableFuture.supplyAsync(() -> new PullEventsResponse(Collections.emptyList())));
+                .thenAnswer(invocation -> CompletableFuture.supplyAsync(() ->  {
+                    if(addWatchFinished.get() && alreadySendEvents.compareAndSet(false, true)) {
+                        return new PullEventsResponse(pullEvents);
+                    } else {
+                        return new PullEventsResponse(Collections.emptyList());
+                    }
+                }));
         when(serverRpcMock.addPullWatch())
                 .thenReturn(CompletableFuture.supplyAsync(() -> new AddPullWatchResponse(pullWatchId, pullIntervalMs)));
         when(serverRpcMock.removePullWatch(any(RemovePullWatchRequest.class)))
@@ -458,6 +466,7 @@ public class RpcTest {
         EventWatcher eventWatcher = eventList::add;
 
         clientServerRpc.watch(eventWatcher);
+        addWatchFinished.set(true);
         Thread.sleep(3 * pullIntervalMs);
         clientServerRpc.unWatch(eventWatcher);
 
