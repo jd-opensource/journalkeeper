@@ -19,8 +19,10 @@ import io.journalkeeper.sql.client.SQLOperator;
 import io.journalkeeper.sql.client.domain.ResultSet;
 import io.journalkeeper.sql.client.helper.ParamHelper;
 import io.journalkeeper.sql.exception.SQLException;
+import io.journalkeeper.sql.state.config.SQLConfigs;
 
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 /**
  * DefaultSQLOperator
@@ -30,15 +32,17 @@ import java.util.concurrent.ExecutionException;
 public class DefaultSQLOperator implements SQLOperator {
 
     private SQLClient client;
+    private int timeout;
 
     public DefaultSQLOperator(SQLClient client) {
         this.client = client;
+        this.timeout = Integer.valueOf(client.getConfig().getProperty(SQLConfigs.TIMEOUT, String.valueOf(SQLConfigs.DEFAULT_TIMEOUT)));
     }
 
     @Override
     public Object insert(String sql, Object... params) {
         try {
-            return client.insert(sql, ParamHelper.toList(params)).get();
+            return client.insert(sql, ParamHelper.toList(params)).get(timeout, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             throw convertException(e);
         }
@@ -47,7 +51,7 @@ public class DefaultSQLOperator implements SQLOperator {
     @Override
     public int update(String sql, Object... params) {
         try {
-            return (int) client.update(sql, ParamHelper.toList(params)).get();
+            return (int) client.update(sql, ParamHelper.toList(params)).get(timeout, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             throw convertException(e);
         }
@@ -56,7 +60,7 @@ public class DefaultSQLOperator implements SQLOperator {
     @Override
     public int delete(String sql, Object... params) {
         try {
-            return (int) client.delete(sql, ParamHelper.toList(params)).get();
+            return (int) client.delete(sql, ParamHelper.toList(params)).get(timeout, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             throw convertException(e);
         }
@@ -65,7 +69,7 @@ public class DefaultSQLOperator implements SQLOperator {
     @Override
     public ResultSet query(String sql, Object... params) {
         try {
-            return client.query(sql, ParamHelper.toList(params)).get();
+            return client.query(sql, ParamHelper.toList(params)).get(timeout, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             throw convertException(e);
         }
@@ -73,7 +77,7 @@ public class DefaultSQLOperator implements SQLOperator {
 
     @Override
     public BatchSQLOperator beginBatch() {
-        return new DefaultBatchSQLOperator(client);
+        return new DefaultBatchSQLOperator(client, timeout);
     }
 
     protected SQLException convertException(Throwable e) {

@@ -17,6 +17,7 @@ import com.alibaba.druid.pool.DruidDataSource;
 import io.journalkeeper.sql.druid.config.DruidConfigs;
 import io.journalkeeper.sql.state.jdbc.DataSourceFactory;
 import io.journalkeeper.sql.state.jdbc.config.JDBCConfigs;
+import org.apache.commons.lang3.StringUtils;
 
 import javax.sql.DataSource;
 import java.nio.file.Path;
@@ -31,8 +32,13 @@ public class DruidDataSourceFactory implements DataSourceFactory {
 
     @Override
     public DataSource createDataSource(Path path, Properties properties) {
+        String url = properties.getProperty(DruidConfigs.URL);
+        if (StringUtils.isBlank(url)) {
+            throw new IllegalArgumentException("url not exist");
+        }
+
         DruidDataSource dataSource = new DruidDataSource();
-        dataSource.setUrl(properties.getProperty(DruidConfigs.URL).replace(JDBCConfigs.DATASOURCE_PATH_PLACEHOLDER, path.toString()));
+        dataSource.setUrl(url.replace(JDBCConfigs.DATASOURCE_PATH_PLACEHOLDER, path.toString()));
         dataSource.setDriverClassName(properties.getProperty(DruidConfigs.DRIVER_CLASS));
         dataSource.setUsername(properties.getProperty(DruidConfigs.USERNAME, dataSource.getUsername()));
         dataSource.setPassword(properties.getProperty(DruidConfigs.PASSWORD, dataSource.getPassword()));

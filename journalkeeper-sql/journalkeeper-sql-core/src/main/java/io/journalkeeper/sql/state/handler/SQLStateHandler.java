@@ -54,15 +54,6 @@ public class SQLStateHandler {
         this.readHandler = new SQLStateReadHandler(properties, sqlExecutor);
         this.writeHandler = new SQLStateWriteHandler(properties, sqlExecutor);
         this.metricFactory = JMetricFactoryManager.getFactory();
-
-        // TODO 临时代码
-//        Executors.newScheduledThreadPool(1).scheduleWithFixedDelay(() -> {
-//            for (Map.Entry<String, JMetric> entry : metricMap.entrySet()) {
-//                logger.info("sql: {}, metric: {}", entry.getKey(), JMetricSupport.format(entry.getValue().get(), TimeUnit.MILLISECONDS));
-//            }
-//        }, Integer.valueOf(properties.getProperty("sql.metric.interval", String.valueOf(1000 * 10))),
-//                Integer.valueOf(properties.getProperty("sql.metric.interval", String.valueOf(1000 * 10))),
-//                TimeUnit.MILLISECONDS);
     }
 
     public WriteResponse handleWrite(WriteRequest request) {
