@@ -33,6 +33,7 @@ import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.utils.retry.IncreasingRetryPolicy;
 import io.journalkeeper.utils.retry.RetryPolicy;
 import io.journalkeeper.utils.spi.ServiceSupport;
+import io.journalkeeper.utils.state.StateServer;
 import io.journalkeeper.utils.threads.NamedThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -225,7 +226,7 @@ public class BootStrap<
         if(null != adminClient) {
             adminClient.stop();
         }
-        if(null != server ) {
+        if(null != server && server.serverState() == StateServer.ServerState.RUNNING) {
             server.stop();
         }
         if (null != scheduledExecutorService) {

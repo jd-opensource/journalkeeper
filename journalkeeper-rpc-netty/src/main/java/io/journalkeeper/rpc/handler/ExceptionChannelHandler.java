@@ -16,8 +16,11 @@ package io.journalkeeper.rpc.handler;
 import io.journalkeeper.rpc.remoting.transport.RequestBarrier;
 import io.journalkeeper.rpc.remoting.transport.TransportHelper;
 import io.journalkeeper.rpc.remoting.transport.command.handler.ExceptionHandler;
+import io.journalkeeper.rpc.remoting.transport.exception.TransportException;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * ExceptionChannelHandler
@@ -26,7 +29,7 @@ import io.netty.channel.ChannelInboundHandler;
  * date: 2019/4/5
  */
 public class ExceptionChannelHandler implements ChannelInboundHandler {
-
+private static final Logger logger = LoggerFactory.getLogger(ExceptionChannelHandler.class);
     private ExceptionHandler exceptionHandler;
     private RequestBarrier requestBarrier;
 
@@ -80,8 +83,8 @@ public class ExceptionChannelHandler implements ChannelInboundHandler {
     @SuppressWarnings("deprecation")
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-        if (exceptionHandler != null) {
-            exceptionHandler.handle(TransportHelper.getOrNewTransport(ctx.channel(), requestBarrier), null, cause);
+        if (TransportException.isClosed(cause)) {
+            logger.warn("channel close, address: {}, message: {}", ctx.channel().remoteAddress(), cause.getMessage());
         } else {
             ctx.fireExceptionCaught(cause);
         }
