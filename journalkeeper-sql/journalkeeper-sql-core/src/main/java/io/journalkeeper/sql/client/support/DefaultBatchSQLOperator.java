@@ -21,6 +21,7 @@ import io.journalkeeper.sql.exception.SQLException;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 /**
  * DefaultBatchSQLOperator
@@ -30,11 +31,13 @@ import java.util.concurrent.ExecutionException;
 public class DefaultBatchSQLOperator implements BatchSQLOperator {
 
     private SQLClient client;
+    private int timeout;
     private List<String> sqlList = new LinkedList<>();
     private List<List<Object>> paramList = new LinkedList<>();
 
-    public DefaultBatchSQLOperator(SQLClient client) {
+    public DefaultBatchSQLOperator(SQLClient client, int timeout) {
         this.client = client;
+        this.timeout = timeout;
     }
 
     @Override
@@ -57,8 +60,11 @@ public class DefaultBatchSQLOperator implements BatchSQLOperator {
 
     @Override
     public List<Object> commit() {
+        if (sqlList == null || sqlList.isEmpty()) {
+            return null;
+        }
         try {
-            return client.batch(sqlList, paramList).get();
+            return client.batch(sqlList, paramList).get(timeout, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             throw convertException(e);
         }

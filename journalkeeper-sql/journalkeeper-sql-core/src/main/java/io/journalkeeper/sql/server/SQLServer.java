@@ -109,6 +109,14 @@ public class SQLServer implements StateServer {
     @Override
     public void start() {
         try {
+            bootStrap.getServer().start();
+        } catch (Exception e) {
+            throw new SQLException(e);
+        }
+    }
+
+    public void tryStart() {
+        try {
             RaftServer server = bootStrap.getServer();
             if (!server.isInitialized()) {
                 server.init(current, servers);
@@ -120,12 +128,24 @@ public class SQLServer implements StateServer {
         }
     }
 
+    public void recover() {
+        try {
+            bootStrap.getServer().recover();
+        } catch (Exception e) {
+            throw new SQLException(e);
+        }
+    }
+
     public boolean isInitialized() {
         return bootStrap.getServer().isInitialized();
     }
 
-    public void init() throws Exception {
-        bootStrap.getServer().init(current, servers);
+    public void init() {
+        try {
+            bootStrap.getServer().init(current, servers);
+        } catch (Exception e) {
+            throw new SQLException(e);
+        }
     }
 
     @Override

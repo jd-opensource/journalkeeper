@@ -60,13 +60,10 @@ public class SQLClient {
         this.client = bootStrap.getClient();
     }
 
-//    public CompletableFuture waitClusterReady(long maxWaitMs) {
-//        return this.client.whenClusterReady(maxWaitMs);
-//    }
-
-    public void waitClusterReady(Long maxWaitMs) throws TimeoutException, InterruptedException {
+    public void waitClusterReady(long maxWaitMs) throws TimeoutException, InterruptedException {
         this.client.waitForClusterReady(maxWaitMs);
     }
+
     public CompletableFuture<ResultSet> query(String sql, List<Object> params) {
         if (StringUtils.isBlank(sql)) {
             throw new SQLException("sql not blank");
@@ -147,6 +144,10 @@ public class SQLClient {
 
     public AdminClient getAdminClient() {
         return bootStrap.getAdminClient();
+    }
+
+    public Properties getConfig() {
+        return config;
     }
 
     public void watch(SQLEventListener listener) {
