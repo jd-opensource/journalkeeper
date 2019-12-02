@@ -77,7 +77,6 @@ public class CommandSupport {
                                 );
                             }
                         } else {
-
                             future.complete(GenericPayload.get(response.getPayload()));
                         }
                     }

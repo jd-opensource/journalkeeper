@@ -31,6 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
+import java.util.concurrent.ExecutionException;
 
 /**
  * 通信服务支持
@@ -84,14 +85,20 @@ public abstract class TransportServerSupport extends Service implements Transpor
 
     @Override
     protected void doStop() {
-        if (acceptEventGroup != null) {
-            acceptEventGroup.shutdownGracefully();
-        }
-        if (ioEventGroup != null) {
-            ioEventGroup.shutdownGracefully();
-        }
-        if (channel != null) {
-            channel.close();
+        try {
+            if (channel != null) {
+                channel.close().get();
+            }
+
+            if (acceptEventGroup != null) {
+                acceptEventGroup.shutdownGracefully().get();
+            }
+
+            if (ioEventGroup != null) {
+                ioEventGroup.shutdownGracefully().get();
+            }
+        } catch (InterruptedException | ExecutionException e) {
+            logger.warn("Stop exception: ", e);
         }
     }
 

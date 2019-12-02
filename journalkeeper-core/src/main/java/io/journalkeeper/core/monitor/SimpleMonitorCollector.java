@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -49,7 +50,7 @@ public class SimpleMonitorCollector implements MonitorCollector {
     }
 
     public Collection<MonitoredServer> getMonitoredServers() {
-        return Collections.unmodifiableCollection(monitoredServers.values());
+        return new HashSet<>(monitoredServers.values());
     }
 
     public Collection<ServerMonitorInfo> collectAll() {

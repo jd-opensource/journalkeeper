@@ -93,4 +93,10 @@ public class KvClient {
         }
     }
 
+    public void stop() {
+        if(null != client) {
+            client.stop();
+        }
+    }
+
 }

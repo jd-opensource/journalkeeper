@@ -38,7 +38,6 @@ import io.journalkeeper.utils.threads.NamedThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
@@ -64,7 +63,7 @@ public class BootStrap<
     private final Serializer<QR> queryResultSerializer;
     private final Properties properties;
     private ScheduledExecutorService scheduledExecutorService;
-    private ExecutorService asyncExecutorService;
+    private ExecutorService serverAsyncExecutor, clientAsyncExecutor;
     private final RaftServer.Roll roll;
     private final RpcAccessPointFactory rpcAccessPointFactory;
     private final List<URI> servers;
@@ -167,14 +166,14 @@ public class BootStrap<
 
     private Server<E, ER, Q, QR> createServer() {
         if(null == scheduledExecutorService) {
-            this.scheduledExecutorService = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_THREADS, new NamedThreadFactory("JournalKeeper-Scheduled-Executor"));
+            this.scheduledExecutorService = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_THREADS, new NamedThreadFactory("JournalKeeper-Server-Scheduled-Executor"));
         }
-        if(null == asyncExecutorService) {
-            this.asyncExecutorService = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Async-Executor"));
+        if(null == serverAsyncExecutor) {
+            this.serverAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Server-Async-Executor"));
         }
 
         if(null != roll) {
-            return new Server<>(roll,stateFactory,entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, journalEntryParser, scheduledExecutorService, asyncExecutorService, properties);
+            return new Server<>(roll,stateFactory,entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, journalEntryParser, scheduledExecutorService, serverAsyncExecutor, properties);
         }
         return null;
     }
@@ -190,6 +189,7 @@ public class BootStrap<
 
     @Override
     public RaftClient<E, ER, Q, QR> getLocalClient() {
+
         if(null == localClient) {
             LocalClientRpc clientRpc = createLocalClientRpc();
             localClient = new DefaultRaftClient<>(clientRpc, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
@@ -198,22 +198,29 @@ public class BootStrap<
     }
 
     private LocalClientRpc createLocalClientRpc() {
+        if(null == clientAsyncExecutor) {
+            this.clientAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Client-Async-Executor"));
+        }
 
         if(this.server != null) {
-            return new LocalClientRpc(server, remoteRetryPolicy, asyncExecutorService);
+            return new LocalClientRpc(server, remoteRetryPolicy, clientAsyncExecutor);
         } else {
             throw new IllegalStateException("No local server!");
         }
     }
 
     private RemoteClientRpc createRemoteClientRpc() {
+        if(null == clientAsyncExecutor) {
+            this.clientAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Client-Async-Executor"));
+        }
+
         ClientServerRpcAccessPoint clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.properties);
         RemoteClientRpc clientRpc;
         if(this.server == null) {
-            clientRpc = new RemoteClientRpc(getServersForClient(), clientServerRpcAccessPoint, remoteRetryPolicy, asyncExecutorService);
+            clientRpc = new RemoteClientRpc(getServersForClient(), clientServerRpcAccessPoint, remoteRetryPolicy, clientAsyncExecutor);
         } else {
             clientServerRpcAccessPoint = new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint);
-            clientRpc = new RemoteClientRpc(getServersForClient(), clientServerRpcAccessPoint, remoteRetryPolicy, asyncExecutorService);
+            clientRpc = new RemoteClientRpc(getServersForClient(), clientServerRpcAccessPoint, remoteRetryPolicy, clientAsyncExecutor);
             clientRpc.setPreferredServer(server.serverUri());
         }
         return clientRpc;
@@ -226,15 +233,17 @@ public class BootStrap<
         if(null != adminClient) {
             adminClient.stop();
         }
-        if(null != server && server.serverState() == StateServer.ServerState.RUNNING) {
-            server.stop();
+        if(null != server ) {
+            StateServer.ServerState state;
+            if( (state = server.serverState()) == StateServer.ServerState.RUNNING) {
+                server.stop();
+            } else {
+                logger.warn("Server {} state is {}, will not stop!", server.serverUri(), state);
+            }
         }
-        if (null != scheduledExecutorService) {
-            this.scheduledExecutorService.shutdown();
-        }
-        if (null != asyncExecutorService) {
-            this.asyncExecutorService.shutdown();
-        }
+        shutdownAndAwait(scheduledExecutorService, 5L);
+        shutdownAndAwait(serverAsyncExecutor, 5L);
+        shutdownAndAwait(clientAsyncExecutor, 5L);
     }
 
     @Override
@@ -269,6 +278,20 @@ public class BootStrap<
                 return server.getServers().get().getClusterConfiguration().getVoters();
             } catch (Throwable e) {
                 throw new RpcException(e);
+            }
+        }
+    }
+
+    private void shutdownAndAwait(ExecutorService executor, long timeoutSec) {
+        if(null != executor) {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(timeoutSec, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException ex) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
             }
         }
     }

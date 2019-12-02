@@ -224,7 +224,9 @@ public class KvTest {
             kvClient.del("key2");
             Assert.assertNull(kvClient.get("key2"));
             Assert.assertEquals(Collections.singletonList("key1"), kvClient.listKeys());
+            kvClient.stop();
         } finally {
+
             stopServers(kvServers);
             TestPathUtils.destroyBaseDir(path.toFile());
         }

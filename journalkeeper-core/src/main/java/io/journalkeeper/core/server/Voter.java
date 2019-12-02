@@ -633,17 +633,23 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
 
     @Override
     public boolean checkTerm(int term) {
+        boolean isTermChanged;
         synchronized (currentTerm) {
             if (term > currentTerm.get()) {
                 logger.info("Set current term from {} to {}, {}.", currentTerm.get(), term, voterInfo());
                 currentTerm.set(term);
                 this.votedFor = null;
 
-                convertToFollower();
-                return true;
+                isTermChanged = true;
+            } else {
+                isTermChanged = false;
             }
-            return false;
+
         }
+        if(isTermChanged) {
+            convertToFollower();
+        }
+        return isTermChanged;
     }
 
     // 改为同步方法，提升性能
