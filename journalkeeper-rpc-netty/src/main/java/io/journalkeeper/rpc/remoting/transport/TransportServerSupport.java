@@ -85,21 +85,18 @@ public abstract class TransportServerSupport extends Service implements Transpor
 
     @Override
     protected void doStop() {
-        try {
-            if (channel != null) {
-                channel.close().get();
-            }
 
-            if (acceptEventGroup != null) {
-                acceptEventGroup.shutdownGracefully().get();
-            }
-
-            if (ioEventGroup != null) {
-                ioEventGroup.shutdownGracefully().get();
-            }
-        } catch (InterruptedException | ExecutionException e) {
-            logger.warn("Stop exception: ", e);
+        if (acceptEventGroup != null) {
+            acceptEventGroup.shutdownGracefully();
         }
+
+        if (ioEventGroup != null) {
+            ioEventGroup.shutdownGracefully();
+        }
+        if (channel != null) {
+            channel.close();
+        }
+
     }
 
     @Override

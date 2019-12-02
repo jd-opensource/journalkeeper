@@ -227,6 +227,7 @@ public class BootStrap<
     }
 
     public void shutdown() {
+
         if(null != client) {
             client.stop();
         }
@@ -241,9 +242,9 @@ public class BootStrap<
                 logger.warn("Server {} state is {}, will not stop!", server.serverUri(), state);
             }
         }
-        shutdownAndAwait(scheduledExecutorService, 5L);
-        shutdownAndAwait(serverAsyncExecutor, 5L);
-        shutdownAndAwait(clientAsyncExecutor, 5L);
+        shutdownExecutorService(scheduledExecutorService);
+        shutdownExecutorService(serverAsyncExecutor);
+        shutdownExecutorService(clientAsyncExecutor);
     }
 
     @Override
@@ -282,17 +283,9 @@ public class BootStrap<
         }
     }
 
-    private void shutdownAndAwait(ExecutorService executor, long timeoutSec) {
+    private void shutdownExecutorService(ExecutorService executor) {
         if(null != executor) {
             executor.shutdown();
-            try {
-                if (!executor.awaitTermination(timeoutSec, TimeUnit.SECONDS)) {
-                    executor.shutdownNow();
-                }
-            } catch (InterruptedException ex) {
-                executor.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
         }
     }
 }
