@@ -26,8 +26,8 @@ public interface Decoder {
      * 解码
      *
      * @param buffer   输入流
-     * @return
-     * @throws TransportException.CodecException
+     * @return 解码后的对象
+     * @throws TransportException.CodecException 编解码异常
      */
     Object decode(ByteBuf buffer) throws TransportException.CodecException;
 }

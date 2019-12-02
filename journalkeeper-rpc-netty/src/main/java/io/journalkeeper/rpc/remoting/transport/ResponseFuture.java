@@ -134,7 +134,7 @@ public class ResponseFuture implements Future {
     /**
      * 是否超时
      *
-     * @return
+     * @return 是否超时
      */
     public boolean isTimeout() {
         return System.currentTimeMillis() > beginTime + timeout;
@@ -144,7 +144,7 @@ public class ResponseFuture implements Future {
      * 阻塞并等待返回
      *
      * @return 应答命令
-     * @throws InterruptedException
+     * @throws InterruptedException 被打断时抛出此异常
      */
     public Command await() throws InterruptedException {
         if (latch != null) {
@@ -158,7 +158,7 @@ public class ResponseFuture implements Future {
      *
      * @param timeout 超时时间
      * @return 应答命令
-     * @throws InterruptedException
+     * @throws InterruptedException 被打断时抛出此异常
      */
     public Command await(long timeout) throws InterruptedException {
         if (latch != null) {
@@ -199,6 +199,7 @@ public class ResponseFuture implements Future {
 
     /**
      * 确定失败
+     * @param cause 异常
      */
     public void onFailed(Throwable cause) {
         setSuccess(false);

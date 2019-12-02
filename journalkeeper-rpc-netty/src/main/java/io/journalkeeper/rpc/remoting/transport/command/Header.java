@@ -18,7 +18,6 @@ import java.net.URI;
 
 /**
  * @author hexiaofeng
- * @date 16-6-22.
  */
 public interface Header {
 
@@ -27,42 +26,42 @@ public interface Header {
     /**
      * 状态
      *
-     * @return
+     * @return 状态
      */
     int getStatus();
 
     /**
      * 状态
      *
-     * @param status
+     * @param status 状态
      */
     void setStatus(int status);
 
     /**
      * error
      *
-     * @return
+     * @return 错误信息
      */
     String getError();
 
     /**
      * error
      *
-     * @param msg
+     * @param msg 错误信息
      */
     void setError(String msg);
 
     /**
      * 请求ID
      *
-     * @return
+     * @return 请求ID
      */
     int getRequestId();
 
     /**
      * 请求ID
      *
-     * @param requestId
+     * @param requestId 请求ID
      */
     void setRequestId(int requestId);
 
@@ -83,31 +82,40 @@ public interface Header {
     /**
      * 设置版本号
      *
-     * @param version
+     * @param version 版本号
      */
     void setVersion(int version);
 
     /**
      * 版本号
      *
-     * @return
+     * @return 版本号
      */
     int getVersion();
 
     /**
      * 设置类型
      *
-     * @param type
+     * @param type 类型
      */
     void setType(int type);
 
     /**
      * 类型
      *
-     * @return
+     * @return 类型
      */
     int getType();
 
+    /**
+     * 获取目标地址
+     * @return 目标地址
+     */
     URI getDestination();
+
+    /**
+     * 设置目标地址
+     * @param uri 目标地址
+     */
     void setDestination(URI uri);
 }

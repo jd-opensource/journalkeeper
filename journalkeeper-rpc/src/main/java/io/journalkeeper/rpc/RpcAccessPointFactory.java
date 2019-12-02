@@ -29,15 +29,24 @@ import java.util.Properties;
  */
 public interface RpcAccessPointFactory {
     /**
-     * 创建一个ServerRpc接入点
+     * 创建一个ServerRpcAccessPoint接入点
+     * @param properties 属性值
+     * @return ServerRpcAccessPoint实例
      */
     ServerRpcAccessPoint createServerRpcAccessPoint(Properties properties);
 
     /**
-     * 创建一个ClientServerRpc接入点
+     * 创建一个ClientServerRpcAccessPoint接入点
+     * @param properties 属性值
+     * @return ClientServerRpcAccessPoint实例
      */
     ClientServerRpcAccessPoint createClientServerRpcAccessPoint(Properties properties);
 
+    /**
+     * 将serverRpc绑定到服务上，绑定后serverRpc可以对外提供RPC服务。
+     * @param serverRpc 提供服务的serverRpc
+     * @return StateServer实例，用于安全关闭已绑定的服务。
+     */
     StateServer bindServerService(ServerRpc serverRpc);
 
 }

@@ -38,10 +38,9 @@ public class GetServersResponseCodec extends ResponseCodec<GetServersResponse> i
         CodecSupport.encodeList(buffer, clusterConfiguration.getObservers(), (obj, buffer1) -> CodecSupport.encodeUri(buffer1, (URI) obj));
     }
 
-    // TODO 不存在leader转换uri错误
     @Override
     protected GetServersResponse decodeResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
-        URI leader = stringToUri(CodecSupport.decodeString(buffer));
+        URI leader = CodecSupport.decodeUri(buffer);
         List<URI> voters = CodecSupport.decodeList(buffer, CodecSupport::decodeUri);
         List<URI> observers = CodecSupport.decodeList(buffer, CodecSupport::decodeUri);
 
@@ -52,14 +51,6 @@ public class GetServersResponseCodec extends ResponseCodec<GetServersResponse> i
     public int type() {
         return RpcTypes.GET_SERVERS_RESPONSE;
     }
-
-    private URI stringToUri(String uri) {
-        if (uri == null || uri.isEmpty()) {
-            return null;
-        }
-        return URI.create(uri);
-    }
-
     private String uriToString(URI uri) {
         return null == uri ? null : uri.toString();
     }

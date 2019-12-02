@@ -13,34 +13,42 @@
  */
 package io.journalkeeper.rpc.client;
 
+import io.journalkeeper.core.api.transaction.TransactionId;
+import io.journalkeeper.core.api.transaction.UUIDTransactionId;
 import io.journalkeeper.rpc.LeaderResponse;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
  * 创建事务的响应
  */
 public class CreateTransactionResponse extends LeaderResponse {
-    private final UUID transactionId;
-
+    private final UUIDTransactionId transactionId;
+    private final long timestamp;
     public CreateTransactionResponse(Throwable throwable){
-        this(throwable, null);
+        this(throwable, null, -1L);
     }
 
-    public CreateTransactionResponse(UUID transactionId) {
-        this(null, transactionId);
+    public CreateTransactionResponse(UUIDTransactionId transactionId, long timestamp) {
+        this(null, transactionId, timestamp);
     }
 
-    private CreateTransactionResponse(Throwable exception, UUID transactionId) {
+    private CreateTransactionResponse(Throwable exception, UUIDTransactionId transactionId, long timestamp) {
         super(exception);
         this.transactionId = transactionId;
+        this.timestamp = timestamp;
     }
 
     /**
      * 新创建的事务ID
      * @return 事务ID
      */
-    public UUID getTransactionId() {
+    public UUIDTransactionId getTransactionId() {
         return transactionId;
+    }
+
+    public long getTimestamp() {
+        return timestamp;
     }
 }

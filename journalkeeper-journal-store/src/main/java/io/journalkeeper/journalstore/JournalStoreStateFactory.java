@@ -23,6 +23,6 @@ import io.journalkeeper.core.api.StateFactory;
 public class JournalStoreStateFactory implements StateFactory<byte [], Long , JournalStoreQuery, JournalStoreQueryResult> {
     @Override
     public State<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> createState() {
-        return new JournalStoreState(this);
+        return new JournalStoreState();
     }
 }

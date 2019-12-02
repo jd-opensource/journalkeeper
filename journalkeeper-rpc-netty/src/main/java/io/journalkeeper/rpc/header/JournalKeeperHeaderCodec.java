@@ -27,7 +27,7 @@ import java.net.URI;
  *
  * MAGIC: 4 bytes
  * VERSION: 1 byte
- * IDENTITY: 1 byte, 8 bits (High->Low):
+ * IDENTITY: 1 byte, 8 bits (High to Low):
  *      7: Unused
  *      6: Unused
  *      5: Unused

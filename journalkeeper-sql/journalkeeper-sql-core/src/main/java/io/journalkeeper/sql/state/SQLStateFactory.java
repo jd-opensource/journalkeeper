@@ -29,6 +29,6 @@ public class SQLStateFactory implements StateFactory<WriteRequest, WriteResponse
 
     @Override
     public State<WriteRequest, WriteResponse, ReadRequest, ReadResponse> createState() {
-        return new SQLState(this);
+        return new SQLState();
     }
 }

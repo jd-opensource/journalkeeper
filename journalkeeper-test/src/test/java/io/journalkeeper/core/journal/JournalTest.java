@@ -44,6 +44,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -347,6 +348,43 @@ public class JournalTest {
 
     }
 
+    @Test
+    public void batchWriteTest() {
+        int maxLength = 1024;
+        int size = 1024;
+        int term = 8;
+        int partition = 6;
+        List<byte []> entries = ByteUtils.createRandomSizeByteList(maxLength, size);
+        List<JournalEntry> storageEntries =
+                entries.stream()
+                        .map(entry -> journalEntryParser.createJournalEntry(entry))
+                        .peek(entry -> entry.setTerm(term))
+                        .peek(entry -> entry.setPartition(partition))
+                        .collect(Collectors.toList());
+        List<Long> indices = journal.append(storageEntries);
+        Assert.assertEquals(size, indices.size());
+        for (int i = 0; i < indices.size(); i++) {
+            Assert.assertEquals(i + 1, (long) indices.get(i));
+        }
+        Assert.assertEquals(0, journal.minIndex());
+        long index = journal.minIndex();
+
+        while (index < journal.maxIndex()) {
+            Assert.assertArrayEquals(entries.get((int)index), journal.read(index).getPayload().getBytes());
+            index++;
+        }
+
+        index = journal.minIndex();
+
+        while (index < journal.maxIndex()) {
+            JournalEntry readStorageEntry = journal.read(index);
+            JournalEntry writeStorageEntry = storageEntries.get((int) index);
+            Assert.assertEquals(writeStorageEntry, readStorageEntry);
+            index++;
+        }
+
+    }
+
 
     @Test
     public void readByPartitionTest() throws IOException, InterruptedException {
@@ -547,8 +585,6 @@ public class JournalTest {
 
     }
 
-    // TODO: recoverPartitionsTest： 需要增加测试恢复分区索引的测试用例
-
     @Test
     public void recoverTest() throws IOException, InterruptedException {
 
@@ -666,8 +702,11 @@ public class JournalTest {
         }
 
         long maxIndex = 0L;
+        List<JournalSnapshotImpl> snapshotList = new ArrayList<>(storageEntries.size());
         for(JournalEntry storageEntry: storageEntries) {
+            snapshotList.add(new JournalSnapshotImpl(journal));
             maxIndex = journal.append(storageEntry);
+            journal.commit(journal.maxIndex());
         }
         Assert.assertEquals(size, maxIndex);
         Assert.assertEquals(size, journal.maxIndex());
@@ -677,22 +716,19 @@ public class JournalTest {
         journal.flush();
 
 
-        journal.compact(4);
-        Assert.assertEquals(0, journal.minIndex());
+        journal.compact(snapshotList.get(4));
+        Assert.assertEquals(4, journal.minIndex());
 
-        journal.compact(5);
+        journal.compact(snapshotList.get(5));
         Assert.assertEquals(5, journal.minIndex());
 
         for (int partition : partitions) {
             journal.readByPartition(partition, journal.minIndex(partition));
         }
 
-        journal.compact(12);
-        Assert.assertEquals(10, journal.minIndex());
+        journal.compact(snapshotList.get(12));
+        Assert.assertEquals(12, journal.minIndex());
 
-        for (int partition : partitions) {
-            journal.readByPartition(partition, journal.minIndex(partition));
-        }
     }
 
     private static File findLastFile(Path parent) {
@@ -705,7 +741,7 @@ public class JournalTest {
     }
 
     private Journal createJournal(long commitIndex) throws IOException, InterruptedException {
-//        System.setProperty("PreloadBufferPool.PrintMetricIntervalMs", "1000");
+//        System.setProperty("PreloadBufferPool.PrintMetricIntervalMs", "500");
         Properties properties = new Properties();
         return createJournal(commitIndex, properties);
     }
@@ -721,9 +757,7 @@ public class JournalTest {
         Journal journal = new Journal(
                 persistenceFactory,
                 bufferPool, journalEntryParser);
-        journal.recover(path,commitIndex, properties);
-        journal.rePartition(partitions);
-        Thread.sleep(1000L);
+        journal.recover(path,commitIndex, new JournalSnapshotImpl(partitions), properties);
         return journal;
     }
 
@@ -731,5 +765,44 @@ public class JournalTest {
     public void after() throws IOException {
         journal.close();
         TestPathUtils.destroyBaseDir();
+    }
+
+    private static class JournalSnapshotImpl implements JournalSnapshot {
+        private final long minIndex;
+        private final long minOffset;
+        private final Map<Integer /* partition */ , Long /* min index of the partition */ > partitionMinIndices;
+
+        public JournalSnapshotImpl(Set<Integer> partitions) {
+            minOffset = 0L;
+            minIndex = 0L;
+            partitionMinIndices = new HashMap<>(partitions.size());
+            for (Integer partition : partitions) {
+                partitionMinIndices.put(partition, 0L);
+            }
+        }
+
+        public JournalSnapshotImpl(Journal journal) {
+            this.minIndex = journal.maxIndex();
+            this.minOffset = journal.maxOffset();
+            this.partitionMinIndices = new HashMap<>() ;
+            for (Integer partition : journal.getPartitions()) {
+                partitionMinIndices.put(partition, journal.maxIndex(partition));
+            }
+        }
+
+        @Override
+        public long minIndex() {
+            return minIndex;
+        }
+
+        @Override
+        public long minOffset() {
+            return minOffset;
+        }
+
+        @Override
+        public Map<Integer, Long> partitionMinIndices() {
+            return partitionMinIndices;
+        }
     }
 }

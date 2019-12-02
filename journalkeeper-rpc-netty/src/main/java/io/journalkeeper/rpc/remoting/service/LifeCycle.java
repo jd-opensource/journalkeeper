@@ -21,7 +21,7 @@ public interface LifeCycle extends Online {
     /**
      * 启动
      *
-     * @throws Exception
+     * @throws Exception 异常
      */
     void start() throws Exception;
 

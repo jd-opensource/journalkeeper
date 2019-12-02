@@ -15,6 +15,9 @@ package io.journalkeeper.core.transaction;
 
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
+import io.journalkeeper.core.api.SerializedUpdateRequest;
+import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
+import io.journalkeeper.core.api.transaction.UUIDTransactionId;
 import io.journalkeeper.core.exception.JournalException;
 import io.journalkeeper.core.exception.TransactionException;
 import io.journalkeeper.core.journal.Journal;
@@ -34,6 +37,9 @@ import java.util.concurrent.ScheduledExecutorService;
  * Date: 2019/10/22
  */
 public class JournalTransactionManager extends ServerStateMachine {
+    public static final int TRANSACTION_PARTITION_START = 30000;
+    public static final int TRANSACTION_PARTITION_COUNT = 32;
+
     private final ClientServerRpc server;
     private final JournalTransactionState transactionState;
     private final Map<UUID, CompletableFuture<Void>> pendingCompleteTransactionFutures = new ConcurrentHashMap<>();
@@ -57,16 +63,19 @@ public class JournalTransactionManager extends ServerStateMachine {
 
     private final TransactionEntrySerializer transactionEntrySerializer = new TransactionEntrySerializer();
 
-    public CompletableFuture<UUID> createTransaction() {
+    public CompletableFuture<JournalKeeperTransactionContext> createTransaction(Map<String, String> context) {
         int partition = transactionState.nextFreePartition();
         UUID transactionId = UUID.randomUUID();
-        TransactionEntry entry = new TransactionEntry(transactionId);
+        TransactionEntry entry = new TransactionEntry(transactionId, context);
+        final long timestamp = entry.getTimestamp();
         byte [] serializedEntry = transactionEntrySerializer.serialize(entry);
 
-        return server.updateClusterState(new UpdateClusterStateRequest(serializedEntry, partition, 1))
+        return server.updateClusterState(new UpdateClusterStateRequest(new SerializedUpdateRequest(serializedEntry, partition, 1)))
                 .thenApply(response -> {
                     if(response.success()) {
-                        return transactionId;
+                        return new JournalKeeperTransactionContext(
+                                new UUIDTransactionId(transactionId), context, timestamp
+                        );
                     } else {
                         throw new JournalException(response.errorString());
                     }
@@ -81,7 +90,7 @@ public class JournalTransactionManager extends ServerStateMachine {
         CompletableFuture<Void> future = new CompletableFuture<>();
         pendingCompleteTransactionFutures.put(transactionId, future);
         server
-                .updateClusterState(new UpdateClusterStateRequest(serializedEntry, partition, 1))
+                .updateClusterState(new UpdateClusterStateRequest(new SerializedUpdateRequest(serializedEntry, partition, 1)))
                 .thenAccept(response -> {
                     if(!response.success()) {
                         CompletableFuture<Void> retFuture = pendingCompleteTransactionFutures.remove(transactionId);
@@ -105,7 +114,7 @@ public class JournalTransactionManager extends ServerStateMachine {
         return transactionState.getPartition(transactionId);
     }
 
-    public Collection<UUID> getOpeningTransactions() {
+    public Collection<JournalKeeperTransactionContext> getOpeningTransactions() {
         return transactionState.getOpeningTransactions();
     }
 

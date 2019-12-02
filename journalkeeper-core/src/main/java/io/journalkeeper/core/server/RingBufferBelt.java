@@ -13,7 +13,6 @@
  */
 package io.journalkeeper.core.server;
 
-import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import io.journalkeeper.utils.buffer.LockFreeRingBuffer;
 
 import java.util.concurrent.TimeoutException;
@@ -51,7 +50,7 @@ public class RingBufferBelt implements CallbackResultBelt {
         while ((c = buffer.get()) != null && c.getPosition() <= position) {
             c = buffer.remove();
             if(null != c) {
-                c.getCompletableFuture().complete(new UpdateClusterStateResponse(new byte [0]));
+                c.getResponseFuture().countDownFlush();
             }
         }
         callbackTimeouted();
@@ -63,7 +62,7 @@ public class RingBufferBelt implements CallbackResultBelt {
         while ((c = buffer.get()) != null && c.getTimestamp() < deadline) {
             c = buffer.remove();
             if(null != c) {
-                c.getCompletableFuture().complete(new UpdateClusterStateResponse(new TimeoutException()));
+                c.getResponseFuture().completedExceptionally(new TimeoutException());
             }
         }
     }
@@ -74,8 +73,7 @@ public class RingBufferBelt implements CallbackResultBelt {
         Callback c = buffer.get();
         if (null != c && c.getPosition() == position) {
             c = buffer.remove();
-            c.getCompletableFuture().complete(
-                    new UpdateClusterStateResponse(result));
+            c.getResponseFuture().putResult(result);
 
         }
     }
@@ -84,8 +82,7 @@ public class RingBufferBelt implements CallbackResultBelt {
     public void failAll() {
         while (!buffer.empty()){
             buffer.remove()
-                    .getCompletableFuture()
-                    .complete(new UpdateClusterStateResponse(new IllegalStateException()));
+                    .getResponseFuture().completedExceptionally(new IllegalStateException());
         }
     }
 }

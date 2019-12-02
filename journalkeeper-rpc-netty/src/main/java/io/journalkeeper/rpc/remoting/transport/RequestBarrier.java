@@ -136,7 +136,7 @@ public class RequestBarrier {
      *
      * @param type    信号量类型
      * @param timeout 超时
-     * @throws TransportException
+     * @throws TransportException 传输异常
      */
     public void acquire(final SemaphoreType type, final long timeout) throws TransportException {
         if (type == null) {
@@ -159,7 +159,7 @@ public class RequestBarrier {
     /**
      * 释放信号量
      *
-     * @param type
+     * @param type 类型
      */
     public void release(SemaphoreType type) {
         if (type == null) {

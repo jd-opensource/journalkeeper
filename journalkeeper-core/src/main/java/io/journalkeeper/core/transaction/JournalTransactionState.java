@@ -15,6 +15,10 @@ package io.journalkeeper.core.transaction;
 
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
+import io.journalkeeper.core.api.SerializedUpdateRequest;
+import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
+import io.journalkeeper.core.api.transaction.TransactionContext;
+import io.journalkeeper.core.api.transaction.UUIDTransactionId;
 import io.journalkeeper.core.exception.TransactionException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.rpc.client.ClientServerRpc;
@@ -27,6 +31,10 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+
+import static io.journalkeeper.core.transaction.JournalTransactionManager.TRANSACTION_PARTITION_COUNT;
+import static io.journalkeeper.core.transaction.JournalTransactionManager.TRANSACTION_PARTITION_START;
 
 /**
  * 事务状态，非持久化
@@ -37,9 +45,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 class JournalTransactionState extends ServerStateMachine {
     private final Journal journal;
     private final Map<Integer /* partition */, TransactionEntryType /* last transaction entry type */> partitionStatusMap;
-    private final Map<UUID /* transaction id */, Integer /* partition */> openingTransactionMap;
-    private static final int TRANSACTION_PARTITION_START = 30000;
-    private static final int TRANSACTION_PARTITION_COUNT = 128;
+    private final Map<UUID /* transaction id */, TransactionState /* transaction state */> openingTransactionMap;
     private final ClientServerRpc server;
     private static final Logger logger = LoggerFactory.getLogger(JournalTransactionState.class);
     private final TransactionEntrySerializer transactionEntrySerializer = new TransactionEntrySerializer();
@@ -92,7 +98,8 @@ class JournalTransactionState extends ServerStateMachine {
 
     private void abortOutdatedTransactions() {
         long currentTimestamp = System.currentTimeMillis();
-        openingTransactionMap.forEach((transactionId, partition) -> {
+        openingTransactionMap.forEach((transactionId, state) -> {
+            int partition = state.getPartition();
             long i = journal.maxIndex(partition);
             while ( -- i >= journal.minIndex(partition)){
                 JournalEntry journalEntry = journal.readByPartition(partition, i);
@@ -127,18 +134,35 @@ class JournalTransactionState extends ServerStateMachine {
             int partition = TRANSACTION_PARTITION_START + i;
             if (journal.getPartitions().contains(partition) && journal.maxIndex(partition) > 0) {
                 logger.info("Recover transaction partition {}...", partition);
-                JournalEntry journalEntry = journal.readByPartition(partition, journal.maxIndex(partition) - 1);
-                TransactionEntry transactionEntry = transactionEntrySerializer.parse(journalEntry.getPayload().getBytes());
-                partitionStatusMap.put(partition, transactionEntry.getType());
-                if (transactionEntry.getType() != TransactionEntryType.TRANSACTION_COMPLETE) {
-                    openingTransactionMap.put(transactionEntry.getTransactionId(), partition);
-                }
+                long index = journal.maxIndex(partition);
+                long minIndexOfPartition = journal.minIndex(partition);
+                boolean lastEntryOfTheTransaction = true;
+                while (index -- > minIndexOfPartition) {
+                    JournalEntry journalEntry = journal.readByPartition(partition, index);
+                    TransactionEntry transactionEntry = transactionEntrySerializer.parse(journalEntry.getPayload().getBytes());
+                    if(lastEntryOfTheTransaction) {
+                        partitionStatusMap.put(partition, transactionEntry.getType());
 
-                // retry pre committed transaction
-                if (transactionEntry.getType() == TransactionEntryType.TRANSACTION_PRE_COMPLETE) {
-                    retryCompleteTransactions.put(
-                            new CompleteTransactionRetry(transactionEntry.getTransactionId(), partition)
-                    );
+                        // retry pre committed transaction
+                        if (transactionEntry.getType() == TransactionEntryType.TRANSACTION_PRE_COMPLETE) {
+                            retryCompleteTransactions.put(
+                                    new CompleteTransactionRetry(transactionEntry.getTransactionId(), partition)
+                            );
+                        }
+                        lastEntryOfTheTransaction = false;
+                    }
+
+                    if(transactionEntry.getType() == TransactionEntryType.TRANSACTION_START) {
+                        openingTransactionMap.put(
+                                transactionEntry.getTransactionId(),
+                                new TransactionState(partition, new JournalKeeperTransactionContext(
+                                        new UUIDTransactionId(transactionEntry.getTransactionId()),
+                                        transactionEntry.getContext(),
+                                        transactionEntry.getTimestamp()
+                                ))
+                        );
+                        break;
+                    }
                 }
             } else {
                 partitionStatusMap.put(partition, TransactionEntryType.TRANSACTION_COMPLETE);
@@ -181,7 +205,14 @@ class JournalTransactionState extends ServerStateMachine {
 
         switch (entry.getType()) {
             case TRANSACTION_START:
-                openingTransactionMap.put(entry.getTransactionId(), partition);
+                openingTransactionMap.put(
+                        entry.getTransactionId(),
+                        new TransactionState(partition, new JournalKeeperTransactionContext(
+                                new UUIDTransactionId(entry.getTransactionId()),
+                                entry.getContext(),
+                                entry.getTimestamp()
+                        ))
+                );
                 break;
             case TRANSACTION_PRE_COMPLETE:
                 completeTransaction(entry.getTransactionId(), entry.isCommitOrAbort(), partition);
@@ -250,7 +281,9 @@ class JournalTransactionState extends ServerStateMachine {
                         server
                             .updateClusterState(
                                 new UpdateClusterStateRequest(
+                                        new SerializedUpdateRequest(
                                         te.getEntry(), bizPartition, te.getBatchSize()
+                                        )
                                 )
                             )
                             .exceptionally(UpdateClusterStateResponse::new)
@@ -309,7 +342,9 @@ class JournalTransactionState extends ServerStateMachine {
         TransactionEntry entry = new TransactionEntry(transactionId, TransactionEntryType.TRANSACTION_COMPLETE, commitOrAbort);
         byte[] serializedEntry = transactionEntrySerializer.serialize(entry);
         server.updateClusterState(new UpdateClusterStateRequest(
-                serializedEntry, partition, 1
+                new SerializedUpdateRequest(
+                    serializedEntry, partition, 1
+                )
         ))
                 .exceptionally(UpdateClusterStateResponse::new)
                 .thenAccept(response -> {
@@ -324,12 +359,14 @@ class JournalTransactionState extends ServerStateMachine {
                 });
     }
 
-    Collection<UUID> getOpeningTransactions() {
-        return Collections.unmodifiableCollection(openingTransactionMap.keySet());
+    Collection<JournalKeeperTransactionContext> getOpeningTransactions() {
+        return openingTransactionMap.values().stream().map(TransactionState::getContext).collect(Collectors.toSet());
     }
 
     int getPartition(UUID transactionId) {
-        return openingTransactionMap.getOrDefault(transactionId, -1);
+        TransactionState transactionState;
+        return ((transactionState = openingTransactionMap
+                .get(transactionId))) != null ? transactionState.getPartition() : - 1;
     }
 
     void ensureTransactionOpen(UUID transactionId) {
@@ -389,6 +426,24 @@ class JournalTransactionState extends ServerStateMachine {
         @Override
         public int compareTo(Delayed o) {
             return (int) (this.getDelay(TimeUnit.MILLISECONDS) -o.getDelay(TimeUnit.MILLISECONDS));
+        }
+    }
+
+    private static class TransactionState {
+        private final int partition;
+        private final JournalKeeperTransactionContext context;
+
+        public TransactionState(int partition, JournalKeeperTransactionContext context) {
+            this.partition = partition;
+            this.context = context;
+        }
+
+        public int getPartition() {
+            return partition;
+        }
+
+        public JournalKeeperTransactionContext getContext() {
+            return context;
         }
     }
 }

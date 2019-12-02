@@ -33,7 +33,7 @@ public interface TransportClient extends LifeCycle {
      *
      * @param address 地址
      * @return 通道
-     * @throws TransportException
+     * @throws TransportException 传输异常
      */
     Transport createTransport(final String address) throws TransportException;
 
@@ -43,7 +43,7 @@ public interface TransportClient extends LifeCycle {
      * @param address           地址
      * @param connectionTimeout 连接超时
      * @return 通道
-     * @throws TransportException
+     * @throws TransportException 传输异常
      */
     Transport createTransport(final String address, final long connectionTimeout) throws TransportException;
 
@@ -52,7 +52,7 @@ public interface TransportClient extends LifeCycle {
      *
      * @param address 地址
      * @return 通道
-     * @throws TransportException
+     * @throws TransportException 传输异常
      */
     Transport createTransport(final SocketAddress address) throws TransportException;
 
@@ -62,21 +62,21 @@ public interface TransportClient extends LifeCycle {
      * @param address           地址
      * @param connectionTimeout 连接超时
      * @return 通道
-     * @throws TransportException
+     * @throws TransportException 传输异常
      */
     Transport createTransport(final SocketAddress address, final long connectionTimeout) throws TransportException;
 
     /**
      * 添加监听器
      *
-     * @param listener
+     * @param listener 监听器
      */
     void addListener(EventListener<TransportEvent> listener);
 
     /**
      * 移除监听器
      *
-     * @param listener
+     * @param listener 监听器
      */
     void removeListener(EventListener<TransportEvent> listener);
 }

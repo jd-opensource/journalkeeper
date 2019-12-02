@@ -13,10 +13,10 @@
  */
 package io.journalkeeper.rpc.codec;
 
-import io.journalkeeper.rpc.server.GetServerStateResponse;
 import io.journalkeeper.rpc.header.JournalKeeperHeader;
 import io.journalkeeper.rpc.remoting.serialize.CodecSupport;
 import io.journalkeeper.rpc.remoting.transport.command.Type;
+import io.journalkeeper.rpc.server.GetServerStateResponse;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -38,6 +38,7 @@ public class GetServerStateResponseCodec extends ResponseCodec<GetServerStateRes
         CodecSupport.encodeLong(buffer, response.getOffset());
         CodecSupport.encodeBytes(buffer, response.getData());
         CodecSupport.encodeBoolean(buffer, response.isDone());
+        CodecSupport.encodeInt(buffer, response.getIteratorId());
 
     }
 
@@ -48,7 +49,8 @@ public class GetServerStateResponseCodec extends ResponseCodec<GetServerStateRes
                 CodecSupport.decodeInt(buffer),
                 CodecSupport.decodeLong(buffer),
                 CodecSupport.decodeBytes(buffer),
-                CodecSupport.decodeBoolean(buffer)
+                CodecSupport.decodeBoolean(buffer),
+                CodecSupport.decodeInt(buffer)
         );
     }
 }

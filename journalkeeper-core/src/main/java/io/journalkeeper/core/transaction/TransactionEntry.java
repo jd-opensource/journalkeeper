@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.core.transaction;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -27,10 +28,13 @@ public class TransactionEntry {
     private byte [] entry = new byte[0];
     private int batchSize = 1;
     private long timestamp = System.currentTimeMillis() ;
+    private Map<String, String> context;
 
-    public TransactionEntry(UUID transactionId) {
+    public TransactionEntry(UUID transactionId, Map<String, String> context) {
         this.transactionId = transactionId;
+        this.context = context;
         this.type = TransactionEntryType.TRANSACTION_START;
+
     }
 
     public TransactionEntry(UUID transactionId,TransactionEntryType type, boolean commitOrAbort) {
@@ -47,7 +51,7 @@ public class TransactionEntry {
         this.entry = entry;
     }
 
-    public TransactionEntry(UUID transactionId, long timestamp, TransactionEntryType type, int partition, boolean commitOrAbort, int batchSize, byte [] entry) {
+    public TransactionEntry(UUID transactionId, long timestamp, TransactionEntryType type, int partition, boolean commitOrAbort, int batchSize, byte [] entry, Map<String, String> context) {
         this.transactionId = transactionId;
         this.timestamp = timestamp;
         this.type = type;
@@ -55,6 +59,7 @@ public class TransactionEntry {
         this.commitOrAbort = commitOrAbort;
         this.batchSize = batchSize;
         this.entry = entry;
+        this.context = context;
     }
 
 
@@ -84,5 +89,9 @@ public class TransactionEntry {
 
     public long getTimestamp() {
         return timestamp;
+    }
+
+    public Map<String, String> getContext() {
+        return context;
     }
 }

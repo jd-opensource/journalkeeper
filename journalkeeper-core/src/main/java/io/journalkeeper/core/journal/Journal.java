@@ -24,6 +24,7 @@ import io.journalkeeper.persistence.BufferPool;
 import io.journalkeeper.persistence.JournalPersistence;
 import io.journalkeeper.persistence.PersistenceFactory;
 import io.journalkeeper.persistence.TooManyBytesException;
+import io.journalkeeper.utils.ThreadSafeFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,11 +32,12 @@ import java.io.Closeable;
 import java.io.Flushable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -56,7 +58,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     private static final Logger logger = LoggerFactory.getLogger(Journal.class);
     private static final String PARTITION_PATH = "index";
     private static final String INDEX_PATH = "index/all";
-    private static final int INDEX_STORAGE_SIZE = Long.BYTES;
+    public static final int INDEX_STORAGE_SIZE = Long.BYTES;
     private static final String JOURNAL_PROPERTIES_PATTERN = "^persistence\\.journal\\.(.*)$";
     private static final String INDEX_PROPERTIES_PATTERN = "^persistence\\.index\\.(.*)$";
     private static final Properties DEFAULT_JOURNAL_PROPERTIES = new Properties();
@@ -70,7 +72,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     // 写入index时转换用的缓存
     private final byte [] commitIndexBytes = new byte [INDEX_STORAGE_SIZE];
     private final ByteBuffer commitIndexBuffer = ByteBuffer.wrap(commitIndexBytes);
-
 
     static {
         DEFAULT_JOURNAL_PROPERTIES.put("file_data_size", String.valueOf(128 * 1024 * 1024));
@@ -102,16 +103,12 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         this.bufferPool = bufferPool;
     }
 
-    /**
-     * 最小索引位置
-     */
+    @Override
     public long minIndex() {
         return indexPersistence.min() / INDEX_STORAGE_SIZE;
     }
 
-    /**
-     * 最大索引位置
-     */
+    @Override
     public long maxIndex() {
         return indexPersistence.max() / INDEX_STORAGE_SIZE;
     }
@@ -128,115 +125,74 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     /**
      * 删除给定索引位置之前的数据。
-     * 不保证给定位置之前的数据全都被删除。
+     * 不保证给定位置之前的数据全都被物理删除。
      * 保证给定位置（含）之后的数据不会被删除。
+     *
+     * @param journalSnapshot 给定最小安全索引位置。
+     * @throws IOException 当发生IO异常时抛出
      */
-    public void compact(long givenMinIndex) throws IOException{
+    public void compact(JournalSnapshot journalSnapshot) throws IOException{
 
-        // 首先删除全局索引
-        indexPersistence.compact(givenMinIndex * INDEX_STORAGE_SIZE);
-        long minIndexOffset = indexPersistence.min();
-        // 计算最小全局索引对应的JournalOffset
-        long compactJournalOffset = readOffset(minIndexOffset / INDEX_STORAGE_SIZE);
-        // 删除分区索引
-        for (JournalPersistence partitionPersistence : partitionMap.values()) {
-            compactIndices(partitionPersistence, compactJournalOffset);
+        if (journalSnapshot.minIndex() <= minIndex()) {
+            return;
         }
-        // 计算所有索引（全局索引和每个分区索引）对应的JournalOffset的最小值
-        compactJournalOffset = Stream.concat(partitionMap.values().stream(), Stream.of(indexPersistence))
-                .filter(p -> p.min() < p.max())
-                .mapToLong(p -> readOffset(p, p.min() / INDEX_STORAGE_SIZE))
-                .min().orElseThrow(() ->new JournalException("Exception on calculate compactJournalOffset"));
+
+        if (journalSnapshot.minIndex() > commitIndex()) {
+            throw new IllegalArgumentException(
+                    String.format("Given snapshot min index %s should less than commit index %s!",
+                            ThreadSafeFormat.formatWithComma(journalSnapshot.minIndex()),
+                            ThreadSafeFormat.formatWithComma(commitIndex())
+                    )
+            );
+        }
+
+        // 删除分区索引
+        Map<Integer /* partition */ , Long /* min index of the partition */> partitionMinIndices = journalSnapshot.partitionMinIndices();
+        synchronized (partitionMap) {
+
+
+            Iterator<Map.Entry<Integer, JournalPersistence>> iterator = partitionMap.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<Integer, JournalPersistence> entry = iterator.next();
+                int partition = entry.getKey();
+                JournalPersistence partitionPersistence = entry.getValue();
+
+                if (partitionMinIndices.containsKey(partition)) {
+                    long minPartitionIndices = partitionMinIndices.get(entry.getKey());
+                    partitionPersistence.compact(minPartitionIndices * INDEX_STORAGE_SIZE);
+                } else {
+                    journalPersistence.close();
+                    journalPersistence.delete();
+                    iterator.remove();
+                }
+
+            }
+
+            for (Map.Entry<Integer, Long> entry : partitionMinIndices.entrySet()) {
+                int partition = entry.getKey();
+                if (!partitionMap.containsKey(partition)) {
+                    JournalPersistence partitionPersistence = persistenceFactory.createJournalPersistenceInstance();
+                    partitionPersistence.recover(basePath.resolve(PARTITION_PATH).resolve(String.valueOf(partition)),
+                            partitionMinIndices.get(partition) * INDEX_STORAGE_SIZE,
+                            indexProperties);
+                    partitionMap.put(partition, partitionPersistence);
+                }
+            }
+        }
+
+        // 删除全局索引
+        indexPersistence.compact(journalSnapshot.minIndex() * INDEX_STORAGE_SIZE);
 
         // 删除Journal
-        journalPersistence.compact(compactJournalOffset);
-
-        // 安全更新commitIndex
-        long finalCommitIndex;
-        while ((finalCommitIndex = commitIndex.get()) < minIndex() &&
-                !commitIndex.compareAndSet(finalCommitIndex, minIndex())) {
-            Thread.yield();
-        }
+        journalPersistence.compact(journalSnapshot.minOffset());
 
     }
 
-    public void compactByPartition(Map<Integer, Long> compactIndices) throws IOException {
-        // 如果给定的compactIndices 中的分区少于当前实际分区，需要用这些分区的minIndex补全分区。
-        Map<Integer, Long> compacted = partitionMap.keySet().stream()
-                .collect(Collectors.toMap(k -> k, k -> compactIndices.getOrDefault(k,minIndex(k))));
-        logger.info("Journal is going to compact: {}, path: {}.", compacted, basePath);
 
-        // 计算Journal的最小安全Offset
-        long compactJournalOffset = compacted.entrySet().stream().mapToLong(
-                entry -> readOffset(partitionMap.get(entry.getKey()), entry.getValue())
-        ).max().orElse(journalPersistence.min());
-        logger.info("Safe journal offset: {}. ", compactJournalOffset);
-
-        // 删除分区索引
-        for (JournalPersistence indexPersistence : partitionMap.values()) {
-            compactIndices(indexPersistence, compactJournalOffset);
-        }
-        // 删除全局索引
-        compactIndices(indexPersistence, compactJournalOffset);
-    }
-
-    private void compactIndices(JournalPersistence pp, long minJournalOffset) throws IOException{
-        if(pp.min() < pp.max()) {
-            long indexOffset = binarySearchFloorOffset(pp, minJournalOffset, pp.min(), pp.max());
-            pp.compact(indexOffset);
-        }
-    }
-
-    /**
-     * 使用二分法递归查找一个索引在indexPersistence位置P：
-     *
-     * 1. P >= minIndexOffset && p < maxIndexOffset;
-     * 2. P.offset <= targetJournalOffset
-     * 3. P为所有满足条件1、2的位置中的最大值
-     * 4. 如果 targetJournalOffset <= minIndexOffset.offset 返回 minIndexOffset
-     * 5. 如果 targetJournalOffset >= maxIndexOffset.offset 返回 maxIndexOffset
-     *
-     * @param indexPersistence 索引存储
-     * @param targetJournalOffset 目标索引内的Journal offset
-     * @param minIndexOffset 最小查找索引存储位置（含）
-     * @param maxIndexOffset 最大查找索引存储位置（不含）
-     * @return 符合条件的索引位置的最大值
-     */
-    private long binarySearchFloorOffset (
-            JournalPersistence indexPersistence, long targetJournalOffset,
-            long minIndexOffset, long maxIndexOffset) {
-        long minOffset = readOffset(indexPersistence, minIndexOffset / INDEX_STORAGE_SIZE);
-        long maxOffset = indexPersistence.max() == maxIndexOffset ? Long.MAX_VALUE :
-                readOffset(indexPersistence , maxIndexOffset / INDEX_STORAGE_SIZE);
-
-
-        if (targetJournalOffset <= minOffset) {
-            return minIndexOffset;
-        }
-        if(targetJournalOffset >= maxOffset) {
-            return maxIndexOffset;
-        }
-        if(minIndexOffset + INDEX_STORAGE_SIZE >= maxIndexOffset) {
-            return maxIndexOffset;
-        }
-
-        // 折半并取整
-        long midIndexOffset = minIndexOffset +  (maxIndexOffset - minIndexOffset) / 2;
-        midIndexOffset = midIndexOffset - midIndexOffset % INDEX_STORAGE_SIZE;
-
-        long midOffset = readOffset(indexPersistence, midIndexOffset / INDEX_STORAGE_SIZE);
-
-        if(targetJournalOffset < midOffset) {
-            return binarySearchFloorOffset(indexPersistence, targetJournalOffset, minIndexOffset, midIndexOffset);
-        } else {
-            return binarySearchFloorOffset(indexPersistence, targetJournalOffset, midIndexOffset, maxIndexOffset);
-        }
-
-    }
-
-    // TODO: 非线程安全，需要检测并发，然后抛出异常
     /**
      * 追加写入StorageEntry
+     * @param entry 待写入的entry
+     * @return entry写入后当前最大全局索引序号
      */
     public long append(JournalEntry entry) {
 
@@ -260,7 +216,82 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         return maxIndex();
     }
 
+    /**
+     * 清空整个Journal
+     *
+     * @param snapshot 清空后Journal的起始位置
+     * @throws IOException 发生IO异常时抛出
+     */
+    public void clear(JournalSnapshot snapshot) throws IOException {
+        commitIndex.set(snapshot.minIndex());
+        Map<Integer /* partition */ , Long /* min index of the partition */> partitionMinIndices = snapshot.partitionMinIndices();
+        synchronized (partitionMap) {
+
+
+            Iterator<Map.Entry<Integer, JournalPersistence>> iterator = partitionMap.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<Integer, JournalPersistence> entry = iterator.next();
+                int partition = entry.getKey();
+                JournalPersistence partitionPersistence = entry.getValue();
+                journalPersistence.close();
+                journalPersistence.delete();
+                iterator.remove();
+            }
+
+            for (Map.Entry<Integer, Long> entry : partitionMinIndices.entrySet()) {
+                int partition = entry.getKey();
+                JournalPersistence partitionPersistence = persistenceFactory.createJournalPersistenceInstance();
+                partitionPersistence.recover(basePath.resolve(PARTITION_PATH).resolve(String.valueOf(partition)),
+                        partitionMinIndices.get(partition) * INDEX_STORAGE_SIZE,
+                        indexProperties);
+                partitionMap.put(partition, partitionPersistence);
+            }
+        }
+    }
+
+    /**
+     * 批量追加写入StorageEntry
+     * @param entries 待写入的批量entry
+     * @return 每条entry写入后当前最大全局索引序号
+     */
+    public List<Long> append(List<JournalEntry> entries) {
+
+
+        // 记录当前最大位置，也是写入的Journal的offset
+        long offset = journalPersistence.max();
+        long index = maxIndex();
+        ByteBuffer entryBuffer = ByteBuffer.wrap(new byte[entries.stream().mapToInt(e -> e.getSerializedBytes().length).sum()]);
+        ByteBuffer indicesBuffer = ByteBuffer.wrap(new byte[entries.size() * INDEX_STORAGE_SIZE]);
+        List<Long> indices = new ArrayList<>(entries.size());
+        for (JournalEntry entry : entries) {
+
+            entryBuffer.put(entry.getSerializedBytes());
+            indicesBuffer.putLong(offset);
+            offset += entry.getLength();
+            indices.add(++index);
+        }
+
+        try {
+            // 写入Journal header
+            journalPersistence.append(entryBuffer.array());
+
+            // 写入全局索引
+            indexPersistence.append(indicesBuffer.array());
+
+        }  catch (IOException e) {
+            throw new JournalException(e);
+        }
+
+        return indices;
+    }
+
     // Not thread safe !
+
+    /**
+     * 提交journal，已提交的journal不可变。
+     * @param index 提交全局索引序号
+     * @throws IOException 发生IO异常时抛出
+     */
     public void commit(long index) throws IOException {
         long finalCommitIndex;
         while ((finalCommitIndex = commitIndex.get()) < index &&
@@ -284,6 +315,10 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         }
     }
 
+    /**
+     * 获取当前提交的全局索引序号
+     * @return 当前提交的全局索引序号
+     */
     public long commitIndex() {
         return commitIndex.get();
     }
@@ -291,7 +326,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     private void appendPartitionIndex(byte [] offset, int partition, int batchSize) throws IOException {
         // Create partition which not exists
         if(!partitionMap.containsKey(partition)) {
-            addPartition(partition);
+            addPartition(partition, 0L);
         }
         JournalPersistence partitionPersistence = getPartitionPersistence(partition);
         if(batchSize > 1) {
@@ -321,7 +356,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         return partitionPersistence;
     }
     /**
-     * 批量追加写入序列化之后的StorageEntry
+     * 批量追加写入序列化之后的StorageEntry，用户RAFT复制时，FOLLOWER写入从LEADER复制过来的entries
+     * @param storageEntries 从LEADER复制过来的entries
+     * @return 写入后的最大全局索引序号
      */
     public long appendBatchRaw(List<byte []> storageEntries) {
         // 计算索引
@@ -368,12 +405,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         return maxIndex();
     }
 
-    /**
-     * 给定分区索引位置读取Entry
-     * @param partition 分区
-     * @param index 分区索引
-     * @return See {@link JournalEntry}
-     */
     @Override
     public JournalEntry readByPartition(int partition, long index) {
         JournalPersistence pp = getPartitionPersistence(partition);
@@ -394,13 +425,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     }
 
-    /**
-     * 给定分区索引位置读取Entry
-     * @param partition 分区
-     * @param startPartitionIndex 其实索引
-     * @param maxSize 最大读取条数
-     * @return See {@link JournalEntry} 由于批量Entry不能拆包，返回的Entry数量有可能会大于maxSize。
-     */
     @Override
     public List<JournalEntry> batchReadByPartition(int partition, long startPartitionIndex, int maxSize) {
         List<JournalEntry> list = new LinkedList<>();
@@ -417,12 +441,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     }
 
 
-    /**
-     * 给定索引位置读取Entry
-     * @return Entry
-     * @throws IndexUnderflowException 如果 index< minIndex()
-     * @throws IndexOverflowException 如果index >= maxIndex()
-     */
     public JournalEntry read(long index){
         return journalEntryParser.parse(readRaw(index));
     }
@@ -470,14 +488,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         }
     }
 
-    /**
-     * 批量读取Entry
-     * @param index 起始索引位置
-     * @param size 期望读取的条数
-     * @return Entry列表。
-     * @throws IndexUnderflowException 如果 index< minIndex()
-     * @throws IndexOverflowException 如果index >= maxIndex()
-     */
     public List<JournalEntry> batchRead(long index, int size) {
         checkIndex(index);
         List<JournalEntry> list = new ArrayList<>(size);
@@ -494,8 +504,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * @param index 起始索引位置
      * @param size 期望读取的条数
      * @return 未反序列化的StorageEntry列表。
-     * @throws IndexUnderflowException 如果 index< minIndex()
-     * @throws IndexOverflowException 如果index >= maxIndex()
+     * @throws IndexUnderflowException 如果 index 小于 minIndex()
+     * @throws IndexOverflowException 如果index 不小于 maxIndex()
      */
     public List<byte []> readRaw(long index, int size) {
         checkIndex(index);
@@ -509,9 +519,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     /**
      * 读取指定索引位置上Entry的Term。
      * @param index 索引位置。
-     * @return Term。
-     * @throws IndexUnderflowException 如果 index< minIndex()
-     * @throws IndexOverflowException 如果index >= maxIndex()
+     * @return Term 任期
+     * @throws IndexUnderflowException 如果 index 小于 minIndex()
+     * @throws IndexOverflowException 如果index 不小于 maxIndex()
      */
     public int getTerm(long index) {
         readWriteLock.readLock().lock();
@@ -533,8 +543,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * 添加任何在已有的日志中不存在的条目。
      * @param rawEntries 待比较的日志
      * @param startIndex 起始位置
-     * @throws IndexUnderflowException 如果 startIndex< minIndex()
-     * @throws IndexOverflowException 如果 startIndex >= maxIndex()
+     * @throws IndexUnderflowException 如果 startIndex 小于 minIndex()
+     * @throws IndexOverflowException 如果 startIndex 不小于 maxIndex()
      */
     public void compareOrAppendRaw(List<byte []> rawEntries, long startIndex) {
 
@@ -565,6 +575,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     /**
      * 从索引index位置开始，截掉后面的数据
+     * @param index 截取全局索引位置
      * @throws IndexUnderflowException 如果 index < minIndex()
      * @throws IndexOverflowException 如果 index >= maxIndex()
      */
@@ -602,23 +613,25 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * 从指定path恢复Journal。
      * 1. 删除journal或者index文件末尾可能存在的不完整的数据。
      * 2. 以Journal为准，修复全局索引和分区索引：删除多余的索引，并创建缺失的索引。
-     *
+     * @param path 恢复目录
+     * @param commitIndex 当前journal提交全局索引
+     * @param journalSnapshot 快照
+     * @param properties 属性
+     * @throws IOException 发生IO异常时抛出
      */
-    public void recover(Path path, long commitIndex, Properties properties) throws IOException {
+    public void recover(Path path, long commitIndex, JournalSnapshot journalSnapshot, Properties properties) throws IOException {
         this.basePath = path;
-        Path journalPath = path;
         Path indexPath = path.resolve(INDEX_PATH);
         Path partitionPath = path.resolve(PARTITION_PATH);
         Properties journalProperties = replacePropertiesNames(properties,
                 JOURNAL_PROPERTIES_PATTERN, DEFAULT_JOURNAL_PROPERTIES);
-
-        journalPersistence.recover(journalPath, journalProperties);
+        journalPersistence.recover(path, journalSnapshot.minOffset(), journalProperties);
         // 截掉末尾半条数据
         truncateJournalTailPartialEntry();
 
         indexProperties = replacePropertiesNames(properties,
                 INDEX_PROPERTIES_PATTERN, DEFAULT_INDEX_PROPERTIES);
-        indexPersistence.recover(indexPath, indexProperties);
+        indexPersistence.recover(indexPath, journalSnapshot.minIndex() * INDEX_STORAGE_SIZE, indexProperties);
         // 截掉末尾半条数据
         indexPersistence.truncate(indexPersistence.max() - indexPersistence.max() % INDEX_STORAGE_SIZE);
 
@@ -631,11 +644,11 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         checkAndSetCommitIndex(commitIndex);
 
         // 恢复分区索引
-        recoverPartitions(partitionPath, indexProperties);
+        recoverPartitions(partitionPath, journalSnapshot.partitionMinIndices(), indexProperties);
 
         flush();
         logger.info("Journal recovered, minIndex: {}, maxIndex: {}, partitions: {}, path: {}.",
-                minIndex(), maxIndex(), partitionMap.keySet(), journalPath.toAbsolutePath().toString());
+                minIndex(), maxIndex(), partitionMap.keySet(), path.toAbsolutePath().toString());
     }
 
     private void checkAndSetCommitIndex(long commitIndex) {
@@ -651,21 +664,21 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         }
     }
 
-    private void recoverPartitions(Path partitionPath, Properties properties) throws IOException {
+    private void recoverPartitions(Path partitionPath, Map<Integer, Long> partitionIndices, Properties properties) throws IOException {
 
-        Integer [] partitions = readPartitionDirectories(partitionPath);
-        Map<Integer, Long> lastIndexedOffsetMap = new HashMap<>(partitions.length);
-        for (int partition : partitions) {
+
+        Map<Integer, Long> lastIndexedOffsetMap = new HashMap<>(partitionIndices.size());
+        for (Map.Entry<Integer, Long> entry : partitionIndices.entrySet()) {
+            int partition = entry.getKey();
+            long lastIncludedIndex = entry.getValue();
             JournalPersistence pp = persistenceFactory.createJournalPersistenceInstance();
-            pp.recover(partitionPath.resolve(String.valueOf(partition)), properties);
+            pp.recover(partitionPath.resolve(String.valueOf(partition)), lastIncludedIndex * INDEX_STORAGE_SIZE, properties);
             // 截掉末尾半条数据
             pp.truncate(pp.max() - pp.max() % INDEX_STORAGE_SIZE);
-            partitionMap.put(partition, pp);
-
             truncateTailPartialBatchIndices(pp);
 
+            partitionMap.put(partition, pp);
             lastIndexedOffsetMap.put(partition, getLastIndexedOffset(pp));
-
         }
 
         // 重建缺失的分区索引
@@ -689,7 +702,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
         // 删除未提交部分的分区索引
 
-        for (Integer partition : partitions) {
+        for (Integer partition : partitionIndices.keySet()) {
             JournalPersistence partitionPersistence = partitionMap.get(partition);
             long partitionIndex = partitionPersistence.max() / INDEX_STORAGE_SIZE - 1;
             while (partitionIndex * INDEX_STORAGE_SIZE >= partitionPersistence.min()) {
@@ -741,25 +754,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             }
         }
     }
-
-    private Integer [] readPartitionDirectories(Path partitionPath) throws IOException {
-        return Files.isDirectory(partitionPath) ?
-                Files.list(partitionPath)
-                .filter(Files::isDirectory)
-                .map(path -> path.getFileName().toString())
-                .filter(filename -> filename.matches("^\\d+$"))
-                .map(str -> {
-                    try {
-                        return Integer.parseInt(str);
-                    } catch (NumberFormatException ignored) {
-                        return -1;
-                    }
-                })
-                .filter(s -> s >= 0)
-                .toArray(Integer[]::new):
-                new Integer[0];
-    }
-
     private Properties replacePropertiesNames(Properties properties, String fromNameRegex, Properties defaultProperties){
         Properties jp = new Properties(defaultProperties);
         properties.stringPropertyNames().forEach(k -> {
@@ -894,7 +888,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             synchronized (partitionMap) {
                 for (int partition : partitions) {
                     if (!partitionMap.containsKey(partition)) {
-                        addPartition(partition);
+                        addPartition(partition, 0L);
                     }
                 }
 
@@ -982,21 +976,28 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         return new HashSet<>(partitionMap.keySet());
     }
 
-    private void addPartition(int partition) throws IOException {
+    public void addPartition(int partition) throws IOException {
+        addPartition(partition, 0L);
+    }
+    public void addPartition(int partition, long minIndex) throws IOException {
         synchronized (partitionMap) {
             if (!partitionMap.containsKey(partition)) {
                 JournalPersistence partitionPersistence = persistenceFactory.createJournalPersistenceInstance();
-                partitionPersistence.recover(basePath.resolve(PARTITION_PATH).resolve(String.valueOf(partition)), indexProperties);
+                partitionPersistence.recover(
+                        basePath.resolve(PARTITION_PATH).resolve(String.valueOf(partition)),
+                        minIndex * INDEX_STORAGE_SIZE,
+                        indexProperties);
                 partitionMap.put(partition, partitionPersistence);
             }
         }
     }
 
-    private void removePartition(int partition) throws IOException {
+    public void removePartition(int partition) throws IOException {
         synchronized (partitionMap) {
             JournalPersistence removedPersistence;
             if ((removedPersistence = partitionMap.remove(partition)) != null) {
                 logger.info("Partition removed: {}, journal: {}.", partition, basePath.toAbsolutePath().toString());
+                removedPersistence.close();
                 removedPersistence.delete();
             }
         }
@@ -1012,5 +1013,56 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     }
 
+    // For monitor only
 
+    public long flushedIndex() {
+        return indexPersistence.flushed() / INDEX_STORAGE_SIZE;
+    }
+
+    public JournalPersistence getJournalPersistence() {
+        return journalPersistence;
+    }
+    public JournalPersistence getIndexPersistence() {
+        return indexPersistence;
+    }
+
+    public Map<Integer, JournalPersistence> getPartitionMap() {
+        return Collections.unmodifiableMap(partitionMap);
+    }
+
+
+    public long maxOffset() {
+        return journalPersistence.max();
+    }
+
+    public Map<Integer, Long> calcPartitionIndices(long journalOffset) {
+
+        Map<Integer, Long> partitionIndices = new HashMap<>(partitionMap.size());
+        for (Map.Entry<Integer, JournalPersistence> entry : partitionMap.entrySet()) {
+            int partition = entry.getKey();
+            JournalPersistence partitionPersistence = entry.getValue();
+            long index = maxIndex(partition);
+            while (--index >= minIndex(partition)) {
+                long offset = readOffset(partitionPersistence, index);
+                if (offset < journalOffset) {
+
+                    break;
+                }
+            }
+
+            partitionIndices.put(partition, index + 1);
+        }
+        return partitionIndices;
+    }
+
+    @Override
+    public String toString() {
+        return "Journal{" +
+                "commitIndex=" + commitIndex +
+                ", indexPersistence=" + indexPersistence +
+                ", journalPersistence=" + journalPersistence +
+                ", partitionMap=" + partitionMap +
+                ", basePath=" + basePath +
+                '}';
+    }
 }

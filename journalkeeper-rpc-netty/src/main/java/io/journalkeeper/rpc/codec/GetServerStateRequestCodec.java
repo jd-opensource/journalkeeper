@@ -13,10 +13,10 @@
  */
 package io.journalkeeper.rpc.codec;
 
-import io.journalkeeper.rpc.remoting.transport.command.Type;
-import io.journalkeeper.rpc.server.GetServerStateRequest;
 import io.journalkeeper.rpc.header.JournalKeeperHeader;
 import io.journalkeeper.rpc.remoting.serialize.CodecSupport;
+import io.journalkeeper.rpc.remoting.transport.command.Type;
+import io.journalkeeper.rpc.server.GetServerStateRequest;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -28,7 +28,7 @@ public class GetServerStateRequestCodec extends GenericPayloadCodec<GetServerSta
     protected void encodePayload(GetServerStateRequest request, ByteBuf buffer) throws Exception {
         // long lastIncludedIndex, long offset
         CodecSupport.encodeLong(buffer, request.getLastIncludedIndex());
-        CodecSupport.encodeLong(buffer, request.getOffset());
+        CodecSupport.encodeInt(buffer, request.getIteratorId());
     }
 
     @Override
@@ -36,7 +36,7 @@ public class GetServerStateRequestCodec extends GenericPayloadCodec<GetServerSta
 
         return new GetServerStateRequest(
                 CodecSupport.decodeLong(buffer),
-                CodecSupport.decodeLong(buffer)
+                CodecSupport.decodeInt(buffer)
         );
     }
 

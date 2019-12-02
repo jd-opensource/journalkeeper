@@ -14,71 +14,54 @@
 package io.journalkeeper.core.client;
 
 import io.journalkeeper.base.Serializer;
-import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.ClusterReadyAware;
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerConfigAware;
-import io.journalkeeper.core.exception.NoLeaderException;
-import io.journalkeeper.exceptions.NotLeaderException;
-import io.journalkeeper.exceptions.RequestTimeoutException;
-import io.journalkeeper.exceptions.ServerBusyException;
-import io.journalkeeper.exceptions.TransportException;
 import io.journalkeeper.rpc.*;
 import io.journalkeeper.rpc.client.ClientServerRpc;
-import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.client.GetServersResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.utils.event.Watchable;
-import io.journalkeeper.utils.retry.CheckRetry;
-import io.journalkeeper.utils.retry.CompletableRetry;
-import io.journalkeeper.utils.retry.IncreasingRetryPolicy;
-import io.journalkeeper.utils.retry.RandomDestinationSelector;
-import io.journalkeeper.utils.spi.ServiceSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.Closeable;
-import java.io.IOException;
 import java.net.URI;
-import java.util.Collection;
 import java.util.List;
-import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 
 /**
  * @author LiYue
  * Date: 2019-09-09
  */
 public abstract class AbstractClient implements ClusterReadyAware, ServerConfigAware, Watchable {
-    protected final ClientRpc clientRpc;
+    final ClientRpc clientRpc;
     private static final Logger logger = LoggerFactory.getLogger(AbstractClient.class);
-    public AbstractClient(ClientRpc clientRpc) {
+    AbstractClient(ClientRpc clientRpc) {
         this.clientRpc = clientRpc;
     }
 
-    protected <R> CompletableFuture<R> update(byte[] entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig, Serializer<R> serializer) {
+    protected <R> CompletableFuture<List<R>> update(List<SerializedUpdateRequest> entries, boolean includeHeader, ResponseConfig responseConfig, Serializer<R> serializer) {
         return
-                clientRpc.invokeClientLeaderRpc(rpc -> rpc.updateClusterState(new UpdateClusterStateRequest(entry, partition, batchSize, includeHeader, responseConfig)))
+                clientRpc.invokeClientLeaderRpc(rpc -> rpc.updateClusterState(new UpdateClusterStateRequest(entries, includeHeader, responseConfig)))
                         .thenApply(this::checkResponse)
-                        .thenApply(UpdateClusterStateResponse::getResult)
-                        .thenApply(serializer::parse);
+                        .thenApply(UpdateClusterStateResponse::getResults)
+                        .thenApply(serializedResults ->
+                                serializedResults.stream().map(serializer::parse).collect(Collectors.toList())
+                                );
     }
-    protected <R> CompletableFuture<R> update(byte[] entry, int partition, int batchSize, ResponseConfig responseConfig, Serializer<R> serializer) {
-        return update(entry, partition, batchSize, false, responseConfig, serializer);
+    protected <R> CompletableFuture<List<R>> update(List<SerializedUpdateRequest> entries, ResponseConfig responseConfig, Serializer<R> serializer) {
+        return update(entries, false, responseConfig, serializer);
     }
 
-
-
-    protected <R extends BaseResponse> R  checkResponse(R response) {
+    <R extends BaseResponse> R  checkResponse(R response) {
         if (response.getStatusCode() != StatusCode.SUCCESS) {
             throw new RpcException(response);
         }
@@ -86,7 +69,7 @@ public abstract class AbstractClient implements ClusterReadyAware, ServerConfigA
     }
 
     @Override
-    public void waitForClusterReady(long maxWaitMs) throws InterruptedException, TimeoutException {
+    public void waitForClusterReady(long maxWaitMs) throws TimeoutException {
 
 
             long t0 = System.currentTimeMillis();

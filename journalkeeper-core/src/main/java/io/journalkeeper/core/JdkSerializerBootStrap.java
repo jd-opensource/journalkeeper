@@ -13,7 +13,6 @@
  */
 package io.journalkeeper.core;
 
-import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
 
@@ -21,6 +20,7 @@ import java.io.Serializable;
 import java.util.Properties;
 
 /**
+ * 使用JDK内置序列化方法的BootStrap
  * @author LiYue
  * Date: 2019-08-12
  */

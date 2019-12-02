@@ -16,12 +16,37 @@ package io.journalkeeper.rpc;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.VoterState;
+import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
+import io.journalkeeper.core.api.transaction.UUIDTransactionId;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.exceptions.NotLeaderException;
-import io.journalkeeper.rpc.client.*;
+import io.journalkeeper.rpc.client.AddPullWatchResponse;
+import io.journalkeeper.rpc.client.ClientServerRpc;
+import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
+import io.journalkeeper.rpc.client.CompleteTransactionRequest;
+import io.journalkeeper.rpc.client.CompleteTransactionResponse;
+import io.journalkeeper.rpc.client.ConvertRollRequest;
+import io.journalkeeper.rpc.client.ConvertRollResponse;
+import io.journalkeeper.rpc.client.CreateTransactionRequest;
+import io.journalkeeper.rpc.client.CreateTransactionResponse;
+import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
+import io.journalkeeper.rpc.client.GetServerStatusResponse;
+import io.journalkeeper.rpc.client.GetServersResponse;
+import io.journalkeeper.rpc.client.LastAppliedResponse;
+import io.journalkeeper.rpc.client.PullEventsRequest;
+import io.journalkeeper.rpc.client.PullEventsResponse;
+import io.journalkeeper.rpc.client.QueryStateRequest;
+import io.journalkeeper.rpc.client.QueryStateResponse;
+import io.journalkeeper.rpc.client.RemovePullWatchRequest;
+import io.journalkeeper.rpc.client.RemovePullWatchResponse;
+import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
+import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
+import io.journalkeeper.rpc.client.UpdateVotersRequest;
+import io.journalkeeper.rpc.client.UpdateVotersResponse;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
@@ -30,6 +55,8 @@ import io.journalkeeper.rpc.server.GetServerEntriesRequest;
 import io.journalkeeper.rpc.server.GetServerEntriesResponse;
 import io.journalkeeper.rpc.server.GetServerStateRequest;
 import io.journalkeeper.rpc.server.GetServerStateResponse;
+import io.journalkeeper.rpc.server.InstallSnapshotRequest;
+import io.journalkeeper.rpc.server.InstallSnapshotResponse;
 import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
 import io.journalkeeper.rpc.server.ServerRpc;
@@ -50,11 +77,27 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.argThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * @author LiYue
@@ -126,27 +169,43 @@ public class RpcTest {
 
     @Test
     public void testUpdateClusterState() throws ExecutionException, InterruptedException {
-        int entrySize = 128;
-
-        byte [] entry = new byte[entrySize];
-        for (int i = 0; i < entrySize; i++) {
-            entry[i] = (byte) i;
-        }
-        UpdateClusterStateRequest request = new UpdateClusterStateRequest(UUID.randomUUID(), entry, 0, 1, false, ResponseConfig.RECEIVE);
+        List<SerializedUpdateRequest> entries = Arrays.asList(
+              new SerializedUpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
+              new SerializedUpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
+              new SerializedUpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1)
+        );
+        UpdateClusterStateRequest request = new UpdateClusterStateRequest(UUID.randomUUID(), entries, false, ResponseConfig.RECEIVE);
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
-        UpdateClusterStateResponse response;
+        UpdateClusterStateResponse response, serverResponse;
+        serverResponse = new UpdateClusterStateResponse(
+          ByteUtils.createFixedSizeByteList(32, 3)
+        );
         // Test success response
         when(serverRpcMock.updateClusterState(any(UpdateClusterStateRequest.class)))
-                .thenReturn(CompletableFuture.supplyAsync(UpdateClusterStateResponse::new));
+                .thenReturn(CompletableFuture.completedFuture(serverResponse));
         response = clientServerRpc.updateClusterState(request).get();
         Assert.assertTrue(response.success());
-        verify(serverRpcMock).updateClusterState(argThat((UpdateClusterStateRequest r) ->
-                request.getTransactionId().equals(r.getTransactionId()) &&
-                Arrays.equals(request.getEntry(), r.getEntry()) &&
-                        request.getPartition() == r.getPartition() &&
-                        request.getBatchSize() == r.getBatchSize() &&
-                        request.isIncludeHeader() == r.isIncludeHeader() &&
-                        request.getResponseConfig() == r.getResponseConfig()));
+        Assert.assertEquals(response.getResults().size(), serverResponse.getResults().size());
+        for (int i = 0; i < response.getResults().size(); i++) {
+            Assert.assertArrayEquals(response.getResults().get(i), serverResponse.getResults().get(i));
+        }
+
+        verify(serverRpcMock).updateClusterState(argThat((UpdateClusterStateRequest r) -> {
+                    if (request.getTransactionId().equals(r.getTransactionId()) &&
+                            request.getRequests().size() == r.getRequests().size() &&
+                            request.isIncludeHeader() == r.isIncludeHeader() &&
+                            request.getResponseConfig() == r.getResponseConfig()) {
+                        for (int i = 0; i < request.getRequests().size(); i++) {
+                            Assert.assertArrayEquals(request.getRequests().get(i).getEntry(), r.getRequests().get(i).getEntry());
+                            Assert.assertEquals(request.getRequests().get(i).getPartition(), r.getRequests().get(i).getPartition());
+                            Assert.assertEquals(request.getRequests().get(i).getBatchSize(), r.getRequests().get(i).getBatchSize());
+                        }
+                        return true;
+                    }
+                    return false;
+                }
+
+        ));
 
     }
 
@@ -318,7 +377,7 @@ public class RpcTest {
 
         Assert.assertEquals(leader, response.getClusterConfiguration().getLeader());
         Assert.assertEquals(voters, response.getClusterConfiguration().getVoters());
-        Assert.assertTrue(response.getClusterConfiguration().getObservers().isEmpty());
+        Assert.assertNull(response.getClusterConfiguration().getObservers());
     }
 
 
@@ -394,9 +453,16 @@ public class RpcTest {
 
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
 
+        AtomicBoolean addWatchFinished = new AtomicBoolean(false);
+        AtomicBoolean alreadySendEvents = new AtomicBoolean(false);
         when(serverRpcMock.pullEvents(any(PullEventsRequest.class)))
-                .thenReturn(CompletableFuture.supplyAsync(() -> new PullEventsResponse(pullEvents)))
-                .thenReturn(CompletableFuture.supplyAsync(() -> new PullEventsResponse(Collections.emptyList())));
+                .thenAnswer(invocation -> CompletableFuture.supplyAsync(() ->  {
+                    if(addWatchFinished.get() && alreadySendEvents.compareAndSet(false, true)) {
+                        return new PullEventsResponse(pullEvents);
+                    } else {
+                        return new PullEventsResponse(Collections.emptyList());
+                    }
+                }));
         when(serverRpcMock.addPullWatch())
                 .thenReturn(CompletableFuture.supplyAsync(() -> new AddPullWatchResponse(pullWatchId, pullIntervalMs)));
         when(serverRpcMock.removePullWatch(any(RemovePullWatchRequest.class)))
@@ -406,6 +472,7 @@ public class RpcTest {
         EventWatcher eventWatcher = eventList::add;
 
         clientServerRpc.watch(eventWatcher);
+        addWatchFinished.set(true);
         Thread.sleep(3 * pullIntervalMs);
         clientServerRpc.unWatch(eventWatcher);
 
@@ -532,7 +599,7 @@ public class RpcTest {
 
         GetServerStateRequest request = new GetServerStateRequest(
                 6666666L,
-                87444L
+                -1
                 );
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         GetServerStateResponse response, serverResponse;
@@ -541,7 +608,7 @@ public class RpcTest {
                 883,
                 899334545L,
                 ByteUtils.createRandomSizeBytes(1024 * 1024 * 10),
-                false);
+                false, 666);
         // Test success response
         when(serverRpcMock.getServerState(any(GetServerStateRequest.class)))
                 .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
@@ -552,11 +619,12 @@ public class RpcTest {
         Assert.assertEquals(serverResponse.getOffset(), response.getOffset());
         Assert.assertArrayEquals(serverResponse.getData(), response.getData());
         Assert.assertEquals(serverResponse.isDone(), response.isDone());
+        Assert.assertEquals(serverResponse.getIteratorId(), response.getIteratorId());
 
         verify(serverRpcMock).getServerState(
                 argThat((GetServerStateRequest r) ->
                                 r.getLastIncludedIndex() == request.getLastIncludedIndex() &&
-                                r.getOffset() == request.getOffset()
+                                        r.getIteratorId() == request.getIteratorId()
                 ));
 
     }
@@ -607,6 +675,41 @@ public class RpcTest {
     }
 
     @Test
+    public void testInstallSnapshot() throws ExecutionException, InterruptedException {
+        // leader’s term
+        final int term = 666;
+        final int responseTerm = 888;
+
+        // so follower can redirect clients
+        final URI leaderId = URI.create("jk://localhost:8888");
+        // the snapshot replaces all entries up through and including this index
+        final long lastIncludedIndex = -1L;
+        // term of lastIncludedIndex
+        final int lastIncludedTerm = -1;
+        // byte offset where chunk is positioned in the snapshot file
+        final int offset = 0;
+        // raw bytes of the snapshot chunk, starting at offset
+        final byte[] data = ByteUtils.createFixedSizeBytes(1024);
+        // true if this is the last chunk
+        final boolean done = false;
+
+        InstallSnapshotRequest request = new InstallSnapshotRequest(term, leaderId, lastIncludedIndex, lastIncludedTerm, offset, data, done);
+
+        ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
+        InstallSnapshotResponse response, serverResponse;
+        serverResponse = new InstallSnapshotResponse(responseTerm);
+        // Test success response
+        when(serverRpcMock.installSnapshot(any(InstallSnapshotRequest.class)))
+                .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
+        response = serverRpc.installSnapshot(request).get();
+        Assert.assertTrue(response.success());
+
+        verify(serverRpcMock).installSnapshot(
+                argThat((InstallSnapshotRequest r) -> Objects.equals(request, r)
+                ));
+    }
+
+    @Test
     public void testGetServerStatus() throws ExecutionException, InterruptedException {
 
 
@@ -633,15 +736,22 @@ public class RpcTest {
     public void testCreateTransaction() throws ExecutionException, InterruptedException {
 
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
+        Map<String, String> context = new HashMap<>();
+        context.put("aaa", "bbb");
+        context.put("ccc", "dddd");
+        CreateTransactionRequest request = new CreateTransactionRequest(context);
         CreateTransactionResponse response, serverResponse;
-        serverResponse = new CreateTransactionResponse(UUID.randomUUID());
+        serverResponse = new CreateTransactionResponse(new UUIDTransactionId(UUID.randomUUID()), System.currentTimeMillis());
         // Test success response
-        when(serverRpcMock.createTransaction())
+        when(serverRpcMock.createTransaction(any(CreateTransactionRequest.class)))
                 .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
-        response = serverRpc.createTransaction().get();
+        response = serverRpc.createTransaction(request).get();
         Assert.assertTrue(response.success());
         Assert.assertEquals(serverResponse.getTransactionId(), response.getTransactionId());
 
+        verify(serverRpcMock).createTransaction(argThat(
+                (CreateTransactionRequest r) -> r.getContext().equals(context)
+        ));
     }
 
     @Test
@@ -649,15 +759,28 @@ public class RpcTest {
 
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         GetOpeningTransactionsResponse response, serverResponse;
-        serverResponse = new GetOpeningTransactionsResponse(Arrays.asList(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()));
+
+        Collection<JournalKeeperTransactionContext> contexts = IntStream.range(0, 3)
+                .mapToObj(i -> {
+                    Map<String, String> context = new HashMap<>();
+                    context.put("key", String.valueOf(i));
+                    return new JournalKeeperTransactionContext(
+                            new UUIDTransactionId(UUID.randomUUID()),
+                            context,
+                            System.currentTimeMillis()
+                    );
+                }).collect(Collectors.toList());
+
+        serverResponse = new GetOpeningTransactionsResponse(contexts);
         // Test success response
         when(serverRpcMock.getOpeningTransactions())
                 .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
         response = serverRpc.getOpeningTransactions().get();
         Assert.assertTrue(response.success());
-        Assert.assertEquals(serverResponse.getTransactionIds(), response.getTransactionIds());
+        Assert.assertEquals(serverResponse.getTransactionContexts(), response.getTransactionContexts());
 
     }
+
 
     private static boolean testListOfBytesEquals(List<byte[]> entries, List<byte[]> entries1) {
         if(entries.size() == entries1.size()) {

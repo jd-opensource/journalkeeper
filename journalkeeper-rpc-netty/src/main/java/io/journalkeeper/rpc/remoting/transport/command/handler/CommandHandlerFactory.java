@@ -24,6 +24,7 @@ public interface CommandHandlerFactory {
      * 获取处理器，心跳命令，不支持的命令也需要返回默认处理器
      *
      * @param command 命令
+     * @return 对应的CommandHandler
      */
     CommandHandler getHandler(Command command);
 

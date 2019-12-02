@@ -16,16 +16,35 @@ package io.journalkeeper.core.transaction;
 import io.journalkeeper.base.Serializer;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
+
 
 /**
- *  transactionId       16 bytes
- *  timestamp           8 bytes
- *  type                1 byte
- *  partition           2 bytes
- *  commitOrAbort       1 byte
- *  batchSize           2 bytes
- *  entry               variable bytes
+ *  transactionId           16 bytes
+ *  timestamp               8 bytes
+ *  type                    1 byte
+ *  partition               2 bytes
+ *  commitOrAbort           1 byte
+ *  batchSize               2 bytes
+ *  entry                   variable bytes
+ *      length              4 bytes
+ *      bytes               variable bytes
+ *  context map             variable bytes
+ *      map size            4 bytes
+ *      map entry           variable bytes
+ *          key string      variable bytes
+ *              length      4 bytes
+ *              bytes       variable bytes
+ *          value string    variable bytes
+ *              length      4 bytes
+ *              bytes       variable bytes
+ *      map entry           variable bytes
+ *      map entry           variable bytes
+ *
  *
  * @author LiYue
  * Date: 2019/10/22
@@ -35,7 +54,14 @@ public class TransactionEntrySerializer implements Serializer<TransactionEntry> 
 
     @Override
     public byte[] serialize(TransactionEntry entry) {
-        int size = FIXED_LENGTH + entry.getEntry().length;
+        int size = FIXED_LENGTH +
+                Integer.BYTES + (entry.getEntry() == null ? 0 : entry.getEntry().length) +
+                Integer.BYTES + (
+                        entry.getContext() == null ? 0 :
+                                Stream.concat(entry.getContext().keySet().stream(), entry.getContext().values().stream())
+                                .mapToInt(s -> Integer.BYTES + s.getBytes(StandardCharsets.UTF_8).length).sum()
+        );
+
         byte [] bytes = new byte[size];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
 
@@ -55,7 +81,26 @@ public class TransactionEntrySerializer implements Serializer<TransactionEntry> 
         // batchSize
         buffer.putShort((short) entry.getBatchSize());
         // entry
-        buffer.put(entry.getEntry());
+        if(entry.getEntry() == null) {
+            buffer.putInt(-1);
+        } else {
+            buffer.putInt(entry.getEntry().length);
+            buffer.put(entry.getEntry());
+        }
+        // context
+        if(entry.getContext() == null) {
+            buffer.putInt(-1);
+        } else {
+            buffer.putInt(entry.getContext().size());
+            entry.getContext().entrySet().stream()
+                    .flatMap(e -> Stream.of(e.getKey(), e.getValue()))
+            .forEach(s -> {
+                byte [] sb = s.getBytes(StandardCharsets.UTF_8);
+                buffer.putInt(sb.length);
+                buffer.put(sb);
+            });
+        }
+
         return bytes;
     }
 
@@ -85,9 +130,22 @@ public class TransactionEntrySerializer implements Serializer<TransactionEntry> 
     @Override
     public TransactionEntry parse(byte[] bytes) {
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
-        byte [] entryBytes = new byte[bytes.length - FIXED_LENGTH];
+        byte [] entryBytes = null;
         buffer.position(FIXED_LENGTH);
-        buffer.get(entryBytes);
+        int length = buffer.getInt();
+        if(length >= 0) {
+            entryBytes = new byte[length];
+            buffer.get(entryBytes);
+        }
+        Map<String, String> context = null;
+        int size = buffer.getInt();
+        if (size >= 0) {
+            context = new HashMap<>(size);
+            for (int i = 0; i < size; i++) {
+                context.put(getString(buffer), getString(buffer));
+            }
+        }
+
         buffer.clear();
         return new TransactionEntry(
                 parseUUID(buffer),
@@ -96,7 +154,18 @@ public class TransactionEntrySerializer implements Serializer<TransactionEntry> 
                 buffer.getShort(),
                 buffer.get() == (byte) 1,
                 buffer.getShort(),
-                entryBytes
+                entryBytes,
+                context
         );
+    }
+
+    private String getString(ByteBuffer buffer) {
+        int length = buffer.getInt();
+        if(length >= 0) {
+            byte [] bytes = new byte[length];
+            buffer.get(bytes);
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
+        return null;
     }
 }

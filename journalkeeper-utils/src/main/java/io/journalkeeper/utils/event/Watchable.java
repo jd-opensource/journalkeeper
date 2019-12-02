@@ -14,6 +14,7 @@
 package io.journalkeeper.utils.event;
 
 /**
+ *
  * @author LiYue
  * Date: 2019-04-23
  */

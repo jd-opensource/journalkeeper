@@ -19,27 +19,26 @@ import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
-import io.journalkeeper.core.entry.reserved.CompactJournalEntry;
-import io.journalkeeper.core.entry.reserved.ReservedEntriesSerializeSupport;
-import io.journalkeeper.core.entry.reserved.ReservedPartition;
-import io.journalkeeper.core.entry.reserved.ScalePartitionsEntry;
-import io.journalkeeper.core.entry.reserved.SetPreferredLeaderEntry;
+import io.journalkeeper.core.entry.internal.CreateSnapshotEntry;
+import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
+import io.journalkeeper.core.entry.internal.ReservedPartition;
+import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
+import io.journalkeeper.core.entry.internal.SetPreferredLeaderEntry;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
 import io.journalkeeper.rpc.client.GetServerStatusResponse;
 import io.journalkeeper.rpc.client.GetServersResponse;
 import io.journalkeeper.rpc.client.UpdateVotersRequest;
-import io.journalkeeper.utils.threads.NamedThreadFactory;
 
 import java.net.URI;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 
 /**
  * @author LiYue
@@ -47,14 +46,10 @@ import java.util.concurrent.Executors;
  */
 public class DefaultAdminClient extends AbstractClient implements AdminClient {
 
-    private final Config config;
-    private final Executor executor;
 
 
     public DefaultAdminClient(ClientRpc clientRpc, Properties properties) {
         super(clientRpc);
-        this.config = toConfig(properties);
-        this.executor = Executors.newFixedThreadPool(config.getThreads(), new NamedThreadFactory("Admin-Client-Executors"));
     }
 
     @Override
@@ -82,19 +77,20 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
     }
 
     @Override
-    public CompletableFuture<Void> compact(Map<Integer, Long> toIndices) {
-        return this.update(ReservedEntriesSerializeSupport.serialize(new CompactJournalEntry(toIndices)),
-                RaftJournal.RAFT_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
-    }
-    @Override
-    public CompletableFuture<Void> scalePartitions(int[] partitions) {
+    public CompletableFuture<Void> scalePartitions(Set<Integer> partitions) {
 
         ReservedPartition.validatePartitions(partitions);
 
-        return this.update(ReservedEntriesSerializeSupport.serialize(new ScalePartitionsEntry(partitions)),
-                RaftJournal.RAFT_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
+        return this.update(InternalEntriesSerializeSupport.serialize(new ScalePartitionsEntry(partitions)));
     }
 
+    private CompletableFuture<Void> update(byte [] entry) {
+        return update(
+                Collections.singletonList(new SerializedUpdateRequest(entry, RaftJournal.INTERNAL_PARTITION, 1)),
+                ResponseConfig.REPLICATION,
+                VoidSerializer.getInstance()
+        ).thenApply(list -> list.get(0));
+    }
     @Override
     public CompletableFuture<ServerStatus> getServerStatus(URI uri) {
         return clientRpc.invokeClientServerRpc(uri,
@@ -104,34 +100,12 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
 
     @Override
     public CompletableFuture<Void> setPreferredLeader(URI preferredLeader) {
-        return this.update(ReservedEntriesSerializeSupport.serialize(new SetPreferredLeaderEntry(preferredLeader)),
-                RaftJournal.RAFT_PARTITION, 1, ResponseConfig.REPLICATION, VoidSerializer.getInstance());
+        return this.update(InternalEntriesSerializeSupport.serialize(new SetPreferredLeaderEntry(preferredLeader)));
     }
 
-    private Config toConfig(Properties properties) {
-        Config config = new Config();
-        config.setThreads(Integer.parseInt(
-                properties.getProperty(
-                        DefaultRaftClient.Config.THREADS_KEY,
-                        String.valueOf(DefaultRaftClient.Config.DEFAULT_THREADS))));
-
-        return config;
-    }
-
-    static class Config {
-        final static int DEFAULT_THREADS = 8;
-
-        final static String THREADS_KEY = "client_admin_threads";
-
-        private int threads = DEFAULT_THREADS;
-
-        public int getThreads() {
-            return threads;
-        }
-
-        public void setThreads(int threads) {
-            this.threads = threads;
-        }
+    @Override
+    public CompletableFuture<Void> takeSnapshot() {
+        return this.update(InternalEntriesSerializeSupport.serialize(new CreateSnapshotEntry()));
     }
 
 }

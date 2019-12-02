@@ -20,12 +20,15 @@ import io.journalkeeper.utils.test.ByteUtils;
 import io.journalkeeper.utils.test.TestPathUtils;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
-import org.junit.*;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Ignore;
+import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
@@ -107,9 +110,7 @@ public class PositioningStoreTest {
     }
 
 
-    // setRight
-
-    @Test
+    @Test(expected = IllegalArgumentException.class)
     public void truncateTest() throws IOException, InterruptedException {
         try (JournalPersistence store = prepareStore()) {
             int size = 10;
@@ -152,7 +153,6 @@ public class PositioningStoreTest {
 
             position += 1;
             store.truncate(position);
-            Assert.assertEquals(position,store.max());
 
         }
     }

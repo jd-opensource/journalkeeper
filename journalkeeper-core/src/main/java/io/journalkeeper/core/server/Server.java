@@ -17,6 +17,8 @@ import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
+import io.journalkeeper.monitor.MonitorCollector;
+import io.journalkeeper.monitor.ServerMonitorInfo;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
 import io.journalkeeper.rpc.client.*;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
@@ -27,6 +29,8 @@ import io.journalkeeper.rpc.server.GetServerEntriesRequest;
 import io.journalkeeper.rpc.server.GetServerEntriesResponse;
 import io.journalkeeper.rpc.server.GetServerStateRequest;
 import io.journalkeeper.rpc.server.GetServerStateResponse;
+import io.journalkeeper.rpc.server.InstallSnapshotRequest;
+import io.journalkeeper.rpc.server.InstallSnapshotResponse;
 import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
 import io.journalkeeper.rpc.server.ServerRpc;
@@ -39,6 +43,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.Collection;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
@@ -68,7 +73,10 @@ public class Server<E, ER, Q, QR>
     private final Properties properties;
     private final StateFactory<E, ER, Q, QR> stateFactory;
     private final JournalEntryParser journalEntryParser;
+    private final ServerMonitorInfoProvider serverMonitorInfoProvider;
+    private final Collection<MonitorCollector> monitorCollectors;
     private ServerRpcAccessPoint serverRpcAccessPoint;
+
 
 
     public Server(Roll roll, StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
@@ -87,6 +95,8 @@ public class Server<E, ER, Q, QR>
         this.serverRpcAccessPoint = rpcAccessPointFactory.createServerRpcAccessPoint(properties);
         this.journalEntryParser = journalEntryParser;
         this.server = createServer(roll);
+        this.serverMonitorInfoProvider = new ServerMonitorInfoProvider(this);
+        this.monitorCollectors = ServiceSupport.loadAll(MonitorCollector.class);
     }
 
     private AbstractServer<E, ER, Q, QR> createServer(Roll roll) {
@@ -104,8 +114,8 @@ public class Server<E, ER, Q, QR>
     }
 
     @Override
-    public void init(URI uri, List<URI> voters, Set<Integer> partitions) throws IOException {
-        server.init(uri, voters, partitions);
+    public void init(URI uri, List<URI> voters, Set<Integer> partitions, URI preferredLeader) throws IOException {
+        server.init(uri, voters, partitions, preferredLeader);
     }
 
     @Override
@@ -200,8 +210,8 @@ public class Server<E, ER, Q, QR>
     }
 
     @Override
-    public CompletableFuture<CreateTransactionResponse> createTransaction() {
-        return server.createTransaction();
+    public CompletableFuture<CreateTransactionResponse> createTransaction(CreateTransactionRequest request) {
+        return server.createTransaction(request);
     }
 
     @Override
@@ -250,7 +260,28 @@ public class Server<E, ER, Q, QR>
     }
 
     @Override
+    public CompletableFuture<InstallSnapshotResponse> installSnapshot(InstallSnapshotRequest request) {
+        return server.installSnapshot(request);
+    }
+
+    private void addMonitorProviderToCollectors() {
+        if(null != monitorCollectors) {
+            for (MonitorCollector monitorCollector : monitorCollectors) {
+                monitorCollector.addServer(serverMonitorInfoProvider);
+            }
+        }
+    }
+    private void removeMonitorProviderToCollectors() {
+        if(null != monitorCollectors) {
+            for (MonitorCollector monitorCollector : monitorCollectors) {
+                monitorCollector.removeServer(serverMonitorInfoProvider);
+            }
+        }
+    }
+
+    @Override
     public void start() {
+        addMonitorProviderToCollectors();
         if(this.serverState != ServerState.CREATED) {
             throw new IllegalStateException("Server can only start once!");
         }
@@ -271,6 +302,7 @@ public class Server<E, ER, Q, QR>
         server.stop();
         serverRpcAccessPoint.stop();
         this.serverState = ServerState.STOPPED;
+        removeMonitorProviderToCollectors();
         logger.info("Server {} stopped.", serverUri());
     }
 
@@ -279,4 +311,7 @@ public class Server<E, ER, Q, QR>
         return server.serverState();
     }
 
+    AbstractServer getServer() {
+        return server;
+    }
 }

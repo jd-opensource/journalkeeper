@@ -21,15 +21,12 @@ import io.journalkeeper.coordinating.state.domain.WriteResponse;
 import io.journalkeeper.coordinating.state.store.KVStore;
 import io.journalkeeper.coordinating.state.store.KVStoreManager;
 import io.journalkeeper.core.api.RaftJournal;
-import io.journalkeeper.core.api.StateFactory;
-import io.journalkeeper.core.state.LocalState;
+import io.journalkeeper.core.api.State;
+import io.journalkeeper.core.api.StateResult;
 
-import java.io.IOException;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * CoordinatingState
@@ -37,44 +34,37 @@ import java.util.concurrent.CompletableFuture;
  *
  * date: 2019/5/30
  */
-public class CoordinatingState extends LocalState<WriteRequest, WriteResponse, ReadRequest, ReadResponse> {
+public class CoordinatingState implements State<WriteRequest, WriteResponse, ReadRequest, ReadResponse> {
 
     private Properties properties;
     private KVStore kvStore;
     private CoordinatingStateHandler handler;
 
-    protected CoordinatingState(StateFactory<WriteRequest, WriteResponse, ReadRequest, ReadResponse> stateFactory) {
-        super(stateFactory);
-    }
-
     @Override
-    protected void recoverLocalState(Path path, RaftJournal raftJournal, Properties properties) throws IOException {
+    public void recover(Path path, Properties properties) {
         this.properties = properties;
         this.kvStore = KVStoreManager.getFactory(properties.getProperty(CoordinatingConfigs.STATE_STORE)).create(path, properties);
         this.handler = new CoordinatingStateHandler(properties, kvStore);
     }
 
     @Override
-    public WriteResponse execute(WriteRequest request, int partition, long index, int batchSize, Map<String, String> parameters) {
+    public StateResult<WriteResponse> execute(WriteRequest request, int partition, long index, int batchSize, RaftJournal raftJournal) {
         boolean isSuccess = handler.handle(request);
         if (!isSuccess) {
-            return null;
+            return new StateResult<>(null);
         }
-
+        StateResult<WriteResponse> result = new StateResult<>(null);
         // TODO response
-        parameters.put("type", String.valueOf(request.getType()));
-        parameters.put("key", new String(request.getKey(), Charset.forName("UTF-8")));
+        result.putEventData("type", String.valueOf(request.getType()));
+        result.putEventData("key", new String(request.getKey(), StandardCharsets.UTF_8));
         if (request.getValue() != null) {
-            parameters.put("value", new String(request.getValue(), Charset.forName("UTF-8")));
+            result.putEventData("value", new String(request.getValue(), StandardCharsets.UTF_8));
         }
-        return null;
+        return result;
     }
 
     @Override
-    public CompletableFuture<ReadResponse> query(ReadRequest request) {
-        CompletableFuture<ReadResponse> future = new CompletableFuture<>();
-        ReadResponse response = handler.handle(request);
-        future.complete(response);
-        return future;
+    public ReadResponse query(ReadRequest request, RaftJournal raftJournal) {
+        return handler.handle(request);
     }
 }

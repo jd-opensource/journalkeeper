@@ -27,8 +27,9 @@ import java.util.stream.StreamSupport;
  */
 public class ServiceSupport {
     private final static Map<String, Object> singletonServices = new HashMap<>();
-    public synchronized static <S> S load(Class<S> service, String className) {
-        return StreamSupport.
+    @SuppressWarnings("unchecked")
+    public synchronized static <S> S load(Class<? super S> service, String className) {
+        return (S ) StreamSupport.
                 stream(ServiceLoader.load(service).spliterator(), false)
                 .filter(s -> s.getClass().getCanonicalName().equals(className))
                 .map(ServiceSupport::singletonFilter)

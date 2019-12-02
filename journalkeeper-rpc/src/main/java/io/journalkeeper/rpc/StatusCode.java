@@ -61,12 +61,6 @@ public enum StatusCode {
         this.message = message;
     }
 
-    /**
-     * 获取错误代码
-     *
-     * @param code
-     * @return
-     */
     public static StatusCode valueOf(int code) {
         return codes.get(code);
     }

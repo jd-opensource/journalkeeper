@@ -4,6 +4,7 @@ target
 .classpath
 .settings
 .project
+.factorypath
 *.log
 .vscode/
 # macOS

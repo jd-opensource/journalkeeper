@@ -13,96 +13,63 @@
  */
 package io.journalkeeper.core.api;
 
-import io.journalkeeper.base.Queryable;
-import io.journalkeeper.utils.event.EventType;
-
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.Map;
 import java.util.Properties;
 
 /**
- * 状态机
- * 状态数据
- * 状态持久化
- * 对应日志位置
- * 可选实现：{@link java.io.Flushable}, {@link java.io.Closeable}
+ * 状态机接口。
+ *
+ * 状态机负责实现{@link #execute(Object, int, long, int, RaftJournal)} 接口执行操作日志{@link E}，并返回执行结果{@link ER}。
+ * 状态机还可以实现{@link State#query(Object, RaftJournal)}查询接口，用于查询状态机中的状态数据。
+ *
+ * 可选实现：
+ * {@link java.io.Flushable}：将状态机中未持久化的输入写入磁盘；
+ *
+ * @param <Q> 状态查询条件类型
+ * @param <QR> 状态查询结果类型
+ * @param <E> 操作命令的类型
+ * @param <ER> 状态机执行结果类型
+ *
  * @author LiYue
  * Date: 2019-03-20
  */
-public interface State<E, ER, Q, QR> extends Queryable<Q, QR> {
+public interface State<E, ER, Q, QR> {
     /**
-     * 在状态state上执行命令entries。要求线性语义和原子性.
-     * 成功返回新状态，否则抛异常。
+     * 在状态state上执行命令entries，JournalKeeper保证执行操作命令的线性语义。要求：
+     * <ul>
+     *     <li>原子性</li>
+     *     <li>幂等性</li>
+     * </ul>
+     * 成功返回执行结果，否则抛异常。
+     *
      * @param entry 待执行的命令
+     * @param partition 分区
      * @param index entry在Journal中的索引序号
      * @param batchSize 如果当前entry是一个批量entry，batchSize为这批entry的数量，否则为1；
-     * @param eventParams 提供给事件 {@link EventType#ON_STATE_CHANGE} 的参数；
-     * @return 执行结果
+     * @param journal 当前的journal
+     * @return 执行结果。See {@link StateResult}
      */
-    ER execute(E entry, int partition, long index, int batchSize, Map<String, String> eventParams);
+    StateResult<ER> execute(E entry, int partition, long index, int batchSize, RaftJournal journal);
 
     /**
-     * 当前状态对应的日志位置
-     * lastApplied
+     * 查询
+     * @param query 查询条件
+     * @param journal 当前的journal
+     * @return 查询结果
      */
-    long lastApplied();
+    QR query(Q query, RaftJournal journal);
 
     /**
-     * 状态中包含的最后日志条目的索引值。
-     */
-    default long lastIncludedIndex() {return lastApplied() - 1;}
-
-    /**
-     * 状态中包含的最后日志条目的任期号
-     */
-    int lastIncludedTerm();
-
-    /**
-     * 恢复数据
+     * 从磁盘中恢复状态机中的状态数据，在状态机启动的时候调用。
      * @param path 存放state文件的路径
      * @param properties 属性
+     * @throws IOException 发生IO异常时抛出
      */
-    void recover(Path path, RaftJournal raftJournal, Properties properties);
+    void recover(Path path, Properties properties) throws IOException;
 
     /**
-     * 将状态物理复制一份，保存到path
+     * 安全的关闭状态机
      */
-    State<E, ER, Q, QR> takeASnapshot(Path path, RaftJournal raftJournal) throws IOException;
-
-    /**
-     * 读取序列化后的状态数据。
-     * @param offset 偏移量
-     * @param size 本次读取的长度
-     *
-     */
-    byte [] readSerializedData(long offset, int size) throws IOException;
-
-    /**
-     * 序列化后的状态长度。
-     */
-    long serializedDataSize();
-    /**
-     * 恢复状态。
-     * 反复调用install复制序列化的状态数据。
-     * 所有数据都复制完成后，最后调用installFinish恢复状态。
-     * @param data 日志数据片段
-     */
-    void installSerializedData(byte [] data, long offset) throws IOException;
-    void installFinish(long lastApplied, int lastIncludedTerm);
-
-    /**
-     * 删除所有状态数据。
-     */
-    void clear();
-
-    /**
-     * lastApplied += 1
-     */
-    void next();
-    /**
-     * 跳过一个Raft Entry
-     */
-    void skip();
-
+    default void close(){}
 }

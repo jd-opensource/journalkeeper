@@ -106,6 +106,7 @@ public interface ClientServerRpc {
      * 删除pull事件监听。
      * @see EventBus
      * @param request See {@link RemovePullWatchRequest}
+     * @return See {@link RemovePullWatchResponse}
      */
     CompletableFuture<RemovePullWatchResponse> removePullWatch(RemovePullWatchRequest request);
 
@@ -135,7 +136,7 @@ public interface ClientServerRpc {
      * 开启一个新事务，并返回事务ID。
      * @return See {@link CreateTransactionResponse}
      */
-    CompletableFuture<CreateTransactionResponse> createTransaction();
+    CompletableFuture<CreateTransactionResponse> createTransaction(CreateTransactionRequest request);
 
     /**
      * 提交或回滚事务

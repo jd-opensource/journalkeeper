@@ -61,6 +61,8 @@ public class PayloadCodecRegistry {
         payloadCodecFactory.register(new GetServerStateResponseCodec());
         payloadCodecFactory.register(new DisableLeaderWriteRequestCodec());
         payloadCodecFactory.register(new DisableLeaderWriteResponseCodec());
+        payloadCodecFactory.register(new InstallSnapshotRequestCodec());
+        payloadCodecFactory.register(new InstallSnapshotResponseCodec());
 
     }
 }

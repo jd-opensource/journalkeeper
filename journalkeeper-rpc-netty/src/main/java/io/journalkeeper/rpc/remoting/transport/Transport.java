@@ -33,7 +33,7 @@ public interface Transport {
      *
      * @param command 命令
      * @return 应答命令
-     * @throws TransportException
+     * @throws TransportException 传输异常
      */
     Command sync(Command command) throws TransportException;
 
@@ -43,7 +43,7 @@ public interface Transport {
      * @param command 命令
      * @param timeout 超时
      * @return 应答命令
-     * @throws TransportException
+     * @throws TransportException 传输异常
      */
     Command sync(Command command, long timeout) throws TransportException;
 
@@ -52,7 +52,7 @@ public interface Transport {
      *
      * @param command  命令
      * @param callback 回调
-     * @throws TransportException
+     * @throws TransportException 传输异常
      */
     void async(Command command, CommandCallback callback) throws TransportException;
 
@@ -62,7 +62,7 @@ public interface Transport {
      * @param command  命令
      * @param timeout  超时
      * @param callback 回调
-     * @throws TransportException
+     * @throws TransportException 传输异常
      */
     void async(Command command, long timeout, CommandCallback callback) throws TransportException;
 
@@ -70,7 +70,8 @@ public interface Transport {
      * 异步发送，需要应答
      *
      * @param command  命令
-     * @throws TransportException
+     * @return 异步执行结果Future
+     * @throws TransportException 传输异常
      */
     Future<?> async(Command command) throws TransportException;
 
@@ -79,7 +80,8 @@ public interface Transport {
      *
      * @param command  命令
      * @param timeout  超时
-     * @throws TransportException
+     * @return 异步执行结果Future
+     * @throws TransportException 传输异常
      */
     Future<?> async(Command command, long timeout) throws TransportException;
 
@@ -87,7 +89,7 @@ public interface Transport {
      * 单向发送，不需要应答
      *
      * @param command 命令
-     * @throws TransportException
+     * @throws TransportException 传输异常
      */
     void oneway(Command command) throws TransportException;
 
@@ -96,7 +98,7 @@ public interface Transport {
      *
      * @param command 命令
      * @param timeout 超时
-     * @throws TransportException
+     * @throws TransportException 传输异常
      */
     void oneway(Command command, long timeout) throws TransportException;
 
@@ -105,7 +107,7 @@ public interface Transport {
      *
      * @param request  请求
      * @param response 响应
-     * @throws TransportException
+     * @throws TransportException 传输异常
      */
     void acknowledge(Command request, Command response) throws TransportException;
 
@@ -115,7 +117,7 @@ public interface Transport {
      * @param request  请求
      * @param response 响应
      * @param callback 回调
-     * @throws TransportException
+     * @throws TransportException 传输异常
      */
     void acknowledge(Command request, Command response, CommandCallback callback) throws TransportException;
 
@@ -128,19 +130,19 @@ public interface Transport {
 
     /**
      * 属性
-     * @return
+     * @return 传输属性
      */
     TransportAttribute attr();
 
     /**
      * 设置属性
-     * @return
+     * @param attribute 属性
      */
     void attr(TransportAttribute attribute);
 
     /**
      * 状态
-     * @return
+     * @return 传输状态
      */
     TransportState state();
 
