@@ -13,7 +13,8 @@
  */
 package io.journalkeeper.rpc.codec;
 
-import io.journalkeeper.rpc.client.CreateTransactionResponse;
+import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
+import io.journalkeeper.core.api.transaction.UUIDTransactionId;
 import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
 import io.journalkeeper.rpc.header.JournalKeeperHeader;
 import io.journalkeeper.rpc.remoting.serialize.CodecSupport;
@@ -23,6 +24,7 @@ import io.journalkeeper.rpc.remoting.transport.command.Type;
 import io.journalkeeper.rpc.remoting.transport.exception.TransportException;
 import io.netty.buffer.ByteBuf;
 
+import java.util.Collection;
 import java.util.UUID;
 
 /**
@@ -31,14 +33,29 @@ import java.util.UUID;
  */
 public class GetOpeningTransactionsResponseCodec extends LeaderResponseCodec<GetOpeningTransactionsResponse> implements Type {
     @Override
-    protected void encodeLeaderResponse(GetOpeningTransactionsResponse leaderResponse, ByteBuf buffer) throws Exception {
-        CodecSupport.encodeCollection(buffer, leaderResponse.getTransactionIds(),
-                (obj, buffer1) -> CodecSupport.encodeUUID(buffer1, (UUID) obj));
+    protected void encodeLeaderResponse(GetOpeningTransactionsResponse response, ByteBuf buffer) throws Exception {
+        CodecSupport.encodeCollection(buffer, response.getTransactionContexts(),
+                (obj, buffer1) -> {
+                    JournalKeeperTransactionContext context = (JournalKeeperTransactionContext) obj;
+                    CodecSupport.encodeUUID(buffer1, ((UUIDTransactionId )context.transactionId()).getUuid());
+                    CodecSupport.encodeMap(buffer1, context.context(),
+                            (obj1, buffer2) -> CodecSupport.encodeString(buffer2, (String) obj1),
+                            (obj1, buffer2) -> CodecSupport.encodeString(buffer2, (String) obj1));
+                    CodecSupport.encodeLong(buffer1, context.timestamp());
+                });
     }
 
     @Override
     protected GetOpeningTransactionsResponse decodeLeaderResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
-        return new GetOpeningTransactionsResponse(CodecSupport.decodeCollection(buffer, CodecSupport::decodeUUID));
+        return new GetOpeningTransactionsResponse(CodecSupport.decodeCollection(buffer, buffer1 -> new JournalKeeperTransactionContext(
+            new UUIDTransactionId(
+                CodecSupport.decodeUUID(buffer1)),
+                CodecSupport.decodeMap(buffer1,
+                        CodecSupport::decodeString,
+                        CodecSupport::decodeString),
+                CodecSupport.decodeLong(buffer1)
+
+        )));
     }
 
     @Override

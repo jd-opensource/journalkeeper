@@ -33,6 +33,7 @@ import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;
+import io.journalkeeper.core.api.transaction.UUIDTransactionId;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.InternalEntryType;
 import io.journalkeeper.core.entry.internal.LeaderAnnouncementEntry;
@@ -45,6 +46,7 @@ import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.persistence.ServerMetadata;
 import io.journalkeeper.rpc.client.CompleteTransactionRequest;
 import io.journalkeeper.rpc.client.CompleteTransactionResponse;
+import io.journalkeeper.rpc.client.CreateTransactionRequest;
 import io.journalkeeper.rpc.client.CreateTransactionResponse;
 import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
 import io.journalkeeper.rpc.client.GetServerStatusResponse;
@@ -379,7 +381,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                     config.getSnapshotIntervalSec(), entryResultSerializer, threads,
                     this, this, asyncExecutor, scheduledExecutor, voterConfigManager, this, this,
                     this.journalEntryParser, config.getTransactionTimeoutMs(), snapshots);
-            leader.start();
             this.leaderUri = this.uri;
             // Leader announcement
             int term = currentTerm.get();
@@ -388,6 +389,8 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
             journalEntry.setTerm(term);
             journalEntry.setPartition(INTERNAL_PARTITION);
             journal.append(journalEntry);
+
+            leader.start();
             logger.info("Convert voter state from {} to LEADER, {}.", oldState, voterInfo());
 
         }
@@ -721,7 +724,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
      * 这种情况下，节点的配置是落后于日志的，因此，需要：
      *
      * * 在节点启动时进行检查，如果存在一条未提交的配置变更日志，如果节点配置和日志不一致，需要按照日志更新节点配置。
-     * * 当节点删除未提交的日志时，如果被删除的日志中包含配置变更，需要将当前节点的配置也一并回滚；
+     * * 当节点删除未提交的日志时，如果被删除的日志中包含配置变更，需要将当前节点的配置也一并回滚；¡
      *
      * 在这个方法中，只是构造第一阶段的配置变更日志$C_{old, new}$，调用{@link #updateClusterState(UpdateClusterStateRequest)}方法，
      * 正常写入$C_{old, new}$，$C_{old, new}$被提交之后，会返回 {@link UpdateClusterStateResponse}，只要响应成功，
@@ -748,10 +751,10 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     }
 
     @Override
-    public CompletableFuture<CreateTransactionResponse> createTransaction() {
+    public CompletableFuture<CreateTransactionResponse> createTransaction(CreateTransactionRequest request) {
         if(voterState.getState() == VoterState.LEADER && leader != null) {
-            return leader.createTransaction()
-                    .thenApply(CreateTransactionResponse::new);
+            return leader.createTransaction(request.getContext())
+                    .thenApply(context -> new CreateTransactionResponse((UUIDTransactionId )context.transactionId(), context.timestamp()));
         } else {
             return CompletableFuture.completedFuture(new CreateTransactionResponse(new NotLeaderException(leaderUri)));
         }

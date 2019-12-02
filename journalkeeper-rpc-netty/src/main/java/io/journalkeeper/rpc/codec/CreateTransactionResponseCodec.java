@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.rpc.codec;
 
+import io.journalkeeper.core.api.transaction.UUIDTransactionId;
 import io.journalkeeper.rpc.client.CreateTransactionResponse;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.header.JournalKeeperHeader;
@@ -26,13 +27,16 @@ import io.netty.buffer.ByteBuf;
  */
 public class CreateTransactionResponseCodec extends LeaderResponseCodec<CreateTransactionResponse> implements Type {
     @Override
-    protected void encodeLeaderResponse(CreateTransactionResponse leaderResponse, ByteBuf buffer) throws Exception {
-        CodecSupport.encodeUUID(buffer, leaderResponse.getTransactionId());
+    protected void encodeLeaderResponse(CreateTransactionResponse response, ByteBuf buffer) throws Exception {
+        CodecSupport.encodeUUID(buffer, response.getTransactionId().getUuid());
+        CodecSupport.encodeLong(buffer, response.getTimestamp());
     }
 
     @Override
     protected CreateTransactionResponse decodeLeaderResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
-        return new CreateTransactionResponse(CodecSupport.decodeUUID(buffer));
+        return new CreateTransactionResponse(
+                new UUIDTransactionId(CodecSupport.decodeUUID(buffer)),
+                CodecSupport.decodeLong(buffer));
     }
 
     @Override

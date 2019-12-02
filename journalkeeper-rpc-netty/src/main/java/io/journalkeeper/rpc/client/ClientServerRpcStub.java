@@ -181,8 +181,8 @@ public class ClientServerRpcStub implements ClientServerRpc {
     }
 
     @Override
-    public CompletableFuture<CreateTransactionResponse> createTransaction() {
-        return sendRequest(null, RpcTypes.CREATE_TRANSACTION_REQUEST);
+    public CompletableFuture<CreateTransactionResponse> createTransaction(CreateTransactionRequest request) {
+        return sendRequest(request, RpcTypes.CREATE_TRANSACTION_REQUEST);
     }
 
     @Override

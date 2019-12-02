@@ -21,6 +21,7 @@ import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.VoterState;
+import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
 import io.journalkeeper.core.entry.internal.CreateSnapshotEntry;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.journal.Journal;
@@ -895,15 +896,15 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         return now <= leaderShipDeadLineMs.get();
     }
 
-    CompletableFuture<UUID> createTransaction() {
-        return journalTransactionManager.createTransaction();
+    CompletableFuture<JournalKeeperTransactionContext> createTransaction(Map<String, String> context) {
+        return journalTransactionManager.createTransaction(context);
     }
 
     CompletableFuture<Void> completeTransaction(UUID transactionId, boolean commitOrAbort) {
         return journalTransactionManager.completeTransaction(transactionId, commitOrAbort);
     }
 
-    Collection<UUID> getOpeningTransactions() {
+    Collection<JournalKeeperTransactionContext> getOpeningTransactions() {
         return journalTransactionManager.getOpeningTransactions();
     }
 

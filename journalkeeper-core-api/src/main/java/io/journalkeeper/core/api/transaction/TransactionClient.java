@@ -13,14 +13,12 @@
  */
 package io.journalkeeper.core.api.transaction;
 
-import io.journalkeeper.core.api.RaftJournal;
-import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.UpdateRequest;
 
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.UUID;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -36,7 +34,15 @@ public interface TransactionClient<E> {
      * 开启一个新事务，并返回事务ID。
      * @return 事务ID
      */
-    CompletableFuture<UUID> createTransaction();
+    default CompletableFuture<TransactionContext> createTransaction() {
+        return createTransaction(Collections.emptyMap());
+    }
+    /**
+     * 开启一个新事务，并返回事务ID。
+     * @param context 事务上下文
+     * @return 事务ID
+     */
+    CompletableFuture<TransactionContext> createTransaction(Map<String, String> context);
 
     /**
      * 结束事务，可能是提交或者回滚事务。
@@ -44,13 +50,13 @@ public interface TransactionClient<E> {
      * @param commitOrAbort true：提交事务，false：回滚事务。
      * @return 执行成功返回null，失败抛出异常。
      */
-    CompletableFuture<Void> completeTransaction(UUID transactionId, boolean commitOrAbort);
+    CompletableFuture<Void> completeTransaction(TransactionId transactionId, boolean commitOrAbort);
 
     /**
      * 查询进行中的事务。
      * @return 进行中的事务ID列表。
      */
-    CompletableFuture<Collection<UUID>> getOpeningTransactions();
+    CompletableFuture<Collection<TransactionContext>> getOpeningTransactions();
 
     /**
      * 写入事务操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
@@ -60,7 +66,7 @@ public interface TransactionClient<E> {
      * @param includeHeader entry中是否包含Header
      * @return 执行成功返回null，失败抛出异常。
      */
-    default CompletableFuture<Void> update(UUID transactionId, UpdateRequest<E> updateRequest, boolean includeHeader){
+    default CompletableFuture<Void> update(TransactionId transactionId, UpdateRequest<E> updateRequest, boolean includeHeader){
         return update(transactionId, Collections.singletonList(updateRequest), includeHeader);
     }
 
@@ -72,7 +78,7 @@ public interface TransactionClient<E> {
      * @param updateRequest See {@link UpdateRequest}
      * @return 执行成功返回null，失败抛出异常。
      */
-    default CompletableFuture<Void> update(UUID transactionId, UpdateRequest<E> updateRequest) {
+    default CompletableFuture<Void> update(TransactionId transactionId, UpdateRequest<E> updateRequest) {
         return update(transactionId, updateRequest, false);
     }
 
@@ -84,7 +90,7 @@ public interface TransactionClient<E> {
      * @param updateRequests See {@link UpdateRequest}
      * @return 执行成功返回null，失败抛出异常。
      */
-    default CompletableFuture<Void> update(UUID transactionId, List<UpdateRequest<E>> updateRequests) {
+    default CompletableFuture<Void> update(TransactionId transactionId, List<UpdateRequest<E>> updateRequests) {
         return update(transactionId, updateRequests, false);
     }
 
@@ -96,6 +102,6 @@ public interface TransactionClient<E> {
      * @param includeHeader entry中是否包含Header
      * @return 执行成功返回null，失败抛出异常。
      */
-    CompletableFuture<Void> update(UUID transactionId, List<UpdateRequest<E>> updateRequests, boolean includeHeader);
+    CompletableFuture<Void> update(TransactionId transactionId, List<UpdateRequest<E>> updateRequests, boolean includeHeader);
 
 }

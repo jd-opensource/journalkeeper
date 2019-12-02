@@ -15,6 +15,8 @@ package io.journalkeeper.journalstore;
 
 import io.journalkeeper.core.BootStrap;
 import io.journalkeeper.core.api.*;
+import io.journalkeeper.core.api.transaction.TransactionContext;
+import io.journalkeeper.core.api.transaction.TransactionId;
 import io.journalkeeper.core.api.transaction.TransactionalJournalStore;
 import io.journalkeeper.core.entry.DefaultJournalEntryParser;
 import io.journalkeeper.core.entry.internal.ReservedPartition;
@@ -70,7 +72,7 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
     }
 
     @Override
-    public CompletableFuture<Void> append(UUID transactionId, UpdateRequest<byte []> updateRequest, boolean includeHeader) {
+    public CompletableFuture<Void> append(TransactionId transactionId, UpdateRequest<byte []> updateRequest, boolean includeHeader) {
         ReservedPartition.validatePartition(updateRequest.getPartition());
         return raftClient.update(transactionId, updateRequest, includeHeader);
     }
@@ -84,7 +86,7 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
     }
 
     @Override
-    public CompletableFuture<Void> append(UUID transactionId, List<UpdateRequest<byte []>> updateRequests, boolean includeHeader) {
+    public CompletableFuture<Void> append(TransactionId transactionId, List<UpdateRequest<byte []>> updateRequests, boolean includeHeader) {
         for (UpdateRequest<byte[]> updateRequest : updateRequests) {
             ReservedPartition.validatePartition(updateRequest.getPartition());
         }
@@ -164,17 +166,17 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
     }
 
     @Override
-    public CompletableFuture<UUID> createTransaction() {
-        return raftClient.createTransaction();
+    public CompletableFuture<TransactionContext> createTransaction(Map<String, String> context) {
+        return raftClient.createTransaction(context);
     }
 
     @Override
-    public CompletableFuture<Void> completeTransaction(UUID transactionId, boolean commitOrAbort) {
+    public CompletableFuture<Void> completeTransaction(TransactionId transactionId, boolean commitOrAbort) {
         return raftClient.completeTransaction(transactionId, commitOrAbort);
     }
 
     @Override
-    public CompletableFuture<Collection<UUID>> getOpeningTransactions() {
+    public CompletableFuture<Collection<TransactionContext>> getOpeningTransactions() {
         return raftClient.getOpeningTransactions();
     }
 

@@ -108,6 +108,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.StreamSupport;
 
 import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
@@ -115,6 +116,8 @@ import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITIONS_START;
 import static io.journalkeeper.core.server.ThreadNames.FLUSH_JOURNAL_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.PRINT_METRIC_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
+import static io.journalkeeper.core.transaction.JournalTransactionManager.TRANSACTION_PARTITION_COUNT;
+import static io.journalkeeper.core.transaction.JournalTransactionManager.TRANSACTION_PARTITION_START;
 
 // TODO: Add an UUID for each server instance,
 //  so multiple server instance of one process
@@ -280,6 +283,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         this.uri = uri;
         Set<Integer> partitions = new HashSet<>(userPartitions);
         partitions.add(INTERNAL_PARTITION);
+        partitions.addAll(IntStream.range(TRANSACTION_PARTITION_START, TRANSACTION_PARTITION_START + TRANSACTION_PARTITION_COUNT).boxed().collect(Collectors.toSet()));
         state.init(statePath(),voters, partitions, preferredLeader);
         createFistSnapshot(voters, partitions, preferredLeader);
         lastSavedServerMetadata = createServerMetadata();
@@ -445,6 +449,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
             for (Integer partition : toBeRemoved) {
                 journal.removePartition(partition);
             }
+
             logger.info("Journal repartitioned, partitions: {}, path: {}.",
                     journal.getPartitions(), journalPath().toAbsolutePath().toString());
         } catch (IOException e) {

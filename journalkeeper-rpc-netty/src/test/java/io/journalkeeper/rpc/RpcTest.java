@@ -19,6 +19,8 @@ import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.VoterState;
+import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
+import io.journalkeeper.core.api.transaction.UUIDTransactionId;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.exceptions.NotLeaderException;
@@ -29,6 +31,7 @@ import io.journalkeeper.rpc.client.CompleteTransactionRequest;
 import io.journalkeeper.rpc.client.CompleteTransactionResponse;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
 import io.journalkeeper.rpc.client.ConvertRollResponse;
+import io.journalkeeper.rpc.client.CreateTransactionRequest;
 import io.journalkeeper.rpc.client.CreateTransactionResponse;
 import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
 import io.journalkeeper.rpc.client.GetServerStatusResponse;
@@ -76,6 +79,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -86,6 +90,8 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.argThat;
@@ -371,7 +377,7 @@ public class RpcTest {
 
         Assert.assertEquals(leader, response.getClusterConfiguration().getLeader());
         Assert.assertEquals(voters, response.getClusterConfiguration().getVoters());
-        Assert.assertTrue(response.getClusterConfiguration().getObservers().isEmpty());
+        Assert.assertNull(response.getClusterConfiguration().getObservers());
     }
 
 
@@ -730,15 +736,22 @@ public class RpcTest {
     public void testCreateTransaction() throws ExecutionException, InterruptedException {
 
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
+        Map<String, String> context = new HashMap<>();
+        context.put("aaa", "bbb");
+        context.put("ccc", "dddd");
+        CreateTransactionRequest request = new CreateTransactionRequest(context);
         CreateTransactionResponse response, serverResponse;
-        serverResponse = new CreateTransactionResponse(UUID.randomUUID());
+        serverResponse = new CreateTransactionResponse(new UUIDTransactionId(UUID.randomUUID()), System.currentTimeMillis());
         // Test success response
-        when(serverRpcMock.createTransaction())
+        when(serverRpcMock.createTransaction(any(CreateTransactionRequest.class)))
                 .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
-        response = serverRpc.createTransaction().get();
+        response = serverRpc.createTransaction(request).get();
         Assert.assertTrue(response.success());
         Assert.assertEquals(serverResponse.getTransactionId(), response.getTransactionId());
 
+        verify(serverRpcMock).createTransaction(argThat(
+                (CreateTransactionRequest r) -> r.getContext().equals(context)
+        ));
     }
 
     @Test
@@ -746,13 +759,25 @@ public class RpcTest {
 
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         GetOpeningTransactionsResponse response, serverResponse;
-        serverResponse = new GetOpeningTransactionsResponse(Arrays.asList(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()));
+
+        Collection<JournalKeeperTransactionContext> contexts = IntStream.range(0, 3)
+                .mapToObj(i -> {
+                    Map<String, String> context = new HashMap<>();
+                    context.put("key", String.valueOf(i));
+                    return new JournalKeeperTransactionContext(
+                            new UUIDTransactionId(UUID.randomUUID()),
+                            context,
+                            System.currentTimeMillis()
+                    );
+                }).collect(Collectors.toList());
+
+        serverResponse = new GetOpeningTransactionsResponse(contexts);
         // Test success response
         when(serverRpcMock.getOpeningTransactions())
                 .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
         response = serverRpc.getOpeningTransactions().get();
         Assert.assertTrue(response.success());
-        Assert.assertEquals(serverResponse.getTransactionIds(), response.getTransactionIds());
+        Assert.assertEquals(serverResponse.getTransactionContexts(), response.getTransactionContexts());
 
     }
 

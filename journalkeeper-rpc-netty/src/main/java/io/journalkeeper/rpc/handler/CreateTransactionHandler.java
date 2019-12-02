@@ -38,7 +38,7 @@ public class CreateTransactionHandler implements CommandHandler, Type {
     @Override
     public Command handle(Transport transport, Command command) {
         try {
-            serverRpc.createTransaction()
+            serverRpc.createTransaction(GenericPayload.get(command.getPayload()))
                     .exceptionally(CreateTransactionResponse::new)
                     .thenAccept(response -> CommandSupport.sendResponse(response, RpcTypes.CREATE_TRANSACTION_RESPONSE, command, transport));
         } catch (Throwable throwable) {

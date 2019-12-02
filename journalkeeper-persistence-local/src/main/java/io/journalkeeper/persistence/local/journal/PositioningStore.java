@@ -157,10 +157,12 @@ public class PositioningStore implements JournalPersistence,Closeable {
         leftPosition.set(this.storeFileMap.isEmpty()? min : this.storeFileMap.firstKey());
 
         resetWriteStoreFile();
-        logger.info("Store loaded, left: {}, right: {},  base: {}.",
-                ThreadSafeFormat.formatWithComma(min()),
-                ThreadSafeFormat.formatWithComma(max()),
-                base.getAbsolutePath());
+        if(logger.isDebugEnabled()) {
+            logger.debug("Store loaded, left: {}, right: {},  base: {}.",
+                    ThreadSafeFormat.formatWithComma(min()),
+                    ThreadSafeFormat.formatWithComma(max()),
+                    base.getAbsolutePath());
+        }
     }
 
     private Config toConfig(Properties properties) {

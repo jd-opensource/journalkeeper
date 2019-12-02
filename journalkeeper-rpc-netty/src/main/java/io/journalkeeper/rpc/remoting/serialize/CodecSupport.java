@@ -87,28 +87,38 @@ public class CodecSupport {
     }
 
     public static <T> void encodeCollection(ByteBuf byteBuf, Collection<T> collection, Encoder itemEncoder) {
-        if(null == collection) collection = Collections.emptyList();
-        byteBuf.writeInt(collection.size());
-        collection.forEach(item -> itemEncoder.encode(item , byteBuf));
+        if(null == collection) {
+            byteBuf.writeInt(-1);
+        } else {
+            byteBuf.writeInt(collection.size());
+            collection.forEach(item -> itemEncoder.encode(item, byteBuf));
+        }
     }
 
 
     public static <K,V> void encodeMap(ByteBuf byteBuf, Map<K,V> map, Encoder keyEncoder, Encoder valueEncoder) {
-        if(null == map) map = Collections.emptyMap();
-        byteBuf.writeInt(map.size());
-        map.forEach((key, value) -> {
-            keyEncoder.encode(key, byteBuf);
-            valueEncoder.encode(value, byteBuf);
-        });
+        if(null == map) {
+            byteBuf.writeInt(-1);
+        } else {
+            byteBuf.writeInt(map.size());
+            map.forEach((key, value) -> {
+                keyEncoder.encode(key, byteBuf);
+                valueEncoder.encode(value, byteBuf);
+            });
+        }
     }
     @SuppressWarnings("unchecked")
     public static <T> List<T> decodeList(ByteBuf byteBuf, Decoder itemDecoder) {
         int size = byteBuf.readInt();
-        List<T> list = new ArrayList<>(size);
-        for (int i = 0; i < size; i++) {
-            list.add((T) itemDecoder.decode(byteBuf));
+        if(size < 0) {
+            return null;
+        } else {
+            List<T> list = new ArrayList<>(size);
+            for (int i = 0; i < size; i++) {
+                list.add((T) itemDecoder.decode(byteBuf));
+            }
+            return list;
         }
-        return list;
     }
 
     public static <T> Collection<T> decodeCollection(ByteBuf byteBuf, Decoder itemDecoder) {
@@ -118,11 +128,15 @@ public class CodecSupport {
     @SuppressWarnings("unchecked")
     public static <K,V> Map<K, V> decodeMap(ByteBuf byteBuf, Decoder keyDecoder, Decoder valueDecoder) {
         int size = byteBuf.readInt();
-        Map<K, V> map = new HashMap<>(size);
-        for (int i = 0; i < size; i++) {
-            map.put((K) keyDecoder.decode(byteBuf), (V )valueDecoder.decode(byteBuf));
+        if( size < 0) {
+            return null;
+        } else {
+            Map<K, V> map = new HashMap<>(size);
+            for (int i = 0; i < size; i++) {
+                map.put((K) keyDecoder.decode(byteBuf), (V) valueDecoder.decode(byteBuf));
+            }
+            return map;
         }
-        return map;
     }
 
     public static void encodeUri(ByteBuf byteBuf, URI uri) {

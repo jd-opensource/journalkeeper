@@ -37,7 +37,7 @@ public interface RaftServer extends StateServer {
     default void init(URI uri, List<URI> voters, Set<Integer> partitions) throws IOException{
         init(uri, voters, partitions, null);
     }
-    void init(URI uri, List<URI> voters, Set<Integer> partitions, URI preferredLeader) throws IOException;
+    void init(URI uri, List<URI> voters, Set<Integer> partitions, URI preferredLeader) throws IOException ;
     boolean isInitialized();
     void recover() throws IOException;
     URI serverUri();

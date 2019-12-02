@@ -13,7 +13,16 @@
  */
 package io.journalkeeper.rpc.codec;
 
+import io.journalkeeper.rpc.client.CreateTransactionRequest;
+import io.journalkeeper.rpc.header.JournalKeeperHeader;
+import io.journalkeeper.rpc.remoting.serialize.CodecSupport;
+import io.journalkeeper.rpc.remoting.transport.codec.Decoder;
+import io.journalkeeper.rpc.remoting.transport.codec.Encoder;
 import io.journalkeeper.rpc.remoting.transport.command.Type;
+import io.journalkeeper.rpc.remoting.transport.exception.TransportException;
+import io.netty.buffer.ByteBuf;
+
+import java.util.HashMap;
 
 import static io.journalkeeper.rpc.codec.RpcTypes.CREATE_TRANSACTION_REQUEST;
 import static io.journalkeeper.rpc.codec.RpcTypes.LAST_APPLIED_REQUEST;
@@ -22,9 +31,25 @@ import static io.journalkeeper.rpc.codec.RpcTypes.LAST_APPLIED_REQUEST;
  * @author LiYue
  * Date: 2019-04-02
  */
-public class CreateTransactionRequestCodec extends VoidPayloadCodec implements Type {
+public class CreateTransactionRequestCodec extends GenericPayloadCodec<CreateTransactionRequest> implements Type {
     @Override
     public int type() {
         return CREATE_TRANSACTION_REQUEST;
+    }
+
+    @Override
+    protected void encodePayload(CreateTransactionRequest request, ByteBuf buffer) throws Exception {
+        CodecSupport.encodeMap(buffer, request.getContext(),
+                (obj, buffer1) -> CodecSupport.encodeString(buffer1, (String) obj),
+                (obj, buffer1) -> CodecSupport.encodeString(buffer1, (String) obj));
+    }
+
+    @Override
+    protected CreateTransactionRequest decodePayload(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
+        return new CreateTransactionRequest(
+                CodecSupport.decodeMap(buffer,
+                        CodecSupport::decodeString,
+                        CodecSupport::decodeString)
+        );
     }
 }

@@ -210,8 +210,8 @@ public class Server<E, ER, Q, QR>
     }
 
     @Override
-    public CompletableFuture<CreateTransactionResponse> createTransaction() {
-        return server.createTransaction();
+    public CompletableFuture<CreateTransactionResponse> createTransaction(CreateTransactionRequest request) {
+        return server.createTransaction(request);
     }
 
     @Override

@@ -18,18 +18,20 @@ import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.UpdateRequest;
+import io.journalkeeper.core.api.transaction.TransactionContext;
+import io.journalkeeper.core.api.transaction.TransactionId;
+import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
+import io.journalkeeper.core.api.transaction.UUIDTransactionId;
 import io.journalkeeper.rpc.client.*;
-import io.journalkeeper.utils.threads.NamedThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 /**
@@ -75,32 +77,37 @@ public class DefaultRaftClient<E, ER, Q, QR> extends AbstractClient implements R
     }
 
     @Override
-    public CompletableFuture<UUID> createTransaction() {
-        return clientRpc.invokeClientLeaderRpc(ClientServerRpc::createTransaction)
+    public CompletableFuture<TransactionContext> createTransaction(Map<String, String> context) {
+        return clientRpc.invokeClientLeaderRpc(rpc -> rpc.createTransaction(new CreateTransactionRequest(context)))
                 .thenApply(super::checkResponse)
-                .thenApply(CreateTransactionResponse::getTransactionId);
+                .thenApply(response -> new JournalKeeperTransactionContext(
+                        response.getTransactionId(),
+                        context,
+                        response.getTimestamp()
+                ));
     }
 
     @Override
-    public CompletableFuture<Void> completeTransaction(UUID transactionId, boolean commitOrAbort) {
+    public CompletableFuture<Void> completeTransaction(TransactionId transactionId, boolean commitOrAbort) {
         return clientRpc.invokeClientLeaderRpc(leaderRpc -> leaderRpc.completeTransaction(
-                new CompleteTransactionRequest(transactionId, commitOrAbort)))
+                new CompleteTransactionRequest(((UUIDTransactionId) transactionId).getUuid(), commitOrAbort)))
                 .thenApply(super::checkResponse)
                 .thenApply(response -> null);
     }
 
     @Override
-    public CompletableFuture<Collection<UUID>> getOpeningTransactions() {
+    public CompletableFuture<Collection<TransactionContext>> getOpeningTransactions() {
         return clientRpc.invokeClientLeaderRpc(ClientServerRpc::getOpeningTransactions)
                 .thenApply(super::checkResponse)
-                .thenApply(GetOpeningTransactionsResponse::getTransactionIds);
+                .thenApply(GetOpeningTransactionsResponse::getTransactionContexts)
+                .thenApply(ctxs -> new ArrayList<>(ctxs));
     }
 
     @Override
-    public CompletableFuture<Void> update(UUID transactionId, List<UpdateRequest<E>> entries, boolean includeHeader) {
+    public CompletableFuture<Void> update(TransactionId transactionId, List<UpdateRequest<E>> entries, boolean includeHeader) {
         return
                 clientRpc.invokeClientLeaderRpc(rpc -> rpc.updateClusterState(new UpdateClusterStateRequest(
-                        transactionId,
+                        ((UUIDTransactionId) transactionId).getUuid(),
                         entries.stream().map(r -> new SerializedUpdateRequest(r, entrySerializer)).collect(Collectors.toList()),
                         includeHeader)))
                         .thenApply(this::checkResponse)
