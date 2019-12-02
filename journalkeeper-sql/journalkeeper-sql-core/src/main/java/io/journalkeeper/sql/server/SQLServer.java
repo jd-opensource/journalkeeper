@@ -15,6 +15,7 @@ package io.journalkeeper.sql.server;
 
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.BootStrap;
+import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.sql.client.SQLClient;
@@ -98,7 +99,7 @@ public class SQLServer implements StateServer {
         if (client == null) {
             synchronized (this) {
                 if (client == null) {
-                    client = new SQLClient(servers, config, bootStrap.getClient());
+                    client = new SQLClient(servers, config, bootStrap);
                 }
             }
         }
@@ -108,12 +109,40 @@ public class SQLServer implements StateServer {
     @Override
     public void start() {
         try {
+            bootStrap.getServer().start();
+        } catch (Exception e) {
+            throw new SQLException(e);
+        }
+    }
+
+    public void tryStart() {
+        try {
             RaftServer server = bootStrap.getServer();
             if (!server.isInitialized()) {
                 server.init(current, servers);
             }
             server.recover();
             server.start();
+        } catch (Exception e) {
+            throw new SQLException(e);
+        }
+    }
+
+    public void recover() {
+        try {
+            bootStrap.getServer().recover();
+        } catch (Exception e) {
+            throw new SQLException(e);
+        }
+    }
+
+    public boolean isInitialized() {
+        return bootStrap.getServer().isInitialized();
+    }
+
+    public void init() {
+        try {
+            bootStrap.getServer().init(current, servers);
         } catch (Exception e) {
             throw new SQLException(e);
         }
@@ -127,5 +156,9 @@ public class SQLServer implements StateServer {
     @Override
     public ServerState serverState() {
         return bootStrap.getServer().serverState();
+    }
+
+    public AdminClient getAdminClient() {
+        return bootStrap.getAdminClient();
     }
 }

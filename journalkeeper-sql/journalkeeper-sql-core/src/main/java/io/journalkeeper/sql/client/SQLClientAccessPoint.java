@@ -15,15 +15,11 @@ package io.journalkeeper.sql.client;
 
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.BootStrap;
-import io.journalkeeper.core.client.DefaultRaftClient;
-import io.journalkeeper.rpc.RpcAccessPointFactory;
-import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.sql.client.domain.ReadRequest;
 import io.journalkeeper.sql.client.domain.ReadResponse;
 import io.journalkeeper.sql.client.domain.WriteRequest;
 import io.journalkeeper.sql.client.domain.WriteResponse;
 import io.journalkeeper.sql.serializer.KryoSerializer;
-import io.journalkeeper.utils.spi.ServiceSupport;
 
 import java.net.URI;
 import java.util.List;
@@ -69,7 +65,6 @@ public class SQLClientAccessPoint {
                 new BootStrap<>(servers, writeRequestSerializer,
                 writeResponseSerializer, readRequestSerializer, readResponseSerializer, config);
 
-        return new SQLClient(servers, config,
-                bootStrap.getClient());
+        return new SQLClient(servers, config, bootStrap);
     }
 }
