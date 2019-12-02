@@ -24,7 +24,10 @@ import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
 import io.journalkeeper.core.entry.internal.CreateSnapshotEntry;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
+import io.journalkeeper.core.entry.internal.InternalEntryType;
+import io.journalkeeper.core.entry.internal.LeaderAnnouncementEntry;
 import io.journalkeeper.core.journal.Journal;
+import io.journalkeeper.core.state.ApplyInternalEntryInterceptor;
 import io.journalkeeper.core.state.ApplyReservedEntryInterceptor;
 import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.core.state.JournalKeeperState;
@@ -155,9 +158,11 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     private final JournalTransactionManager journalTransactionManager;
     private final ApplyReservedEntryInterceptor journalTransactionInterceptor;
+    private final ApplyInternalEntryInterceptor leaderAnnouncementInterceptor;
     private final NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> snapshots;
     private final int snapshotIntervalSec;
     private ScheduledFuture takeSnapshotFuture;
+    private final AtomicBoolean isLeaderAnnouncementApplied = new AtomicBoolean(false);
     Leader(Journal journal, JournalKeeperState state, Map<Long, JournalKeeperState<E, ER, Q, QR>> immutableSnapshots,
            int currentTerm,
            URI serverUri,
@@ -201,6 +206,16 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.heartbeatIntervalMs = heartbeatIntervalMs;
         this.journalTransactionManager = new JournalTransactionManager(journal, server, scheduledExecutor, transactionTimeoutMs);
         this.journalTransactionInterceptor = (journalEntry, index) -> journalTransactionManager.applyEntry(journalEntry);
+        this.leaderAnnouncementInterceptor = (type, internalEntry) -> {
+            if (type == InternalEntryType.TYPE_LEADER_ANNOUNCEMENT) {
+               LeaderAnnouncementEntry leaderAnnouncementEntry = InternalEntriesSerializeSupport.parse(internalEntry);
+               if (leaderAnnouncementEntry.getTerm() == currentTerm) {
+                   logger.info("Leader announcement applied! Leader: {}, term: {}.", serverUri, currentTerm);
+                   isLeaderAnnouncementApplied.set(true);
+                   state.removeInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT);
+               }
+            }
+        };
     }
 
     private AsyncLoopThread buildLeaderAppendJournalEntryThread() {
@@ -550,7 +565,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
             }
         }
-        if (N > journal.commitIndex() && journal.getTerm(N - 1) == currentTerm) {
+        if (N > journal.commitIndex() && getTerm(N - 1) == currentTerm) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Set commitIndex {} to {}, {}.", journal.commitIndex(), N, voterInfo());
             }
@@ -764,7 +779,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
         journalTransactionManager.start();
         state.addInterceptor(this.journalTransactionInterceptor);
-
+        state.addInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT, this.leaderAnnouncementInterceptor);
         if (snapshotIntervalSec > 0) {
             takeSnapshotFuture = scheduledExecutor.scheduleAtFixedRate(this::takeSnapshotPeriodically,
                     ThreadLocalRandom.current().nextLong(0, SNAPSHOT_PERIOD_SEC),
@@ -795,6 +810,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
             takeSnapshotFuture.cancel(true);
         }
         mayBeWaitingForAppendJournals();
+
+        state.removeInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT);
         state.removeInterceptor(this.journalTransactionInterceptor);
         journalTransactionManager.stop();
         this.threads.stopThread(LEADER_APPEND_ENTRY_THREAD);
@@ -892,8 +909,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
      */
     private boolean checkLeadership() {
 
-        long now = System.currentTimeMillis();
-        return now <= leaderShipDeadLineMs.get();
+        return isLeaderAnnouncementApplied.get() && System.currentTimeMillis() <= leaderShipDeadLineMs.get();
     }
 
     CompletableFuture<JournalKeeperTransactionContext> createTransaction(Map<String, String> context) {
