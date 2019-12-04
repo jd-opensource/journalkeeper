@@ -14,15 +14,11 @@
 package io.journalkeeper.rpc.server;
 
 import io.journalkeeper.rpc.RpcException;
-import io.journalkeeper.rpc.URIParser;
+import io.journalkeeper.rpc.UriSupport;
 import io.journalkeeper.rpc.remoting.transport.TransportClient;
 
-import java.net.InetSocketAddress;
 import java.net.URI;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
@@ -34,7 +30,6 @@ public class JournalKeeperServerRpcAccessPoint implements ServerRpcAccessPoint {
     private final Properties properties;
     private final TransportClient transportClient;
     private Map<URI, ServerRpcStub> serverInstances = new HashMap<>();
-    private List<URIParser> uriParsers = new LinkedList<>();
 
     public JournalKeeperServerRpcAccessPoint(TransportClient transportClient, Properties properties) {
         this.transportClient = transportClient;
@@ -47,11 +42,7 @@ public class JournalKeeperServerRpcAccessPoint implements ServerRpcAccessPoint {
     }
 
     private ServerRpcStub createServerRpc(URI server) {
-        return new ServerRpcStub(transportClient, server, parseUri(server));
-    }
-    @Override
-    public void addUriParser(URIParser... uriParser) {
-        uriParsers.addAll(Arrays.asList(uriParser));
+        return new ServerRpcStub(transportClient, server, UriSupport.parseUri(server));
     }
     @Override
     public ServerRpc getServerRpcAgent(URI uri) {
@@ -65,15 +56,4 @@ public class JournalKeeperServerRpcAccessPoint implements ServerRpcAccessPoint {
         transportClient.stop();
     }
 
-    private InetSocketAddress parseUri(URI uri) {
-
-        for (URIParser uriParser : uriParsers) {
-            for (String scheme : uriParser.supportedSchemes()) {
-                if(scheme.equals(uri.getScheme())) {
-                    return uriParser.parse(uri);
-                }
-            }
-        }
-        return new InetSocketAddress(uri.getHost(), uri.getPort());
-    }
 }

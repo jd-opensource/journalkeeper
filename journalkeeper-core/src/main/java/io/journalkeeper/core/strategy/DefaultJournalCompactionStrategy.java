@@ -64,9 +64,8 @@ public class DefaultJournalCompactionStrategy implements JournalCompactionStrate
                     break;
                 }
             }
-
+            logger.info("Calculate journal compaction index: {}, current timestamp: {}.", index, ThreadSafeFormat.format(new Date(now)));
         }
-        logger.info("Calculate journal compaction index: {}, current timestamp: {}.", index, ThreadSafeFormat.format(new Date(now)));
         return index;
     }
 }

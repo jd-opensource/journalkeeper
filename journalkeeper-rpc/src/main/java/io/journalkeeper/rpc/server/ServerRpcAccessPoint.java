@@ -13,8 +13,6 @@
  */
 package io.journalkeeper.rpc.server;
 
-import io.journalkeeper.rpc.URIParser;
-
 import java.net.URI;
 
 /**
@@ -24,6 +22,5 @@ import java.net.URI;
  */
 public interface ServerRpcAccessPoint {
     ServerRpc getServerRpcAgent(URI uri);
-    void addUriParser(URIParser... uriParser);
     void stop();
 }
