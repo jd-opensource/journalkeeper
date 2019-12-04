@@ -184,14 +184,13 @@ public class IpUtil {
         if (address == null) {
             return null;
         }
-        if (address instanceof InetSocketAddress) {
+        if (address instanceof InetSocketAddress && !((InetSocketAddress) address).isUnresolved()) {
             InetSocketAddress isa = (InetSocketAddress) address;
+
             StringBuilder builder = new StringBuilder(50);
-            if (address instanceof InetSocketAddress) {
-                builder.append(isa.getAddress().getHostAddress());
-                String separator = isValidIpV4Address(((InetSocketAddress) address).getHostString()) ? IPV4_PORT_SEPARATOR : IPV6_PORT_SEPARATOR;
-                builder.append(separator).append(isa.getPort());
-            }
+            builder.append(isa.getAddress().getHostAddress());
+            String separator = isValidIpV4Address(isa.getAddress().getHostAddress()) ? IPV4_PORT_SEPARATOR : IPV6_PORT_SEPARATOR;
+            builder.append(separator).append(isa.getPort());
             return builder.toString();
         } else {
             return address.toString();
