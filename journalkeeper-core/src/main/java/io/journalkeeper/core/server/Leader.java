@@ -211,8 +211,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                LeaderAnnouncementEntry leaderAnnouncementEntry = InternalEntriesSerializeSupport.parse(internalEntry);
                if (leaderAnnouncementEntry.getTerm() == currentTerm) {
                    logger.info("Leader announcement applied! Leader: {}, term: {}.", serverUri, currentTerm);
-                   isLeaderAnnouncementApplied.set(true);
-                   state.removeInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT);
+                   isLeaderAnnouncementApplied.compareAndSet(false, true);
                }
             }
         };
@@ -806,7 +805,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         }
         mayBeWaitingForAppendJournals();
 
-        state.removeInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT);
+        state.removeInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT, leaderAnnouncementInterceptor);;
         state.removeInterceptor(this.journalTransactionInterceptor);
         journalTransactionManager.stop();
         this.threads.stopThread(LEADER_APPEND_ENTRY_THREAD);

@@ -57,6 +57,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ConcurrentModificationException;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -83,7 +84,7 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable {
     private Path path;
     private State<E, ER, Q, QR> userState;
     private InternalState internalState;
-    private final Map<InternalEntryType, ApplyInternalEntryInterceptor> internalEntryInterceptors = new HashMap<>();
+    private final Map<InternalEntryType, List<ApplyInternalEntryInterceptor>> internalEntryInterceptors = new HashMap<>();
     private final List<ApplyReservedEntryInterceptor> reservedEntryInterceptors = new CopyOnWriteArrayList<>();
     private final StateFactory<E, ER, Q, QR> userStateFactory;
     private final MetadataPersistence metadataPersistence;
@@ -180,19 +181,23 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable {
         return metadataPersistence.load(internalStateFile, PersistInternalState.class).toInternalState();
     }
 
-    public void addInterceptor(InternalEntryType type, ApplyInternalEntryInterceptor internalEntryInterceptor) {
-        this.internalEntryInterceptors.put(type, internalEntryInterceptor);
+    public synchronized void addInterceptor(InternalEntryType type, ApplyInternalEntryInterceptor internalEntryInterceptor) {
+        List<ApplyInternalEntryInterceptor> list = this.internalEntryInterceptors.computeIfAbsent(type, key -> new LinkedList<>());
+        list.add(internalEntryInterceptor);
     }
 
-    public void removeInterceptor(InternalEntryType type) {
-        this.internalEntryInterceptors.remove(type);
+    public synchronized void removeInterceptor(InternalEntryType type, ApplyInternalEntryInterceptor internalEntryInterceptor) {
+        List<ApplyInternalEntryInterceptor> list = internalEntryInterceptors.get(type);
+        if(null != list) {
+            list.remove(internalEntryInterceptor);
+        }
     }
 
-    public void addInterceptor(ApplyReservedEntryInterceptor interceptor) {
+    public synchronized void addInterceptor(ApplyReservedEntryInterceptor interceptor) {
         reservedEntryInterceptors.add(interceptor);
     }
 
-    public void removeInterceptor(ApplyReservedEntryInterceptor interceptor) {
+    public synchronized void removeInterceptor(ApplyReservedEntryInterceptor interceptor) {
         reservedEntryInterceptors.remove(interceptor);
     }
 
@@ -257,9 +262,11 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable {
             default:
         }
 
-        ApplyInternalEntryInterceptor interceptor = internalEntryInterceptors.get(type);
-        if (null != interceptor) {
-            interceptor.applyInternalEntry(type, internalEntry);
+        List<ApplyInternalEntryInterceptor> interceptors = internalEntryInterceptors.get(type);
+        if (null != interceptors) {
+            for (ApplyInternalEntryInterceptor interceptor : interceptors) {
+                interceptor.applyInternalEntry(type, internalEntry);
+            }
         }
 
         try {
