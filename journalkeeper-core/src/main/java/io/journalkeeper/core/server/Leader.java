@@ -148,7 +148,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private final ServerRpcProvider serverRpcProvider;
     private final ExecutorService asyncExecutor;
     private final ScheduledExecutorService scheduledExecutor;
-
+    private ScheduledFuture heartbeatScheduledFuture;
     private final VoterConfigManager voterConfigManager;
     private final MetricProvider metricProvider;
     private final CheckTermInterceptor checkTermInterceptor;
@@ -370,21 +370,26 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                     sendAppendEntriesRequest(follower, request);
                     follower.setNextIndex(follower.getNextIndex() + entries.size());
                     hasData = true;
-                } else {
-                    // Send heartbeat
-                    if (System.currentTimeMillis() - follower.getLastHeartbeatRequestTime() >= heartbeatIntervalMs) {
-                        AsyncAppendEntriesRequest request =
-                                new AsyncAppendEntriesRequest(currentTerm, serverUri,
-                                        follower.getNextIndex() - 1, getPreLogTerm(follower.getNextIndex()),
-                                        Collections.emptyList(), journal.commitIndex(), maxIndex);
-                        sendAppendEntriesRequest(follower, request);
-                    }
                 }
             }
 
         } while (serverState() == ServerState.RUNNING &&
                 !Thread.currentThread().isInterrupted() &&
                 hasData);
+
+    }
+
+    private void sendHeartbeat() {
+        for (ReplicationDestination follower : followers) {
+            // Send heartbeat
+            if (System.currentTimeMillis() - follower.getLastHeartbeatRequestTime() >= heartbeatIntervalMs ) {
+                AsyncAppendEntriesRequest request =
+                        new AsyncAppendEntriesRequest(currentTerm, serverUri,
+                                follower.getNextIndex() - 1, getPreLogTerm(follower.getNextIndex()),
+                                Collections.emptyList(), journal.commitIndex(), journal.maxIndex());
+                sendAppendEntriesRequest(follower, request);
+            }
+        }
 
     }
 
@@ -475,7 +480,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                         follower.getUri(), response.getTerm(), response.getJournalIndex(), voterInfo());
             }
         } else if(request.getEntries().size() > 0 ){ // 心跳不重试
-            logger.warn("Replication response error: {}", response.errorString());
+
+            logger.warn("Replication response error: {}, time: {}.", response.errorString(), System.currentTimeMillis() - follower.lastHeartbeatRequestTime);
             delaySendAsyncAppendEntriesRpc(follower, request);
         }
     }
@@ -782,7 +788,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.threads.startThread(LEADER_CALLBACK_THREAD);
         this.threads.startThread(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD);
         this.threads.startThread(LEADER_REPLICATION_THREAD);
-
+        heartbeatScheduledFuture = scheduledExecutor.scheduleAtFixedRate(this::sendHeartbeat, heartbeatIntervalMs, heartbeatIntervalMs, TimeUnit.MILLISECONDS);
         journalTransactionManager.start();
         state.addInterceptor(this.journalTransactionInterceptor);
         state.addInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT, this.leaderAnnouncementInterceptor);
@@ -842,6 +848,9 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.threads.removeThread(LEADER_CALLBACK_THREAD);
         this.threads.removeThread(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD);
         this.threads.removeThread(LEADER_REPLICATION_THREAD);
+        if(null != heartbeatScheduledFuture) {
+            heartbeatScheduledFuture.cancel(false);
+        }
         removeAppendEntriesRpcMetrics();
         metricProvider.removeMetric(MetricNames.METRIC_APPEND_JOURNAL);
         metricProvider.removeMetric(MetricNames.METRIC_UPDATE_CLUSTER_STATE);
