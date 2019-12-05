@@ -77,17 +77,9 @@ public class RingBufferBelt implements CallbackResultBelt {
             c.getResponseFuture().completedExceptionally(new IllegalStateException());
             logger.warn("Callback index not match! next callback in the waiting buffer: {}, request callback index: {}, ", c.getPosition(), position);
         }
-
-        if(null == c) {
-            logger.warn("Callback index failed! The waiting buffer is empty, request callback index: {}.", position);
-            return;
-        }
-
-        if (c.getPosition() == position ) {
+        if (null != c && c.getPosition() == position ) {
             c = buffer.remove();
             c.getResponseFuture().putResult(result);
-        } else {
-            logger.warn("Callback index not match! next callback in the waitting buffer: {}, request callback index: {}, ", c.getPosition(), position);
         }
     }
 

@@ -481,7 +481,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
             }
         } else if(request.getEntries().size() > 0 ){ // 心跳不重试
 
-            logger.warn("Replication response error: {}, time: {}.", response.errorString(), System.currentTimeMillis() - follower.lastHeartbeatRequestTime);
+            logger.warn("Replication response error: {}.", response.errorString());
             delaySendAsyncAppendEntriesRpc(follower, request);
         }
     }
