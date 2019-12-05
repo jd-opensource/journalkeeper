@@ -81,6 +81,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
 import static io.journalkeeper.core.server.MetricNames.METRIC_APPEND_ENTRIES_RPC;
 import static io.journalkeeper.core.server.ThreadNames.FLUSH_JOURNAL_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.LEADER_APPEND_ENTRY_THREAD;
@@ -163,6 +164,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private final int snapshotIntervalSec;
     private ScheduledFuture takeSnapshotFuture;
     private final AtomicBoolean isLeaderAnnouncementApplied = new AtomicBoolean(false);
+    private final AtomicLong callbackBarrier = new AtomicLong(0L);
     Leader(Journal journal, JournalKeeperState state, Map<Long, JournalKeeperState<E, ER, Q, QR>> immutableSnapshots,
            int currentTerm,
            URI serverUri,
@@ -215,6 +217,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                }
             }
         };
+
+        this.callbackBarrier.set(journal.maxIndex());
     }
 
     private AsyncLoopThread buildLeaderAppendJournalEntryThread() {
@@ -309,18 +313,22 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
             journalEntries.add(entry);
         }
 
-        if(journalEntries.size() == 1) {
-            long offset = journal.append(journalEntries.get(0));
-            setCallback(request.getResponseConfig(), responseFuture, offset);
-        } else {
-            List<Long> offsets = journal.append(journalEntries);
-            for (Long offset : offsets) {
-                setCallback(request.getResponseConfig(), responseFuture, offset);
-            }
-        }
+        appendAndCallback(journalEntries, request.getResponseConfig(), responseFuture);
         threads.wakeupThread(LEADER_REPLICATION_THREAD);
         threads.wakeupThread(FLUSH_JOURNAL_THREAD);
         appendJournalMetric.end(journalEntries.stream().mapToLong(JournalEntry::getLength).sum());
+    }
+
+    private void appendAndCallback(List<JournalEntry> journalEntries, ResponseConfig responseConfig, ResponseFuture responseFuture) throws InterruptedException {
+        if(journalEntries.size() == 1) {
+            long offset = journal.append(journalEntries.get(0));
+            setCallback(responseConfig, responseFuture, offset);
+        } else {
+            List<Long> offsets = journal.append(journalEntries);
+            for (Long offset : offsets) {
+                setCallback(responseConfig, responseFuture, offset);
+            }
+        }
     }
 
     private void setCallback(ResponseConfig responseConfig, ResponseFuture responseFuture, long offset) throws InterruptedException {
@@ -332,6 +340,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
             replicationCallbacks.put(new Callback(offset, responseFuture));
             flushCallbacks.put(new Callback(offset, responseFuture));
         }
+        callbackBarrier.set(offset);
     }
 
     /**
@@ -701,8 +710,11 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     }
 
     private void callback() {
-//        replicationCallbacks.callbackBefore(state.lastApplied());
-        flushCallbacks.callbackBefore(journalFlushIndex.get());
+        long callbackIndex = journalFlushIndex.get();
+        while (callbackIndex > callbackBarrier.get()) {
+            Thread.yield();
+        }
+        flushCallbacks.callbackBefore(callbackIndex);
     }
 
     private String voterInfo() {
@@ -779,8 +791,21 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                     ThreadLocalRandom.current().nextLong(0, SNAPSHOT_PERIOD_SEC),
                     SNAPSHOT_PERIOD_SEC, TimeUnit.SECONDS);
         }
+        appendLeaderAnnouncementEntry();
     }
 
+    private void appendLeaderAnnouncementEntry() {
+        // Leader announcement
+        try {
+            byte[] payload = InternalEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(currentTerm));
+            JournalEntry journalEntry = journalEntryParser.createJournalEntry(payload);
+            journalEntry.setTerm(currentTerm);
+            journalEntry.setPartition(INTERNAL_PARTITION);
+            appendAndCallback(Collections.singletonList(journalEntry), null, null);
+        } catch (InterruptedException e) {
+            logger.warn("Exception: ", e);
+        }
+    }
     private void takeSnapshotPeriodically() {
         if (state.lastApplied() > snapshots.lastKey()) {
             logger.info("Send create snapshot request.");
@@ -850,6 +875,9 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
 
     void callback(long lastApplied, ER result)  {
+        while (lastApplied > callbackBarrier.get()) {
+            Thread.yield();
+        }
         replicationCallbacks.callback(lastApplied, entryResultSerializer.serialize(result));
     }
 

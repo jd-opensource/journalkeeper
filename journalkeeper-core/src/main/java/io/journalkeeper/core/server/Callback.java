@@ -14,7 +14,9 @@
 package io.journalkeeper.core.server;
 
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
+import io.journalkeeper.utils.format.Format;
 
+import java.util.Date;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -43,5 +45,13 @@ class Callback {
 
     public ResponseFuture getResponseFuture() {
         return responseFuture;
+    }
+
+    @Override
+    public String toString() {
+        return "Callback{" +
+                "position=" + position +
+                ", timestamp=" + Format.format(new Date(timestamp)) +
+                '}';
     }
 }

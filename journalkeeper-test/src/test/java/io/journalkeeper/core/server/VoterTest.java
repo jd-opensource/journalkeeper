@@ -202,7 +202,7 @@ public class VoterTest {
             }
 
 
-
+            logger.info("Send UpdateClusterStateRequest...");
             UpdateClusterStateResponse response = voter.updateClusterState(new UpdateClusterStateRequest(entry, RaftJournal.DEFAULT_PARTITION, 1)).get();
             Assert.assertTrue(response.success());
             Assert.assertArrayEquals(entry, response.getResults().get(0));
@@ -229,6 +229,8 @@ public class VoterTest {
             List<SerializedUpdateRequest> requests = bytes.stream()
                     .map(byteArray -> new SerializedUpdateRequest(byteArray, RaftJournal.DEFAULT_PARTITION, 1))
                     .collect(Collectors.toList());
+            logger.info("Send UpdateClusterStateRequest...");
+
             UpdateClusterStateResponse response =
                     voter.updateClusterState(
                             new UpdateClusterStateRequest(

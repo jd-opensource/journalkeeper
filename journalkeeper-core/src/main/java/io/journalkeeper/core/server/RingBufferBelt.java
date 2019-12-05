@@ -14,6 +14,8 @@
 package io.journalkeeper.core.server;
 
 import io.journalkeeper.utils.buffer.LockFreeRingBuffer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.TimeoutException;
 
@@ -22,7 +24,7 @@ import java.util.concurrent.TimeoutException;
  * Date: 2019-09-19
  */
 public class RingBufferBelt implements CallbackResultBelt {
-
+    private static final Logger logger = LoggerFactory.getLogger(RingBufferBelt.class);
     private final long timeoutMs;
     private final LockFreeRingBuffer<Callback> buffer;
     RingBufferBelt(long timeoutMs, int capacity) {
@@ -69,12 +71,23 @@ public class RingBufferBelt implements CallbackResultBelt {
 
     @Override
     public void callback(long position, byte [] result) {
+        Callback c;
+        while ((c = buffer.get()) != null && c.getPosition() < position) {
+            c = buffer.remove();
+            c.getResponseFuture().completedExceptionally(new IllegalStateException());
+            logger.warn("Callback index not match! next callback in the waiting buffer: {}, request callback index: {}, ", c.getPosition(), position);
+        }
 
-        Callback c = buffer.get();
-        if (null != c && c.getPosition() == position) {
+        if(null == c) {
+            logger.warn("Callback index failed! The waiting buffer is empty, request callback index: {}.", position);
+            return;
+        }
+
+        if (c.getPosition() == position ) {
             c = buffer.remove();
             c.getResponseFuture().putResult(result);
-
+        } else {
+            logger.warn("Callback index not match! next callback in the waitting buffer: {}, request callback index: {}, ", c.getPosition(), position);
         }
     }
 

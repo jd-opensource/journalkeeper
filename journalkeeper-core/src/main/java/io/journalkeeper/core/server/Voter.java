@@ -383,13 +383,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                     this.journalEntryParser, config.getTransactionTimeoutMs(), snapshots);
             leader.start();
             this.leaderUri = this.uri;
-            // Leader announcement
-            int term = currentTerm.get();
-            byte [] payload = InternalEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(term));
-            JournalEntry journalEntry = journalEntryParser.createJournalEntry(payload);
-            journalEntry.setTerm(term);
-            journalEntry.setPartition(INTERNAL_PARTITION);
-            journal.append(journalEntry);
 
             logger.info("Convert voter state from {} to LEADER, {}.", oldState, voterInfo());
 
@@ -898,7 +891,9 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
 
     // for monitor only
     VoterState getVoterState() {
-        return voterState.getState();
+        synchronized (voterState) {
+            return voterState.getState();
+        }
     }
     URI getLastVote() {
         return votedFor;
