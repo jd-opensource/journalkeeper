@@ -29,6 +29,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * 绑定到本地Server的Client，只访问本地Server
@@ -41,8 +42,10 @@ public class LocalClientRpc implements ClientRpc {
     private final CompletableRetry<URI> completableRetry;
     private final CheckRetry<BaseResponse> checkRetry = new LocalClientCheckRetry();
     private final Executor executor;
-    public LocalClientRpc(ClientServerRpc localServer, RetryPolicy retryPolicy, Executor executor) {
+    private final ScheduledExecutorService scheduledExecutor;
+    public LocalClientRpc(ClientServerRpc localServer, RetryPolicy retryPolicy, Executor executor, ScheduledExecutorService scheduledExecutor) {
         this.localServer = localServer;
+        this.scheduledExecutor = scheduledExecutor;
         DestinationSelector<URI> uriSelector = uriSet -> localServer.serverUri();
         this.executor = executor;
         this.completableRetry = new CompletableRetry<>(retryPolicy, uriSelector);
@@ -51,7 +54,7 @@ public class LocalClientRpc implements ClientRpc {
 
     @Override
     public <O extends BaseResponse> CompletableFuture<O> invokeClientServerRpc(CompletableRetry.RpcInvoke<O, ClientServerRpc> invoke) {
-        return completableRetry.retry(uri -> invoke.invoke(localServer), checkRetry, executor);
+        return completableRetry.retry(uri -> invoke.invoke(localServer), checkRetry, executor, scheduledExecutor);
     }
 
     @Override

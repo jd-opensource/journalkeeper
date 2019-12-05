@@ -62,7 +62,7 @@ public class BootStrap<
     private final Serializer<Q> querySerializer;
     private final Serializer<QR> queryResultSerializer;
     private final Properties properties;
-    private ScheduledExecutorService scheduledExecutorService;
+    private ScheduledExecutorService serverScheduledExecutor, clientScheduledExecutor;
     private ExecutorService serverAsyncExecutor, clientAsyncExecutor;
     private final RaftServer.Roll roll;
     private final RpcAccessPointFactory rpcAccessPointFactory;
@@ -165,15 +165,15 @@ public class BootStrap<
     }
 
     private Server<E, ER, Q, QR> createServer() {
-        if(null == scheduledExecutorService) {
-            this.scheduledExecutorService = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_THREADS, new NamedThreadFactory("JournalKeeper-Server-Scheduled-Executor"));
+        if(null == serverScheduledExecutor) {
+            this.serverScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_THREADS, new NamedThreadFactory("JournalKeeper-Server-Scheduled-Executor"));
         }
         if(null == serverAsyncExecutor) {
             this.serverAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Server-Async-Executor"));
         }
 
         if(null != roll) {
-            return new Server<>(roll,stateFactory,entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, journalEntryParser, scheduledExecutorService, serverAsyncExecutor, properties);
+            return new Server<>(roll,stateFactory,entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, journalEntryParser, serverScheduledExecutor, serverAsyncExecutor, properties);
         }
         return null;
     }
@@ -201,9 +201,12 @@ public class BootStrap<
         if(null == clientAsyncExecutor) {
             this.clientAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Client-Async-Executor"));
         }
+        if(null == clientScheduledExecutor) {
+            this.clientScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_THREADS, new NamedThreadFactory("JournalKeeper-Client-Scheduled-Executor"));
+        }
 
         if(this.server != null) {
-            return new LocalClientRpc(server, remoteRetryPolicy, clientAsyncExecutor);
+            return new LocalClientRpc(server, remoteRetryPolicy, clientAsyncExecutor, clientScheduledExecutor);
         } else {
             throw new IllegalStateException("No local server!");
         }
@@ -213,14 +216,17 @@ public class BootStrap<
         if(null == clientAsyncExecutor) {
             this.clientAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Client-Async-Executor"));
         }
+        if(null == clientScheduledExecutor) {
+            this.clientScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_THREADS, new NamedThreadFactory("JournalKeeper-Client-Scheduled-Executor"));
+        }
 
         ClientServerRpcAccessPoint clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.properties);
         RemoteClientRpc clientRpc;
         if(this.server == null) {
-            clientRpc = new RemoteClientRpc(getServersForClient(), clientServerRpcAccessPoint, remoteRetryPolicy, clientAsyncExecutor);
+            clientRpc = new RemoteClientRpc(getServersForClient(), clientServerRpcAccessPoint, remoteRetryPolicy, clientAsyncExecutor, clientScheduledExecutor);
         } else {
             clientServerRpcAccessPoint = new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint);
-            clientRpc = new RemoteClientRpc(getServersForClient(), clientServerRpcAccessPoint, remoteRetryPolicy, clientAsyncExecutor);
+            clientRpc = new RemoteClientRpc(getServersForClient(), clientServerRpcAccessPoint, remoteRetryPolicy, clientAsyncExecutor, clientScheduledExecutor);
             clientRpc.setPreferredServer(server.serverUri());
         }
         return clientRpc;
@@ -242,7 +248,7 @@ public class BootStrap<
                 logger.warn("Server {} state is {}, will not stop!", server.serverUri(), state);
             }
         }
-        shutdownExecutorService(scheduledExecutorService);
+        shutdownExecutorService(serverScheduledExecutor);
         shutdownExecutorService(serverAsyncExecutor);
         shutdownExecutorService(clientAsyncExecutor);
     }

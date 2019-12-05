@@ -473,12 +473,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     }
 
     private void delaySendAsyncAppendEntriesRpc(ReplicationDestination follower, AsyncAppendEntriesRequest request) {
-        new Timer("Retry-AsyncAppendEntriesRpc", true).schedule(new TimerTask() {
-            @Override
-            public void run() {
-                sendAppendEntriesRequest(follower, request);
-            }
-        }, heartbeatIntervalMs);
+        this.scheduledExecutor.schedule(() -> sendAppendEntriesRequest(follower, request), heartbeatIntervalMs, TimeUnit.MILLISECONDS);
     }
 
 

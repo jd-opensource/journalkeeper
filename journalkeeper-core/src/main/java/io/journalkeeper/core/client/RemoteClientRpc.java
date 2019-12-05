@@ -41,6 +41,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * @author LiYue
@@ -55,9 +56,11 @@ public class RemoteClientRpc implements ClientRpc {
     private final RandomDestinationSelector<URI> uriSelector;
     private final ClientCheckRetry clientCheckRetry = new ClientCheckRetry();
     private final Executor executor;
+    private final ScheduledExecutorService scheduledExecutor;
     private URI preferredServer = null;
-    public RemoteClientRpc(List<URI> servers, ClientServerRpcAccessPoint clientServerRpcAccessPoint, RetryPolicy retryPolicy, Executor executor) {
+    public RemoteClientRpc(List<URI> servers, ClientServerRpcAccessPoint clientServerRpcAccessPoint, RetryPolicy retryPolicy, Executor executor, ScheduledExecutorService scheduledExecutor) {
         this.executor = executor;
+        this.scheduledExecutor = scheduledExecutor;
         if(servers == null || servers.isEmpty()) {
             throw new IllegalArgumentException("Argument servers can not be empty!");
         }
@@ -72,7 +75,7 @@ public class RemoteClientRpc implements ClientRpc {
 
     @Override
     public final  <O extends BaseResponse> CompletableFuture<O> invokeClientServerRpc(CompletableRetry.RpcInvoke<O, ClientServerRpc> invoke) {
-        return completableRetry.retry((uri) -> invoke.invoke(clientServerRpcAccessPoint.getClintServerRpc(uri)), clientCheckRetry, executor);
+        return completableRetry.retry((uri) -> invoke.invoke(clientServerRpcAccessPoint.getClintServerRpc(uri)), clientCheckRetry, executor, scheduledExecutor);
     }
 
     @Override
@@ -201,9 +204,9 @@ public class RemoteClientRpc implements ClientRpc {
     public void watch(EventWatcher eventWatcher) {
         completableRetry.retry(uri -> {
             clientServerRpcAccessPoint.getClintServerRpc(uri)
-                    .watch(event -> executor.execute(() -> eventWatcher.onEvent(event)));
+                    .watch(eventWatcher);
             return CompletableFuture.completedFuture(null);
-        }, clientCheckRetry, executor);
+        }, clientCheckRetry, executor, scheduledExecutor);
     }
 
     @Override
@@ -211,7 +214,7 @@ public class RemoteClientRpc implements ClientRpc {
         completableRetry.retry(uri -> {
             clientServerRpcAccessPoint.getClintServerRpc(uri).unWatch(eventWatcher);
             return CompletableFuture.completedFuture(null);
-        }, clientCheckRetry, executor);
+        }, clientCheckRetry, executor, scheduledExecutor);
     }
 
 

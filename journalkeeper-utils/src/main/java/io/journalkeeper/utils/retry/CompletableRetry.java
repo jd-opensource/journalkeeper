@@ -22,8 +22,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * @author LiYue
@@ -49,7 +52,7 @@ public class CompletableRetry<D/* 对端地址类型 */> {
         return destination.get();
     }
 
-    public final <R /* Response */> CompletableFuture<R> retry(RpcInvoke<R, D> invoke, CheckRetry<? super R> checkRetry, Executor executor) {
+    public final <R /* Response */> CompletableFuture<R> retry(RpcInvoke<R, D> invoke, CheckRetry<? super R> checkRetry, Executor executor, ScheduledExecutorService scheduledExecutor) {
 
         RpcInvokeWithRetryInfo<R, D> retryInvoke = invoke instanceof CompletableRetry.RpcInvokeWithRetryInfo ? (RpcInvokeWithRetryInfo<R, D>) invoke : new RpcInvokeWithRetryInfo<>(invoke);
         CompletableFuture<D> destFuture = executor == null ?
@@ -71,14 +74,12 @@ public class CompletableRetry<D/* 对端地址类型 */> {
                         destination.set(null);
                         long delay;
                         if((delay = retryPolicy.getRetryDelayMs(retryInvoke.getInvokeTimes())) >= 0) {
-                            try {
-                                if (delay > 0) {
-                                    Thread.sleep(delay);
-                                    logger.debug("Retry, invokes times: {}.", retryInvoke.getInvokeTimes());
-                                }
-                                return retry(retryInvoke, checkRetry, executor);
-                            } catch (InterruptedException ignored) {
-                                logger.warn("Retry interrupted!");
+
+                            if (delay > 0) {
+                                logger.debug("Retry, invokes times: {}.", retryInvoke.getInvokeTimes());
+                                return scheduleAsync(scheduledExecutor, () -> retry(retryInvoke, checkRetry, executor, scheduledExecutor), delay, TimeUnit.MILLISECONDS);
+                            } else {
+                                return retry(retryInvoke, checkRetry, executor, scheduledExecutor);
                             }
                         }
                     }
@@ -90,6 +91,29 @@ public class CompletableRetry<D/* 对端地址类型 */> {
                     }
                     return future;
                 });
+    }
+
+
+    private static <T> CompletableFuture<T> scheduleAsync (
+            ScheduledExecutorService executor,
+            Supplier<CompletableFuture<T>> command,
+            long delay,
+            TimeUnit unit
+    ) {
+        CompletableFuture<T> completableFuture = new CompletableFuture<>();
+        executor.schedule(
+                (() -> {
+                    command.get().thenAccept(
+                            completableFuture::complete
+                    )
+                            .exceptionally(
+                                    t -> {completableFuture.completeExceptionally(t);return null;}
+                            );
+                }),
+                delay,
+                unit
+        );
+        return completableFuture;
     }
 
     public interface RpcInvoke<R /* Response */,  D /* Destination */> {

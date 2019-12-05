@@ -147,7 +147,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
             public boolean checkResult(O result) {
                 return !result.success();
             }
-        }, asyncExecutor);
+        }, asyncExecutor, scheduledExecutor);
     }
 
     private void pullEntries() throws Throwable {
