@@ -16,6 +16,7 @@ package io.journalkeeper.core.monitor;
 import io.journalkeeper.monitor.MonitorCollector;
 import io.journalkeeper.monitor.MonitoredServer;
 import io.journalkeeper.monitor.ServerMonitorInfo;
+import io.journalkeeper.utils.buffer.PreloadBufferPool;
 import io.journalkeeper.utils.spi.Singleton;
 
 import java.net.URI;
@@ -26,6 +27,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 采集进程内所有JournalKeeper Server 节点的监控信息
@@ -62,5 +64,26 @@ public class SimpleMonitorCollector implements MonitorCollector {
             }
         }
         return monitorInfos;
+    }
+
+    public PreloadBufferMonitorInfo collectPreloadBuffer() {
+        PreloadBufferPool preloadBufferPool = PreloadBufferPool.getInstance();
+        PreloadBufferMonitorInfo monitorInfo = new PreloadBufferMonitorInfo();
+        monitorInfo.setMax(preloadBufferPool.getMaxMemorySize());
+        monitorInfo.setTotalUsed(preloadBufferPool.getTotalUsedMemorySize());
+        monitorInfo.setMapUsed(preloadBufferPool.getMapUsedMemorySize());
+        monitorInfo.setDirectUsed(preloadBufferPool.getDirectUsedMemorySize());
+        monitorInfo.setCaches(preloadBufferPool.getCaches().stream().map(this::collectCacheMonitorInfo).collect(Collectors.toList()));
+        return monitorInfo;
+    }
+
+    private PreloadCacheMonitorInfo collectCacheMonitorInfo(PreloadBufferPool.PreLoadCache preLoadCache) {
+        PreloadCacheMonitorInfo monitorInfo = new PreloadCacheMonitorInfo();
+        monitorInfo.setSize(preLoadCache.getBufferSize());
+        monitorInfo.setCachedCount(preLoadCache.getCachedCount());
+        monitorInfo.setUsedCount(preLoadCache.getUsedCount());
+        monitorInfo.setCoreCount(preLoadCache.getCoreCount());
+        monitorInfo.setMaxCount(preLoadCache.getMaxCount());
+        return monitorInfo;
     }
 }

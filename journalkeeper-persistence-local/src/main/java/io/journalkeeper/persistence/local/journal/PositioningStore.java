@@ -15,6 +15,7 @@ package io.journalkeeper.persistence.local.journal;
 
 
 import io.journalkeeper.persistence.JournalPersistence;
+import io.journalkeeper.persistence.MonitoredPersistence;
 import io.journalkeeper.persistence.TooManyBytesException;
 import io.journalkeeper.utils.ThreadSafeFormat;
 import io.journalkeeper.utils.buffer.PreloadBufferPool;
@@ -40,7 +41,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * @author LiYue
  * Date: 2018/8/14
  */
-public class PositioningStore implements JournalPersistence,Closeable {
+public class PositioningStore implements JournalPersistence, MonitoredPersistence ,Closeable {
     private final Logger logger = LoggerFactory.getLogger(PositioningStore.class);
     private File base;
     private final PreloadBufferPool bufferPool;
@@ -391,6 +392,21 @@ public class PositioningStore implements JournalPersistence,Closeable {
             storeFile.forceUnload();
         }
         bufferPool.removePreLoad(config.fileDataSize);
+    }
+
+    @Override
+    public Path getPath() {
+        return getBasePath();
+    }
+
+    @Override
+    public long getFreeSpace() {
+        return base.getFreeSpace();
+    }
+
+    @Override
+    public long getTotalSpace() {
+        return base.getTotalSpace();
     }
 
     public static class Config {

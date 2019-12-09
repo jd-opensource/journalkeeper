@@ -19,6 +19,7 @@ import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.core.state.JournalKeeperState;
+import io.journalkeeper.monitor.DiskMonitorInfo;
 import io.journalkeeper.monitor.FollowerMonitorInfo;
 import io.journalkeeper.monitor.JournalMonitorInfo;
 import io.journalkeeper.monitor.JournalPartitionMonitorInfo;
@@ -29,6 +30,7 @@ import io.journalkeeper.monitor.NodeMonitorInfo;
 import io.journalkeeper.monitor.ServerMonitorInfo;
 import io.journalkeeper.monitor.VoterMonitorInfo;
 import io.journalkeeper.persistence.JournalPersistence;
+import io.journalkeeper.persistence.MonitoredPersistence;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -68,6 +70,9 @@ public class ServerMonitorInfoProvider implements MonitoredServer {
             JournalMonitorInfo journalMonitorInfo = collectJournalMonitorInfo(abstractServer.getJournal(), abstractServer.getState());
             serverMonitorInfo.setJournal(journalMonitorInfo);
 
+            DiskMonitorInfo diskMonitorInfo = collectDistMonitorInfo(abstractServer.getJournal().getJournalPersistence());
+            serverMonitorInfo.setDisk(diskMonitorInfo);
+
             if (server.roll() == RaftServer.Roll.VOTER) {
                 Voter voter = (Voter) abstractServer;
                 VoterMonitorInfo voterMonitorInfo = collectVoterMonitorInfo(voter);
@@ -76,6 +81,18 @@ public class ServerMonitorInfoProvider implements MonitoredServer {
         }
 
         return serverMonitorInfo;
+    }
+
+    private DiskMonitorInfo collectDistMonitorInfo(JournalPersistence journalPersistence) {
+        DiskMonitorInfo diskMonitorInfo = new DiskMonitorInfo();
+        if(journalPersistence instanceof MonitoredPersistence) {
+            MonitoredPersistence monitoredPersistence = (MonitoredPersistence ) journalPersistence;
+
+            diskMonitorInfo.setPath(monitoredPersistence.getPath());
+            diskMonitorInfo.setFree(monitoredPersistence.getFreeSpace());
+            diskMonitorInfo.setTotal(monitoredPersistence.getTotalSpace());
+        }
+        return diskMonitorInfo;
     }
 
     private VoterMonitorInfo collectVoterMonitorInfo(Voter voter) {

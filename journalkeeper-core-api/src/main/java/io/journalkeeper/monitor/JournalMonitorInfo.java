@@ -141,6 +141,13 @@ public class JournalMonitorInfo {
         this.partitions = partitions;
     }
 
+    public long getUsedSpace() {
+        return maxOffset - minOffset +
+                indexMaxOffset - indexMinOffset +
+                partitions.stream().mapToLong(p -> p.getMaxOffset() - p.getMinOffset()).sum();
+    }
+
+
     @Override
     public String toString() {
         return "JournalMonitorInfo{" +
@@ -156,6 +163,7 @@ public class JournalMonitorInfo {
                 ", indexMaxOffset=" + indexMaxOffset +
                 ", indexFlushOffset=" + indexFlushOffset +
                 ", partitions=" + partitions +
+                ", usedSpace=" + getUsedSpace() +
                 '}';
     }
 }

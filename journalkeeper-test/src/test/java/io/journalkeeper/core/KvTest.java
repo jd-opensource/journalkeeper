@@ -17,6 +17,7 @@ import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.VoterState;
+import io.journalkeeper.core.monitor.PreloadBufferMonitorInfo;
 import io.journalkeeper.core.monitor.SimpleMonitorCollector;
 import io.journalkeeper.examples.kv.KvClient;
 import io.journalkeeper.examples.kv.KvServer;
@@ -715,6 +716,9 @@ public class KvTest {
         for (ServerMonitorInfo monitorInfo : monitorInfos) {
             logger.info("ServerMonitorInfo: {}.", monitorInfo);
         }
+
+        PreloadBufferMonitorInfo bufferMonitorInfo = simpleMonitorCollector.collectPreloadBuffer();
+        logger.info("PreloadBufferPool: {}.", bufferMonitorInfo);
 
         stopServers(servers);
 

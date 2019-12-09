@@ -26,6 +26,8 @@ import sun.nio.ch.DirectBuffer;
 
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -50,25 +52,26 @@ public class PreloadBufferPool {
     private static final String METRIC_THREAD = "PreloadBuffer-MetricThread";
     private static final String EVICT_THREAD = "PreloadBuffer-EvictThread";
     private final long cacheLifetimeMs;
+    // 可用的堆外内存上限，这个上限可以用JVM参数"PreloadBufferPool.MaxMemory"指定，
+    // 默认为虚拟机最大内存（VM.maxDirectMemory()）的90%。
     private final long maxMemorySize;
     // 缓存比率：如果非堆内存使用率超过这个比率，就不再申请内存，抛出OOM。
     // 由于jvm在读写文件的时候会用到少量DirectBuffer作为缓存，必须预留一部分。
     private final static double CACHE_RATIO = 0.9d;
-    /**
-     * 缓存清理比率阈值，超过这个阈值执行缓存清理。
-     */
+
+    // 缓存清理比率阈值，超过这个阈值执行缓存清理。
     private final static double EVICT_RATIO = 0.8d;
     private final static long DEFAULT_CACHE_LIFE_TIME_MS = 60000L;
     private final static long INTERVAL_MS = 50L;
 
     private final static String CACHE_LIFE_TIME_MS_KEY = "PreloadBufferPool.CacheLifeTimeMs";
-    private final static String PRINT_METRIC_INTERVAL_MS_KEY = "PreloadBufferPool.PrintMetricIntervalMs";
     private final static String MAX_MEMORY_KEY = "PreloadBufferPool.MaxMemory";
+    private final static String GREED_MODE_KEY = "PreloadBufferPool.Greedy";
 
     private final AtomicLong usedSize = new AtomicLong(0L);
     private final Set<BufferHolder> directBufferHolders = ConcurrentHashMap.newKeySet();
     private final Set<BufferHolder> mMapBufferHolders = ConcurrentHashMap.newKeySet();
-
+    private final boolean greedyMode;
     private static PreloadBufferPool instance = null;
 
     public static PreloadBufferPool getInstance() {
@@ -79,45 +82,18 @@ public class PreloadBufferPool {
     }
 
     private PreloadBufferPool() {
-        long printMetricInterval = Long.parseLong(System.getProperty(PRINT_METRIC_INTERVAL_MS_KEY,"0"));
         this.cacheLifetimeMs = Long.parseLong(System.getProperty(CACHE_LIFE_TIME_MS_KEY,String.valueOf(DEFAULT_CACHE_LIFE_TIME_MS)));
         long maxMemorySize = Format.parseSize(System.getProperty(MAX_MEMORY_KEY), Math.round(VM.maxDirectMemory() * CACHE_RATIO));
-
+        this.greedyMode = Boolean.parseBoolean(System.getProperty(GREED_MODE_KEY, "false"));
         threads.createThread(buildPreloadThread());
 
-        if(printMetricInterval > 0) {
-            threads.createThread(buildMetricThread(printMetricInterval));
-        }
         threads.createThread(buildEvictThread());
         threads.start();
         this.maxMemorySize = maxMemorySize;
-        logger.info("Max direct memory size : {}.", Format.formatSize(maxMemorySize));
-    }
-
-    private AsyncLoopThread buildMetricThread(long printMetricInterval) {
-        return ThreadBuilder.builder()
-                .name(METRIC_THREAD)
-                .sleepTime(printMetricInterval, printMetricInterval)
-                .doWork(() -> {
-                    long used = usedSize.get();
-                    long plUsed = bufferCache.values().stream().mapToLong(preLoadCache -> {
-                        long cached = preLoadCache.cache.size();
-                        long usedPreLoad = preLoadCache.onFlyCounter.get();
-                        long totalSize = preLoadCache.bufferSize * (cached + usedPreLoad);
-                        logger.info("PreloadCache usage: cached: {} * {} = {}, used: {} * {} = {}, total: {}",
-                                Format.formatSize(preLoadCache.bufferSize), cached, Format.formatSize(preLoadCache.bufferSize * cached),
-                                Format.formatSize(preLoadCache.bufferSize), usedPreLoad, Format.formatSize(preLoadCache.bufferSize * usedPreLoad),
-                                Format.formatSize(totalSize));
-                        return totalSize;
-                    }).sum();
-                    logger.info("DirectBuffer preload/used/max: {}/{}/{}.",
-                            Format.formatSize(plUsed),
-                            Format.formatSize(used),
-                            Format.formatSize(maxMemorySize));
-
-                })
-                .daemon(true)
-                .build();
+        logger.info("PreloadBufferPool loaded. MaxMemory: {}, CacheLifeTimeMs: {}, Greedy: {}.",
+                Format.formatSize(maxMemorySize),
+                cacheLifetimeMs,
+                greedyMode);
     }
 
     private AsyncLoopThread buildPreloadThread() {
@@ -159,7 +135,7 @@ public class PreloadBufferPool {
         // 清理超过maxCount的缓存页
         for(PreLoadCache preLoadCache: bufferCache.values()) {
             while (preLoadCache.cache.size() > preLoadCache.maxCount) {
-                if(usedSize.get() < maxMemorySize * EVICT_RATIO) {
+                if(greedyMode && usedSize.get() < maxMemorySize * EVICT_RATIO) {
                     return;
                 }
                 try {
@@ -354,18 +330,59 @@ public class PreloadBufferPool {
 
     }
 
-    static class PreLoadCache {
-        final int bufferSize;
-        final int coreCount, maxCount;
-        final Queue<ByteBuffer> cache = new ConcurrentLinkedQueue<>();
-        final AtomicLong onFlyCounter = new AtomicLong(0L);
-        final AtomicInteger referenceCount;
+    public static class PreLoadCache {
+        private final int bufferSize;
+        private final int coreCount, maxCount;
+        private final Queue<ByteBuffer> cache = new ConcurrentLinkedQueue<>();
+        private final AtomicInteger onFlyCounter = new AtomicInteger(0);
+        private final AtomicInteger referenceCount;
         PreLoadCache(int bufferSize, int coreCount, int maxCount) {
             this.bufferSize = bufferSize;
             this.coreCount = coreCount;
             this.maxCount = maxCount;
             this.referenceCount = new AtomicInteger(1);
         }
+
+        public int getBufferSize() {
+            return bufferSize;
+        }
+
+        public int getCoreCount() {
+            return coreCount;
+        }
+
+        public int getMaxCount() {
+            return maxCount;
+        }
+
+        public int getUsedCount() {
+            return onFlyCounter.get();
+        }
+
+        public int getCachedCount() {
+            return cache.size();
+        }
+    }
+
+    public Collection<PreLoadCache> getCaches() {
+        return new ArrayList<>(bufferCache.values());
+    }
+
+    public long getMaxMemorySize() {
+        return maxMemorySize;
+    }
+
+    public long getTotalUsedMemorySize() {
+        return usedSize.get();
+    }
+
+    public long getDirectUsedMemorySize() {
+        return directBufferHolders.stream().mapToLong(BufferHolder::size).sum() +
+                bufferCache.values().stream().mapToLong(c -> c.getBufferSize() * c.getCachedCount()).sum();
+    }
+
+    public long getMapUsedMemorySize() {
+        return mMapBufferHolders.stream().mapToLong(BufferHolder::size).sum();
     }
 
     private static class LruWrapper<V> {

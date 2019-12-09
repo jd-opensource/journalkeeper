@@ -41,6 +41,8 @@ public class ServerMonitorInfo {
     private JournalMonitorInfo journal = null;
     // Voter 信息
     private VoterMonitorInfo voter = null;
+    // 磁盘信息
+    private DiskMonitorInfo disk = null;
 
     public URI getUri() {
         return uri;
@@ -106,6 +108,14 @@ public class ServerMonitorInfo {
         this.timestamp = timestamp;
     }
 
+    public DiskMonitorInfo getDisk() {
+        return disk;
+    }
+
+    public void setDisk(DiskMonitorInfo disk) {
+        this.disk = disk;
+    }
+
     @Override
     public String toString() {
         return "ServerMonitorInfo{" +
@@ -117,6 +127,7 @@ public class ServerMonitorInfo {
                 ", nodes=" + nodes +
                 ", journal=" + journal +
                 ", voter=" + voter +
+                ", disk=" + disk +
                 '}';
     }
 }
