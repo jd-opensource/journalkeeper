@@ -148,6 +148,7 @@ JournalKeeper中LEADER为每个FOLLOWER维护3个位置：
 
 在LEADER上对于每个FOLLOWER，如果存在一批日志，它们的索引位置不小于nextIndex，LEADER需要更新nextIndex（nextIndex自增本次发送的日志条数）然后给这个FOLLOWER发送AsyncAppendRequest RPC请求。LEADER可以同时给同一个FOLLOWER发送多个AsyncAppendRequest RPC请求并行复制。
 AsyncAppendRequest RPC请求的参数和返回值如下：
+
 参数 | 描述
 -- | --
 term | LEADER的任期号
@@ -251,6 +252,7 @@ leader | 当result = NOT_LEADER时，返回LEADER的地址。
 ##### queryClusterState
 
 客户端调用LEADER节点查询集群当前的状态，即日志在状态机中执行完成后产生的数据。该服务保证强一致性，保证读到的状态总是集群的最新状态。
+
 参数 | 描述
 -- | --
 query | 查询条件。
@@ -262,6 +264,7 @@ result | 按照查询条件获得的集群最新状态。
 ##### queryServerState
 
 客户端调用任意节点查询节点当前的状态，即日志在状态机中执行完成后产生的数据。该服务不保证强一致性，只保证顺序一致，由于复制存在时延，集群中各节点的当前状态可能比集群的当前状态更旧。
+
 参数 | 描述
 -- | --
 query | 查询条件。
@@ -284,6 +287,7 @@ leaderAddr | 当result = NOT_LEADER时，返回LEADER的地址。
 ##### querySnapshot
 
 客户端查询任意节点上指定日志位置对应快照的状态，用于二步读取中，在非LEADER节点获取状态数据。
+
 参数 | 描述
 -- | --
 logIndex | 待查询快照对应的日志位置。
@@ -309,6 +313,7 @@ observerAddrs[] | 所有观察者节点地址。
 ##### updateVoters
 
 客户端调用LEADER节点变更选民节点配置。集群保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。集群成功变更返回。
+
 参数 | 描述
 -- | --
 operation | 操作，ADD：添加，REMOVE：删除
@@ -322,6 +327,7 @@ leaderAddr | 当result = NOT_LEADER时，返回LEADER的地址。
 ##### updateObservers
 
 客户端调用LEADER节点变更观察者节点配置。集群保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。集群成功变更返回。
+
 参数 | 描述
 -- | --
 toBeAdded[] | 需要新增的节点地址。
@@ -382,6 +388,7 @@ minIndex | 当前节点日志的最小位置（含）。
 ##### getServerState
 
 观察者复制任意节点上的当前最新状态。如果状态数据比较大，可以分多次请求。
+
 参数 | 描述
 -- | --
 lastIncludedIndex | 快照中包含的最后日志条目的索引值，首次请求为空。
@@ -399,6 +406,7 @@ done | 如果是最后一块数据则为真
 
 LEADER可以同时给同一个接收者发送多个asyncAppendEntries请求并行复制。
 asyncAppendEntries请求的参数和返回值如下：
+
 参数 | 描述
 -- | --
 term | LEADER的任期号
@@ -418,6 +426,7 @@ entryCount | 请求中日志的数量
 ##### requestVote
 
 同RAFT中RequestVote RPC，CANDIDATE调用其它VOTER发起投票的请求。
+
 参数 | 描述
 -- | --
 term | CANDIDATE的当前任期号
@@ -433,6 +442,7 @@ voteGranted | 如果当前节点决定投票给CANDIDATE，返回值为true，�
 #### 属性
 
 Server需要维护如下属性
+
 属性 | 持久化 | 描述
 -- | -- | --
 log[] | 可选 | 节点上的日志
@@ -489,6 +499,7 @@ Observer模块在拉取日志时遵循如下原则：
 #### 属性
 
 Observer模块需要配置一个父节点的列表，用于拉取日志。
+
 属性 | 持久化 | 描述
 -- | -- | --
 parentsAddrs | Y | 父节点列表
@@ -516,6 +527,7 @@ Voter继承自Server，是角色为选民的Server抽象。**Voter等同于RAFT�
 #### 属性
 
 Voter上需要维护的属性包括：
+
 名称 | 持久化| 描述
 -- | -- | --
 voterState | N | 选民状态，在**LEADER**、**FOLLOWER**和**CANDIDATE**之间转换。初始值为FOLLOWER。
