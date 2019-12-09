@@ -159,16 +159,19 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable {
     }
 
     public void recover(Path path, Properties properties)  {
+        recover(path, properties, false);
+    }
+
+    public void recover(Path path, Properties properties, boolean internalStateOnly)  {
         this.path = path;
         this.properties = properties;
         stateFilesLock.writeLock().lock();
         try {
             Files.createDirectories(path);
             this.internalState = recoverInternalState(internalStateFile(path));
-            this.userState = userStateFactory.createState();
-            Path userStatePath = path.resolve(USER_STATE_PATH);
-            Files.createDirectories(userStatePath);
-            userState.recover(path.resolve(USER_STATE_PATH), properties);
+            if(!internalStateOnly) {
+                recoverUserState();
+            }
         } catch (IOException e) {
             throw new StateRecoverException(e);
         } finally {
@@ -276,6 +279,22 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable {
         }
     }
 
+    private void maybeRecoverUserState() throws IOException {
+        long stamp = stateLock.writeLock();
+        try {
+            recoverUserState();
+        } finally {
+            stateLock.unlockWrite(stamp);
+        }
+    }
+
+    private void recoverUserState() throws IOException {
+        this.userState = userStateFactory.createState();
+        Path userStatePath = path.resolve(USER_STATE_PATH);
+        Files.createDirectories(userStatePath);
+        userState.recover(path.resolve(USER_STATE_PATH), properties);
+    }
+
     public StateQueryResult<QR> query(Q query, RaftJournal journal) {
         StateQueryResult<QR> result;
 
@@ -328,7 +347,14 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable {
     }
 
     public void close() {
-        userState.close();
+        long stamp = stateLock.writeLock();
+        try {
+            if(null != userState) {
+                userState.close();
+            }
+        } finally {
+            stateLock.unlockWrite(stamp);
+        }
     }
 
     public void clear() throws IOException {

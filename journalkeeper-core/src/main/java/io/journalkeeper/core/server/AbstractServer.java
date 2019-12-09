@@ -876,14 +876,14 @@ public abstract class AbstractServer<E, ER, Q, QR>
                     ).spliterator(), false)
                 .map(path -> {
                     JournalKeeperState<E, ER, Q, QR> snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
-                    snapshot.recover(path, properties);
+                    snapshot.recover(path, properties, true);
                     if(Long.parseLong(path.getFileName().toString()) == snapshot.lastApplied()) {
                         return snapshot;
                     } else {
-                        snapshot.close();
                         return null;
                     }
                 }).filter(Objects::nonNull)
+                .peek(JournalKeeperState::close)
                 .forEach(snapshot -> snapshots.put(snapshot.lastApplied(), snapshot));
     }
 
