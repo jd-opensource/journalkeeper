@@ -73,7 +73,7 @@ public class BootStrap<
     private RaftClient<E, ER, Q, QR> localClient = null;
     private AdminClient localAdminClient = null;
     private final JournalEntryParser journalEntryParser;
-    private final RetryPolicy remoteRetryPolicy = new IncreasingRetryPolicy(new long [] {50, 100, 500, 1000, 3000, 10000, 30000}, 50);
+    private final RetryPolicy remoteRetryPolicy = new IncreasingRetryPolicy(new long [] {50, 50, 50, 100, 300, 500, 1000, 3000, 10000, 30000}, 50);
     private final boolean isExecutorProvided;
     /**
      * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。

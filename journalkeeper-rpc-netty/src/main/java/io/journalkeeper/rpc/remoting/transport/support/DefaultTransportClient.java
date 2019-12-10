@@ -122,7 +122,7 @@ public class DefaultTransportClient extends TransportClientSupport implements Tr
             public void run() {
                 requestBarrier.evict();
             }
-        }, 1000 * 3, 1000);
+        }, getConfig().getSendTimeout(), getConfig().getSendTimeout());
         transportEventBus.start();
     }
 

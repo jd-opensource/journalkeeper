@@ -38,7 +38,6 @@ public class LocalDefaultRpcAccessPoint implements ClientServerRpcAccessPoint {
         if(null == uri ){
             throw new IllegalArgumentException("URI can not be null!");
         }
-
         return uri.equals(server.serverUri()) ?  server: clientServerRpcAccessPoint.getClintServerRpc(uri);
     }
 

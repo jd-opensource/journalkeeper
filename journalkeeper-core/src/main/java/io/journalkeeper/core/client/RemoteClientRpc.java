@@ -68,8 +68,6 @@ public class RemoteClientRpc implements ClientRpc {
         uriSelector = new RandomUriSelector(servers);
         completableRetry = new CompletableRetry<>(retryPolicy,
                 uriSelector);
-//        completableRetry = new CompletableRetry<>(new IncreasingRetryPolicy(new long [] {50, 100, 500, 1000, 3000, 10000, 30000}, 50),
-//                uriSelector);
     }
 
 
