@@ -30,6 +30,8 @@ import java.net.URI;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
@@ -60,6 +62,19 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
                 new LongSerializer(),
                 new JournalStoreQuerySerializer(),
                 new JournalStoreQueryResultSerializer(journalEntryParser),
+                properties
+                );
+        raftClient = bootStrap.getClient();
+    }
+
+    public JournalStoreClient(List<URI> servers, JournalEntryParser journalEntryParser, ExecutorService asyncExecutor, ScheduledExecutorService scheduledExecutor, Properties properties) {
+        BootStrap<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> bootStrap = new BootStrap<>(
+                servers,
+                new ByteArraySerializer(),
+                new LongSerializer(),
+                new JournalStoreQuerySerializer(),
+                new JournalStoreQueryResultSerializer(journalEntryParser),
+                asyncExecutor, scheduledExecutor,
                 properties
                 );
         raftClient = bootStrap.getClient();

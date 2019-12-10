@@ -74,6 +74,7 @@ public class BootStrap<
     private AdminClient localAdminClient = null;
     private final JournalEntryParser journalEntryParser;
     private final RetryPolicy remoteRetryPolicy = new IncreasingRetryPolicy(new long [] {50, 100, 500, 1000, 3000, 10000, 30000}, 50);
+    private final boolean isExecutorProvided;
     /**
      * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。
      * @param servers 远程Server 列表
@@ -92,7 +93,9 @@ public class BootStrap<
      *
      */
     public BootStrap(List<URI> servers, ExecutorService clientAsyncExecutor, ScheduledExecutorService clientScheduledExecutor, Properties properties) {
-        this(servers, null, null, null, null, properties);
+        this(null, servers, null, null, null, null,
+                null, null, clientAsyncExecutor, clientScheduledExecutor, null, null, properties);
+
     }
 
 
@@ -113,6 +116,29 @@ public class BootStrap<
                      Properties properties) {
         this(null, servers, null, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, null,
                 null, null, null, null,
+                properties);
+    }
+
+    /**
+     * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。
+     * @param servers 远程Server 列表
+     * @param entrySerializer 操作日志序列化器
+     * @param entryResultSerializer 操作日志执行结果序列化器
+     * @param querySerializer 查询参数序列化器
+     * @param queryResultSerializer 查询结果序列化器
+     * @param clientAsyncExecutor 用于执行异步任务的Executor
+     * @param clientScheduledExecutor 用于执行定时任务的Executor
+     * @param properties 配置属性
+     */
+    public BootStrap(List<URI> servers,
+                     Serializer<E> entrySerializer,
+                     Serializer<ER> entryResultSerializer,
+                     Serializer<Q> querySerializer,
+                     Serializer<QR> queryResultSerializer,
+                     ExecutorService clientAsyncExecutor, ScheduledExecutorService clientScheduledExecutor,
+                     Properties properties) {
+        this(null, servers, null, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, null,
+                clientAsyncExecutor, clientScheduledExecutor, null, null,
                 properties);
     }
 
@@ -213,6 +239,11 @@ public class BootStrap<
         this.properties = properties;
         this.roll = roll;
         this.rpcAccessPointFactory = ServiceSupport.load(RpcAccessPointFactory.class);
+        this.isExecutorProvided = (
+                clientAsyncExecutor != null ||
+                        clientScheduledExecutor != null ||
+                        serverAsyncExecutor != null ||
+                        serverScheduledExecutor != null);
         this.journalEntryParser = journalEntryParser;
         this.clientAsyncExecutor = clientAsyncExecutor;
         this.serverAsyncExecutor = serverAsyncExecutor;
@@ -223,10 +254,10 @@ public class BootStrap<
     }
 
     private Server<E, ER, Q, QR> createServer() {
-        if(null == serverScheduledExecutor) {
+        if(null == serverScheduledExecutor && !isExecutorProvided) {
             this.serverScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_THREADS, new NamedThreadFactory("JournalKeeper-Server-Scheduled-Executor"));
         }
-        if(null == serverAsyncExecutor) {
+        if(null == serverAsyncExecutor && !isExecutorProvided) {
             this.serverAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Server-Async-Executor"));
         }
 
@@ -256,10 +287,10 @@ public class BootStrap<
     }
 
     private LocalClientRpc createLocalClientRpc() {
-        if(null == clientAsyncExecutor) {
+        if(null == clientAsyncExecutor && !isExecutorProvided) {
             this.clientAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Client-Async-Executor"));
         }
-        if(null == clientScheduledExecutor) {
+        if(null == clientScheduledExecutor && !isExecutorProvided) {
             this.clientScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_THREADS, new NamedThreadFactory("JournalKeeper-Client-Scheduled-Executor"));
         }
 
@@ -271,10 +302,10 @@ public class BootStrap<
     }
 
     private RemoteClientRpc createRemoteClientRpc() {
-        if(null == clientAsyncExecutor) {
+        if(null == clientAsyncExecutor && !isExecutorProvided) {
             this.clientAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Client-Async-Executor"));
         }
-        if(null == clientScheduledExecutor) {
+        if(null == clientScheduledExecutor && !isExecutorProvided) {
             this.clientScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_THREADS, new NamedThreadFactory("JournalKeeper-Client-Scheduled-Executor"));
         }
 
@@ -306,9 +337,12 @@ public class BootStrap<
                 logger.warn("Server {} state is {}, will not stop!", server.serverUri(), state);
             }
         }
-        shutdownExecutorService(serverScheduledExecutor);
-        shutdownExecutorService(serverAsyncExecutor);
-        shutdownExecutorService(clientAsyncExecutor);
+        if(!isExecutorProvided) {
+            shutdownExecutorService(serverScheduledExecutor);
+            shutdownExecutorService(serverAsyncExecutor);
+            shutdownExecutorService(clientScheduledExecutor);
+            shutdownExecutorService(clientAsyncExecutor);
+        }
     }
 
     @Override
