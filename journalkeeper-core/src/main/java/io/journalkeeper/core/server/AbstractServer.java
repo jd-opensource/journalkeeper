@@ -735,9 +735,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     private void flushState() {
         try {
-            if (state instanceof Flushable) {
-                ((Flushable) state).flush();
-            }
+            state.flush();
             ServerMetadata metadata = createServerMetadata();
             if (!metadata.equals(lastSavedServerMetadata)) {
                 metadataPersistence.save(metadataFile(), metadata);
