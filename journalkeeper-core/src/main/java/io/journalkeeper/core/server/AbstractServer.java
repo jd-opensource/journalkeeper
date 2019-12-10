@@ -15,6 +15,7 @@ package io.journalkeeper.core.server;
 
 import io.journalkeeper.base.ReplicableIterator;
 import io.journalkeeper.base.Serializer;
+import io.journalkeeper.core.Logo;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
@@ -86,6 +87,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -113,6 +115,7 @@ import java.util.stream.StreamSupport;
 
 import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
 import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITIONS_START;
+import static io.journalkeeper.core.journal.Journal.INDEX_STORAGE_SIZE;
 import static io.journalkeeper.core.server.ThreadNames.FLUSH_JOURNAL_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.PRINT_METRIC_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
@@ -578,6 +581,11 @@ public abstract class AbstractServer<E, ER, Q, QR>
                         Config.ENABLE_METRIC_KEY,
                         String.valueOf(Config.DEFAULT_ENABLE_METRIC))));
 
+        config.setDisableLogo(Boolean.parseBoolean(
+                properties.getProperty(
+                        Config.DISABLE_LOGO_KEY,
+                        String.valueOf(Config.DEFAULT_DISABLE_LOGO))));
+
         config.setPrintMetricIntervalSec(Integer.parseInt(
                 properties.getProperty(
                         Config.PRINT_METRIC_INTERVAL_SEC_KEY,
@@ -816,6 +824,33 @@ public abstract class AbstractServer<E, ER, Q, QR>
         recoverSnapshots();
         recoverJournal(state.getPartitions(), snapshots.firstEntry().getValue().getJournalSnapshot(), lastSavedServerMetadata.getCommitIndex());
         onJournalRecovered(journal);
+        logger.info(getStartupInfo());
+    }
+
+    private String getStartupInfo() {
+        String version = getClass().getPackage().getImplementationVersion();
+        StringBuilder sb = new StringBuilder("\n" +
+                Logo.DOUBLE_LINE +
+                (config.isDisableLogo() ? "" : (Logo.LOGO +
+                "  Version:\t" + version + "\n" +
+                Logo.SINGLE_LINE )) +
+                String.format("URI:\t%s\n", serverUri()) +
+                String.format("Working dir:\t%s\n", workingDir()) +
+                String.format("Config:\t%s\n", state.getConfigState()) +
+                String.format("State:\tlastAppliedIndex=%d, lastIncludedTerm=%d, preferredLeader=%s\n", state.lastApplied(), state.lastIncludedTerm(), state.getPreferredLeader()) +
+                String.format("Journal:\t[%d, %d], commitIndex=%d\n", journal.minIndex(), journal.maxIndex(), journal.commitIndex()));
+
+        journal.getPartitionMap().entrySet().stream()
+                .sorted(Comparator.comparing(Map.Entry::getKey))
+                .forEach(entry -> sb.append("  Partition ")
+                        .append(entry.getKey())
+                        .append(":\t")
+                        .append(
+                                String.format("[%d, %d]\n", entry.getValue().min() / INDEX_STORAGE_SIZE, entry.getValue().max() / INDEX_STORAGE_SIZE)
+                        ));
+        sb.append("Snapshots: \t").append(snapshots.keySet()).append("\n");
+        sb.append(Logo.DOUBLE_LINE);
+        return sb.toString();
     }
 
     protected void onJournalRecovered(Journal journal) {
@@ -888,28 +923,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     }
 
     protected void onMetadataRecovered(ServerMetadata metadata) {
-//        if(lastSavedServerMetadata.isJointConsensus()) {
-//            votersConfigStateMachine = new ConfigState(
-//                    lastSavedServerMetadata.getOldVoters(),
-//                    lastSavedServerMetadata.getVoters()
-//            );
-//        } else {
-//            votersConfigStateMachine =
-//                    new ConfigState(lastSavedServerMetadata.getVoters());
-//        }
         this.uri = metadata.getThisServer();
-
-//        if(metadata.getPartitions() == null ) {
-//            metadata.setPartitions(new HashSet<>());
-//        }
-
-//        if(metadata.getPartitions().isEmpty()) {
-//            metadata.getPartitions().addAll(
-//                    Stream.of(RaftJournal.DEFAULT_PARTITION, INTERNAL_PARTITION)
-//                            .collect(Collectors.toSet())
-//            );
-//        }
-
     }
 
 
@@ -918,11 +932,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
         ServerMetadata serverMetadata = new ServerMetadata();
         serverMetadata.setInitialized(true);
         serverMetadata.setThisServer(uri);
-//        ConfigState config = votersConfigStateMachine.clone();
-//        serverMetadata.setPartitions(journal.getPartitions());
-//        serverMetadata.setVoters(config.getConfigNew());
-//        serverMetadata.setOldVoters(config.getConfigOld());
-//        serverMetadata.setJointConsensus(config.isJointConsensus());
         serverMetadata.setCommitIndex(journal.commitIndex());
         return serverMetadata;
     }
@@ -1142,6 +1151,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         public final static long DEFAULT_FLUSH_INTERVAL_MS = 50L;
         public final static int DEFAULT_GET_STATE_BATCH_SIZE = 1024 * 1024;
         public final static boolean DEFAULT_ENABLE_METRIC = false;
+        public final static boolean DEFAULT_DISABLE_LOGO = false;
         public final static int DEFAULT_PRINT_METRIC_INTERVAL_SEC = 0;
         public final static int DEFAULT_JOURNAL_RETENTION_MIN = 0;
 
@@ -1151,6 +1161,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         public final static String WORKING_DIR_KEY = "working_dir";
         public final static String GET_STATE_BATCH_SIZE_KEY = "get_state_batch_size";
         public final static String ENABLE_METRIC_KEY = "enable_metric";
+        public final static String DISABLE_LOGO_KEY = "disable_logo";
         public final static String PRINT_METRIC_INTERVAL_SEC_KEY = "print_metric_interval_sec";
         public final static String JOURNAL_RETENTION_MIN_KEY = "journal_retention_min";
 
@@ -1160,6 +1171,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         private Path workingDir = Paths.get(System.getProperty("user.dir")).resolve("journalkeeper");
         private int getStateBatchSize = DEFAULT_GET_STATE_BATCH_SIZE;
         private boolean enableMetric = DEFAULT_ENABLE_METRIC;
+        private boolean disableLogo = DEFAULT_DISABLE_LOGO;
         private int printMetricIntervalSec = DEFAULT_PRINT_METRIC_INTERVAL_SEC;
         private int journalRetentionMin = DEFAULT_JOURNAL_RETENTION_MIN;
 
@@ -1225,6 +1237,14 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
         public void setJournalRetentionMin(int journalRetentionMin) {
             this.journalRetentionMin = journalRetentionMin;
+        }
+
+        public boolean isDisableLogo() {
+            return disableLogo;
+        }
+
+        public void setDisableLogo(boolean disableLogo) {
+            this.disableLogo = disableLogo;
         }
     }
 }

@@ -167,6 +167,7 @@ public class KvTest {
         Path workingDir = path.resolve(serverPath);
         Properties properties = new Properties();
         properties.setProperty("working_dir", workingDir.toString());
+        properties.setProperty("disable_logo", "true");
         properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
         properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
         kvServer = new KvServer(properties);
@@ -750,6 +751,8 @@ public class KvTest {
             properties.setProperty("working_dir", workingDir.toString());
             properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
+            properties.setProperty("disable_logo", "true");
+
 //            properties.setProperty("enable_metric", "true");
 //            properties.setProperty("print_metric_interval_sec", "3");
             properties.setProperty("print_state_interval_sec", String.valueOf(5));

@@ -75,7 +75,7 @@ import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITIONS_START;
  * @author LiYue
  * Date: 2019/11/20
  */
-public class JournalKeeperState <E, ER, Q, QR> implements Replicable {
+public class JournalKeeperState <E, ER, Q, QR> implements Replicable, Flushable {
     private static final Logger logger = LoggerFactory.getLogger(JournalKeeperState.class);
     private static final String USER_STATE_PATH = "user";
     private static final String INTERNAL_STATE_PATH = "internal";

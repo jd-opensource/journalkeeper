@@ -164,7 +164,7 @@ public class ConfigState {
     public String toString() {
         rwLock.readLock().lock();
         try {
-            String str = "Voters config: jointConsensus: " +
+            String str = "jointConsensus: " +
                     jointConsensus + ", ";
             if(jointConsensus) {
                 str += "old config: [" +
