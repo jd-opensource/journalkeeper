@@ -803,7 +803,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private void appendLeaderAnnouncementEntry() {
         // Leader announcement
         try {
-            byte[] payload = InternalEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(currentTerm));
+            byte[] payload = InternalEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(currentTerm, serverUri));
             JournalEntry journalEntry = journalEntryParser.createJournalEntry(payload);
             journalEntry.setTerm(currentTerm);
             journalEntry.setPartition(INTERNAL_PARTITION);

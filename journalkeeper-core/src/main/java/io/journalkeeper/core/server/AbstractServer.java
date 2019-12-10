@@ -418,16 +418,16 @@ public abstract class AbstractServer<E, ER, Q, QR>
         }
     }
 
-    private void fireOnLeaderChangeEvent(int term) {
+    private void fireOnLeaderChangeEvent(int term, URI leaderUri) {
         Map<String, String> eventData = new HashMap<>();
-        eventData.put("leader", String.valueOf(this.leaderUri));
+        eventData.put("leader", String.valueOf(leaderUri));
         eventData.put("term", String.valueOf(term));
         fireEvent(EventType.ON_LEADER_CHANGE, eventData);
     }
 
     private void announceLeader(InternalEntryType type, byte [] internalEntry) {
         LeaderAnnouncementEntry leaderAnnouncementEntry = InternalEntriesSerializeSupport.parse(internalEntry);
-        fireOnLeaderChangeEvent(leaderAnnouncementEntry.getTerm());
+        fireOnLeaderChangeEvent(leaderAnnouncementEntry.getTerm(), leaderAnnouncementEntry.getLeaderUri());
     }
 
     private void scalePartitions(InternalEntryType type, byte [] internalEntry) {

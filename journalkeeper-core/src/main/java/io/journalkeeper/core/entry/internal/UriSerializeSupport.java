@@ -47,6 +47,10 @@ public class UriSerializeSupport {
         buffer.put(asciiBytes);
     }
 
+    public static int sizeOf(URI uri) {
+        return uri.toASCIIString().getBytes(StandardCharsets.US_ASCII).length + Short.BYTES;
+    }
+
     public static List<URI> parseUriList(ByteBuffer buffer) {
         int sizeOfList = buffer.getShort();
         List<URI> config = new ArrayList<>(sizeOfList);

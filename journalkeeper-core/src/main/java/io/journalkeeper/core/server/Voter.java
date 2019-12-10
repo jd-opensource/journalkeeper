@@ -441,6 +441,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
      * 将请求放到待处理队列中。
      */
     @Override
+    @SuppressWarnings("unchecked")
     public CompletableFuture<AsyncAppendEntriesResponse> asyncAppendEntries(AsyncAppendEntriesRequest request) {
 
         checkTerm(request.getTerm());
@@ -473,7 +474,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         }
 
         return follower.addAppendEntriesRequest(request);
-
     }
 
     /**

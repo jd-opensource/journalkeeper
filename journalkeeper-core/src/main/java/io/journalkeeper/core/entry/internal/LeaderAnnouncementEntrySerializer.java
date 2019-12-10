@@ -15,6 +15,7 @@ package io.journalkeeper.core.entry.internal;
 
 import io.journalkeeper.base.Serializer;
 
+import java.net.URI;
 import java.nio.ByteBuffer;
 
 /**
@@ -25,10 +26,11 @@ public class LeaderAnnouncementEntrySerializer implements Serializer<LeaderAnnou
 
     @Override
     public byte[] serialize(LeaderAnnouncementEntry entry) {
-        byte [] buffer = new byte[Byte.BYTES + Integer.BYTES];
+        byte [] buffer = new byte[Byte.BYTES + Integer.BYTES + UriSerializeSupport.sizeOf(entry.getLeaderUri())];
         ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
         byteBuffer.put((byte) InternalEntryType.TYPE_LEADER_ANNOUNCEMENT.value());
         byteBuffer.putInt(entry.getTerm());
+        UriSerializeSupport.serializerUri(byteBuffer, entry.getLeaderUri());
         return buffer;
     }
 
@@ -36,6 +38,7 @@ public class LeaderAnnouncementEntrySerializer implements Serializer<LeaderAnnou
     public LeaderAnnouncementEntry parse(byte[] bytes) {
         ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
         int term =  byteBuffer.getInt(Byte.BYTES);
-        return new LeaderAnnouncementEntry(term);
+        URI uri = UriSerializeSupport.parseUri(byteBuffer);
+        return new LeaderAnnouncementEntry(term, uri);
     }
 }

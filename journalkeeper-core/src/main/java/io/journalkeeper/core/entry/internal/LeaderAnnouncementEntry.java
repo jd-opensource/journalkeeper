@@ -14,6 +14,7 @@
 package io.journalkeeper.core.entry.internal;
 
 import java.io.Serializable;
+import java.net.URI;
 
 import static io.journalkeeper.core.entry.internal.InternalEntryType.TYPE_LEADER_ANNOUNCEMENT;
 
@@ -24,12 +25,18 @@ import static io.journalkeeper.core.entry.internal.InternalEntryType.TYPE_LEADER
 public class LeaderAnnouncementEntry extends InternalEntry implements Serializable {
     private static final long serialVersionUID = 2L;
     private final int term;
-    public LeaderAnnouncementEntry(int term) {
+    private final URI leaderUri;
+    public LeaderAnnouncementEntry(int term, URI leaderUri) {
         super(TYPE_LEADER_ANNOUNCEMENT);
         this.term = term;
+        this.leaderUri = leaderUri;
     }
 
     public int getTerm() {
         return term;
+    }
+
+    public URI getLeaderUri() {
+        return leaderUri;
     }
 }
