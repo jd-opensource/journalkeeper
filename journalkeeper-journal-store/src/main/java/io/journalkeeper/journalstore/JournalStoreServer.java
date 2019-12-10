@@ -27,6 +27,8 @@ import java.net.URI;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * @author LiYue
@@ -49,6 +51,30 @@ public class JournalStoreServer implements StateServer {
                 new JournalStoreQuerySerializer(),
                 new JournalStoreQueryResultSerializer(journalEntryParser),
                 journalEntryParser,
+                properties
+        );
+    }
+
+    public JournalStoreServer(
+            RaftServer.Roll roll,
+            JournalEntryParser journalEntryParser,
+            ExecutorService clientAsyncExecutor,
+            ScheduledExecutorService clientScheduledExecutor,
+            ExecutorService serverAsyncExecutor,
+            ScheduledExecutorService serverScheduledExecutor,
+            Properties properties) {
+        bootStrap = new BootStrap<>(
+                roll,
+                new JournalStoreStateFactory(),
+                new ByteArraySerializer(),
+                new LongSerializer(),
+                new JournalStoreQuerySerializer(),
+                new JournalStoreQueryResultSerializer(journalEntryParser),
+                journalEntryParser,
+                clientAsyncExecutor,
+                clientScheduledExecutor,
+                serverAsyncExecutor,
+                serverScheduledExecutor,
                 properties
         );
     }

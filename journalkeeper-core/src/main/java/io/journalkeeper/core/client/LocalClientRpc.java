@@ -124,7 +124,7 @@ public class LocalClientRpc implements ClientRpc {
                 case NOT_LEADER:
                 case TIMEOUT:
                 case SERVER_BUSY:
-                    logger.warn(response.errorString());
+                    logger.info("{} failed, cause: {}, Retry...", response.getClass().getName(), response.errorString());
                     return true;
                 default:
                     return false;

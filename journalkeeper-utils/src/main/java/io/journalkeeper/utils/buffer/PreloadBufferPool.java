@@ -49,7 +49,6 @@ public class PreloadBufferPool {
     private Map<Integer,PreLoadCache> bufferCache = new ConcurrentHashMap<>();
     private final Threads threads = ThreadsFactory.create();
     private static final String PRELOAD_THREAD = "PreloadBuffer-PreloadThread";
-    private static final String METRIC_THREAD = "PreloadBuffer-MetricThread";
     private static final String EVICT_THREAD = "PreloadBuffer-EvictThread";
     private final long cacheLifetimeMs;
     // 可用的堆外内存上限，这个上限可以用JVM参数"PreloadBufferPool.MaxMemory"指定，

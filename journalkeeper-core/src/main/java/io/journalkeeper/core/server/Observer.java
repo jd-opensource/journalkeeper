@@ -101,7 +101,6 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
                 journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         this.config = toConfig(properties);
         this.replicationMetric = getMetric(METRIC_OBSERVER_REPLICATION);
-        threads.createThread(buildReplicationThread());
         serverRpcRetry = new CompletableRetry<>(new IncreasingRetryPolicy(new long [] {100, 500, 3000, 10000}, 50),
                 new RandomDestinationSelector<>(config.getParents()));
     }
@@ -127,7 +126,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     }
     private AsyncLoopThread buildReplicationThread() {
         return ThreadBuilder.builder()
-                .name(OBSERVER_REPLICATION_THREAD)
+                .name(threadName(OBSERVER_REPLICATION_THREAD))
                 .condition(() -> this.serverState() == ServerState.RUNNING)
                 .doWork(this::pullEntries)
                 .sleepTime(50,100)
@@ -170,7 +169,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 //            commitIndex.addAndGet(response.getEntries().size());
             journal.commit(journal.maxIndex());
             // 唤醒状态机线程
-            threads.wakeupThread(STATE_MACHINE_THREAD);
+            threads.wakeupThread(threadName(STATE_MACHINE_THREAD));
             traffic = response.getEntries().stream().mapToLong(bytes -> bytes.length).sum();
 
 
@@ -217,12 +216,13 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
 
     @Override
     public void doStart() {
-        threads.startThread(OBSERVER_REPLICATION_THREAD);
+        threads.createThread(buildReplicationThread());
+        threads.startThread(threadName(OBSERVER_REPLICATION_THREAD));
     }
 
     @Override
     public void doStop() {
-        threads.stopThread(OBSERVER_REPLICATION_THREAD);
+        threads.stopThread(threadName(OBSERVER_REPLICATION_THREAD));
 
     }
 

@@ -83,6 +83,18 @@ public class BootStrap<
         this(servers, null, null, null, null, properties);
     }
 
+    /**
+     * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。
+     * @param servers 远程Server 列表
+     * @param clientAsyncExecutor 用于执行异步任务的Executor
+     * @param clientScheduledExecutor 用于执行定时任务的Executor
+     * @param properties 配置属性
+     *
+     */
+    public BootStrap(List<URI> servers, ExecutorService clientAsyncExecutor, ScheduledExecutorService clientScheduledExecutor, Properties properties) {
+        this(servers, null, null, null, null, properties);
+    }
+
 
     /**
      * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。
@@ -99,7 +111,9 @@ public class BootStrap<
                      Serializer<Q> querySerializer,
                      Serializer<QR> queryResultSerializer,
                      Properties properties) {
-        this(null, servers, null, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, null,properties);
+        this(null, servers, null, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, null,
+                null, null, null, null,
+                properties);
     }
 
     /**
@@ -118,7 +132,9 @@ public class BootStrap<
                      Serializer<Q> querySerializer,
                      Serializer<QR> queryResultSerializer,
                      Properties properties) {
-        this(roll, null, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, new DefaultJournalEntryParser(), properties);
+        this(roll, null, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer,
+                new DefaultJournalEntryParser(), null, null,null, null,
+                properties);
     }
 
     /**
@@ -140,7 +156,41 @@ public class BootStrap<
                      JournalEntryParser journalEntryParser,
                      Properties properties) {
         this(roll, null, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer,
-                journalEntryParser, properties);
+                journalEntryParser,
+                null, null, null, null,
+                properties);
+    }
+
+    /**
+     * 初始化本地Server模式BootStrap，本地包含一个Server，请求本地Server通信。
+     * @param roll 本地Server的角色。
+     * @param stateFactory 状态机工厂，用户创建状态机实例
+     * @param entrySerializer 操作日志序列化器
+     * @param entryResultSerializer 操作日志执行结果序列化器
+     * @param querySerializer 查询参数序列化器
+     * @param queryResultSerializer 查询结果序列化器
+     * @param journalEntryParser 操作日志的解析器，一般不需要提供，使用默认解析器即可。
+     * @param clientAsyncExecutor Client用于执行异步任务的Executor
+     * @param clientScheduledExecutor Client用于执行定时任务的Executor
+     * @param serverAsyncExecutor Server用于执行异步任务的Executor
+     * @param serverScheduledExecutor Server用于执行定时任务的Executor
+     * @param properties 配置属性
+     */
+    public BootStrap(RaftServer.Roll roll, StateFactory<E, ER, Q, QR> stateFactory,
+                     Serializer<E> entrySerializer,
+                     Serializer<ER> entryResultSerializer,
+                     Serializer<Q> querySerializer,
+                     Serializer<QR> queryResultSerializer,
+                     JournalEntryParser journalEntryParser,
+                     ExecutorService clientAsyncExecutor,
+                     ScheduledExecutorService clientScheduledExecutor,
+                     ExecutorService serverAsyncExecutor,
+                     ScheduledExecutorService serverScheduledExecutor,
+                     Properties properties) {
+        this(roll, null, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer,
+                journalEntryParser,
+                clientAsyncExecutor, clientScheduledExecutor, serverAsyncExecutor, serverScheduledExecutor,
+                properties);
     }
 
 
@@ -150,6 +200,10 @@ public class BootStrap<
                       Serializer<Q> querySerializer,
                       Serializer<QR> queryResultSerializer,
                       JournalEntryParser journalEntryParser,
+                      ExecutorService clientAsyncExecutor,
+                      ScheduledExecutorService clientScheduledExecutor,
+                      ExecutorService serverAsyncExecutor,
+                      ScheduledExecutorService serverScheduledExecutor,
                       Properties properties) {
         this.stateFactory = stateFactory;
         this.entrySerializer = entrySerializer;
@@ -160,6 +214,10 @@ public class BootStrap<
         this.roll = roll;
         this.rpcAccessPointFactory = ServiceSupport.load(RpcAccessPointFactory.class);
         this.journalEntryParser = journalEntryParser;
+        this.clientAsyncExecutor = clientAsyncExecutor;
+        this.serverAsyncExecutor = serverAsyncExecutor;
+        this.clientScheduledExecutor = clientScheduledExecutor;
+        this.serverScheduledExecutor = serverScheduledExecutor;
         this.server = createServer();
         this.servers = servers;
     }

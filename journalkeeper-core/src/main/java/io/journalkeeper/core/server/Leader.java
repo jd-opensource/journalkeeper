@@ -223,7 +223,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     private AsyncLoopThread buildLeaderAppendJournalEntryThread() {
         return ThreadBuilder.builder()
-                .name(LEADER_APPEND_ENTRY_THREAD)
+                .name(threadName(LEADER_APPEND_ENTRY_THREAD))
                 .doWork(this::appendJournalEntry)
                 .sleepTime(0, 0)
                 .onException(e -> logger.warn("{} Exception, {}: ", LEADER_APPEND_ENTRY_THREAD, voterInfo(), e))
@@ -233,7 +233,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     private AsyncLoopThread buildLeaderReplicationThread() {
         return ThreadBuilder.builder()
-                .name(LEADER_REPLICATION_THREAD)
+                .name(threadName(LEADER_REPLICATION_THREAD))
                 .doWork(this::replication)
                 .sleepTime(heartbeatIntervalMs, heartbeatIntervalMs)
                 .onException(e -> logger.warn("{} Exception, {}: ", LEADER_REPLICATION_THREAD, voterInfo(), e))
@@ -243,7 +243,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     private AsyncLoopThread buildLeaderReplicationResponseThread() {
         return ThreadBuilder.builder()
-                .name(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD)
+                .name(threadName(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD))
                 .doWork(this::leaderUpdateCommitIndex)
                 .sleepTime(heartbeatIntervalMs, heartbeatIntervalMs)
                 .onException(e -> logger.warn("{} Exception, {}: ", LEADER_REPLICATION_RESPONSES_HANDLER_THREAD, voterInfo(), e))
@@ -253,12 +253,16 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     private AsyncLoopThread buildCallbackThread() {
         return ThreadBuilder.builder()
-                .name(LEADER_CALLBACK_THREAD)
+                .name(threadName(LEADER_CALLBACK_THREAD))
                 .doWork(this::callback)
                 .sleepTime(heartbeatIntervalMs, heartbeatIntervalMs)
                 .onException(e -> logger.warn("{} Exception, {}: ", LEADER_CALLBACK_THREAD, voterInfo(), e))
                 .daemon(true)
                 .build();
+    }
+
+    private String threadName(String staticThreadName) {
+        return serverUri + "-" + staticThreadName;
     }
 
     /**
@@ -314,8 +318,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         }
 
         appendAndCallback(journalEntries, request.getResponseConfig(), responseFuture);
-        threads.wakeupThread(LEADER_REPLICATION_THREAD);
-        threads.wakeupThread(FLUSH_JOURNAL_THREAD);
+        threads.wakeupThread(threadName(LEADER_REPLICATION_THREAD));
+        threads.wakeupThread(threadName(FLUSH_JOURNAL_THREAD));
         appendJournalMetric.end(journalEntries.stream().mapToLong(JournalEntry::getLength).sum());
     }
 
@@ -351,7 +355,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private void replication() {
         // 如果是单节点，直接唤醒leaderReplicationResponseHandlerThread，减少响应时延。
         if (serverState() == ServerState.RUNNING && followers.isEmpty()) {
-            threads.wakeupThread(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD);
+            threads.wakeupThread(threadName(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD));
             leaderShipDeadLineMs.set(System.currentTimeMillis() + heartbeatIntervalMs);
         }
 
@@ -467,7 +471,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                                 follower.getUri(), voterInfo());
                     }
                     follower.addResponse(response);
-                    threads.wakeupThread(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD);
+                    threads.wakeupThread(threadName(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD));
                 } else if (logger.isDebugEnabled()) {
                     logger.debug("Ignore heartbeat response, success: {}, journalIndex: {}, " +
                                     "entryCount: {}, term: {}, follower: {}, {}.",
@@ -585,8 +589,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     private void onCommitted() {
         // 唤醒状态机线程
-        threads.wakeupThread(STATE_MACHINE_THREAD);
-        threads.wakeupThread(LEADER_REPLICATION_THREAD);
+        threads.wakeupThread(threadName(STATE_MACHINE_THREAD));
+        threads.wakeupThread(threadName(LEADER_REPLICATION_THREAD));
     }
 
     /**
@@ -784,10 +788,10 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.threads.createThread(buildLeaderReplicationThread());
         this.threads.createThread(buildLeaderReplicationResponseThread());
         this.threads.createThread(buildCallbackThread());
-        this.threads.startThread(LEADER_APPEND_ENTRY_THREAD);
-        this.threads.startThread(LEADER_CALLBACK_THREAD);
-        this.threads.startThread(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD);
-        this.threads.startThread(LEADER_REPLICATION_THREAD);
+        this.threads.startThread(threadName(LEADER_APPEND_ENTRY_THREAD));
+        this.threads.startThread(threadName(LEADER_CALLBACK_THREAD));
+        this.threads.startThread(threadName(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD));
+        this.threads.startThread(threadName(LEADER_REPLICATION_THREAD));
         heartbeatScheduledFuture = scheduledExecutor.scheduleAtFixedRate(this::sendHeartbeat, heartbeatIntervalMs, heartbeatIntervalMs, TimeUnit.MILLISECONDS);
         journalTransactionManager.start();
         state.addInterceptor(this.journalTransactionInterceptor);
@@ -839,15 +843,15 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         state.removeInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT, leaderAnnouncementInterceptor);;
         state.removeInterceptor(this.journalTransactionInterceptor);
         journalTransactionManager.stop();
-        this.threads.stopThread(LEADER_APPEND_ENTRY_THREAD);
-        this.threads.stopThread(LEADER_CALLBACK_THREAD);
+        this.threads.stopThread(threadName(LEADER_APPEND_ENTRY_THREAD));
+        this.threads.stopThread(threadName(LEADER_CALLBACK_THREAD));
         failAllPendingCallbacks();
-        this.threads.stopThread(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD);
-        this.threads.stopThread(LEADER_REPLICATION_THREAD);
-        this.threads.removeThread(LEADER_APPEND_ENTRY_THREAD);
-        this.threads.removeThread(LEADER_CALLBACK_THREAD);
-        this.threads.removeThread(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD);
-        this.threads.removeThread(LEADER_REPLICATION_THREAD);
+        this.threads.stopThread(threadName(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD));
+        this.threads.stopThread(threadName(LEADER_REPLICATION_THREAD));
+        this.threads.removeThread(threadName(LEADER_APPEND_ENTRY_THREAD));
+        this.threads.removeThread(threadName(LEADER_CALLBACK_THREAD));
+        this.threads.removeThread(threadName(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD));
+        this.threads.removeThread(threadName(LEADER_REPLICATION_THREAD));
         if(null != heartbeatScheduledFuture) {
             heartbeatScheduledFuture.cancel(false);
         }
@@ -894,8 +898,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
         journalFlushIndex.set(journal.maxIndex());
         if(serverState() == ServerState.RUNNING) {
-            threads.wakeupThread(LEADER_APPEND_ENTRY_THREAD);
-            threads.wakeupThread(LEADER_CALLBACK_THREAD);
+            threads.wakeupThread(threadName(LEADER_APPEND_ENTRY_THREAD));
+            threads.wakeupThread(threadName(LEADER_CALLBACK_THREAD));
         }
 
     }

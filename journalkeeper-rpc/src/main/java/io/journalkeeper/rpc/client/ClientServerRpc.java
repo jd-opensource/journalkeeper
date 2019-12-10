@@ -134,6 +134,7 @@ public interface ClientServerRpc {
 
     /**
      * 开启一个新事务，并返回事务ID。
+     * @param request See {@link CreateTransactionRequest}
      * @return See {@link CreateTransactionResponse}
      */
     CompletableFuture<CreateTransactionResponse> createTransaction(CreateTransactionRequest request);

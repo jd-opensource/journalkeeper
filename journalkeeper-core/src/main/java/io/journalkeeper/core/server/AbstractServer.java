@@ -251,7 +251,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     private AsyncLoopThread buildStateMachineThread() {
         return ThreadBuilder.builder()
-                .name(STATE_MACHINE_THREAD)
+                .name(threadName(STATE_MACHINE_THREAD))
                 .doWork(this::applyEntries)
                 .sleepTime(50,100)
                 .onException(e -> logger.warn("{} Exception: ", STATE_MACHINE_THREAD, e))
@@ -262,7 +262,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     private AsyncLoopThread buildFlushJournalThread() {
         return ThreadBuilder.builder()
-                .name(FLUSH_JOURNAL_THREAD)
+                .name(threadName(FLUSH_JOURNAL_THREAD))
                 .doWork(this::flushJournal)
                 .sleepTime(config.getFlushIntervalMs(), config.getFlushIntervalMs())
                 .onException(e -> logger.warn("{} Exception: ", FLUSH_JOURNAL_THREAD, e))
@@ -272,7 +272,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     private AsyncLoopThread buildPrintMetricThread() {
         return ThreadBuilder.builder()
-                .name(PRINT_METRIC_THREAD)
+                .name(threadName(PRINT_METRIC_THREAD))
                 .doWork(this::printMetrics)
                 .sleepTime(config.getPrintMetricIntervalSec() * 1000, config.getPrintMetricIntervalSec() * 1000)
                 .onException(e -> logger.warn("{} Exception: ", PRINT_METRIC_THREAD, e))
@@ -326,8 +326,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
         this.scheduledExecutor = scheduledExecutor;
         this.asyncExecutor = asyncExecutor;
         this.config = toConfig(properties);
-        this.threads.createThread(buildStateMachineThread());
-        this.threads.createThread(buildFlushJournalThread());
         this.entrySerializer = entrySerializer;
         this.querySerializer = querySerializer;
         this.resultSerializer = resultSerializer;
@@ -699,11 +697,16 @@ public abstract class AbstractServer<E, ER, Q, QR>
         }
         this.serverState = ServerState.STARTING;
         doStart();
-        threads.startThread(STATE_MACHINE_THREAD);
-        threads.startThread(FLUSH_JOURNAL_THREAD);
-        if(threads.exists(PRINT_METRIC_THREAD)) {
-            threads.startThread(PRINT_METRIC_THREAD);
+        this.threads.createThread(buildStateMachineThread());
+        this.threads.createThread(buildFlushJournalThread());
+        threads.startThread(threadName(STATE_MACHINE_THREAD));
+        threads.startThread(threadName(FLUSH_JOURNAL_THREAD));
+
+        if (config.isEnableMetric() && config.getPrintMetricIntervalSec() > 0) {
+            this.threads.createThread(buildPrintMetricThread());
+            threads.startThread(threadName(PRINT_METRIC_THREAD));
         }
+
         flushStateFuture = scheduledExecutor.scheduleAtFixedRate(this::flushState,
                 ThreadLocalRandom.current().nextLong(10L, 50L),
                 config.getFlushIntervalMs(), TimeUnit.MILLISECONDS);
@@ -759,10 +762,10 @@ public abstract class AbstractServer<E, ER, Q, QR>
             doStop();
             remoteServers.values().forEach(ServerRpc::stop);
             waitJournalApplied();
-            threads.stopThread(STATE_MACHINE_THREAD);
-            threads.stopThread(FLUSH_JOURNAL_THREAD);
-            if(threads.exists(PRINT_METRIC_THREAD)) {
-                threads.stopThread(PRINT_METRIC_THREAD);
+            threads.stopThread(threadName(STATE_MACHINE_THREAD));
+            threads.stopThread(threadName(FLUSH_JOURNAL_THREAD));
+            if(threads.exists(threadName(PRINT_METRIC_THREAD))) {
+                threads.stopThread(threadName(PRINT_METRIC_THREAD));
             }
 
             stopAndWaitScheduledFeature(compactJournalFuture, 1000L);
@@ -1112,7 +1115,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 // Discard the entire log
 
                 logger.info("Compact journal entries, journal: {}...", journal);
-                threads.stopThread(ThreadNames.FLUSH_JOURNAL_THREAD);
+                threads.stopThread(threadName(ThreadNames.FLUSH_JOURNAL_THREAD));
                 if (journal.minIndex() >= lastIncludedIndex &&
                         lastIncludedIndex < journal.maxIndex() &&
                         journal.getTerm(lastIncludedIndex) == lastIncludedTerm) {
@@ -1121,24 +1124,27 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 } else {
                     journal.clear(snapshot.getJournalSnapshot());
                 }
-                threads.startThread(ThreadNames.FLUSH_JOURNAL_THREAD);
+                threads.startThread(threadName(ThreadNames.FLUSH_JOURNAL_THREAD));
                 logger.info("Compact journal finished, journal: {}.", journal);
 
                 // Reset state machine using snapshot contents (and load
                 // snapshot’s cluster configuration)
 
                 logger.info("Use the new installed snapshot as server's state...");
-                threads.stopThread(ThreadNames.STATE_MACHINE_THREAD);
+                threads.stopThread(threadName(ThreadNames.STATE_MACHINE_THREAD));
                 state.close();
                 state.clear();
                 snapshot.dump(statePath());
                 state.recover(statePath(), properties);
-                threads.startThread(ThreadNames.STATE_MACHINE_THREAD);
+                threads.startThread(threadName(ThreadNames.STATE_MACHINE_THREAD));
                 logger.info("Install snapshot successfully!");
             }
         }
     }
 
+    String threadName(String staticThreadName) {
+        return serverUri() + "-" + staticThreadName;
+    }
     /**
      * This method will be invoked when metric
      */

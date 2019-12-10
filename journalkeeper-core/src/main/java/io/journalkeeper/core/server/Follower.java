@@ -75,7 +75,6 @@ class Follower<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                 Comparator.comparing(ReplicationRequestResponse::getPrevLogTerm)
                         .thenComparing(ReplicationRequestResponse::getPrevLogIndex));
 
-        threads.createThread(buildVoterReplicationHandlerThread());
         this.journal = journal;
         this.serverUri = serverUri;
         this.currentTerm = currentTerm;
@@ -83,12 +82,16 @@ class Follower<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     private AsyncLoopThread buildVoterReplicationHandlerThread() {
         return ThreadBuilder.builder()
-                .name(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD)
+                .name(threadName(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD))
                 .doWork(this::followerHandleAppendEntriesRequest)
                 .sleepTime(0L, 0L)
                 .onException(e -> logger.warn("{} Exception, {}: ", VOTER_REPLICATION_REQUESTS_HANDLER_THREAD, voterInfo(), e))
                 .daemon(true)
                 .build();
+    }
+
+    private String threadName(String staticThreadName) {
+        return serverUri + "-" + staticThreadName;
     }
 
     private String voterInfo() {
@@ -160,7 +163,7 @@ class Follower<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
             // min(leaderCommit, index of last new entry)
             if (request.getLeaderCommit() > journal.commitIndex()) {
                 journal.commit(Math.min(request.getLeaderCommit(), journal.maxIndex()));
-                threads.wakeupThread(STATE_MACHINE_THREAD);
+                threads.wakeupThread(threadName(STATE_MACHINE_THREAD));
             }
 
             if (leaderMaxIndex < request.getMaxIndex()) {
@@ -210,7 +213,8 @@ class Follower<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     @Override
     protected void doStart() {
         super.doStart();
-        threads.startThread(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD);
+        threads.createThread(buildVoterReplicationHandlerThread());
+        threads.startThread(threadName(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD));
     }
 
     @Override
@@ -223,8 +227,8 @@ class Follower<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                 throw new RuntimeException(e);
             }
         }
-        threads.stopThread(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD);
-        threads.removeThread(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD);
+        threads.stopThread(threadName(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD));
+        threads.removeThread(threadName(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD));
         super.doStop();
     }
 
