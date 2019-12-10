@@ -94,11 +94,11 @@ public class JournalStoreServer implements StateServer {
     }
 
     public JournalStoreClient createLocalClient() {
-        return new JournalStoreClient(bootStrap.getClient());
+        return new JournalStoreClient(bootStrap.getLocalClient());
     }
 
     public AdminClient getLocalAdminClient() {
-        return bootStrap.getAdminClient();
+        return bootStrap.getLocalAdminClient();
     }
 
     public URI serverUri() {
