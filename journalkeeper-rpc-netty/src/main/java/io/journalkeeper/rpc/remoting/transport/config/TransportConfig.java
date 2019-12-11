@@ -42,7 +42,7 @@ public class TransportConfig {
     // 保持活动连接，定期心跳包
     private  boolean keepAlive = true;
     // socket读超时时间(毫秒)
-    private  int soTimeout = 50;
+    private  int soTimeout = 100;
     // socket缓冲区大小
     private  int socketBufferSize = 1024 * 1024 * 2;
     // 数据包最大大小
@@ -58,7 +58,7 @@ public class TransportConfig {
     // 异步回调线程数量
     private int callbackThreads = Runtime.getRuntime().availableProcessors();
     // 默认发送数据包超时时间
-    private int sendTimeout = 50;
+    private int sendTimeout = 100;
 
     /*** 重试策略配置 ***/
     // 最大重试次数(无限制)

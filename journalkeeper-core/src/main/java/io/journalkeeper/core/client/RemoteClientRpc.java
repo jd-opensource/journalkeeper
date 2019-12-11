@@ -65,7 +65,7 @@ public class RemoteClientRpc implements ClientRpc {
             throw new IllegalArgumentException("Argument servers can not be empty!");
         }
         this.clientServerRpcAccessPoint = clientServerRpcAccessPoint;
-        uriSelector = new RandomUriSelector(servers);
+        uriSelector = new PreferredServerRandomUriSelector(servers);
         completableRetry = new CompletableRetry<>(retryPolicy,
                 uriSelector);
     }
@@ -78,7 +78,7 @@ public class RemoteClientRpc implements ClientRpc {
 
     @Override
     public <O extends BaseResponse> CompletableFuture<O> invokeClientServerRpc(URI uri, CompletableRetry.RpcInvoke<O, ClientServerRpc> invoke) {
-        return invoke.invoke(clientServerRpcAccessPoint.getClintServerRpc(uri));
+        return completableRetry.retry((uri1) -> invoke.invoke(clientServerRpcAccessPoint.getClintServerRpc(uri1)), clientCheckRetry, uri, executor, scheduledExecutor);
     }
 
     @Override
@@ -217,9 +217,9 @@ public class RemoteClientRpc implements ClientRpc {
 
 
 
-    private class RandomUriSelector extends RandomDestinationSelector<URI> {
+    private class PreferredServerRandomUriSelector extends RandomDestinationSelector<URI> {
 
-        RandomUriSelector(Collection<URI> allDestinations) {
+        PreferredServerRandomUriSelector(Collection<URI> allDestinations) {
             super(allDestinations);
         }
 

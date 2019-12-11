@@ -95,7 +95,7 @@ public class RequestBarrier {
         while (iterator.hasNext()) {
             Map.Entry<Integer, ResponseFuture> entry = iterator.next();
             ResponseFuture future = entry.getValue();
-            long timeout = future.getBeginTime() + future.getTimeout() + 1000;
+            long timeout = future.getBeginTime() + future.getTimeout();
 
             if (timeout <= System.currentTimeMillis() && future.getResponse() == null) {
                 iterator.remove();

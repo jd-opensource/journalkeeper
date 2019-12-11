@@ -51,14 +51,21 @@ public class CompletableRetry<D/* 对端地址类型 */> {
 //        logger.info("Using destination: {}", destination.get());
         return destination.get();
     }
-
     public final <R /* Response */> CompletableFuture<R> retry(RpcInvoke<R, D> invoke, CheckRetry<? super R> checkRetry, Executor executor, ScheduledExecutorService scheduledExecutor) {
+        return retry(invoke, checkRetry, null, executor, scheduledExecutor);
+    }
+    public final <R /* Response */> CompletableFuture<R> retry(RpcInvoke<R, D> invoke, CheckRetry<? super R> checkRetry, D fixDestination, Executor executor, ScheduledExecutorService scheduledExecutor) {
 
         RpcInvokeWithRetryInfo<R, D> retryInvoke = invoke instanceof CompletableRetry.RpcInvokeWithRetryInfo ? (RpcInvokeWithRetryInfo<R, D>) invoke : new RpcInvokeWithRetryInfo<>(invoke);
-        CompletableFuture<D> destFuture = executor == null ?
-                CompletableFuture.completedFuture(getDestination(retryInvoke)) :
-                CompletableFuture.supplyAsync(() -> getDestination(retryInvoke), executor);
 
+        CompletableFuture<D> destFuture;
+        if(fixDestination == null) {
+            destFuture = executor == null ?
+                    CompletableFuture.completedFuture(getDestination(retryInvoke)) :
+                    CompletableFuture.supplyAsync(() -> getDestination(retryInvoke), executor);
+        } else {
+            destFuture = CompletableFuture.completedFuture(fixDestination);
+        }
         return destFuture
                 .thenCompose(retryInvoke::invoke)
                 .thenApply(ResultAndException::new)
@@ -77,9 +84,9 @@ public class CompletableRetry<D/* 对端地址类型 */> {
 
                             if (delay > 0) {
                                 logger.debug("Retry, invokes times: {}.", retryInvoke.getInvokeTimes());
-                                return scheduleAsync(scheduledExecutor, () -> retry(retryInvoke, checkRetry, executor, scheduledExecutor), delay, TimeUnit.MILLISECONDS);
+                                return scheduleAsync(scheduledExecutor, () -> retry(retryInvoke, checkRetry, fixDestination, executor, scheduledExecutor), delay, TimeUnit.MILLISECONDS);
                             } else {
-                                return retry(retryInvoke, checkRetry, executor, scheduledExecutor);
+                                return retry(retryInvoke, checkRetry, fixDestination, executor, scheduledExecutor);
                             }
                         }
                     }

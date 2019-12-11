@@ -60,7 +60,7 @@ public class LocalClientRpc implements ClientRpc {
     @Override
     public <O extends BaseResponse> CompletableFuture<O> invokeClientServerRpc(URI uri, CompletableRetry.RpcInvoke<O, ClientServerRpc> invoke) {
         if(localServer.serverUri().equals(uri))  {
-            return invokeClientLeaderRpc(invoke);
+            return invokeClientServerRpc(invoke);
         } else {
             throw new IllegalArgumentException(
                     String.format("Request uri %s is NOT accessible!" +

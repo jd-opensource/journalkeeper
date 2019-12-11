@@ -150,7 +150,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         state.addInterceptor(InternalEntryType.TYPE_UPDATE_VOTERS_S1, this::applyUpdateVotersInternalEntry);
         state.addInterceptor(InternalEntryType.TYPE_UPDATE_VOTERS_S2, this::applyUpdateVotersInternalEntry);
 
-        electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
+        electionTimeoutMs =  config.getElectionTimeoutMs() + randomInterval(config.getElectionTimeoutMs());
     }
 
 
@@ -323,7 +323,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                             return null;
                         }).thenRun(() -> {
                             if(pendingRequests.decrementAndGet() == 0 && !isWinTheElection.get()) {
-                                electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
+                                electionTimeoutMs = config.getElectionTimeoutMs() + randomInterval(config.getElectionTimeoutMs());
                                 nextElectionTime = System.currentTimeMillis() + electionTimeoutMs;
                             }
                 });
@@ -426,7 +426,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                     snapshots, config.getCacheRequests());
             follower.start();
 
-            this.electionTimeoutMs = randomInterval(config.getElectionTimeoutMs());
+            this.electionTimeoutMs = config.getElectionTimeoutMs() + randomInterval(config.getElectionTimeoutMs());
             logger.info("Convert voter state from {} to FOLLOWER, electionTimeout: {}, {}.", oldState, electionTimeoutMs, voterInfo());
         }
     }
@@ -490,7 +490,6 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                                 "lastLogIndex: {}, lastLogTerm: {}, fromPreferredLeader: {}, {}.",
                         request.getTerm(), request.getCandidate(),
                         request.getLastLogIndex(), request.getLastLogTerm(), request.isFromPreferredLeader(), voterInfo());
-                boolean voteGranted = true;
                 String rejectMsg = null;
                 int currentTerm = this.currentTerm.get();
                 // 来自推荐Leader的投票请求例外
@@ -498,49 +497,51 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                     // 如果当前是LEADER那直接拒绝投票
 
                     if (voterState() == VoterState.LEADER) {
-                        voteGranted = false;
-                        rejectMsg = "Rejected by leader";
+                        rejectMsg = "I'm the leader";
+                        return rejectAndResponse(currentTerm, request.getCandidate(), rejectMsg);
                     }
                     // 如何上次收到心跳的至今小于最小选举超时，拒绝投票
                     if (System.currentTimeMillis() - lastHeartbeat < config.getElectionTimeoutMs()) {
-                        voteGranted = false;
-                        rejectMsg = "Rejected by election timeout";
+                        rejectMsg = "An election timeout not passed since last heartbeat received";
+                        return rejectAndResponse(currentTerm, request.getCandidate(), rejectMsg);
                     }
                 }
-                if (voteGranted && request.getTerm() < currentTerm) {
-                    voteGranted = false;
-                    rejectMsg = String.format("Request term %d less than currentTerm %d", request.getTerm(), currentTerm);
+                if (request.getTerm() < currentTerm) {
+                    rejectMsg = String.format("The candidate's term %d less than my term %d.",
+                            request.getTerm(), currentTerm);
+                    return rejectAndResponse(currentTerm, request.getCandidate(), rejectMsg);
                 }
 
                 checkTerm(request.getTerm());
                 currentTerm = this.currentTerm.get();
-                if (voteGranted && votedFor != null && !votedFor.equals(request.getCandidate())) {
-                    voteGranted = false;
+
+                if (votedFor != null && !votedFor.equals(request.getCandidate())) {
                     rejectMsg = "Already vote to " + votedFor.toString();
+                    return rejectAndResponse(currentTerm, request.getCandidate(), rejectMsg);
                 }
+
                 final long finalMaxJournalIndex = journal.maxIndex();
                 final int lastLogTerm = journal.getTerm(finalMaxJournalIndex - 1);
-
                 if ((request.getLastLogTerm() <= lastLogTerm
                         && (request.getLastLogTerm() != lastLogTerm
                         || request.getLastLogIndex() < finalMaxJournalIndex - 1))) {
-                    voteGranted = false;
-                    rejectMsg = "Candidate’s log is at least as up-to-date as receiver’s log";
+                    rejectMsg = "Candidate’s log is at least as up-to-date as my log";
+                    return rejectAndResponse(currentTerm, request.getCandidate(), rejectMsg);
                 }
 
-                if (voteGranted) {
-                    logger.info("Grant vote to candidate {}, {}.", request.getCandidate(), voterInfo());
 
-                    // 重置选举超时
-                    lastHeartbeat = System.currentTimeMillis();
-
-                } else {
-                    logger.info("Reject vote to candidate {}, cause: [{}], {}.", request.getCandidate(), rejectMsg, voterInfo());
-                }
-
-                return new RequestVoteResponse(currentTerm, voteGranted);
+                logger.info("Grant vote to candidate {}, {}.", request.getCandidate(), voterInfo());
+                this.votedFor = request.getCandidate();
+                // 重置选举超时
+//                lastHeartbeat = System.currentTimeMillis();
+                return new RequestVoteResponse(currentTerm, true);
             }
         }, asyncExecutor);
+    }
+
+    private RequestVoteResponse rejectAndResponse(int term, URI candidate, String rejectMessage) {
+        logger.info("Reject vote request from candidate {}, cause: [{}], {}.", candidate, rejectMessage, voterInfo());
+        return new RequestVoteResponse(term, false);
     }
 
     @Override
