@@ -28,6 +28,7 @@ import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.metric.JMetricFactory;
 import io.journalkeeper.metric.JMetricSupport;
+import io.journalkeeper.rpc.StatusCode;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import io.journalkeeper.utils.format.Format;
@@ -203,7 +204,11 @@ public class VoterTest {
 
 
             logger.info("Send UpdateClusterStateRequest...");
-            UpdateClusterStateResponse response = voter.updateClusterState(new UpdateClusterStateRequest(entry, RaftJournal.DEFAULT_PARTITION, 1)).get();
+            UpdateClusterStateResponse response;
+            do {
+                Thread.sleep(10);
+                response = voter.updateClusterState(new UpdateClusterStateRequest(entry, RaftJournal.DEFAULT_PARTITION, 1)).get();
+            } while (response.getStatusCode() == StatusCode.NOT_LEADER);
             Assert.assertTrue(response.success());
             Assert.assertArrayEquals(entry, response.getResults().get(0));
 
