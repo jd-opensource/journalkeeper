@@ -79,4 +79,8 @@ public class SQLServerAccessPoint {
         return new SQLServer(current, servers, config, role, stateFactory, writeRequestSerializer,
                 writeResponseSerializer, readRequestSerializer, readResponseSerializer);
     }
+
+    public SQLServer createRemoteServer(URI current, List<URI> servers) {
+        return new SQLServer(servers, config);
+    }
 }

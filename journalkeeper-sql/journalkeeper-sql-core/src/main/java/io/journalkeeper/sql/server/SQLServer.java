@@ -32,6 +32,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * SQLServer
@@ -66,6 +67,12 @@ public class SQLServer implements StateServer {
                 readRequestSerializer, readResponseSerializer, config);
     }
 
+    public SQLServer(List<URI> servers, Properties config) {
+        this.servers = servers;
+        this.config = config;
+        this.bootStrap = new BootStrap<>(servers, config);
+    }
+
     public URI getCurrent() {
         return current;
     }
@@ -78,13 +85,18 @@ public class SQLServer implements StateServer {
         return role;
     }
 
-    public boolean waitClusterReady(int timeout, TimeUnit unit) {
-        try {
-            bootStrap.getClient().waitForClusterReady(timeout);
-            return true;
-        } catch (Exception e) {
-            return false;
+    public boolean waitClusterReady(long timeout, TimeUnit unit) {
+        timeout = unit.toMillis(timeout);
+        long t0 = System.currentTimeMillis();
+        while (System.currentTimeMillis() - t0 < timeout || timeout <= 0) {
+            try {
+                bootStrap.getClient().waitForClusterReady(1000);
+                return true;
+            } catch (TimeoutException e) {
+            }
+            logger.info("wait for cluster ready, current: {}, servers: {}", current, servers);
         }
+        throw new SQLException(new TimeoutException());
     }
 
     public URI getLeader() {

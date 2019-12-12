@@ -18,7 +18,9 @@ import io.journalkeeper.core.api.ClusterReadyAware;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerConfigAware;
-import io.journalkeeper.rpc.*;
+import io.journalkeeper.rpc.BaseResponse;
+import io.journalkeeper.rpc.RpcException;
+import io.journalkeeper.rpc.StatusCode;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.GetServersResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
@@ -70,8 +72,6 @@ public abstract class AbstractClient implements ClusterReadyAware, ServerConfigA
 
     @Override
     public void waitForClusterReady(long maxWaitMs) throws TimeoutException {
-
-
             long t0 = System.currentTimeMillis();
             while (System.currentTimeMillis() - t0 < maxWaitMs || maxWaitMs <= 0) {
                 try {
