@@ -37,7 +37,8 @@ public class LeaderAnnouncementEntrySerializer implements Serializer<LeaderAnnou
     @Override
     public LeaderAnnouncementEntry parse(byte[] bytes) {
         ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
-        int term =  byteBuffer.getInt(Byte.BYTES);
+        byteBuffer.position(Byte.BYTES);
+        int term =  byteBuffer.getInt();
         URI uri = UriSerializeSupport.parseUri(byteBuffer);
         return new LeaderAnnouncementEntry(term, uri);
     }

@@ -616,7 +616,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 .thenApply(QueryStateResponse::new)
                 .exceptionally(exception -> {
                     try {
-                        throw exception;
+                        throw exception instanceof CompletionException ? exception.getCause() : exception;
                     } catch (NotLeaderException e) {
                         return new QueryStateResponse(new NotLeaderException(leaderUri));
                     } catch (Throwable t) {
