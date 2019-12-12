@@ -34,4 +34,6 @@ public interface KVStore {
     boolean remove(byte[] key);
 
     boolean compareAndSet(byte[] key, byte[] expect, byte[] update);
+
+    void close();
 }

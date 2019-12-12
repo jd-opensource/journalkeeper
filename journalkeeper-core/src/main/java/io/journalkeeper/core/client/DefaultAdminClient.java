@@ -23,6 +23,7 @@ import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.entry.internal.CreateSnapshotEntry;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
+import io.journalkeeper.core.entry.internal.RecoverSnapshotEntry;
 import io.journalkeeper.core.entry.internal.ReservedPartition;
 import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.internal.SetPreferredLeaderEntry;
@@ -108,4 +109,8 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
         return this.update(InternalEntriesSerializeSupport.serialize(new CreateSnapshotEntry()));
     }
 
+    @Override
+    public CompletableFuture<Void> recoverSnapshot(long index) {
+        return this.update(InternalEntriesSerializeSupport.serialize(new RecoverSnapshotEntry(index)));
+    }
 }

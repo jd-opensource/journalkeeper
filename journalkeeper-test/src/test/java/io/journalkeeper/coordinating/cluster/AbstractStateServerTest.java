@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Properties;
 
 /**
+ * AbstractStateServerTest
  * author: gaohaoxiang
  *
  * date: 2019/6/3

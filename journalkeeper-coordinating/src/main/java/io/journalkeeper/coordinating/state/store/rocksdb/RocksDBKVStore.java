@@ -124,4 +124,9 @@ public class RocksDBKVStore implements KVStore {
             throw new CoordinatingStateException(e);
         }
     }
+
+    @Override
+    public void close() {
+        rocksDB.close();
+    }
 }

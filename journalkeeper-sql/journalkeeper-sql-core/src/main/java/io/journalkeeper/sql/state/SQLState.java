@@ -85,14 +85,19 @@ public class SQLState implements State<WriteRequest, WriteResponse, ReadRequest,
         WriteResponse response = handler.handleWrite(request);
         StateResult<WriteResponse> result = new StateResult<>(response);
         result.getEventData().put("type", String.valueOf(request.getType()));
-        // TODO 参数处理
-//        eventParams.put("sql", request.getSql());
-//        eventParams.put("params", request.getParams().toString());
+        result.getEventData().put("sql", String.valueOf(request.getSql()));
+        result.getEventData().put("batchSql", String.valueOf(request.getSqlList()));
+        result.getEventData().put("params", String.valueOf(request.getParams()));
         return result;
     }
 
     @Override
     public ReadResponse query(ReadRequest request, RaftJournal raftJournal) {
        return handler.handleRead(request);
+    }
+
+    @Override
+    public void close() {
+        this.executor.close();
     }
 }
