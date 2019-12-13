@@ -20,6 +20,7 @@ import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.monitor.MonitorCollector;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
 import io.journalkeeper.rpc.client.AddPullWatchResponse;
+import io.journalkeeper.rpc.client.CheckLeadershipResponse;
 import io.journalkeeper.rpc.client.CompleteTransactionRequest;
 import io.journalkeeper.rpc.client.CompleteTransactionResponse;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
