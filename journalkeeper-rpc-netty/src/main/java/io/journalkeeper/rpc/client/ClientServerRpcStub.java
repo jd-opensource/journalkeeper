@@ -196,6 +196,11 @@ public class ClientServerRpcStub implements ClientServerRpc {
     }
 
     @Override
+    public CompletableFuture<GetSnapshotsResponse> getSnapshots() {
+        return sendRequest(null, RpcTypes.GET_SNAPSHOTS_REQUEST);
+    }
+
+    @Override
     public CompletableFuture<CheckLeadershipResponse> checkLeadership() {
         return sendRequest(null, RpcTypes.CHECK_LEADERSHIP_REQUEST);
     }

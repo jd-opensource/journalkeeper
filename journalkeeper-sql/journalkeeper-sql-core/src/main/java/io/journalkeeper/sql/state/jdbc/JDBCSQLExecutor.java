@@ -19,6 +19,8 @@ import io.journalkeeper.sql.state.SQLExecutor;
 import io.journalkeeper.sql.state.SQLTransactionExecutor;
 
 import javax.sql.DataSource;
+import java.io.Closeable;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.util.List;
@@ -88,6 +90,17 @@ public class JDBCSQLExecutor implements SQLExecutor {
         Connection connection = getTransactionConnection();
         JDBCSQLTransactionExecutor transactionExecutor = new JDBCSQLTransactionExecutor(connection, executor);
         return transactionExecutor;
+    }
+
+    @Override
+    public void close() {
+        if (dataSource instanceof Closeable) {
+            try {
+                ((Closeable) dataSource).close();
+            } catch (IOException e) {
+                throw new SQLException(e);
+            }
+        }
     }
 
     protected Connection getTransactionConnection() {

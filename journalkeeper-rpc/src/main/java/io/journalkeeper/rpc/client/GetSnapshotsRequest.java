@@ -11,31 +11,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.coordinating.state.store;
-
-import java.util.List;
+package io.journalkeeper.rpc.client;
 
 /**
- * KVStore
+ * GetSnapshotsRequest
  * author: gaohaoxiang
- *
- * date: 2019/5/30
+ * date: 2019/12/13
  */
-public interface KVStore {
+public class GetSnapshotsRequest {
 
-    boolean set(byte[] key, byte[] value);
-
-    byte[] get(byte[] key);
-
-    List<byte[]> multiGet(List<byte[]> keys);
-
-    boolean exist(byte[] key);
-
-    boolean remove(byte[] key);
-
-    boolean compareAndSet(byte[] key, byte[] expect, byte[] update);
-
-    void close();
-
-    void flush();
 }

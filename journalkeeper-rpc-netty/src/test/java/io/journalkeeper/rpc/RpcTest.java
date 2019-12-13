@@ -18,6 +18,8 @@ import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
+import io.journalkeeper.core.api.SnapshotEntry;
+import io.journalkeeper.core.api.SnapshotsEntry;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
 import io.journalkeeper.core.api.transaction.UUIDTransactionId;
@@ -37,6 +39,7 @@ import io.journalkeeper.rpc.client.CreateTransactionResponse;
 import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
 import io.journalkeeper.rpc.client.GetServerStatusResponse;
 import io.journalkeeper.rpc.client.GetServersResponse;
+import io.journalkeeper.rpc.client.GetSnapshotsResponse;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.client.PullEventsRequest;
 import io.journalkeeper.rpc.client.PullEventsResponse;
@@ -779,6 +782,22 @@ public class RpcTest {
         Assert.assertTrue(response.success());
         Assert.assertEquals(serverResponse.getTransactionContexts(), response.getTransactionContexts());
 
+    }
+
+    @Test
+    public void testGetSnapshots() throws Exception {
+        ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
+        GetSnapshotsResponse response, serverResponse;
+
+        SnapshotsEntry entry = new SnapshotsEntry(Arrays.asList(new SnapshotEntry(0, 0)));
+        serverResponse = new GetSnapshotsResponse(entry);
+
+        // Test success response
+        when(serverRpcMock.getSnapshots())
+                .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
+        response = serverRpc.getSnapshots().get();
+        Assert.assertTrue(response.success());
+        Assert.assertEquals(serverResponse.getSnapshots(), response.getSnapshots());
     }
 
     @Test

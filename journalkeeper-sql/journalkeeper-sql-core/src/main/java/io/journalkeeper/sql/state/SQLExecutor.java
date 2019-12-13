@@ -33,4 +33,6 @@ public interface SQLExecutor {
     ResultSet query(String sql, List<Object> params);
 
     SQLTransactionExecutor beginTransaction();
+
+    void close();
 }

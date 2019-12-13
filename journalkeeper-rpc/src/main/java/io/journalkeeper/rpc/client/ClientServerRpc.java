@@ -152,6 +152,12 @@ public interface ClientServerRpc {
     CompletableFuture<GetOpeningTransactionsResponse> getOpeningTransactions();
 
     /**
+     * 获取当前所有快照
+     * @return See {@link GetSnapshotsResponse}
+     */
+    CompletableFuture<GetSnapshotsResponse> getSnapshots();
+
+    /**
      * 领导人检测
      * @return See {@link CheckLeadershipResponse}
      */

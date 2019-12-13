@@ -11,31 +11,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.coordinating.state.store;
-
-import java.util.List;
+package io.journalkeeper.core.entry.internal;
 
 /**
- * KVStore
+ * RecoverSnapshotEntry
  * author: gaohaoxiang
- *
- * date: 2019/5/30
+ * date: 2019/12/12
  */
-public interface KVStore {
+public class RecoverSnapshotEntry extends InternalEntry {
 
-    boolean set(byte[] key, byte[] value);
+    private long index;
 
-    byte[] get(byte[] key);
+    public RecoverSnapshotEntry() {
+        super(InternalEntryType.TYPE_RECOVER_SNAPSHOT);
+    }
 
-    List<byte[]> multiGet(List<byte[]> keys);
+    public RecoverSnapshotEntry(long index) {
+        super(InternalEntryType.TYPE_RECOVER_SNAPSHOT);
+        this.index = index;
+    }
 
-    boolean exist(byte[] key);
+    public void setIndex(long index) {
+        this.index = index;
+    }
 
-    boolean remove(byte[] key);
-
-    boolean compareAndSet(byte[] key, byte[] expect, byte[] update);
-
-    void close();
-
-    void flush();
+    public long getIndex() {
+        return index;
+    }
 }

@@ -55,6 +55,8 @@ public class RpcTypes {
     public static final int COMPLETE_TRANSACTION_RESPONSE = -15;
     public static final int GET_OPENING_TRANSACTIONS_REQUEST = 16;
     public static final int GET_OPENING_TRANSACTIONS_RESPONSE = -16;
+    public static final int GET_SNAPSHOTS_REQUEST = 17;
+    public static final int GET_SNAPSHOTS_RESPONSE = -17;
     public static final int CHECK_LEADERSHIP_REQUEST = 18;
     public static final int CHECK_LEADERSHIP_RESPONSE = -18;
 
