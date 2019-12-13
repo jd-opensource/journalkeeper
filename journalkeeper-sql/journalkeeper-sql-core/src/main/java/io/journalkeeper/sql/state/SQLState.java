@@ -43,6 +43,7 @@ public class SQLState implements State<WriteRequest, WriteResponse, ReadRequest,
 
     private static final Logger logger = LoggerFactory.getLogger(SQLState.class);
 
+    private Path path;
     private Properties properties;
     private SQLExecutor executor;
     private SQLStateHandler handler;
@@ -50,6 +51,7 @@ public class SQLState implements State<WriteRequest, WriteResponse, ReadRequest,
 
     @Override
     public void recover(Path path, Properties properties) throws IOException {
+        this.path = path;
         this.executor = SQLExecutorManager.getExecutor(properties.getProperty(SQLConfigs.EXECUTOR_TYPE)).create(path, properties);
         if (this.executor == null) {
             throw new IllegalArgumentException("executor not exist");

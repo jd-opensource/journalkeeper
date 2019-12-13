@@ -14,6 +14,7 @@
 package io.journalkeeper.core.api;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * SnapshotEntry
@@ -34,5 +35,25 @@ public class SnapshotsEntry {
 
     public List<SnapshotEntry> getSnapshots() {
         return snapshots;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        SnapshotsEntry that = (SnapshotsEntry) o;
+        return Objects.equals(snapshots, that.snapshots);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(snapshots);
+    }
+
+    @Override
+    public String toString() {
+        return "SnapshotsEntry{" +
+                "snapshots=" + snapshots +
+                '}';
     }
 }

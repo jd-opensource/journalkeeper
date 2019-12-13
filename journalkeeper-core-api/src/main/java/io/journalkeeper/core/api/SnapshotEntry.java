@@ -13,6 +13,8 @@
  */
 package io.journalkeeper.core.api;
 
+import java.util.Objects;
+
 /**
  * SnapshotEntry
  * author: gaohaoxiang
@@ -20,54 +22,24 @@ package io.journalkeeper.core.api;
  */
 public class SnapshotEntry {
 
-    private String path;
-    private long lastIncludedIndex;
-    private int lastIncludedTerm;
-    private long minOffset;
+    private long index;
     private long timestamp;
 
     public SnapshotEntry() {
 
     }
 
-    public SnapshotEntry(String path, long lastIncludedIndex, int lastIncludedTerm, long minOffset, long timestamp) {
-        this.path = path;
-        this.lastIncludedIndex = lastIncludedIndex;
-        this.lastIncludedTerm = lastIncludedTerm;
-        this.minOffset = minOffset;
+    public SnapshotEntry(long index, long timestamp) {
+        this.index = index;
         this.timestamp = timestamp;
     }
 
-    public String getPath() {
-        return path;
+    public long getIndex() {
+        return index;
     }
 
-    public void setPath(String path) {
-        this.path = path;
-    }
-
-    public long getLastIncludedIndex() {
-        return lastIncludedIndex;
-    }
-
-    public void setLastIncludedIndex(long lastIncludedIndex) {
-        this.lastIncludedIndex = lastIncludedIndex;
-    }
-
-    public int getLastIncludedTerm() {
-        return lastIncludedTerm;
-    }
-
-    public void setLastIncludedTerm(int lastIncludedTerm) {
-        this.lastIncludedTerm = lastIncludedTerm;
-    }
-
-    public long getMinOffset() {
-        return minOffset;
-    }
-
-    public void setMinOffset(long minOffset) {
-        this.minOffset = minOffset;
+    public void setIndex(long index) {
+        this.index = index;
     }
 
     public long getTimestamp() {
@@ -76,5 +48,26 @@ public class SnapshotEntry {
 
     public void setTimestamp(long timestamp) {
         this.timestamp = timestamp;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        SnapshotEntry that = (SnapshotEntry) o;
+        return index == that.index;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(index);
+    }
+
+    @Override
+    public String toString() {
+        return "SnapshotEntry{" +
+                "index=" + index +
+                ", timestamp=" + timestamp +
+                '}';
     }
 }

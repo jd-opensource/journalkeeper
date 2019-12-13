@@ -36,10 +36,7 @@ public class GetSnapshotsResponseCodec extends LeaderResponseCodec<GetSnapshotsR
         CodecSupport.encodeCollection(buffer, leaderResponse.getSnapshots().getSnapshots(),
                 (obj, entryBuffer) -> {
                     SnapshotEntry entry = (SnapshotEntry) obj;
-                    CodecSupport.encodeString(entryBuffer, entry.getPath());
-                    CodecSupport.encodeLong(entryBuffer, entry.getLastIncludedIndex());
-                    CodecSupport.encodeInt(entryBuffer, entry.getLastIncludedTerm());
-                    CodecSupport.encodeLong(entryBuffer, entry.getMinOffset());
+                    CodecSupport.encodeLong(entryBuffer, entry.getIndex());
                     CodecSupport.encodeLong(entryBuffer, entry.getTimestamp());
                 });
     }
@@ -48,9 +45,6 @@ public class GetSnapshotsResponseCodec extends LeaderResponseCodec<GetSnapshotsR
     protected GetSnapshotsResponse decodeLeaderResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
         return new GetSnapshotsResponse(
                 new SnapshotsEntry((List) CodecSupport.decodeCollection(buffer, entryBuffer -> new SnapshotEntry(
-                    CodecSupport.decodeString(entryBuffer),
-                    CodecSupport.decodeLong(entryBuffer),
-                    CodecSupport.decodeInt(entryBuffer),
                     CodecSupport.decodeLong(entryBuffer),
                     CodecSupport.decodeLong(entryBuffer)
         )).stream().collect(Collectors.toList())));

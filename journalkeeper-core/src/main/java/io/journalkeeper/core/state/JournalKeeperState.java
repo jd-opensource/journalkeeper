@@ -415,18 +415,6 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable, Flushable 
         return internalState.getSnapshotTimestamp();
     }
 
-    public long getLastIncludedIndex() {
-        return internalState.getLastIncludedIndex();
-    }
-
-    public int getLastIncludedTerm() {
-        return internalState.getLastIncludedTerm();
-    }
-
-    public long getMinOffset() {
-        return internalState.getMinOffset();
-    }
-
     @Override
     public String toString() {
         return "JournalKeeperState{" +

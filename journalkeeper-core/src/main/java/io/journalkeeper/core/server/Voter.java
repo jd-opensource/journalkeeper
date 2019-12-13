@@ -786,8 +786,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                     snapshots.values()
                             .stream()
                             .map((state) ->
-                                    new SnapshotEntry(state.getPath().toString(), state.getLastIncludedIndex(),
-                                            state.getLastIncludedTerm(), state.getMinOffset(), state.timestamp())).collect(Collectors.toList()))
+                                    new SnapshotEntry(state.lastApplied(), state.timestamp())).collect(Collectors.toList()))
                     .thenApply(SnapshotsEntry::new)
                     .thenApply(GetSnapshotsResponse::new);
         } else {

@@ -13,8 +13,10 @@
  */
 package io.journalkeeper.coordinating.state.store.rocksdb;
 
+import io.journalkeeper.coordinating.exception.CoordinatingException;
 import io.journalkeeper.coordinating.state.exception.CoordinatingStateException;
 import io.journalkeeper.coordinating.state.store.KVStore;
+import org.rocksdb.FlushOptions;
 import org.rocksdb.Options;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
@@ -128,5 +130,14 @@ public class RocksDBKVStore implements KVStore {
     @Override
     public void close() {
         rocksDB.close();
+    }
+
+    @Override
+    public void flush() {
+        try {
+            rocksDB.flush(new FlushOptions());
+        } catch (RocksDBException e) {
+            throw new CoordinatingException(e);
+        }
     }
 }
