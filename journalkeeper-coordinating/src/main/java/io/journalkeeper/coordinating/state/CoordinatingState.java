@@ -16,6 +16,7 @@ package io.journalkeeper.coordinating.state;
 import io.journalkeeper.coordinating.state.config.CoordinatingConfigs;
 import io.journalkeeper.coordinating.state.domain.ReadRequest;
 import io.journalkeeper.coordinating.state.domain.ReadResponse;
+import io.journalkeeper.coordinating.state.domain.StateCodes;
 import io.journalkeeper.coordinating.state.domain.WriteRequest;
 import io.journalkeeper.coordinating.state.domain.WriteResponse;
 import io.journalkeeper.coordinating.state.store.KVStore;
@@ -49,12 +50,11 @@ public class CoordinatingState implements State<WriteRequest, WriteResponse, Rea
 
     @Override
     public StateResult<WriteResponse> execute(WriteRequest request, int partition, long index, int batchSize, RaftJournal raftJournal) {
-        boolean isSuccess = handler.handle(request);
-        if (!isSuccess) {
-            return new StateResult<>(null);
+        WriteResponse response = handler.handle(request);
+        StateResult<WriteResponse> result = new StateResult<>(response);
+        if (response.getCode() != StateCodes.SUCCESS.getCode()) {
+            return result;
         }
-        StateResult<WriteResponse> result = new StateResult<>(null);
-        // TODO response
         result.putEventData("type", String.valueOf(request.getType()));
         result.putEventData("key", new String(request.getKey(), StandardCharsets.UTF_8));
         if (request.getValue() != null) {
@@ -66,5 +66,10 @@ public class CoordinatingState implements State<WriteRequest, WriteResponse, Rea
     @Override
     public ReadResponse query(ReadRequest request, RaftJournal raftJournal) {
         return handler.handle(request);
+    }
+
+    @Override
+    public void close() {
+        kvStore.close();
     }
 }

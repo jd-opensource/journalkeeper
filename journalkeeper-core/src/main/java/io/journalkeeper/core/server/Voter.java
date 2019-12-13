@@ -31,6 +31,8 @@ import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
+import io.journalkeeper.core.api.SnapshotEntry;
+import io.journalkeeper.core.api.SnapshotsEntry;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.api.transaction.UUIDTransactionId;
@@ -49,6 +51,7 @@ import io.journalkeeper.rpc.client.CreateTransactionRequest;
 import io.journalkeeper.rpc.client.CreateTransactionResponse;
 import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
 import io.journalkeeper.rpc.client.GetServerStatusResponse;
+import io.journalkeeper.rpc.client.GetSnapshotsResponse;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
@@ -774,6 +777,27 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
 
     private boolean isLeaderAvailable(Leader<E, ER, Q, QR> finalLeader) {
         return voterState() == VoterState.LEADER && finalLeader != null;
+    }
+
+    @Override
+    public CompletableFuture<GetSnapshotsResponse> getSnapshots() {
+        if (voterState.getState() == VoterState.LEADER && leader != null) {
+            return CompletableFuture.completedFuture(
+                    snapshots.values()
+                            .stream()
+                            .map((state) ->
+                                    new SnapshotEntry(state.lastApplied(), state.timestamp())).collect(Collectors.toList()))
+                    .thenApply(SnapshotsEntry::new)
+                    .thenApply(GetSnapshotsResponse::new);
+        } else {
+            return CompletableFuture.completedFuture(new GetSnapshotsResponse(new NotLeaderException(leaderUri)));
+        }
+    }
+
+    private void ensureLeadership(Leader<E, ER, Q, QR> finalLeader) {
+        if(voterState() != VoterState.LEADER || finalLeader == null) {
+            throw new NotLeaderException(leaderUri);
+        }
     }
 
     private VoterState voterState() {

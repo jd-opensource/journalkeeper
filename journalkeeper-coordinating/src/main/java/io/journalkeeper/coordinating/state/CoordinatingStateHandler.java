@@ -16,6 +16,7 @@ package io.journalkeeper.coordinating.state;
 import io.journalkeeper.coordinating.state.domain.ReadRequest;
 import io.journalkeeper.coordinating.state.domain.ReadResponse;
 import io.journalkeeper.coordinating.state.domain.WriteRequest;
+import io.journalkeeper.coordinating.state.domain.WriteResponse;
 import io.journalkeeper.coordinating.state.store.KVStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +45,7 @@ public class CoordinatingStateHandler {
         this.readHandler = new CoordinatingStateReadHandler(properties, kvStore);
     }
 
-    public boolean handle(WriteRequest request) {
+    public WriteResponse handle(WriteRequest request) {
         return writeHandler.handle(request);
     }
 

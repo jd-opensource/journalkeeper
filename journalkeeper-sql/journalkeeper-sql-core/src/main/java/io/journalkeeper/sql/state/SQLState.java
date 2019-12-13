@@ -43,6 +43,7 @@ public class SQLState implements State<WriteRequest, WriteResponse, ReadRequest,
 
     private static final Logger logger = LoggerFactory.getLogger(SQLState.class);
 
+    private Path path;
     private Properties properties;
     private SQLExecutor executor;
     private SQLStateHandler handler;
@@ -50,6 +51,7 @@ public class SQLState implements State<WriteRequest, WriteResponse, ReadRequest,
 
     @Override
     public void recover(Path path, Properties properties) throws IOException {
+        this.path = path;
         this.executor = SQLExecutorManager.getExecutor(properties.getProperty(SQLConfigs.EXECUTOR_TYPE)).create(path, properties);
         if (this.executor == null) {
             throw new IllegalArgumentException("executor not exist");
@@ -85,14 +87,19 @@ public class SQLState implements State<WriteRequest, WriteResponse, ReadRequest,
         WriteResponse response = handler.handleWrite(request);
         StateResult<WriteResponse> result = new StateResult<>(response);
         result.getEventData().put("type", String.valueOf(request.getType()));
-        // TODO 参数处理
-//        eventParams.put("sql", request.getSql());
-//        eventParams.put("params", request.getParams().toString());
+        result.getEventData().put("sql", String.valueOf(request.getSql()));
+        result.getEventData().put("batchSql", String.valueOf(request.getSqlList()));
+        result.getEventData().put("params", String.valueOf(request.getParams()));
         return result;
     }
 
     @Override
     public ReadResponse query(ReadRequest request, RaftJournal raftJournal) {
        return handler.handleRead(request);
+    }
+
+    @Override
+    public void close() {
+        this.executor.close();
     }
 }

@@ -25,6 +25,7 @@ import io.journalkeeper.core.api.StateResult;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.InternalEntryType;
 import io.journalkeeper.core.entry.internal.LeaderAnnouncementEntry;
+import io.journalkeeper.core.entry.internal.RecoverSnapshotEntry;
 import io.journalkeeper.core.entry.internal.ReservedPartition;
 import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.internal.UpdateVotersS1Entry;
@@ -80,7 +81,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
-import java.io.Flushable;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -364,6 +364,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         state.addInterceptor(InternalEntryType.TYPE_SCALE_PARTITIONS, this::scalePartitions);
         state.addInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT, this::announceLeader);
         state.addInterceptor(InternalEntryType.TYPE_CREATE_SNAPSHOT, this::createSnapShot);
+        state.addInterceptor(InternalEntryType.TYPE_RECOVER_SNAPSHOT, this::recoverSnapShot);
     }
 
     protected Path workingDir() {
@@ -540,6 +541,35 @@ public abstract class AbstractServer<E, ER, Q, QR>
         if (type == InternalEntryType.TYPE_CREATE_SNAPSHOT) {
             createSnapshot();
         }
+    }
+
+    private void recoverSnapShot(InternalEntryType type, byte [] internalEntry) {
+        RecoverSnapshotEntry recoverSnapshotEntry = InternalEntriesSerializeSupport.parse(internalEntry);
+        JournalKeeperState<E, ER, Q, QR> targetSnapshot = snapshots.get(recoverSnapshotEntry.getIndex());
+        if (targetSnapshot == null) {
+            logger.warn("recover snapshot failed, snapshot not exist, index: {}", recoverSnapshotEntry.getIndex());
+            return;
+        }
+        try {
+            createSnapshot();
+            doRecoverSnapshot(targetSnapshot);
+        } catch (Exception e) {
+            logger.info("recover snapshot exception, target snapshot: {}", targetSnapshot.getPath(), e);
+        }
+    }
+
+    protected void doRecoverSnapshot(JournalKeeperState<E, ER, Q, QR> targetSnapshot) throws IOException {
+        logger.info("recover snapshot, target snapshot: {}", targetSnapshot.getPath());
+
+        threads.stopThread(threadName(ThreadNames.FLUSH_JOURNAL_THREAD));
+
+        state.closeUnsafe();
+        state.clearUserState();
+        targetSnapshot.dumpUserState(statePath());
+        state.recoverUserStateUnsafe();
+
+        threads.startThread(threadName(ThreadNames.FLUSH_JOURNAL_THREAD));
+        logger.info("recover snapshot success, target snapshot: {}", targetSnapshot.getPath());
     }
 
     private Config toConfig(Properties properties) {

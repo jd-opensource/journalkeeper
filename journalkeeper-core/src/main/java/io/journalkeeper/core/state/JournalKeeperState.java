@@ -163,19 +163,25 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable, Flushable 
     }
 
     public void recover(Path path, Properties properties, boolean internalStateOnly)  {
+        stateFilesLock.writeLock().lock();
+        try {
+            recoverUnsafe(path, properties, internalStateOnly);
+        } finally {
+            stateFilesLock.writeLock().unlock();
+        }
+    }
+
+    public void recoverUnsafe(Path path, Properties properties, boolean internalStateOnly)  {
         this.path = path;
         this.properties = properties;
-        stateFilesLock.writeLock().lock();
         try {
             Files.createDirectories(path);
             this.internalState = recoverInternalState(internalStateFile(path));
             if(!internalStateOnly) {
-                recoverUserState();
+                recoverUserStateUnsafe();
             }
         } catch (IOException e) {
             throw new StateRecoverException(e);
-        } finally {
-            stateFilesLock.writeLock().unlock();
         }
     }
 
@@ -282,13 +288,13 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable, Flushable 
     private void maybeRecoverUserState() throws IOException {
         long stamp = stateLock.writeLock();
         try {
-            recoverUserState();
+            recoverUserStateUnsafe();
         } finally {
             stateLock.unlockWrite(stamp);
         }
     }
 
-    private void recoverUserState() throws IOException {
+    public void recoverUserStateUnsafe() throws IOException {
         this.userState = userStateFactory.createState();
         Path userStatePath = path.resolve(USER_STATE_PATH);
         Files.createDirectories(userStatePath);
@@ -323,6 +329,16 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable, Flushable 
         }
     }
 
+    public void dumpUserState(Path destPath) throws IOException {
+        flush();
+        try {
+            stateFilesLock.readLock().lock();
+            FileUtils.dump(path.resolve(USER_STATE_PATH), destPath.resolve(USER_STATE_PATH));
+        } finally {
+            stateFilesLock.readLock().unlock();
+        }
+    }
+
 
     /**
      * 列出所有复制时需要拷贝的文件。
@@ -349,12 +365,20 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable, Flushable 
     public void close() {
         long stamp = stateLock.writeLock();
         try {
-            if(null != userState) {
-                userState.close();
-            }
+            closeUnsafe();
         } finally {
             stateLock.unlockWrite(stamp);
         }
+    }
+
+    public void closeUnsafe() {
+        if(null != userState) {
+            userState.close();
+        }
+    }
+
+    public void clearUserState() throws IOException {
+        FileUtils.deleteFolder(path.resolve(USER_STATE_PATH));
     }
 
     public void clear() throws IOException {

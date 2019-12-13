@@ -13,8 +13,10 @@
  */
 package io.journalkeeper.coordinating.state;
 
+import io.journalkeeper.coordinating.state.domain.StateCodes;
 import io.journalkeeper.coordinating.state.domain.StateTypes;
 import io.journalkeeper.coordinating.state.domain.WriteRequest;
+import io.journalkeeper.coordinating.state.domain.WriteResponse;
 import io.journalkeeper.coordinating.state.store.KVStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,8 +41,7 @@ public class CoordinatingStateWriteHandler {
         this.kvStore = kvStore;
     }
 
-    // TODO 临时测试
-    public boolean handle(WriteRequest request) {
+    public WriteResponse handle(WriteRequest request) {
         try {
             StateTypes type = StateTypes.valueOf(request.getType());
             switch (type) {
@@ -55,24 +56,27 @@ public class CoordinatingStateWriteHandler {
                 }
                 default: {
                     logger.warn("unsupported type, type: {}, request: {}", type, request);
-                    return false;
+                    return new WriteResponse(StateCodes.ERROR.getCode(), "unsupported type");
                 }
             }
         } catch (Exception e) {
             logger.error("handle write request exception, request: {}", request, e);
-            return false;
+            return new WriteResponse(StateCodes.ERROR.getCode(), e.getMessage());
         }
     }
 
-    protected boolean doSet(byte[] key, byte[] value) {
-        return kvStore.set(key, value);
+    protected WriteResponse doSet(byte[] key, byte[] value) {
+        boolean result = kvStore.set(key, value);
+        return new WriteResponse(StateCodes.SUCCESS.getCode(), String.valueOf(result));
     }
 
-    protected boolean doRemove(byte[] key) {
-        return kvStore.remove(key);
+    protected WriteResponse doRemove(byte[] key) {
+        boolean result = kvStore.remove(key);
+        return new WriteResponse(StateCodes.SUCCESS.getCode(), String.valueOf(result));
     }
 
-    protected boolean doCompareAndSet(byte[] key, byte[] expect, byte[] update) {
-        return kvStore.compareAndSet(key, expect, update);
+    protected WriteResponse doCompareAndSet(byte[] key, byte[] expect, byte[] update) {
+        boolean result = kvStore.compareAndSet(key, expect, update);
+        return new WriteResponse(StateCodes.SUCCESS.getCode(), String.valueOf(result));
     }
 }

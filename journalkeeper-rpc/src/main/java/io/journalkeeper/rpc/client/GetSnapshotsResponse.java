@@ -11,31 +11,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.coordinating.state.store;
+package io.journalkeeper.rpc.client;
 
-import java.util.List;
+import io.journalkeeper.core.api.SnapshotsEntry;
+import io.journalkeeper.rpc.LeaderResponse;
 
 /**
- * KVStore
+ * GetSnapshotsResponse
  * author: gaohaoxiang
- *
- * date: 2019/5/30
+ * date: 2019/12/13
  */
-public interface KVStore {
+public class GetSnapshotsResponse extends LeaderResponse {
 
-    boolean set(byte[] key, byte[] value);
+    private SnapshotsEntry snapshots;
 
-    byte[] get(byte[] key);
+    public GetSnapshotsResponse(Throwable exception) {
+        super(exception);
+    }
 
-    List<byte[]> multiGet(List<byte[]> keys);
+    public GetSnapshotsResponse(SnapshotsEntry snapshots) {
+        this.snapshots = snapshots;
+    }
 
-    boolean exist(byte[] key);
-
-    boolean remove(byte[] key);
-
-    boolean compareAndSet(byte[] key, byte[] expect, byte[] update);
-
-    void close();
-
-    void flush();
+    public SnapshotsEntry getSnapshots() {
+        return snapshots;
+    }
 }

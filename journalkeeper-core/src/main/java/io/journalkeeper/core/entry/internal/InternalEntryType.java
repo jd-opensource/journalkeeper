@@ -20,7 +20,11 @@ public enum InternalEntryType {
     TYPE_UPDATE_VOTERS_S1(3),
     TYPE_UPDATE_VOTERS_S2(4),
     TYPE_UPDATE_OBSERVERS(5),
-    TYPE_SET_PREFERRED_LEADER(6);
+    TYPE_SET_PREFERRED_LEADER(6),
+    TYPE_RECOVER_SNAPSHOT(7),
+
+    ;
+
     private int value;
 
     InternalEntryType(int value) {
@@ -47,6 +51,8 @@ public enum InternalEntryType {
                 return TYPE_UPDATE_OBSERVERS;
             case 6:
                 return TYPE_SET_PREFERRED_LEADER;
+            case 7:
+                return TYPE_RECOVER_SNAPSHOT;
             default:
                 throw new IllegalArgumentException("Illegal InternalEntryType value!");
         }

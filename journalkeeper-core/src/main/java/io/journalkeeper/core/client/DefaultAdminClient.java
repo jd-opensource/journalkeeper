@@ -21,8 +21,10 @@ import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
+import io.journalkeeper.core.api.SnapshotsEntry;
 import io.journalkeeper.core.entry.internal.CreateSnapshotEntry;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
+import io.journalkeeper.core.entry.internal.RecoverSnapshotEntry;
 import io.journalkeeper.core.entry.internal.ReservedPartition;
 import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.internal.SetPreferredLeaderEntry;
@@ -31,6 +33,7 @@ import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ConvertRollRequest;
 import io.journalkeeper.rpc.client.GetServerStatusResponse;
 import io.journalkeeper.rpc.client.GetServersResponse;
+import io.journalkeeper.rpc.client.GetSnapshotsResponse;
 import io.journalkeeper.rpc.client.UpdateVotersRequest;
 
 import java.net.URI;
@@ -108,4 +111,14 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
         return this.update(InternalEntriesSerializeSupport.serialize(new CreateSnapshotEntry()));
     }
 
+    @Override
+    public CompletableFuture<Void> recoverSnapshot(long index) {
+        return this.update(InternalEntriesSerializeSupport.serialize(new RecoverSnapshotEntry(index)));
+    }
+
+    @Override
+    public CompletableFuture<SnapshotsEntry> getSnapshots() {
+        return clientRpc.invokeClientLeaderRpc(ClientServerRpc::getSnapshots)
+                .thenApply(GetSnapshotsResponse::getSnapshots);
+    }
 }

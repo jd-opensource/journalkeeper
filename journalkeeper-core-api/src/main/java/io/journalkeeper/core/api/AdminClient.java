@@ -89,6 +89,21 @@ public interface AdminClient extends Watchable, ClusterReadyAware, ServerConfigA
      */
     CompletableFuture<Void> takeSnapshot();
 
+    /**
+     * 恢复快照
+     *
+     * @param index 快照的索引位置
+     * @return
+     */
+    CompletableFuture<Void> recoverSnapshot(long index);
+
+    /**
+     * 获取所有快照
+     *
+     * @return
+     */
+    CompletableFuture<SnapshotsEntry> getSnapshots();
+
     void stop();
 
 }

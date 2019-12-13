@@ -11,31 +11,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.coordinating.state.store;
+package io.journalkeeper.rpc.codec;
 
-import java.util.List;
+import io.journalkeeper.rpc.remoting.transport.command.Type;
 
 /**
- * KVStore
+ * GetSnapshostsRequestCodec
  * author: gaohaoxiang
- *
- * date: 2019/5/30
+ * date: 2019/12/13
  */
-public interface KVStore {
+public class GetSnapshotsRequestCodec extends VoidPayloadCodec implements Type {
 
-    boolean set(byte[] key, byte[] value);
-
-    byte[] get(byte[] key);
-
-    List<byte[]> multiGet(List<byte[]> keys);
-
-    boolean exist(byte[] key);
-
-    boolean remove(byte[] key);
-
-    boolean compareAndSet(byte[] key, byte[] expect, byte[] update);
-
-    void close();
-
-    void flush();
+    @Override
+    public int type() {
+        return RpcTypes.GET_SNAPSHOTS_REQUEST;
+    }
 }
