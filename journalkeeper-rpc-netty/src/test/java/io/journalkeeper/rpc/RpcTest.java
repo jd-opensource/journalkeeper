@@ -25,6 +25,7 @@ import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.rpc.client.AddPullWatchResponse;
+import io.journalkeeper.rpc.client.CheckLeadershipResponse;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.client.CompleteTransactionRequest;
@@ -777,6 +778,22 @@ public class RpcTest {
         response = serverRpc.getOpeningTransactions().get();
         Assert.assertTrue(response.success());
         Assert.assertEquals(serverResponse.getTransactionContexts(), response.getTransactionContexts());
+
+    }
+
+    @Test
+    public void testCheckLeadership() throws ExecutionException, InterruptedException {
+
+        ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
+        CheckLeadershipResponse response, serverResponse;
+
+
+        serverResponse = new CheckLeadershipResponse();
+        // Test success response
+        when(serverRpcMock.checkLeadership())
+                .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
+        response = serverRpc.checkLeadership().get();
+        Assert.assertTrue(response.success());
 
     }
 

@@ -17,7 +17,6 @@ import io.journalkeeper.utils.event.EventBus;
 import io.journalkeeper.utils.event.EventWatcher;
 
 import java.net.URI;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -152,6 +151,11 @@ public interface ClientServerRpc {
      */
     CompletableFuture<GetOpeningTransactionsResponse> getOpeningTransactions();
 
+    /**
+     * 领导人检测
+     * @return See {@link CheckLeadershipResponse}
+     */
+    CompletableFuture<CheckLeadershipResponse> checkLeadership();
     /**
      * 添加事件监听器，当事件发生时会调用监听器
      * @see EventBus

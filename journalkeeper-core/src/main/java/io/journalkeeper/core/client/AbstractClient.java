@@ -21,8 +21,10 @@ import io.journalkeeper.core.api.ServerConfigAware;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.StatusCode;
+import io.journalkeeper.rpc.client.CheckLeadershipResponse;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.GetServersResponse;
+import io.journalkeeper.rpc.client.QueryStateResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import io.journalkeeper.utils.event.EventWatcher;
@@ -75,10 +77,10 @@ public abstract class AbstractClient implements ClusterReadyAware, ServerConfigA
             long t0 = System.currentTimeMillis();
             while (System.currentTimeMillis() - t0 < maxWaitMs || maxWaitMs <= 0) {
                 try {
-                    GetServersResponse response = maxWaitMs > 0 ?
-                            clientRpc.invokeClientLeaderRpc(ClientServerRpc::getServers)
+                    CheckLeadershipResponse response = maxWaitMs > 0 ?
+                            clientRpc.invokeClientLeaderRpc(ClientServerRpc::checkLeadership)
                                     .get(maxWaitMs, TimeUnit.MILLISECONDS) :
-                            clientRpc.invokeClientLeaderRpc(ClientServerRpc::getServers)
+                            clientRpc.invokeClientLeaderRpc(ClientServerRpc::checkLeadership)
                                     .get();
                     if(response.success()) {
                         return;

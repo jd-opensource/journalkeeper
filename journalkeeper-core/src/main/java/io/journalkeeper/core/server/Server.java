@@ -225,6 +225,11 @@ public class Server<E, ER, Q, QR>
     }
 
     @Override
+    public CompletableFuture<CheckLeadershipResponse> checkLeadership() {
+        return server.checkLeadership();
+    }
+
+    @Override
     public void watch(EventWatcher eventWatcher) {
         server.watch(eventWatcher);
     }

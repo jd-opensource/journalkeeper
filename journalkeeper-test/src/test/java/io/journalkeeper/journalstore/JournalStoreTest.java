@@ -126,6 +126,7 @@ public class JournalStoreTest {
         servers = createServers(1, base, partitions);
 
         client = servers.get(0).createClient();
+        client.waitForClusterReady();
         readPartitions = client.listPartitions().get();
         Assert.assertEquals(partitions, readPartitions);
         partitions = Stream.of(2, 3, 7, 8).collect(Collectors.toSet());
@@ -149,6 +150,7 @@ public class JournalStoreTest {
         journalStoreServer.start();
 
         client = journalStoreServer.createLocalClient();
+        client.waitForClusterReady();
         readPartitions = client.listPartitions().get();
         Assert.assertEquals(partitions, readPartitions);
 
@@ -159,6 +161,7 @@ public class JournalStoreTest {
         journalStoreServer.start();
 
         client = journalStoreServer.createLocalClient();
+        client.waitForClusterReady();
         readPartitions = client.listPartitions().get();
         Assert.assertEquals(partitions, readPartitions);
 
@@ -328,7 +331,7 @@ public class JournalStoreTest {
         try {
             JournalStoreClient client = servers.get(0).createClient();
             client.waitForClusterReady();
-
+            logger.info("Cluster is ready.");
             byte[] rawEntries = ByteUtils.createFixedSizeBytes(entrySize);
             CompletableFuture[] futures = new CompletableFuture [count];
             for (int i = 0; i < count; i++) {

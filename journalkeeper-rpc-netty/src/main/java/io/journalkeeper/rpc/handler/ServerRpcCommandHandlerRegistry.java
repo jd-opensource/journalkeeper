@@ -40,6 +40,7 @@ public class ServerRpcCommandHandlerRegistry {
         factory.register(uri, new CreateTransactionHandler(serverRpc));
         factory.register(uri, new GetOpeningTransactionsHandler(serverRpc));
         factory.register(uri, new CompleteTransactionHandler(serverRpc));
+        factory.register(uri, new CheckLeadershipHandler(serverRpc));
 
         factory.register(uri, new AsyncAppendEntriesHandler(serverRpc));
         factory.register(uri, new RequestVoteHandler(serverRpc));

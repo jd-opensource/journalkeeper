@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 绑定到本地Server的Client，只访问本地Server
@@ -112,7 +113,7 @@ public class LocalClientRpc implements ClientRpc {
             try {
                 logger.debug("Rpc exception: {}", exception.getMessage());
                 throw exception;
-            } catch (ServerBusyException | NoLeaderException ignored) {
+            } catch (ServerBusyException | TimeoutException ignored) {
                 return true;
             } catch (Throwable ignored) {}
             return false;
@@ -121,7 +122,6 @@ public class LocalClientRpc implements ClientRpc {
         @Override
         public boolean checkResult(BaseResponse response) {
             switch (response.getStatusCode()) {
-                case NOT_LEADER:
                 case TIMEOUT:
                 case SERVER_BUSY:
                     logger.info("{} failed, cause: {}, Retry...", response.getClass().getName(), response.errorString());

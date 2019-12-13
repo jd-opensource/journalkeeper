@@ -196,6 +196,11 @@ public class ClientServerRpcStub implements ClientServerRpc {
     }
 
     @Override
+    public CompletableFuture<CheckLeadershipResponse> checkLeadership() {
+        return sendRequest(null, RpcTypes.CHECK_LEADERSHIP_REQUEST);
+    }
+
+    @Override
     public void watch(EventWatcher eventWatcher) {
         if (null == eventBus) {
             initPullEvent();

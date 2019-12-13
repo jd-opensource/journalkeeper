@@ -43,6 +43,7 @@ import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.core.state.JournalKeeperState;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.persistence.ServerMetadata;
+import io.journalkeeper.rpc.client.CheckLeadershipResponse;
 import io.journalkeeper.rpc.client.CompleteTransactionRequest;
 import io.journalkeeper.rpc.client.CompleteTransactionResponse;
 import io.journalkeeper.rpc.client.CreateTransactionRequest;
@@ -770,6 +771,19 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         } else {
             return CompletableFuture.completedFuture(new GetOpeningTransactionsResponse(new NotLeaderException(leaderUri)));
         }
+    }
+
+    @Override
+    public CompletableFuture<CheckLeadershipResponse> checkLeadership() {
+        return waitLeadership()
+                .thenApply(aVoid -> new CheckLeadershipResponse())
+                .exceptionally(exception -> {
+                    try {
+                        throw exception instanceof CompletionException ? exception.getCause() : exception;
+                    } catch (Throwable t) {
+                        return new CheckLeadershipResponse(t);
+                    }
+                });
     }
 
     private boolean isLeaderAvailable(Leader<E, ER, Q, QR> finalLeader) {
