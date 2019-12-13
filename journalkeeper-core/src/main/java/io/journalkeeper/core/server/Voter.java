@@ -36,7 +36,6 @@ import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.api.transaction.UUIDTransactionId;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.InternalEntryType;
-import io.journalkeeper.core.entry.internal.LeaderAnnouncementEntry;
 import io.journalkeeper.core.entry.internal.UpdateVotersS1Entry;
 import io.journalkeeper.core.exception.UpdateConfigurationException;
 import io.journalkeeper.core.journal.Journal;
@@ -598,27 +597,23 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     @Override
     public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
         Leader<E, ER, Q, QR> finalLeader = leader;
-        try {
-            ensureLeadership(finalLeader);
+        if(isLeaderAvailable(finalLeader)) {
             return finalLeader.updateClusterState(request)
                     .exceptionally(UpdateClusterStateResponse::new);
-
-        } catch (Throwable e) {
-            return CompletableFuture.completedFuture(new UpdateClusterStateResponse(e));
+        } else {
+            return CompletableFuture.completedFuture(new UpdateClusterStateResponse(new NotLeaderException(leaderUri)));
         }
     }
 
     @Override
     public CompletableFuture<QueryStateResponse> queryClusterState(QueryStateRequest request) {
         return waitLeadership()
-                .thenApply(aVoid -> state.query(querySerializer.parse(request.getQuery()), journal).getResult())
+                .thenApplyAsync(aVoid -> state.query(querySerializer.parse(request.getQuery()), journal).getResult(), asyncExecutor)
                 .thenApply(resultSerializer::serialize)
                 .thenApply(QueryStateResponse::new)
                 .exceptionally(exception -> {
                     try {
                         throw exception instanceof CompletionException ? exception.getCause() : exception;
-                    } catch (NotLeaderException e) {
-                        return new QueryStateResponse(new NotLeaderException(leaderUri));
                     } catch (Throwable t) {
                         return new QueryStateResponse(t);
                     }
@@ -651,12 +646,10 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     public CompletableFuture<LastAppliedResponse> lastApplied() {
 
         return waitLeadership()
-                .thenCompose(aVoid -> CompletableFuture.supplyAsync(() -> new LastAppliedResponse(state.lastApplied())))
+                .thenApplyAsync(aVoid -> new LastAppliedResponse(state.lastApplied()), asyncExecutor)
                 .exceptionally(exception -> {
                     try {
-                        throw exception;
-                    } catch (NotLeaderException e) {
-                        return new LastAppliedResponse(new NotLeaderException(leaderUri));
+                        throw exception instanceof CompletionException ? exception.getCause() : exception;
                     } catch (Throwable t) {
                         return new LastAppliedResponse(t);
                     }
@@ -664,15 +657,14 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     }
 
     private CompletableFuture<Void> waitLeadership() {
-        CompletableFuture<Void> future = new CompletableFuture<>();
         Leader<E, ER, Q, QR> finalLeader = leader;
-        try {
-            ensureLeadership(finalLeader);
-        } catch (NotLeaderException nle) {
-            future.completeExceptionally(nle);
+        if (isLeaderAvailable(finalLeader)) {
+            return finalLeader.waitLeadership();
+        } else {
+            CompletableFuture<Void> future = new CompletableFuture<>();
+            future.completeExceptionally(new NotLeaderException(this.leaderUri));
             return future;
         }
-        return finalLeader.waitLeadership();
     }
     @Override
     public CompletableFuture<GetServerStatusResponse> getServerStatus() {
@@ -780,10 +772,8 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         }
     }
 
-    private void ensureLeadership(Leader<E, ER, Q, QR> finalLeader) {
-        if(voterState() != VoterState.LEADER || finalLeader == null) {
-            throw new NotLeaderException(leaderUri);
-        }
+    private boolean isLeaderAvailable(Leader<E, ER, Q, QR> finalLeader) {
+        return voterState() == VoterState.LEADER && finalLeader != null;
     }
 
     private VoterState voterState() {
