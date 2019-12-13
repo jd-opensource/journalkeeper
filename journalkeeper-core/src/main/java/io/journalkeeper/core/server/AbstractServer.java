@@ -122,10 +122,6 @@ import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
 import static io.journalkeeper.core.transaction.JournalTransactionManager.TRANSACTION_PARTITION_COUNT;
 import static io.journalkeeper.core.transaction.JournalTransactionManager.TRANSACTION_PARTITION_START;
 
-// TODO: Add an UUID for each server instance,
-//  so multiple server instance of one process
-//  can be identified by UUID in logs and threads dump.
-
 /**
  * Server就是集群中的节点，它包含了存储在Server上日志（journal），一组快照（snapshots[]）和一个状态机（stateMachine）实例。
  * @author LiYue
@@ -842,6 +838,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 String.format("Journal:\t[%d, %d], commitIndex=%d\n", journal.minIndex(), journal.maxIndex(), journal.commitIndex()));
 
         journal.getPartitionMap().entrySet().stream()
+                .filter(entry -> entry.getKey() < RESERVED_PARTITIONS_START)
                 .sorted(Comparator.comparing(Map.Entry::getKey))
                 .forEach(entry -> sb.append("  Partition ")
                         .append(entry.getKey())
