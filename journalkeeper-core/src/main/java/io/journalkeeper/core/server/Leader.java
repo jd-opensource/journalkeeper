@@ -33,6 +33,7 @@ import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.core.state.JournalKeeperState;
 import io.journalkeeper.core.transaction.JournalTransactionManager;
 import io.journalkeeper.exceptions.IndexUnderflowException;
+import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
@@ -42,6 +43,7 @@ import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.rpc.server.InstallSnapshotRequest;
 import io.journalkeeper.rpc.server.InstallSnapshotResponse;
 import io.journalkeeper.rpc.server.ServerRpc;
+import io.journalkeeper.utils.async.Async;
 import io.journalkeeper.utils.state.ServerStateMachine;
 import io.journalkeeper.utils.state.StateServer;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
@@ -907,30 +909,20 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
      * 异步检测Leader有效性，成功返回null，失败抛出异常。
      */
     CompletableFuture<Void> waitLeadership() {
-        CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-        CompletableFuture.runAsync(() -> {
-            try {
-                    long start = System.currentTimeMillis();
-                    while (!checkLeadership()) {
-
-                        if (System.currentTimeMillis() - start > rpcTimeoutMs) {
-                            throw new TimeoutException();
-                        }
-                        Thread.sleep(heartbeatIntervalMs / 10);
-
-                    }
-                    completableFuture.complete(null);
-
-            } catch (InterruptedException e) {
-                completableFuture.completeExceptionally(e);
-                Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                completableFuture.completeExceptionally(e);
-            }
-        }, asyncExecutor);
-        return completableFuture;
+        return waitLeadership(System.currentTimeMillis() + rpcTimeoutMs);
     }
 
+    private CompletableFuture<Void> waitLeadership(long deadLineTimestamp) {
+        if(System.currentTimeMillis() > deadLineTimestamp) {
+            CompletableFuture<Void> future = new CompletableFuture<>();
+            future.completeExceptionally(new NotLeaderException(null));
+            return future;
+        } else if(checkLeadership()) {
+            return CompletableFuture.completedFuture(null);
+        } else {
+            return Async.scheduleAsync(scheduledExecutor, () -> waitLeadership(deadLineTimestamp), heartbeatIntervalMs / 10, TimeUnit.MILLISECONDS);
+        }
+    }
 
     /**
      * LEADER有效性检查

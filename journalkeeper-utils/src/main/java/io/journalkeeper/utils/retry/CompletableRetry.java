@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.utils.retry;
 
+import io.journalkeeper.utils.async.Async;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -84,7 +85,7 @@ public class CompletableRetry<D/* 对端地址类型 */> {
 
                             if (delay > 0) {
                                 logger.debug("Retry, invokes times: {}.", retryInvoke.getInvokeTimes());
-                                return scheduleAsync(scheduledExecutor, () -> retry(retryInvoke, checkRetry, fixDestination, executor, scheduledExecutor), delay, TimeUnit.MILLISECONDS);
+                                return Async.scheduleAsync(scheduledExecutor, () -> retry(retryInvoke, checkRetry, fixDestination, executor, scheduledExecutor), delay, TimeUnit.MILLISECONDS);
                             } else {
                                 return retry(retryInvoke, checkRetry, fixDestination, executor, scheduledExecutor);
                             }
@@ -101,27 +102,6 @@ public class CompletableRetry<D/* 对端地址类型 */> {
     }
 
 
-    private static <T> CompletableFuture<T> scheduleAsync (
-            ScheduledExecutorService executor,
-            Supplier<CompletableFuture<T>> command,
-            long delay,
-            TimeUnit unit
-    ) {
-        CompletableFuture<T> completableFuture = new CompletableFuture<>();
-        executor.schedule(
-                (() -> {
-                    command.get().thenAccept(
-                            completableFuture::complete
-                    )
-                            .exceptionally(
-                                    t -> {completableFuture.completeExceptionally(t);return null;}
-                            );
-                }),
-                delay,
-                unit
-        );
-        return completableFuture;
-    }
 
     public interface RpcInvoke<R /* Response */,  D /* Destination */> {
         CompletableFuture<R> invoke(D destination);
