@@ -10,11 +10,11 @@ public class RecoverSnapshotEntry extends InternalEntry {
     private long index;
 
     public RecoverSnapshotEntry() {
-        super(InternalEntryType.TYPE_CREATE_SNAPSHOT);
+        super(InternalEntryType.TYPE_RECOVER_SNAPSHOT);
     }
 
     public RecoverSnapshotEntry(long index) {
-        super(InternalEntryType.TYPE_CREATE_SNAPSHOT);
+        super(InternalEntryType.TYPE_RECOVER_SNAPSHOT);
         this.index = index;
     }
 

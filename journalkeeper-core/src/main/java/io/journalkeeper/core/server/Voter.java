@@ -31,12 +31,13 @@ import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
+import io.journalkeeper.core.api.SnapshotEntry;
+import io.journalkeeper.core.api.SnapshotsEntry;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.api.transaction.UUIDTransactionId;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.InternalEntryType;
-import io.journalkeeper.core.entry.internal.LeaderAnnouncementEntry;
 import io.journalkeeper.core.entry.internal.UpdateVotersS1Entry;
 import io.journalkeeper.core.exception.UpdateConfigurationException;
 import io.journalkeeper.core.journal.Journal;
@@ -50,6 +51,7 @@ import io.journalkeeper.rpc.client.CreateTransactionRequest;
 import io.journalkeeper.rpc.client.CreateTransactionResponse;
 import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
 import io.journalkeeper.rpc.client.GetServerStatusResponse;
+import io.journalkeeper.rpc.client.GetSnapshotsResponse;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
@@ -777,6 +779,22 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                     .thenApply(GetOpeningTransactionsResponse::new);
         } else {
             return CompletableFuture.completedFuture(new GetOpeningTransactionsResponse(new NotLeaderException(leaderUri)));
+        }
+    }
+
+    @Override
+    public CompletableFuture<GetSnapshotsResponse> getSnapshots() {
+        if (voterState.getState() == VoterState.LEADER && leader != null) {
+            return CompletableFuture.completedFuture(
+                    snapshots.values()
+                            .stream()
+                            .map((state) ->
+                                    new SnapshotEntry(state.getPath().toString(), state.getLastIncludedIndex(),
+                                            state.getLastIncludedTerm(), state.getMinOffset(), state.timestamp())).collect(Collectors.toList()))
+                    .thenApply(SnapshotsEntry::new)
+                    .thenApply(GetSnapshotsResponse::new);
+        } else {
+            return CompletableFuture.completedFuture(new GetSnapshotsResponse(new NotLeaderException(leaderUri)));
         }
     }
 

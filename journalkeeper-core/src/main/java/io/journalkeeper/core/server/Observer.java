@@ -30,6 +30,7 @@ import io.journalkeeper.rpc.client.CreateTransactionRequest;
 import io.journalkeeper.rpc.client.CreateTransactionResponse;
 import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
 import io.journalkeeper.rpc.client.GetServerStatusResponse;
+import io.journalkeeper.rpc.client.GetSnapshotsResponse;
 import io.journalkeeper.rpc.client.LastAppliedResponse;
 import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
@@ -271,6 +272,11 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     @Override
     public CompletableFuture<GetOpeningTransactionsResponse> getOpeningTransactions() {
         return CompletableFuture.completedFuture(new GetOpeningTransactionsResponse(new NotLeaderException(leaderUri)));
+    }
+
+    @Override
+    public CompletableFuture<GetSnapshotsResponse> getSnapshots() {
+        return CompletableFuture.completedFuture(new GetSnapshotsResponse(new NotLeaderException(leaderUri)));
     }
 
     @Override

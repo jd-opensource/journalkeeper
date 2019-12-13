@@ -17,7 +17,6 @@ import io.journalkeeper.utils.event.EventBus;
 import io.journalkeeper.utils.event.EventWatcher;
 
 import java.net.URI;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -151,6 +150,12 @@ public interface ClientServerRpc {
      * @return See {@link GetOpeningTransactionsResponse}
      */
     CompletableFuture<GetOpeningTransactionsResponse> getOpeningTransactions();
+
+    /**
+     * 获取当前所有快照
+     * @return See {@link GetSnapshotsResponse}
+     */
+    CompletableFuture<GetSnapshotsResponse> getSnapshots();
 
     /**
      * 添加事件监听器，当事件发生时会调用监听器
