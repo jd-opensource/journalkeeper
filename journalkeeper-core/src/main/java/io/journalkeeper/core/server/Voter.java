@@ -140,7 +140,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     private ScheduledFuture printStateFuture;
 
     private Leader<E, ER, Q, QR> leader;
-    private Follower follower;
+    private Follower<E, ER, Q, QR> follower;
 
     Voter(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
                  Serializer<Q> querySerializer, Serializer<QR> resultSerializer,
@@ -264,6 +264,11 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         }
     }
 
+    private boolean isSingleNodeCluster() {
+        return !state.getConfigState().isJointConsensus() &&
+                state.getConfigState().voters().size() == 1 &&
+                  state.getConfigState().voters().contains(uri);
+    }
     /**
      * 发起选举。
      * 0. 角色转变为候选人
@@ -424,7 +429,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 follower = null;
             }
 
-            follower = new Follower(journal, state, uri, currentTerm.get(),
+            follower = new Follower<>(journal, state, uri, currentTerm.get(),
                     voterConfigManager, threads,
                     snapshots, config.getCacheRequests());
             follower.start();
@@ -820,7 +825,12 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
 
     @Override
     public void doStart() {
-        convertToFollower();
+        if(isSingleNodeCluster()) {
+            convertToCandidate();
+            convertToLeader();
+        } else {
+            convertToFollower();
+        }
         this.checkElectionTimeoutFuture = scheduledExecutor.scheduleAtFixedRate(this::checkElectionTimeout,
                 ThreadLocalRandom.current().nextLong(500L, 1000L),
                 config.getHeartbeatIntervalMs(), TimeUnit.MILLISECONDS);
