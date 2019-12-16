@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITIONS_START;
 import static io.journalkeeper.core.journal.Journal.INDEX_STORAGE_SIZE;
 
 /**
@@ -194,7 +195,12 @@ public class ServerMonitorInfoProvider implements MonitoredServer {
             Map<Integer, JournalPersistence> partitionMap = journal.getPartitionMap();
             if (null != partitionMap) {
                 List<JournalPartitionMonitorInfo> partitionMonitorInfoList = new ArrayList<>(partitionMap.size());
-                partitionMap.forEach((partition, persistence) -> {
+                partitionMap
+                        .entrySet().stream()
+                        .filter(entry -> entry.getKey() < RESERVED_PARTITIONS_START)
+                        .forEach(entry -> {
+                            int partition = entry.getKey();
+                            JournalPersistence persistence = entry.getValue();
                     JournalPartitionMonitorInfo partitionMonitorInfo = new JournalPartitionMonitorInfo();
                     partitionMonitorInfo.setPartition(partition);
                     partitionMonitorInfo.setMinIndex(persistence.min() / INDEX_STORAGE_SIZE);
