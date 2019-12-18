@@ -98,7 +98,6 @@ import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
  */
 class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private static final Logger logger = LoggerFactory.getLogger(Leader.class);
-    private static final int SNAPSHOT_PERIOD_SEC = 60;
 
     /**
      * 客户端更新状态请求队列
@@ -800,8 +799,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         state.addInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT, this.leaderAnnouncementInterceptor);
         if (snapshotIntervalSec > 0) {
             takeSnapshotFuture = scheduledExecutor.scheduleAtFixedRate(this::takeSnapshotPeriodically,
-                    ThreadLocalRandom.current().nextLong(0, SNAPSHOT_PERIOD_SEC),
-                    SNAPSHOT_PERIOD_SEC, TimeUnit.SECONDS);
+                    ThreadLocalRandom.current().nextLong(0, snapshotIntervalSec),
+                    snapshotIntervalSec, TimeUnit.SECONDS);
         }
         appendLeaderAnnouncementEntry();
     }
