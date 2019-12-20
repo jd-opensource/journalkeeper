@@ -93,14 +93,14 @@ public interface AdminClient extends Watchable, ClusterReadyAware, ServerConfigA
      * 恢复快照
      *
      * @param index 快照的索引位置
-     * @return
+     * @return 执行成功返回null，失败抛出异常。
      */
     CompletableFuture<Void> recoverSnapshot(long index);
 
     /**
      * 获取所有快照
      *
-     * @return
+     * @return 执行成功返回null，失败抛出异常。
      */
     CompletableFuture<SnapshotsEntry> getSnapshots();
 
