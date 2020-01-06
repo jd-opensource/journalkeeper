@@ -127,7 +127,7 @@ abstract class LoopThread implements AsyncLoopThread {
                 long t1 = System.nanoTime();
 
                 // 为了避免空转CPU高，如果执行时间过短，等一会儿再进行下一次循环
-                if (t1 - t0 < minSleep * 100000L) {
+                if (t1 - t0 < TimeUnit.NANOSECONDS.toMillis(minSleep)) {
 
                     wakeupLock.lock();
                     try {
