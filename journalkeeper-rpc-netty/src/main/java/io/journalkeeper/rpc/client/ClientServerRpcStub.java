@@ -311,7 +311,7 @@ public class ClientServerRpcStub implements ClientServerRpc {
 
     @Override
     public void stop() {
-        closeTransport();
         destroyPullEvent();
+        closeTransport();
     }
 }
