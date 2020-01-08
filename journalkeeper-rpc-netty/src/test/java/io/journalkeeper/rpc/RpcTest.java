@@ -515,7 +515,7 @@ public class RpcTest {
 
         clientServerRpc.watch(eventWatcher);
         addWatchFinished.set(true);
-        Thread.sleep(3 * pullIntervalMs);
+        Thread.sleep(10 * pullIntervalMs);
         clientServerRpc.unWatch(eventWatcher);
 
         Assert.assertEquals(pullEvents.size(), eventList.size());
