@@ -126,6 +126,9 @@ public class PositioningStore implements JournalPersistence, MonitoredPersistenc
             for(StoreFile sf : toBeRemoved.values()) {
                 logger.info("Delete store file {}.", sf.file().getAbsolutePath());
                 forceDeleteStoreFile(sf);
+                if (writeStoreFile == sf) {
+                    writeStoreFile = null;
+                }
             }
             toBeRemoved.clear();
         }
