@@ -68,6 +68,10 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
 
     private long timestamp = -1L;
 
+    // 结束写入，文件不再可写
+    private boolean writeClosed = false;
+    // 已完成刷盘，所有数据都安全的写入到磁盘上了
+    private boolean flushClosed = false;
 
     LocalStoreFile(long filePosition, File base, int headerSize, PreloadBufferPool bufferPool, int maxFileDataLength) {
         this.filePosition = filePosition;
@@ -81,7 +85,10 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         }
     }
 
-
+    @Override
+    public void closeWrite() {
+        writeClosed = true;
+    }
     @Override
     public File file() {
         return file;
@@ -291,22 +298,28 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     public int flush() throws IOException {
         long stamp = bufferLock.readLock();
         try {
-            if (writePosition > flushPosition) {
-                if (flushGate.compareAndSet(false, true)) {
-                    if (!file.exists()) {
-                        // 第一次创建文件写入头部预留128字节中0位置开始的前8字节长度:文件创建时间戳
-                        writeTimestamp();
-                    }
-                    try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
-                        return  flushPageBuffer(fileChannel);
-                    } finally {
-                        flushGate.compareAndSet(true, false);
-                    }
-                } else {
-                    throw new ConcurrentModificationException();
-                }
+
+            if (!file.exists()) {
+                // 第一次创建文件写入头部预留128字节中0位置开始的前8字节长度:文件创建时间戳
+                writeTimestamp();
             }
-            return 0;
+            if (flushGate.compareAndSet(false, true)) {
+                try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
+                    int ret = 0;
+                    if(writePosition > flushPosition) {
+                        ret = flushPageBuffer(fileChannel);
+                    }
+                    if (writeClosed && !flushClosed && flushPosition == writePosition) {
+                        fileChannel.force(true);
+                        flushClosed = true;
+                    }
+                    return ret;
+                } finally {
+                    flushGate.compareAndSet(true, false);
+                }
+            } else {
+                return 0;
+            }
         } finally {
             bufferLock.unlockRead(stamp);
         }
@@ -334,24 +347,23 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
             writePosition = position;
         }
         if (position < flushPosition) {
-            if(flushGate.compareAndSet(false, true)) {
-                try {
-                    flushPosition = position;
-                    try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
-                        fileChannel.truncate(position + headerSize);
-                    }
-                }finally {
-                    flushGate.compareAndSet(true, false);
+            while (!flushGate.compareAndSet(false, true)) {
+                Thread.yield();
+            }
+            try {
+                flushPosition = position;
+                try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
+                    fileChannel.truncate(position + headerSize);
                 }
-            } else {
-                throw new ConcurrentModificationException();
+            }finally {
+                flushGate.compareAndSet(true, false);
             }
         }
     }
 
     @Override
     public boolean isClean() {
-        return flushPosition >= writePosition;
+        return flushPosition >= writePosition && writeClosed == flushClosed;
     }
 
     @Override

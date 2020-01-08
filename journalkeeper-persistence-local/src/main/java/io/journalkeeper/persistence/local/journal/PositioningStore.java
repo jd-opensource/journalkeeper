@@ -236,6 +236,7 @@ public class PositioningStore implements JournalPersistence, MonitoredPersistenc
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         if (null == writeStoreFile) writeStoreFile = createStoreFile(writePosition.get());
         if (config.getFileDataSize() - writeStoreFile.writePosition() < buffer.remaining()) {
+            writeStoreFile.closeWrite();
             writeStoreFile = createStoreFile(writePosition.get());
         }
 
