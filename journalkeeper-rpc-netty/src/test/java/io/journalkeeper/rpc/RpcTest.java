@@ -128,6 +128,9 @@ public class RpcTest {
 
     @Test
     public  void testException() throws ExecutionException, InterruptedException {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         // Test exception response
         LastAppliedResponse response;
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
@@ -143,6 +146,9 @@ public class RpcTest {
 
     @Test
     public  void testResponseException() throws ExecutionException, InterruptedException {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         // Test exception response
         LastAppliedResponse response;
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
@@ -158,6 +164,9 @@ public class RpcTest {
     }
     @Test
     public void testNotLeader() throws ExecutionException, InterruptedException {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         LastAppliedResponse response;
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
 
@@ -172,6 +181,9 @@ public class RpcTest {
 
     @Test
     public void testUpdateClusterState() throws ExecutionException, InterruptedException {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         List<SerializedUpdateRequest> entries = Arrays.asList(
               new SerializedUpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
               new SerializedUpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
@@ -215,6 +227,9 @@ public class RpcTest {
 
     @Test
     public void testUpdateVoters() throws ExecutionException, InterruptedException {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         final List<URI> oldConfig = Arrays.asList(
                 URI.create("jk://192.168.0.1:8888"),
                 URI.create("jk://192.168.0.1:8889"),
@@ -244,6 +259,9 @@ public class RpcTest {
 
     @Test
     public void testConvertRoll() throws ExecutionException, InterruptedException {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         RaftServer.Roll roll = RaftServer.Roll.VOTER;
 
         ConvertRollRequest request = new ConvertRollRequest(roll);
@@ -262,6 +280,9 @@ public class RpcTest {
 
     @Test
     public void testQueryClusterState() throws ExecutionException, InterruptedException {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         int querySize = 128;
         int resultSize = 55;
         byte [] query = new byte[querySize];
@@ -290,6 +311,9 @@ public class RpcTest {
 
     @Test
     public void testQueryServerState() throws ExecutionException, InterruptedException {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         int querySize = 128;
         int resultSize = 55;
         byte [] query = new byte[querySize];
@@ -319,6 +343,9 @@ public class RpcTest {
 
     @Test
     public void testQuerySnapshotState() throws ExecutionException, InterruptedException {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         int querySize = 128;
         int resultSize = 55;
         byte [] query = new byte[querySize];
@@ -363,6 +390,9 @@ public class RpcTest {
 
     @Test
     public void testGerServers() throws ExecutionException, InterruptedException {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         URI leader = URI.create("jk://leader_host:8888");
         List<URI> observers = null;
         List<URI> voters = Arrays.asList(
@@ -386,7 +416,9 @@ public class RpcTest {
 
     @Test
     public void testAddPullWatch() throws ExecutionException, InterruptedException {
-
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         long pullWatchId = 666L;
         long pullIntervalMs =  10000L;
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
@@ -404,7 +436,9 @@ public class RpcTest {
 
     @Test
     public void testRemovePullWatch() throws ExecutionException, InterruptedException {
-
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         long pullWatchId = 666L;
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         RemovePullWatchResponse response;
@@ -418,7 +452,9 @@ public class RpcTest {
 
     @Test
     public void testPullEvents() throws ExecutionException, InterruptedException {
-
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         long pullWatchId = 666L;
         long ackSequence = 888888L;
         Map<String, String> eventData = new HashMap<>();
@@ -446,6 +482,9 @@ public class RpcTest {
 
     @Test
     public void testWatch() throws Exception {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         long pullWatchId = 666L;
         long pullIntervalMs = 100L;
         Map<String, String> eventData = new HashMap<>();
@@ -487,7 +526,9 @@ public class RpcTest {
 
     @Test
     public void testAsyncAppendEntries() throws ExecutionException, InterruptedException {
-
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         AsyncAppendEntriesRequest request = new AsyncAppendEntriesRequest(
                 88,
                 URI.create("jk://leader.host:8888"),
@@ -524,7 +565,9 @@ public class RpcTest {
 
     @Test
     public void testRequestVote() throws ExecutionException, InterruptedException {
-
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         RequestVoteRequest request = new RequestVoteRequest(
                 88,
                 URI.create("jk://candidate.host:8888"),
@@ -556,7 +599,9 @@ public class RpcTest {
 
     @Test
     public void testGetServerEntries() throws ExecutionException, InterruptedException {
-
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         GetServerEntriesRequest request = new GetServerEntriesRequest(
                 6666666L,
                 87
@@ -599,7 +644,9 @@ public class RpcTest {
 
     @Test
     public void testGetServerState() throws ExecutionException, InterruptedException {
-
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         GetServerStateRequest request = new GetServerStateRequest(
                 6666666L,
                 -1
@@ -634,6 +681,9 @@ public class RpcTest {
 
     @Test
     public void testDisableLeaderWrite() throws ExecutionException, InterruptedException {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         final long timeout = 666666L;
         final int term = 666;
         DisableLeaderWriteRequest request = new DisableLeaderWriteRequest(
@@ -656,6 +706,9 @@ public class RpcTest {
 
     @Test
     public void testCompleteTransaction() throws ExecutionException, InterruptedException {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         final UUID transactionId = UUID.randomUUID();
         final boolean commitOrAbort = false;
 
@@ -679,6 +732,9 @@ public class RpcTest {
 
     @Test
     public void testInstallSnapshot() throws ExecutionException, InterruptedException {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         // leader’s term
         final int term = 666;
         final int responseTerm = 888;
@@ -714,8 +770,9 @@ public class RpcTest {
 
     @Test
     public void testGetServerStatus() throws ExecutionException, InterruptedException {
-
-
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         GetServerStatusResponse response, serverResponse;
         serverResponse = new GetServerStatusResponse(new ServerStatus(
@@ -737,7 +794,9 @@ public class RpcTest {
 
     @Test
     public void testCreateTransaction() throws ExecutionException, InterruptedException {
-
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         Map<String, String> context = new HashMap<>();
         context.put("aaa", "bbb");
@@ -759,7 +818,9 @@ public class RpcTest {
 
     @Test
     public void testGetOpeningTransactions() throws ExecutionException, InterruptedException {
-
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         GetOpeningTransactionsResponse response, serverResponse;
 
@@ -786,6 +847,9 @@ public class RpcTest {
 
     @Test
     public void testGetSnapshots() throws Exception {
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         GetSnapshotsResponse response, serverResponse;
 
@@ -802,7 +866,9 @@ public class RpcTest {
 
     @Test
     public void testCheckLeadership() throws ExecutionException, InterruptedException {
-
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         CheckLeadershipResponse response, serverResponse;
 
