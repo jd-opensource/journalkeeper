@@ -426,7 +426,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
 
     @Override
     public boolean isFree() {
-        return isClean();
+        return flushPosition >= writePosition;
     }
 
     @Override
