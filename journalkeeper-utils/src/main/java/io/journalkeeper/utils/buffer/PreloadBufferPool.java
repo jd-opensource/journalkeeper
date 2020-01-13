@@ -39,6 +39,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * @author LiYue
@@ -122,14 +123,10 @@ public class PreloadBufferPool {
      */
     private synchronized void evict() {
         // 先清除过期的
-        for(BufferHolder holder: directBufferHolders) {
-            if(System.currentTimeMillis() - holder.lastAccessTime() > cacheLifetimeMs){
-                holder.evict();
-            }
-        }
-
-        mMapBufferHolders.removeIf(holder -> System.currentTimeMillis() - holder.lastAccessTime() > cacheLifetimeMs && holder.evict());
-
+        // 先清除过期的
+        Stream.concat(directBufferHolders.stream(), mMapBufferHolders.stream())
+                .filter(holder -> System.currentTimeMillis() - holder.lastAccessTime() > cacheLifetimeMs)
+                .forEach(BufferHolder::evict);
 
         // 清理超过maxCount的缓存页
         for(PreLoadCache preLoadCache: bufferCache.values()) {
@@ -313,7 +310,7 @@ public class PreloadBufferPool {
         directBufferHolders.remove(bufferHolder);
         int size = byteBuffer.capacity();
         PreLoadCache preLoadCache = bufferCache.get(size);
-        if(null != preLoadCache) {
+        if(null != preLoadCache && preLoadCache.getCachedCount() < preLoadCache.getMaxCount()) {
             byteBuffer.clear();
             preLoadCache.cache.add(byteBuffer);
             preLoadCache.onFlyCounter.getAndDecrement();
