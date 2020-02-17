@@ -32,7 +32,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.IntStream;
 
 
@@ -160,7 +159,7 @@ public class PositioningStoreTest {
     @Test
     public void writePerformanceTest() throws IOException, InterruptedException {
         // 总共写入消息的的大小
-        long maxSize = 2L * 1024L * 1024 * 1024;
+        long maxSize = 10L * 1024L * 1024 * 1024;
         // 每条消息消息体大小
         int logSize = 1024;
 
@@ -171,7 +170,7 @@ public class PositioningStoreTest {
 
     @Ignore
     @Test
-    public void readPerformanceTest() throws IOException, InterruptedException, TimeoutException {
+    public void readPerformanceTest() throws IOException, InterruptedException {
         // 总共写入消息的的大小
         long maxSize = 1024L * 1024 * 1024;
         // 每条消息消息体大小
@@ -190,6 +189,7 @@ public class PositioningStoreTest {
         Properties properties = new Properties();
         properties.put("cached_file_core_count", "5");
         properties.put("cached_file_max_count", "20");
+        properties.put("max_dirty_size", String.valueOf(200L * 1024 * 1024));
         store.recover(path, properties);
         Thread.sleep(1000L);
         return store;
@@ -227,22 +227,24 @@ public class PositioningStoreTest {
         try {
             flushThread.start();
             long startPosition = store.max();
-            long start = System.nanoTime();
+            long start = System.currentTimeMillis();
             while (currentMax < startPosition + maxSize) {
                 currentMax = store.append(journal);
             }
-            long t = System.nanoTime();
+            long t = System.currentTimeMillis();
             long spendTimeNs = t - start;
-            long bps = (currentMax - startPosition) * 1000000000L / spendTimeNs;
+            long bps = (currentMax - startPosition) * 1000 / spendTimeNs;
 
-            logger.info("Final write size: {}, write performance: {}/S.", currentMax - startPosition, Format.formatSize(bps));
+            logger.info("Final write size: {}, write performance: {}/S.",
+                    Format.formatSize(currentMax - startPosition),
+                    Format.formatSize(bps));
 
             while (store.flushed() < store.max()) {
                 Thread.yield();
             }
-            t = System.nanoTime();
+            t = System.currentTimeMillis();
             spendTimeNs = t - start;
-            bps = (currentMax - startPosition) * 1000000000L / spendTimeNs;
+            bps = (currentMax - startPosition) * 1000 / spendTimeNs;
 
             logger.info("Flush performance: {}/S.", Format.formatSize(bps));
         } finally {

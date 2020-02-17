@@ -18,7 +18,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 
 public interface StoreFile extends Timed {
-    void closeWrite();
 
     /**
      * 对应的文件
@@ -109,4 +108,10 @@ public interface StoreFile extends Timed {
      * @return 文件创建时间
      */
     long timestamp();
+
+    /**
+     * 强制把PageBuffer的数据写入磁盘
+     * @throws IOException 发生IO异常时抛出
+     */
+    void force() throws IOException;
 }

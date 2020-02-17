@@ -239,7 +239,6 @@ public class PositioningStore implements JournalPersistence, MonitoredPersistenc
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         if (null == writeStoreFile) writeStoreFile = createStoreFile(writePosition.get());
         if (config.getFileDataSize() - writeStoreFile.writePosition() < buffer.remaining()) {
-            writeStoreFile.closeWrite();
             writeStoreFile = createStoreFile(writePosition.get());
         }
 
@@ -280,7 +279,12 @@ public class PositioningStore implements JournalPersistence, MonitoredPersistenc
             Map.Entry<Long, StoreFile> entry = storeFileMap.floorEntry(flushPosition.get());
             if (null == entry) return;
             StoreFile storeFile = entry.getValue();
-            if (!storeFile.isClean()) storeFile.flush();
+            if (!storeFile.isClean()) {
+                storeFile.flush();
+                if (storeFile.position() < storeFileMap.lastKey()) {
+                   storeFile.force();
+                }
+            }
             if (flushPosition.get() < storeFile.position() + storeFile.flushPosition()) {
                 flushPosition.set(storeFile.position() + storeFile.flushPosition());
             }
