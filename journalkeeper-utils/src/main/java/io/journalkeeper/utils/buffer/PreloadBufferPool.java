@@ -51,27 +51,35 @@ public class PreloadBufferPool {
     private final Threads threads = ThreadsFactory.create();
     private static final String PRELOAD_THREAD = "PreloadBuffer-PreloadThread";
     private static final String EVICT_THREAD = "PreloadBuffer-EvictThread";
-    private final long cacheLifetimeMs;
     // 可用的堆外内存上限，这个上限可以用JVM参数"PreloadBufferPool.MaxMemory"指定，
     // 默认为虚拟机最大内存（VM.maxDirectMemory()）的90%。
     private final long maxMemorySize;
+
+    // 核心堆外内存大小，JournalKeeper总是尽量占满coreMemorySize内存用于缓存更多的文件，提升读写性能。
+    private final long coreMemorySize;
+
+    // 堆外内存超过evictMemorySize就会启动清理，清理的策略是LRU
+    private final long evictMemorySize;
+
     // 缓存比率：如果非堆内存使用率超过这个比率，就不再申请内存，抛出OOM。
     // 由于jvm在读写文件的时候会用到少量DirectBuffer作为缓存，必须预留一部分。
     private final static double CACHE_RATIO = 0.9d;
+    /**
+     * 缓存清理比率阈值，超过这个阈值执行缓存清理。
+     */
+    private static final double EVICT_RATIO = 0.9d;
+    /**
+     * 缓存核心利用率，系统会尽量将这个比率以内的内存用满。
+     */
+    private static final double CORE_RATIO = 0.8d;
 
-    // 缓存清理比率阈值，超过这个阈值执行缓存清理。
-    private final static double EVICT_RATIO = 0.8d;
-    private final static long DEFAULT_CACHE_LIFE_TIME_MS = 60000L;
     private final static long INTERVAL_MS = 50L;
 
-    private final static String CACHE_LIFE_TIME_MS_KEY = "PreloadBufferPool.CacheLifeTimeMs";
     private final static String MAX_MEMORY_KEY = "PreloadBufferPool.MaxMemory";
-    private final static String GREED_MODE_KEY = "PreloadBufferPool.Greedy";
 
     private final AtomicLong usedSize = new AtomicLong(0L);
     private final Set<BufferHolder> directBufferHolders = ConcurrentHashMap.newKeySet();
     private final Set<BufferHolder> mMapBufferHolders = ConcurrentHashMap.newKeySet();
-    private final boolean greedyMode;
     private static PreloadBufferPool instance = null;
 
     public static PreloadBufferPool getInstance() {
@@ -82,18 +90,19 @@ public class PreloadBufferPool {
     }
 
     private PreloadBufferPool() {
-        this.cacheLifetimeMs = Long.parseLong(System.getProperty(CACHE_LIFE_TIME_MS_KEY,String.valueOf(DEFAULT_CACHE_LIFE_TIME_MS)));
-        long maxMemorySize = Format.parseSize(System.getProperty(MAX_MEMORY_KEY), Math.round(VM.maxDirectMemory() * CACHE_RATIO));
-        this.greedyMode = Boolean.parseBoolean(System.getProperty(GREED_MODE_KEY, "false"));
-        threads.createThread(buildPreloadThread());
 
+        maxMemorySize = Format.parseSize(System.getProperty(MAX_MEMORY_KEY), Math.round(VM.maxDirectMemory() * CACHE_RATIO));
+        evictMemorySize = Math.round(maxMemorySize * EVICT_RATIO);
+        coreMemorySize = Math.round(maxMemorySize * CORE_RATIO);
+
+        threads.createThread(buildPreloadThread());
         threads.createThread(buildEvictThread());
         threads.start();
-        this.maxMemorySize = maxMemorySize;
-        logger.info("PreloadBufferPool loaded. MaxMemory: {}, CacheLifeTimeMs: {}, Greedy: {}.",
+
+        logger.info("Max direct memory: {}, core direct memory: {}, evict direct memory: {}.",
                 Format.formatSize(maxMemorySize),
-                cacheLifetimeMs,
-                greedyMode);
+                Format.formatSize(coreMemorySize),
+                Format.formatSize(evictMemorySize));
     }
 
     private AsyncLoopThread buildPreloadThread() {
@@ -122,18 +131,13 @@ public class PreloadBufferPool {
      * 清除文件缓存页。LRU。
      */
     private synchronized void evict() {
-        // 先清除过期的
-        // 先清除过期的
-        Stream.concat(directBufferHolders.stream(), mMapBufferHolders.stream())
-                .filter(holder -> System.currentTimeMillis() - holder.lastAccessTime() > cacheLifetimeMs)
-                .forEach(BufferHolder::evict);
 
         // 清理超过maxCount的缓存页
-        for(PreLoadCache preLoadCache: bufferCache.values()) {
-            while (preLoadCache.cache.size() > preLoadCache.maxCount) {
-                if(greedyMode && usedSize.get() < maxMemorySize * EVICT_RATIO) {
-                    return;
-                }
+        for (PreLoadCache preLoadCache : bufferCache.values()) {
+            if (!needEviction()) {
+                break;
+            }
+            while (preLoadCache.cache.size() > preLoadCache.maxCount && !needEviction()) {
                 try {
                     destroyOne(preLoadCache.cache.remove());
                 } catch (NoSuchElementException ignored) {}
@@ -141,16 +145,15 @@ public class PreloadBufferPool {
         }
 
         // 清理使用中最旧的页面，直到内存占用率达标
-
-        if(usedSize.get() > maxMemorySize * EVICT_RATIO) {
+        if (needEviction()) {
             List<LruWrapper<BufferHolder>> sorted;
-            sorted = directBufferHolders.stream()
+            sorted = Stream.concat(directBufferHolders.stream(), mMapBufferHolders.stream())
                     .filter(BufferHolder::isFree)
                     .map(bufferHolder -> new LruWrapper<>(bufferHolder, bufferHolder.lastAccessTime()))
                     .sorted(Comparator.comparing(LruWrapper::getLastAccessTime))
                     .collect(Collectors.toList());
 
-            while (usedSize.get() > maxMemorySize * EVICT_RATIO && !sorted.isEmpty() ) {
+            while (needEviction() && !sorted.isEmpty()) {
                 LruWrapper<BufferHolder> wrapper = sorted.remove(0);
                 BufferHolder holder = wrapper.get();
                 if (holder.lastAccessTime() == wrapper.getLastAccessTime()) {
@@ -158,9 +161,22 @@ public class PreloadBufferPool {
                 }
             }
         }
-
-
     }
+
+
+    private boolean needEviction() {
+        return usedSize.get() > evictMemorySize;
+    }
+
+    private boolean isOutOfMemory() {
+        return usedSize.get() > maxMemorySize;
+    }
+
+    private boolean isHungry() {
+        return usedSize.get() < coreMemorySize;
+    }
+
+
 
     public synchronized void addPreLoad(int bufferSize, int coreCount, int maxCount) {
         PreLoadCache preLoadCache =  bufferCache.putIfAbsent(bufferSize, new PreLoadCache(bufferSize, coreCount, maxCount));
@@ -190,70 +206,86 @@ public class PreloadBufferPool {
             });
             instance.directBufferHolders.parallelStream().forEach(BufferHolder::evict);
             instance.mMapBufferHolders.parallelStream().forEach(BufferHolder::evict);
+            instance.bufferCache.values().forEach(p -> {
+                while (!p.cache.isEmpty()) {
+                    instance.destroyOne(p.cache.remove());
+
+                }
+            });
         }
         logger.info("Preload buffer pool closed.");
     }
 
     private void destroyOne(ByteBuffer byteBuffer) {
         usedSize.getAndAdd(-1 * byteBuffer.capacity());
-//        logger.info("Release direct {}/{}",
-//                Format.formatSize(byteBuffer.capacity()),
-//                Format.formatSize(usedSize.get()));
         releaseIfDirect(byteBuffer);
     }
 
-    private synchronized void preLoadBuffer() {
-
-        for(PreLoadCache preLoadCache: bufferCache.values()) {
-            try {
-                while (preLoadCache.cache.size() < preLoadCache.coreCount && usedSize.get() + preLoadCache.bufferSize < maxMemorySize) {
-                    preLoadCache.cache.add(createOne(preLoadCache.bufferSize));
+    private void preLoadBuffer() {
+        for (PreLoadCache preLoadCache : bufferCache.values()) {
+            if ( preLoadCache.cache.size() < preLoadCache.coreCount ) {
+                if (isHungry()) {
+                    try {
+                        while (preLoadCache.cache.size() < preLoadCache.coreCount && usedSize.get() + preLoadCache.bufferSize < maxMemorySize) {
+                            preLoadCache.cache.add(createOne(preLoadCache.bufferSize));
+                        }
+                    } catch (OutOfMemoryError ignored) {
+                        return;
+                    }
+                } else {
+                    List<LruWrapper<BufferHolder>> outdated = directBufferHolders.stream()
+                            .filter(b -> b.size() == preLoadCache.bufferSize)
+                            .filter(BufferHolder::isFree)
+                            .map(bufferHolder -> new LruWrapper<>(bufferHolder, bufferHolder.lastAccessTime()))
+                            .sorted(Comparator.comparing(LruWrapper::getLastAccessTime)).collect(Collectors.toList());
+                    while (preLoadCache.cache.size() < preLoadCache.coreCount && !outdated.isEmpty()) {
+                        LruWrapper<BufferHolder> wrapper = outdated.remove(0);
+                        BufferHolder holder = wrapper.get();
+                        if (holder.lastAccessTime() == wrapper.getLastAccessTime()) {
+                            holder.evict();
+                        }
+                    }
                 }
-            } catch (OutOfMemoryError ignored) {}
+            }
         }
     }
 
     private ByteBuffer createOne(int size) {
         reserveMemory(size);
-//        logger.info("Allocate direct {}/{}",
-//                Format.formatSize(size),
-//                Format.formatSize(usedSize.get()));
-
         return ByteBuffer.allocateDirect(size);
     }
 
     private void reserveMemory(int size) {
-        while (usedSize.get() + size > maxMemorySize) {
-            PreLoadCache preLoadCache = bufferCache.values().stream()
-                    .filter(p -> p.cache.size() > 0)
-                    .findAny().orElse(null);
-            if (null != preLoadCache) {
-                try {
+        usedSize.addAndGet(size);
+        try {
+            while (isOutOfMemory()) {
+                PreLoadCache preLoadCache = bufferCache.values().stream()
+                        .filter(p -> p.cache.size() > 0)
+                        .findAny().orElse(null);
+                if (null != preLoadCache) {
                     destroyOne(preLoadCache.cache.remove());
-                } catch (NoSuchElementException ignored) {
+                } else {
+                    break;
                 }
-            } else {
-                break;
             }
-        }
 
-        if (usedSize.get() + size > maxMemorySize) {
-            // 如果内存不足，唤醒清理线程立即执行清理
-            threads.wakeupThread(EVICT_THREAD);
-            // 等待5x10ms，如果还不足抛出异常
-            for (int i = 0; i < 5 && usedSize.get() + size > maxMemorySize; i++) {
-                try {
-                    Thread.sleep(10);
-                } catch (InterruptedException e) {
-                    logger.warn("Interrupted: ", e);
+            if (isOutOfMemory()) {
+                // 如果内存不足，唤醒清理线程立即执行清理
+                threads.wakeupThread(EVICT_THREAD);
+                // 等待5x10ms，如果还不足抛出异常
+                for (int i = 0; i < 5 && isOutOfMemory(); i++) {
+                    try {
+                        Thread.sleep(10);
+                    } catch (InterruptedException e) {
+                        logger.warn("Interrupted: ", e);
+                    }
+                }
+                if (isOutOfMemory()) {
+                    throw new OutOfMemoryError();
                 }
             }
-            if (usedSize.get() + size > maxMemorySize) {
-                throw new OutOfMemoryError();
-            }
-        }
-        if (usedSize.addAndGet(size) > maxMemorySize * EVICT_RATIO) {
-            threads.wakeupThread(EVICT_THREAD);
+        } catch (Throwable t) {
+            usedSize.getAndAdd( -1 * size);
         }
     }
 
@@ -310,9 +342,13 @@ public class PreloadBufferPool {
         directBufferHolders.remove(bufferHolder);
         int size = byteBuffer.capacity();
         PreLoadCache preLoadCache = bufferCache.get(size);
-        if(null != preLoadCache && preLoadCache.getCachedCount() < preLoadCache.getMaxCount()) {
-            byteBuffer.clear();
-            preLoadCache.cache.add(byteBuffer);
+        if (null != preLoadCache) {
+            if (needEviction() && preLoadCache.cache.size() >= preLoadCache.maxCount) {
+                destroyOne(byteBuffer);
+            } else {
+                byteBuffer.clear();
+                preLoadCache.cache.add(byteBuffer);
+            }
             preLoadCache.onFlyCounter.getAndDecrement();
         } else {
             destroyOne(byteBuffer);
