@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -40,7 +40,9 @@ import org.slf4j.LoggerFactory;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * @author LiYue
@@ -52,26 +54,26 @@ public class BootStrap implements ClusterAccessPoint {
 
     private final StateFactory stateFactory;
     private final Properties properties;
-    private ScheduledExecutorService serverScheduledExecutor, clientScheduledExecutor;
-    private ExecutorService serverAsyncExecutor, clientAsyncExecutor;
     private final RaftServer.Roll roll;
     private final RpcAccessPointFactory rpcAccessPointFactory;
     private final List<URI> servers;
     private final Server server;
-    private RaftClient client = null;
-    private AdminClient adminClient = null;
-    private RaftClient localClient = null;
-    private AdminClient localAdminClient = null;
     private final JournalEntryParser journalEntryParser;
     private final RetryPolicy remoteRetryPolicy =
             new IncreasingRetryPolicy(
-                    new long [] {50, 50, 50, 50, 50,
+                    new long[]{50, 50, 50, 50, 50,
                             100, 100, 100, 100, 100, 100,
                             300, 300, 300, 300, 300, 300,
                             500, 500, 500, 500, 500, 500,
                             1000, 1000, 1000, 1000, 1000,
                             5000, 5000, 5000, 5000, 5000}, 50);
     private final boolean isExecutorProvided;
+    private ScheduledExecutorService serverScheduledExecutor, clientScheduledExecutor;
+    private ExecutorService serverAsyncExecutor, clientAsyncExecutor;
+    private RaftClient client = null;
+    private AdminClient adminClient = null;
+    private RaftClient localClient = null;
+    private AdminClient localAdminClient = null;
 
     /**
      * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。
@@ -108,7 +110,7 @@ public class BootStrap implements ClusterAccessPoint {
      */
     public BootStrap(RaftServer.Roll roll, StateFactory stateFactory,
                      Properties properties) {
-        this(roll, null, stateFactory, new DefaultJournalEntryParser(), null, null,null, null,
+        this(roll, null, stateFactory, new DefaultJournalEntryParser(), null, null, null, null,
                 properties);
     }
 
@@ -178,14 +180,14 @@ public class BootStrap implements ClusterAccessPoint {
     }
 
     private Server createServer() {
-        if(null == serverScheduledExecutor && !isExecutorProvided) {
+        if (null == serverScheduledExecutor && !isExecutorProvided) {
             this.serverScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_QUEUE_SIZE, new NamedThreadFactory("JournalKeeper-Server-Scheduled-Executor"));
         }
-        if(null == serverAsyncExecutor && !isExecutorProvided) {
+        if (null == serverAsyncExecutor && !isExecutorProvided) {
             this.serverAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Server-Async-Executor"));
         }
 
-        if(null != roll) {
+        if (null != roll) {
             return new Server(roll, stateFactory, journalEntryParser, serverScheduledExecutor, serverAsyncExecutor, properties);
         }
         return null;
@@ -193,7 +195,7 @@ public class BootStrap implements ClusterAccessPoint {
 
     @Override
     public RaftClient getClient() {
-        if(null == client) {
+        if (null == client) {
             RemoteClientRpc clientRpc = createRemoteClientRpc();
             client = new DefaultRaftClient(clientRpc, properties);
         }
@@ -203,7 +205,7 @@ public class BootStrap implements ClusterAccessPoint {
     @Override
     public RaftClient getLocalClient() {
 
-        if(null == localClient) {
+        if (null == localClient) {
             LocalClientRpc clientRpc = createLocalClientRpc();
             localClient = new DefaultRaftClient(clientRpc, properties);
         }
@@ -211,14 +213,14 @@ public class BootStrap implements ClusterAccessPoint {
     }
 
     private LocalClientRpc createLocalClientRpc() {
-        if(null == clientAsyncExecutor && !isExecutorProvided) {
+        if (null == clientAsyncExecutor && !isExecutorProvided) {
             this.clientAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Client-Async-Executor"));
         }
-        if(null == clientScheduledExecutor && !isExecutorProvided) {
+        if (null == clientScheduledExecutor && !isExecutorProvided) {
             this.clientScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_QUEUE_SIZE, new NamedThreadFactory("JournalKeeper-Client-Scheduled-Executor"));
         }
 
-        if(this.server != null) {
+        if (this.server != null) {
             return new LocalClientRpc(server, remoteRetryPolicy, clientAsyncExecutor, clientScheduledExecutor);
         } else {
             throw new IllegalStateException("No local server!");
@@ -226,16 +228,16 @@ public class BootStrap implements ClusterAccessPoint {
     }
 
     private RemoteClientRpc createRemoteClientRpc() {
-        if(null == clientAsyncExecutor && !isExecutorProvided) {
+        if (null == clientAsyncExecutor && !isExecutorProvided) {
             this.clientAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Client-Async-Executor"));
         }
-        if(null == clientScheduledExecutor && !isExecutorProvided) {
+        if (null == clientScheduledExecutor && !isExecutorProvided) {
             this.clientScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_QUEUE_SIZE, new NamedThreadFactory("JournalKeeper-Client-Scheduled-Executor"));
         }
 
         ClientServerRpcAccessPoint clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.properties);
         RemoteClientRpc clientRpc;
-        if(this.server == null) {
+        if (this.server == null) {
             clientRpc = new RemoteClientRpc(getServersForClient(), clientServerRpcAccessPoint, remoteRetryPolicy, clientAsyncExecutor, clientScheduledExecutor);
         } else {
             clientServerRpcAccessPoint = new LocalDefaultRpcAccessPoint(server, clientServerRpcAccessPoint);
@@ -247,21 +249,21 @@ public class BootStrap implements ClusterAccessPoint {
 
     public void shutdown() {
 
-        if(null != client) {
+        if (null != client) {
             client.stop();
         }
-        if(null != adminClient) {
+        if (null != adminClient) {
             adminClient.stop();
         }
-        if(null != server ) {
+        if (null != server) {
             StateServer.ServerState state;
-            if( (state = server.serverState()) == StateServer.ServerState.RUNNING) {
+            if ((state = server.serverState()) == StateServer.ServerState.RUNNING) {
                 server.stop();
             } else {
                 logger.warn("Server {} state is {}, will not stop!", server.serverUri(), state);
             }
         }
-        if(!isExecutorProvided) {
+        if (!isExecutorProvided) {
             shutdownExecutorService(serverScheduledExecutor);
             shutdownExecutorService(serverAsyncExecutor);
             shutdownExecutorService(clientScheduledExecutor);
@@ -276,7 +278,7 @@ public class BootStrap implements ClusterAccessPoint {
 
     @Override
     public AdminClient getAdminClient() {
-        if(null == adminClient) {
+        if (null == adminClient) {
             ClientRpc clientRpc = createRemoteClientRpc();
             adminClient = new DefaultAdminClient(clientRpc, properties);
         }
@@ -285,7 +287,7 @@ public class BootStrap implements ClusterAccessPoint {
 
     @Override
     public AdminClient getLocalAdminClient() {
-        if(null == localAdminClient) {
+        if (null == localAdminClient) {
             ClientRpc clientRpc = createLocalClientRpc();
             localAdminClient = new DefaultAdminClient(clientRpc, properties);
         }
@@ -294,7 +296,7 @@ public class BootStrap implements ClusterAccessPoint {
 
 
     private List<URI> getServersForClient() {
-        if(null == server) {
+        if (null == server) {
             return servers;
         } else {
             try {
@@ -306,7 +308,7 @@ public class BootStrap implements ClusterAccessPoint {
     }
 
     private void shutdownExecutorService(ExecutorService executor) {
-        if(null != executor) {
+        if (null != executor) {
             executor.shutdown();
         }
     }

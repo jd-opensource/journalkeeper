@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -36,12 +36,25 @@ public class JournalStoreQuery {
         this.size = size;
         this.timestamp = timestamp;
     }
+
     private JournalStoreQuery(int cmd) {
         this(cmd, 0, 0, 0, 0L);
     }
 
     private JournalStoreQuery(int partition, long timestamp) {
-        this(CMD_QUERY_INDEX, partition, 0,0, timestamp);
+        this(CMD_QUERY_INDEX, partition, 0, 0, timestamp);
+    }
+
+    public static JournalStoreQuery createQueryEntries(int partition, long index, int size) {
+        return new JournalStoreQuery(CMD_QUERY_ENTRIES, partition, index, size, 0L);
+    }
+
+    public static JournalStoreQuery createQueryPartitions() {
+        return new JournalStoreQuery(CMD_QUERY_PARTITIONS);
+    }
+
+    public static JournalStoreQuery createQueryIndex(int partition, long timestamp) {
+        return new JournalStoreQuery(partition, timestamp);
     }
 
     public int getCmd() {
@@ -62,17 +75,5 @@ public class JournalStoreQuery {
 
     public long getTimestamp() {
         return timestamp;
-    }
-
-    public static JournalStoreQuery createQueryEntries(int partition, long index, int size) {
-        return new JournalStoreQuery(CMD_QUERY_ENTRIES, partition, index, size, 0L);
-    }
-
-    public static JournalStoreQuery createQueryPartitions() {
-        return new JournalStoreQuery(CMD_QUERY_PARTITIONS);
-    }
-
-    public static JournalStoreQuery createQueryIndex(int partition, long timestamp) {
-        return new JournalStoreQuery(partition, timestamp);
     }
 }

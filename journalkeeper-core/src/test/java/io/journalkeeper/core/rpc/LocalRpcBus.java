@@ -2,7 +2,6 @@ package io.journalkeeper.core.rpc;
 
 import io.journalkeeper.exceptions.ServerNotFoundException;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
-import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
 import io.journalkeeper.rpc.server.ServerRpc;
@@ -26,8 +25,8 @@ public class LocalRpcBus implements ClientServerRpcAccessPoint, ServerRpcAccessP
 
     @Override
     public ClientServerRpc getClintServerRpc(URI uri) {
-        ClientServerRpc clientServerRpc=  providers.get(uri);
-        if(null == clientServerRpc) {
+        ClientServerRpc clientServerRpc = providers.get(uri);
+        if (null == clientServerRpc) {
             throw new ServerNotFoundException("No provider for uri: " + uri + "!");
         }
         return clientServerRpc;
@@ -58,6 +57,7 @@ public class LocalRpcBus implements ClientServerRpcAccessPoint, ServerRpcAccessP
         providers.put(serverRpc.serverUri(), new WrappedServerRpc(serverRpc));
         return new StateServer() {
             private ServerState state = ServerState.CREATED;
+
             @Override
             public void start() {
                 state = ServerState.RUNNING;

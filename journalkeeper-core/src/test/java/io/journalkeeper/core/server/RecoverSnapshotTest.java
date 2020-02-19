@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,7 +13,6 @@
  */
 package io.journalkeeper.core.server;
 
-import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.serialize.WrappedBootStrap;
 import io.journalkeeper.core.serialize.WrappedRaftClient;
 import io.journalkeeper.core.state.KvStateFactory;
@@ -26,7 +25,6 @@ import org.junit.Test;
 import java.io.File;
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
@@ -110,7 +108,6 @@ public class RecoverSnapshotTest {
             kvServer.getServer().init(uri, uris);
             kvServer.getServer().recover();
             kvServer.getServer().start();
-            kvServer.getAdminClient().waitForClusterReady(1000 * 5);
             servers.add(kvServer);
             clients.add(kvServer.getClient());
         }
@@ -160,7 +157,7 @@ public class RecoverSnapshotTest {
             Assert.assertEquals(servers.get(i).getAdminClient().getSnapshots().get().getSnapshots().size(), 5);
         }
 
-        for (WrappedRaftClient<String, String, String, String>  client : clients) {
+        for (WrappedRaftClient<String, String, String, String> client : clients) {
             Assert.assertNull(client.query("GET key_1").get());
             Assert.assertNull(client.query("GET key_2").get());
         }

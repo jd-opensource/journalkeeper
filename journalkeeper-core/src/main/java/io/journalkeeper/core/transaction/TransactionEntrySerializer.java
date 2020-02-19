@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -57,12 +57,12 @@ public class TransactionEntrySerializer implements Serializer<TransactionEntry> 
         int size = FIXED_LENGTH +
                 Integer.BYTES + (entry.getEntry() == null ? 0 : entry.getEntry().length) +
                 Integer.BYTES + (
-                        entry.getContext() == null ? 0 :
-                                Stream.concat(entry.getContext().keySet().stream(), entry.getContext().values().stream())
+                entry.getContext() == null ? 0 :
+                        Stream.concat(entry.getContext().keySet().stream(), entry.getContext().values().stream())
                                 .mapToInt(s -> Integer.BYTES + s.getBytes(StandardCharsets.UTF_8).length).sum()
         );
 
-        byte [] bytes = new byte[size];
+        byte[] bytes = new byte[size];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
 
         // transactionId
@@ -72,33 +72,33 @@ public class TransactionEntrySerializer implements Serializer<TransactionEntry> 
         buffer.putLong(entry.getTimestamp());
 
         // type
-        buffer.put((byte )entry.getType().value());
+        buffer.put((byte) entry.getType().value());
 
         // partition
         buffer.putShort((short) entry.getPartition());
         // commitOrAbort
-        buffer.put(entry.isCommitOrAbort() ? (byte ) 1 : (byte) 0);
+        buffer.put(entry.isCommitOrAbort() ? (byte) 1 : (byte) 0);
         // batchSize
         buffer.putShort((short) entry.getBatchSize());
         // entry
-        if(entry.getEntry() == null) {
+        if (entry.getEntry() == null) {
             buffer.putInt(-1);
         } else {
             buffer.putInt(entry.getEntry().length);
             buffer.put(entry.getEntry());
         }
         // context
-        if(entry.getContext() == null) {
+        if (entry.getContext() == null) {
             buffer.putInt(-1);
         } else {
             buffer.putInt(entry.getContext().size());
             entry.getContext().entrySet().stream()
                     .flatMap(e -> Stream.of(e.getKey(), e.getValue()))
-            .forEach(s -> {
-                byte [] sb = s.getBytes(StandardCharsets.UTF_8);
-                buffer.putInt(sb.length);
-                buffer.put(sb);
-            });
+                    .forEach(s -> {
+                        byte[] sb = s.getBytes(StandardCharsets.UTF_8);
+                        buffer.putInt(sb.length);
+                        buffer.put(sb);
+                    });
         }
 
         return bytes;
@@ -107,7 +107,7 @@ public class TransactionEntrySerializer implements Serializer<TransactionEntry> 
     private void serializeUUID(UUID uuid, ByteBuffer buffer) {
         long mostSigBits = 0L;
         long leastSigBits = 0L;
-        if(null != uuid) {
+        if (null != uuid) {
             mostSigBits = uuid.getMostSignificantBits();
             leastSigBits = uuid.getLeastSignificantBits();
         }
@@ -130,10 +130,10 @@ public class TransactionEntrySerializer implements Serializer<TransactionEntry> 
     @Override
     public TransactionEntry parse(byte[] bytes) {
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
-        byte [] entryBytes = null;
+        byte[] entryBytes = null;
         buffer.position(FIXED_LENGTH);
         int length = buffer.getInt();
-        if(length >= 0) {
+        if (length >= 0) {
             entryBytes = new byte[length];
             buffer.get(entryBytes);
         }
@@ -161,8 +161,8 @@ public class TransactionEntrySerializer implements Serializer<TransactionEntry> 
 
     private String getString(ByteBuffer buffer) {
         int length = buffer.getInt();
-        if(length >= 0) {
-            byte [] bytes = new byte[length];
+        if (length >= 0) {
+            byte[] bytes = new byte[length];
             buffer.get(bytes);
             return new String(bytes, StandardCharsets.UTF_8);
         }

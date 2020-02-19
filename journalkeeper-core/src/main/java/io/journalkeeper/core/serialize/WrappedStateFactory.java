@@ -5,5 +5,5 @@ package io.journalkeeper.core.serialize;
  * Date: 2020/2/18
  */
 public interface WrappedStateFactory<E, ER, Q, QR> {
-     WrappedState<E, ER, Q, QR> createState();
+    WrappedState<E, ER, Q, QR> createState();
 }

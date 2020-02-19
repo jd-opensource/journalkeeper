@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,7 +15,12 @@ package io.journalkeeper.journalstore;
 
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.BootStrap;
-import io.journalkeeper.core.api.*;
+import io.journalkeeper.core.api.JournalEntry;
+import io.journalkeeper.core.api.JournalEntryParser;
+import io.journalkeeper.core.api.PartitionedJournalStore;
+import io.journalkeeper.core.api.RaftClient;
+import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.api.transaction.TransactionContext;
 import io.journalkeeper.core.api.transaction.TransactionId;
 import io.journalkeeper.core.api.transaction.TransactionalJournalStore;
@@ -28,7 +33,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
-import java.util.*;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
@@ -46,6 +55,7 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
     private final Serializer<Long> appendResultSerializer;
     private final Serializer<JournalStoreQuery> querySerializer;
     private final Serializer<JournalStoreQueryResult> queryResultSerializer;
+
     JournalStoreClient(RaftClient raftClient) {
         this.raftClient = raftClient;
         this.appendResultSerializer = new LongSerializer();
@@ -62,6 +72,7 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
     public JournalStoreClient(List<URI> servers, Properties properties) {
         this(servers, new DefaultJournalEntryParser(), properties);
     }
+
     public JournalStoreClient(List<URI> servers, JournalEntryParser journalEntryParser, Properties properties) {
         this.appendResultSerializer = new LongSerializer();
         this.querySerializer = new JournalStoreQuerySerializer();
@@ -70,7 +81,7 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
         BootStrap bootStrap = new BootStrap(
                 servers,
                 properties
-                );
+        );
         raftClient = bootStrap.getClient();
     }
 
@@ -82,7 +93,7 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
                 servers,
                 asyncExecutor, scheduledExecutor,
                 properties
-                );
+        );
         raftClient = bootStrap.getClient();
     }
 
@@ -114,13 +125,14 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
         }
         return raftClient.update(transactionId, updateRequests, includeHeader);
     }
+
     @Override
     public CompletableFuture<List<JournalEntry>> get(int partition, long index, int size) {
         ReservedPartition.validatePartition(partition);
         return raftClient.query(querySerializer.serialize(JournalStoreQuery.createQueryEntries(partition, index, size)))
                 .thenApply(queryResultSerializer::parse)
                 .thenApply(result -> {
-                    if(result.getCode() == JournalStoreQueryResult.CODE_SUCCESS) {
+                    if (result.getCode() == JournalStoreQueryResult.CODE_SUCCESS) {
                         return result;
                     } else if (result.getCode() == JournalStoreQueryResult.CODE_UNDERFLOW) {
                         throw new CompletionException(new IndexUnderflowException());
@@ -139,7 +151,7 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
                 .thenApply(queryResultSerializer::parse)
                 .thenApply(JournalStoreQueryResult::getBoundaries)
                 .thenApply(boundaries -> boundaries.entrySet().stream()
-                    .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().getMin()))
+                        .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().getMin()))
                 );
     }
 
@@ -167,7 +179,7 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
         return raftClient
                 .query(querySerializer.serialize(JournalStoreQuery.createQueryIndex(partition, timestamp)))
                 .thenApply(queryResultSerializer::parse)
-                .thenApply(result -> result.getCode() == JournalStoreQueryResult.CODE_SUCCESS ? result.getIndex(): -1L)
+                .thenApply(result -> result.getCode() == JournalStoreQueryResult.CODE_SUCCESS ? result.getIndex() : -1L)
                 .exceptionally(e -> {
                     logger.warn("Query index exception:", e);
                     return -1L;

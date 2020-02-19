@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,7 +13,6 @@
  */
 package io.journalkeeper.core.server;
 
-import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ServerStatus;
@@ -92,7 +91,7 @@ public class VoterTest {
             int entrySize = 1024;
             Set<Integer> partitions = Stream.of(2).collect(Collectors.toSet());
 
-            while(voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
+            while (voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
             }
 
@@ -118,16 +117,16 @@ public class VoterTest {
             logger.info("Write finished. " +
                             "Write takes: {}ms, {}ps, tps: {}.",
                     takesMs,
-                    Format.formatSize( 1000L * partitions.size() * entrySize * count  / takesMs),
-                    1000L * partitions.size() * count  / takesMs);
+                    Format.formatSize(1000L * partitions.size() * entrySize * count / takesMs),
+                    1000L * partitions.size() * count / takesMs);
 
         } finally {
             voter.stop();
         }
 
 
-
     }
+
     @Ignore
     @Test
     public void multiThreadsWritePerformanceTest() throws IOException, ExecutionException, InterruptedException {
@@ -140,7 +139,7 @@ public class VoterTest {
             int threads = 1;
             Set<Integer> partitions = Stream.of(2, 3, 4, 5, 6).collect(Collectors.toSet());
 
-            while(voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
+            while (voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
             }
 
@@ -191,14 +190,15 @@ public class VoterTest {
             voter.stop();
         }
     }
+
     @Test
     public void updateClusterStateResultTest() throws IOException, ExecutionException, InterruptedException {
         Server voter = createVoter();
 
 
         try {
-            byte [] entry = new byte[] {1, 2, 3,5, 8,9};
-            while(voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
+            byte[] entry = new byte[]{1, 2, 3, 5, 8, 9};
+            while (voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
             }
 
@@ -217,7 +217,6 @@ public class VoterTest {
         }
 
 
-
     }
 
 
@@ -227,8 +226,8 @@ public class VoterTest {
 
 
         try {
-            List<byte []> bytes = ByteUtils.createRandomSizeByteList(1024, 128);
-            while(voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
+            List<byte[]> bytes = ByteUtils.createRandomSizeByteList(1024, 128);
+            while (voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
             }
             List<UpdateRequest> requests = bytes.stream()
@@ -302,7 +301,7 @@ public class VoterTest {
 //        properties.setProperty("print_metric_interval_sec", "3");
 //        properties.setProperty("cache_requests", String.valueOf(1024L * 1024 * 5));
 
-        Server  voter =
+        Server voter =
                 new Server(
                         RaftServer.Roll.VOTER,
                         stateFactory, new DefaultJournalEntryParser(),

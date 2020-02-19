@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -50,18 +50,18 @@ import java.util.concurrent.ScheduledExecutorService;
 public class RemoteClientRpc implements ClientRpc {
     private static final Logger logger = LoggerFactory.getLogger(RemoteClientRpc.class);
     private final ClientServerRpcAccessPoint clientServerRpcAccessPoint;
-    private URI leaderUri = null;
-
     private final CompletableRetry<URI> completableRetry;
     private final RandomDestinationSelector<URI> uriSelector;
     private final ClientCheckRetry clientCheckRetry = new ClientCheckRetry();
     private final Executor executor;
     private final ScheduledExecutorService scheduledExecutor;
+    private URI leaderUri = null;
     private URI preferredServer = null;
+
     public RemoteClientRpc(List<URI> servers, ClientServerRpcAccessPoint clientServerRpcAccessPoint, RetryPolicy retryPolicy, Executor executor, ScheduledExecutorService scheduledExecutor) {
         this.executor = executor;
         this.scheduledExecutor = scheduledExecutor;
-        if(servers == null || servers.isEmpty()) {
+        if (servers == null || servers.isEmpty()) {
             throw new IllegalArgumentException("Argument servers can not be empty!");
         }
         this.clientServerRpcAccessPoint = clientServerRpcAccessPoint;
@@ -72,7 +72,7 @@ public class RemoteClientRpc implements ClientRpc {
 
 
     @Override
-    public final  <O extends BaseResponse> CompletableFuture<O> invokeClientServerRpc(CompletableRetry.RpcInvoke<O, ClientServerRpc> invoke) {
+    public final <O extends BaseResponse> CompletableFuture<O> invokeClientServerRpc(CompletableRetry.RpcInvoke<O, ClientServerRpc> invoke) {
         return completableRetry.retry(uri -> invoke.invoke(clientServerRpcAccessPoint.getClintServerRpc(uri)), clientCheckRetry, executor, scheduledExecutor);
     }
 
@@ -82,7 +82,7 @@ public class RemoteClientRpc implements ClientRpc {
     }
 
     @Override
-    public final  <O extends BaseResponse> CompletableFuture<O> invokeClientLeaderRpc(CompletableRetry.RpcInvoke<O, ClientServerRpc> invoke) {
+    public final <O extends BaseResponse> CompletableFuture<O> invokeClientLeaderRpc(CompletableRetry.RpcInvoke<O, ClientServerRpc> invoke) {
         return invokeClientServerRpc(rpc ->
                 unSetLeaderUriWhenLeaderRpcFailed(getCachedLeaderRpc(rpc).thenCompose(invoke::invoke))
         );
@@ -95,7 +95,7 @@ public class RemoteClientRpc implements ClientRpc {
                     this.leaderUri = null;
                     throw new CompletionException(e);
                 }).thenApply(response -> {
-                    if(!response.success()) {
+                    if (!response.success()) {
                         this.leaderUri = null;
                     }
                     return response;
@@ -104,27 +104,27 @@ public class RemoteClientRpc implements ClientRpc {
 
     private CompletableFuture<ClientServerRpc> getCachedLeaderRpc(ClientServerRpc clientServerRpc) {
         CompletableFuture<URI> leaderUriFuture = new CompletableFuture<>();
-        if(this.leaderUri == null) {
+        if (this.leaderUri == null) {
             GetServersResponse getServersResponse = null;
             try {
                 getServersResponse = clientServerRpc.getServers().get();
             } catch (Throwable e) {
-                Throwable ex = e instanceof ExecutionException ? e.getCause(): e;
+                Throwable ex = e instanceof ExecutionException ? e.getCause() : e;
                 leaderUriFuture = new CompletableFuture<>();
                 leaderUriFuture.completeExceptionally(ex);
             }
-            if(null != getServersResponse && getServersResponse.success()) {
+            if (null != getServersResponse && getServersResponse.success()) {
                 ClusterConfiguration clusterConfiguration = getServersResponse.getClusterConfiguration();
-                if(null != clusterConfiguration) {
+                if (null != clusterConfiguration) {
                     this.leaderUri = clusterConfiguration.getLeader();
                 }
             }
 
         }
 
-        if(this.leaderUri != null) {
+        if (this.leaderUri != null) {
             leaderUriFuture.complete(leaderUri);
-        } else if(!leaderUriFuture.isDone()){
+        } else if (!leaderUriFuture.isDone()) {
             leaderUriFuture.completeExceptionally(new NoLeaderException());
         }
 //        logger.info("Current leader in client: {}", leaderUri);
@@ -132,53 +132,8 @@ public class RemoteClientRpc implements ClientRpc {
     }
 
     @Override
-    public void stop () {
+    public void stop() {
         this.clientServerRpcAccessPoint.stop();
-    }
-
-
-    private  class ClientCheckRetry implements CheckRetry<BaseResponse> {
-
-        @Override
-        public boolean checkException(Throwable exception) {
-            try {
-
-                logger.debug("Rpc exception: {}-{}", exception.getClass().getCanonicalName(), exception.getMessage());
-                throw exception;
-            } catch (RequestTimeoutException | ServerBusyException | TransportException | ServerNotFoundException ne) {
-                return true;
-            } catch (NoLeaderException ne) {
-                leaderUri = null;
-                return true;
-            } catch (NotLeaderException ne) {
-                leaderUri = ne.getLeader();
-                return true;
-            }
-            catch (Throwable ignored) {}
-            return false;
-        }
-
-        @Override
-        public boolean checkResult(BaseResponse response) {
-            switch (response.getStatusCode()) {
-                case NOT_LEADER:
-                    leaderUri = ((LeaderResponse) response).getLeader();
-                    logger.info("{} failed, cause: {}, Retry...", response.getClass().getName(), response.errorString());
-                    return true;
-                case TIMEOUT:
-                case SERVER_BUSY:
-                case RETRY_LATER:
-                case TRANSPORT_FAILED:
-                case EXCEPTION:
-                    logger.info("{} failed, cause: {}, Retry...", response.getClass().getName(), response.errorString());
-                    return true;
-                case SUCCESS:
-                    return false;
-                default:
-                    logger.warn("{} failed, cause: {}!", response.getClass().getName(), response.errorString());
-                    return false;
-            }
-        }
     }
 
     @Override
@@ -213,7 +168,49 @@ public class RemoteClientRpc implements ClientRpc {
         }, clientCheckRetry, executor, scheduledExecutor);
     }
 
+    private class ClientCheckRetry implements CheckRetry<BaseResponse> {
 
+        @Override
+        public boolean checkException(Throwable exception) {
+            try {
+
+                logger.debug("Rpc exception: {}-{}", exception.getClass().getCanonicalName(), exception.getMessage());
+                throw exception;
+            } catch (RequestTimeoutException | ServerBusyException | TransportException | ServerNotFoundException ne) {
+                return true;
+            } catch (NoLeaderException ne) {
+                leaderUri = null;
+                return true;
+            } catch (NotLeaderException ne) {
+                leaderUri = ne.getLeader();
+                return true;
+            } catch (Throwable ignored) {
+            }
+            return false;
+        }
+
+        @Override
+        public boolean checkResult(BaseResponse response) {
+            switch (response.getStatusCode()) {
+                case NOT_LEADER:
+                    leaderUri = ((LeaderResponse) response).getLeader();
+                    logger.info("{} failed, cause: {}, Retry...", response.getClass().getName(), response.errorString());
+                    return true;
+                case TIMEOUT:
+                case SERVER_BUSY:
+                case RETRY_LATER:
+                case TRANSPORT_FAILED:
+                case EXCEPTION:
+                    logger.info("{} failed, cause: {}, Retry...", response.getClass().getName(), response.errorString());
+                    return true;
+                case SUCCESS:
+                    return false;
+                default:
+                    logger.warn("{} failed, cause: {}!", response.getClass().getName(), response.errorString());
+                    return false;
+            }
+        }
+    }
 
     private class PreferredServerRandomUriSelector extends RandomDestinationSelector<URI> {
 
@@ -223,7 +220,7 @@ public class RemoteClientRpc implements ClientRpc {
 
         @Override
         public URI select(Set<URI> usedDestinations) {
-            if((null == usedDestinations || usedDestinations.isEmpty()) && null != preferredServer) {
+            if ((null == usedDestinations || usedDestinations.isEmpty()) && null != preferredServer) {
                 return preferredServer;
             } else {
                 return super.select(usedDestinations);

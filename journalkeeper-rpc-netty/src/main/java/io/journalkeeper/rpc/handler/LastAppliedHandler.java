@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -21,7 +21,8 @@ import io.journalkeeper.rpc.remoting.transport.command.handler.CommandHandler;
 import io.journalkeeper.rpc.server.ServerRpc;
 import io.journalkeeper.rpc.utils.CommandSupport;
 
-import static io.journalkeeper.rpc.codec.RpcTypes.*;
+import static io.journalkeeper.rpc.codec.RpcTypes.LAST_APPLIED_REQUEST;
+import static io.journalkeeper.rpc.codec.RpcTypes.LAST_APPLIED_RESPONSE;
 
 /**
  * @author LiYue

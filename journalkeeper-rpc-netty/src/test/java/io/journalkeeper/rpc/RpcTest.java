@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -113,6 +113,19 @@ public class RpcTest {
     private ClientServerRpcAccessPoint clientServerRpcAccessPoint;
     private ServerRpcAccessPoint serverRpcAccessPoint;
     private StateServer server;
+
+    private static boolean testListOfBytesEquals(List<byte[]> entries, List<byte[]> entries1) {
+        if (entries.size() == entries1.size()) {
+            for (int i = 0; i < entries.size(); i++) {
+                if (!Arrays.equals(entries.get(i), entries1.get(i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
     @Before
     public void before() throws IOException, URISyntaxException {
         int port = NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces();
@@ -127,7 +140,7 @@ public class RpcTest {
     }
 
     @Test
-    public  void testException() throws ExecutionException, InterruptedException {
+    public void testException() throws ExecutionException, InterruptedException {
         logger.info("Running test {}.", Thread.currentThread()
                 .getStackTrace()[1]
                 .getMethodName());
@@ -145,7 +158,7 @@ public class RpcTest {
     }
 
     @Test
-    public  void testResponseException() throws ExecutionException, InterruptedException {
+    public void testResponseException() throws ExecutionException, InterruptedException {
         logger.info("Running test {}.", Thread.currentThread()
                 .getStackTrace()[1]
                 .getMethodName());
@@ -162,6 +175,7 @@ public class RpcTest {
         Assert.assertEquals(StatusCode.EXCEPTION, response.getStatusCode());
         Assert.assertTrue(response.getError().contains(errorMsg));
     }
+
     @Test
     public void testNotLeader() throws ExecutionException, InterruptedException {
         logger.info("Running test {}.", Thread.currentThread()
@@ -185,15 +199,15 @@ public class RpcTest {
                 .getStackTrace()[1]
                 .getMethodName());
         List<UpdateRequest> entries = Arrays.asList(
-              new UpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
-              new UpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
-              new UpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1)
+                new UpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
+                new UpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
+                new UpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1)
         );
         UpdateClusterStateRequest request = new UpdateClusterStateRequest(UUID.randomUUID(), entries, false, ResponseConfig.RECEIVE);
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         UpdateClusterStateResponse response, serverResponse;
         serverResponse = new UpdateClusterStateResponse(
-          ByteUtils.createFixedSizeByteList(32, 3)
+                ByteUtils.createFixedSizeByteList(32, 3)
         );
         // Test success response
         when(serverRpcMock.updateClusterState(any(UpdateClusterStateRequest.class)))
@@ -224,7 +238,6 @@ public class RpcTest {
 
     }
 
-
     @Test
     public void testUpdateVoters() throws ExecutionException, InterruptedException {
         logger.info("Running test {}.", Thread.currentThread()
@@ -234,13 +247,13 @@ public class RpcTest {
                 URI.create("jk://192.168.0.1:8888"),
                 URI.create("jk://192.168.0.1:8889"),
                 URI.create("jk://192.168.0.1:8890")
-                );
+        );
 
         final List<URI> newConfig = Arrays.asList(
                 URI.create("jk://192.168.0.1:8888"),
                 URI.create("jk://192.168.0.1:8889"),
                 URI.create("jk://192.168.0.1:8891")
-                );
+        );
 
         UpdateVotersRequest request = new UpdateVotersRequest(oldConfig, newConfig);
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
@@ -253,7 +266,7 @@ public class RpcTest {
         verify(serverRpcMock).updateVoters(argThat((UpdateVotersRequest r) ->
                 oldConfig.equals(r.getOldConfig()) &&
                         newConfig.equals(r.getNewConfig())
-                ));
+        ));
 
     }
 
@@ -274,7 +287,7 @@ public class RpcTest {
         Assert.assertTrue(response.success());
         verify(serverRpcMock).convertRoll(argThat((ConvertRollRequest r) ->
                 roll == r.getRoll()
-                ));
+        ));
 
     }
 
@@ -285,11 +298,11 @@ public class RpcTest {
                 .getMethodName());
         int querySize = 128;
         int resultSize = 55;
-        byte [] query = new byte[querySize];
+        byte[] query = new byte[querySize];
         for (int i = 0; i < querySize; i++) {
             query[i] = (byte) i;
         }
-        byte [] result = new byte[resultSize];
+        byte[] result = new byte[resultSize];
         for (int i = 0; i < resultSize; i++) {
             result[i] = (byte) i;
         }
@@ -308,7 +321,6 @@ public class RpcTest {
 
     }
 
-
     @Test
     public void testQueryServerState() throws ExecutionException, InterruptedException {
         logger.info("Running test {}.", Thread.currentThread()
@@ -316,11 +328,11 @@ public class RpcTest {
                 .getMethodName());
         int querySize = 128;
         int resultSize = 55;
-        byte [] query = new byte[querySize];
+        byte[] query = new byte[querySize];
         for (int i = 0; i < querySize; i++) {
             query[i] = (byte) i;
         }
-        byte [] result = new byte[resultSize];
+        byte[] result = new byte[resultSize];
         for (int i = 0; i < resultSize; i++) {
             result[i] = (byte) i;
         }
@@ -348,11 +360,11 @@ public class RpcTest {
                 .getMethodName());
         int querySize = 128;
         int resultSize = 55;
-        byte [] query = new byte[querySize];
+        byte[] query = new byte[querySize];
         for (int i = 0; i < querySize; i++) {
             query[i] = (byte) i;
         }
-        byte [] result = new byte[resultSize];
+        byte[] result = new byte[resultSize];
         for (int i = 0; i < resultSize; i++) {
             result[i] = (byte) i;
         }
@@ -413,14 +425,13 @@ public class RpcTest {
         Assert.assertNull(response.getClusterConfiguration().getObservers());
     }
 
-
     @Test
     public void testAddPullWatch() throws ExecutionException, InterruptedException {
         logger.info("Running test {}.", Thread.currentThread()
                 .getStackTrace()[1]
                 .getMethodName());
         long pullWatchId = 666L;
-        long pullIntervalMs =  10000L;
+        long pullIntervalMs = 10000L;
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         AddPullWatchResponse response;
 
@@ -432,7 +443,6 @@ public class RpcTest {
         Assert.assertEquals(pullWatchId, response.getPullWatchId());
         Assert.assertEquals(pullIntervalMs, response.getPullIntervalMs());
     }
-
 
     @Test
     public void testRemovePullWatch() throws ExecutionException, InterruptedException {
@@ -471,13 +481,13 @@ public class RpcTest {
         response = clientServerRpc.pullEvents(new PullEventsRequest(pullWatchId, ackSequence)).get();
         Assert.assertTrue(response.success());
 
-        Assert.assertEquals(pullEvents.size(),response.getPullEvents().size());
+        Assert.assertEquals(pullEvents.size(), response.getPullEvents().size());
         Assert.assertEquals(pullEvents.get(0).getSequence(), response.getPullEvents().get(0).getSequence());
         Assert.assertEquals(pullEvents.get(0).getEventData(), response.getPullEvents().get(0).getEventData());
 
         verify(serverRpcMock).pullEvents(argThat((PullEventsRequest r) ->
                 r.getPullWatchId() == pullWatchId &&
-                r.getAckSequence() == ackSequence));
+                        r.getAckSequence() == ackSequence));
     }
 
     @Test
@@ -498,8 +508,8 @@ public class RpcTest {
         AtomicBoolean addWatchFinished = new AtomicBoolean(false);
         AtomicBoolean alreadySendEvents = new AtomicBoolean(false);
         when(serverRpcMock.pullEvents(any(PullEventsRequest.class)))
-                .thenAnswer(invocation -> CompletableFuture.supplyAsync(() ->  {
-                    if(addWatchFinished.get() && alreadySendEvents.compareAndSet(false, true)) {
+                .thenAnswer(invocation -> CompletableFuture.supplyAsync(() -> {
+                    if (addWatchFinished.get() && alreadySendEvents.compareAndSet(false, true)) {
                         return new PullEventsResponse(pullEvents);
                     } else {
                         return new PullEventsResponse(Collections.emptyList());
@@ -522,8 +532,6 @@ public class RpcTest {
         Assert.assertEquals(pullEvents.get(0).getEventData(), eventList.get(0).getEventData());
     }
 
-
-
     @Test
     public void testAsyncAppendEntries() throws ExecutionException, InterruptedException {
         logger.info("Running test {}.", Thread.currentThread()
@@ -539,7 +547,7 @@ public class RpcTest {
                 6666688L);
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         AsyncAppendEntriesResponse response, serverResponse;
-        serverResponse = new AsyncAppendEntriesResponse(false, 8837222L, 74,request.getEntries().size());
+        serverResponse = new AsyncAppendEntriesResponse(false, 8837222L, 74, request.getEntries().size());
         // Test success response
         when(serverRpcMock.asyncAppendEntries(any(AsyncAppendEntriesRequest.class)))
                 .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
@@ -552,14 +560,14 @@ public class RpcTest {
 
         verify(serverRpcMock).asyncAppendEntries(
                 argThat((AsyncAppendEntriesRequest r) ->
-                                r.getTerm() == request.getTerm() &&
+                        r.getTerm() == request.getTerm() &&
                                 r.getLeader().equals(request.getLeader()) &&
                                 r.getPrevLogIndex() == request.getPrevLogIndex() &&
                                 r.getPrevLogTerm() == request.getPrevLogTerm() &&
                                 r.getLeaderCommit() == request.getLeaderCommit() &&
                                 r.getMaxIndex() == request.getMaxIndex() &&
                                 testListOfBytesEquals(r.getEntries(), request.getEntries())
-                        ));
+                ));
 
     }
 
@@ -587,15 +595,14 @@ public class RpcTest {
 
         verify(serverRpcMock).requestVote(
                 argThat((RequestVoteRequest r) ->
-                                r.getTerm() == request.getTerm() &&
+                        r.getTerm() == request.getTerm() &&
                                 r.getCandidate().equals(request.getCandidate()) &&
                                 r.getLastLogIndex() == request.getLastLogIndex() &&
                                 r.getLastLogTerm() == request.getLastLogTerm() &&
                                 r.isFromPreferredLeader() == request.isFromPreferredLeader()
-                        ));
+                ));
 
     }
-
 
     @Test
     public void testGetServerEntries() throws ExecutionException, InterruptedException {
@@ -605,7 +612,7 @@ public class RpcTest {
         GetServerEntriesRequest request = new GetServerEntriesRequest(
                 6666666L,
                 87
-                );
+        );
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         GetServerEntriesResponse response, serverResponse;
         serverResponse = new GetServerEntriesResponse(
@@ -623,7 +630,7 @@ public class RpcTest {
 
         verify(serverRpcMock).getServerEntries(
                 argThat((GetServerEntriesRequest r) ->
-                                r.getIndex() == request.getIndex() &&
+                        r.getIndex() == request.getIndex() &&
                                 r.getMaxSize() == request.getMaxSize()
                 ));
 
@@ -650,7 +657,7 @@ public class RpcTest {
         GetServerStateRequest request = new GetServerStateRequest(
                 6666666L,
                 -1
-                );
+        );
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         GetServerStateResponse response, serverResponse;
         serverResponse = new GetServerStateResponse(
@@ -673,8 +680,8 @@ public class RpcTest {
 
         verify(serverRpcMock).getServerState(
                 argThat((GetServerStateRequest r) ->
-                                r.getLastIncludedIndex() == request.getLastIncludedIndex() &&
-                                        r.getIteratorId() == request.getIteratorId()
+                        r.getLastIncludedIndex() == request.getLastIncludedIndex() &&
+                                r.getIteratorId() == request.getIteratorId()
                 ));
 
     }
@@ -699,7 +706,7 @@ public class RpcTest {
 
         verify(serverRpcMock).disableLeaderWrite(
                 argThat((DisableLeaderWriteRequest r) ->
-                                r.getTimeoutMs() == request.getTimeoutMs() &&
+                        r.getTimeoutMs() == request.getTimeoutMs() &&
                                 r.getTerm() == request.getTerm()
                 ));
     }
@@ -725,7 +732,7 @@ public class RpcTest {
 
         verify(serverRpcMock).completeTransaction(
                 argThat((CompleteTransactionRequest r) ->
-                                Objects.equals(r.getTransactionId(), request.getTransactionId()) &&
+                        Objects.equals(r.getTransactionId(), request.getTransactionId()) &&
                                 r.isCommitOrAbort() == request.isCommitOrAbort()
                 ));
     }
@@ -882,27 +889,10 @@ public class RpcTest {
 
     }
 
-
-    private static boolean testListOfBytesEquals(List<byte[]> entries, List<byte[]> entries1) {
-        if(entries.size() == entries1.size()) {
-            for (int i = 0; i < entries.size(); i++) {
-                if(!Arrays.equals(entries.get(i), entries1.get(i))){
-                    return false;
-                }
-            }
-            return  true;
-        }
-        return false;
-    }
-
-
     @After
     public void after() {
-        if(null != server) server.stop();
+        if (null != server) server.stop();
     }
-
-
-
 
 
 }

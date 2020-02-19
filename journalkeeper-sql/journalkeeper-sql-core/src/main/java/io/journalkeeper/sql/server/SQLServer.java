@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,13 +17,13 @@ import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.BootStrap;
 import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.RaftServer;
-import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.sql.client.SQLClient;
 import io.journalkeeper.sql.client.domain.ReadRequest;
 import io.journalkeeper.sql.client.domain.ReadResponse;
 import io.journalkeeper.sql.client.domain.WriteRequest;
 import io.journalkeeper.sql.client.domain.WriteResponse;
 import io.journalkeeper.sql.exception.SQLException;
+import io.journalkeeper.sql.state.SQLStateFactory;
 import io.journalkeeper.utils.state.StateServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,34 +43,40 @@ import java.util.concurrent.TimeoutException;
 public class SQLServer implements StateServer {
 
     protected static final Logger logger = LoggerFactory.getLogger(SQLServer.class);
-
+    private final Serializer<WriteRequest> writeRequestSerializer;
+    private final Serializer<WriteResponse> writeResponseSerializer;
+    private final Serializer<ReadRequest> readRequestSerializer;
+    private final Serializer<ReadResponse> readResponseSerializer;
     private URI current;
     private List<URI> servers;
     private RaftServer.Roll role;
     private Properties config;
-
-    private BootStrap<WriteRequest, WriteResponse, ReadRequest, ReadResponse> bootStrap;
+    private BootStrap bootStrap;
     private volatile SQLClient client;
 
     public SQLServer(URI current, List<URI> servers, Properties config,
                      RaftServer.Roll role,
-                     StateFactory<WriteRequest, WriteResponse, ReadRequest, ReadResponse> stateFactory,
-                     Serializer<WriteRequest> writeRequestSerializer,
-                     Serializer<WriteResponse> writeResponseSerializer,
-                     Serializer<ReadRequest> readRequestSerializer,
-                     Serializer<ReadResponse> readResponseSerializer) {
+                     SQLStateFactory stateFactory) {
+        this.writeRequestSerializer = stateFactory.getWriteRequestSerializer();
+        this.writeResponseSerializer = stateFactory.getWriteResponseSerializer();
+        this.readRequestSerializer = stateFactory.getReadRequestSerializer();
+        this.readResponseSerializer = stateFactory.getReadResponseSerializer();
+
         this.current = current;
         this.servers = servers;
         this.role = role;
         this.config = config;
-        this.bootStrap = new BootStrap<>(role, stateFactory, writeRequestSerializer, writeResponseSerializer,
-                readRequestSerializer, readResponseSerializer, config);
+        this.bootStrap = new BootStrap(role, stateFactory, config);
     }
 
-    public SQLServer(List<URI> servers, Properties config) {
+    public SQLServer(List<URI> servers, Properties config, SQLStateFactory stateFactory) {
         this.servers = servers;
         this.config = config;
-        this.bootStrap = new BootStrap<>(servers, config);
+        this.writeRequestSerializer = stateFactory.getWriteRequestSerializer();
+        this.writeResponseSerializer = stateFactory.getWriteResponseSerializer();
+        this.readRequestSerializer = stateFactory.getReadRequestSerializer();
+        this.readResponseSerializer = stateFactory.getReadResponseSerializer();
+        this.bootStrap = new BootStrap(servers, config);
     }
 
     public URI getCurrent() {
@@ -111,7 +117,8 @@ public class SQLServer implements StateServer {
         if (client == null) {
             synchronized (this) {
                 if (client == null) {
-                    client = new SQLClient(servers, config, bootStrap);
+                    client = new SQLClient(servers, config, bootStrap,
+                            writeRequestSerializer, writeResponseSerializer, readRequestSerializer, readResponseSerializer);
                 }
             }
         }

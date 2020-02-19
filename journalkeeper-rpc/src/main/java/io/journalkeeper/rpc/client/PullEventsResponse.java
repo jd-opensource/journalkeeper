@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -37,12 +37,17 @@ public class PullEventsResponse extends BaseResponse {
     private final List<PullEvent> pullEvents;
 
     public PullEventsResponse(List<PullEvent> pullEvents) {
-        if(null != pullEvents) {
+        if (null != pullEvents) {
             setStatusCode(StatusCode.SUCCESS);
         } else {
             setStatusCode(StatusCode.PULL_WATCH_ID_NOT_EXISTS);
         }
         this.pullEvents = pullEvents;
+    }
+
+    public PullEventsResponse(Throwable throwable) {
+        super(throwable);
+        this.pullEvents = Collections.emptyList();
     }
 
     /**
@@ -51,10 +56,5 @@ public class PullEventsResponse extends BaseResponse {
      */
     public List<PullEvent> getPullEvents() {
         return pullEvents;
-    }
-
-    public PullEventsResponse(Throwable throwable) {
-        super(throwable);
-        this.pullEvents = Collections.emptyList();
     }
 }

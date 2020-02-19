@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -128,32 +128,43 @@ import static io.journalkeeper.core.transaction.JournalTransactionManager.TRANSA
  */
 public abstract class AbstractServer
         implements ServerRpc, RaftServer, ServerRpcProvider, MetricProvider {
+    /**
+     * 心跳间隔、选举超时等随机时间的随机范围
+     */
+    public final static float RAND_INTERVAL_RANGE = 0.5F;
     private static final Logger logger = LoggerFactory.getLogger(AbstractServer.class);
-
     private static final String STATE_PATH = "state";
     private static final String SNAPSHOTS_PATH = "snapshots";
     private static final String METADATA_PATH = "metadata";
     private static final String METADATA_FILE = "metadata";
     private static final String PARTIAL_SNAPSHOT_PATH = "partial_snapshot";
     private static final int COMPACT_PERIOD_SEC = 60;
-    @Override
-    public URI serverUri() {
-        return uri;
-    }
-
+    private final static JMetric DUMMY_METRIC = new DummyMetric();
+    private final static String METRIC_APPLY_ENTRIES = "APPLY_ENTRIES";
     /**
      * 节点上的最新状态 和 被状态机执行的最大日志条目的索引值（从 0 开始递增）
      */
     protected final JournalKeeperState state;
-
     protected final ScheduledExecutorService scheduledExecutor;
-
     protected final ExecutorService asyncExecutor;
     /**
-     * 心跳间隔、选举超时等随机时间的随机范围
+     * 存放节点上所有状态快照的稀疏数组，数组的索引（key）就是快照对应的日志位置的索引
      */
-    public final static float RAND_INTERVAL_RANGE = 0.5F;
-
+    protected final NavigableMap<Long, JournalKeeperState> snapshots = new ConcurrentSkipListMap<>();
+    protected final PartialSnapshot partialSnapshot;
+    protected final BufferPool bufferPool;
+    protected final Map<URI, ServerRpc> remoteServers = new HashMap<>();
+    protected final EventBus eventBus;
+    protected final Threads threads = ThreadsFactory.create();
+    protected final Properties properties;
+    protected final StateFactory stateFactory;
+    protected final JournalEntryParser journalEntryParser;
+    protected final VoterConfigManager voterConfigManager;
+    private final Map<Integer, ReplicableIterator> snapshotIteratorMap = new ConcurrentHashMap<>();
+    private final JMetricFactory metricFactory;
+    private final Map<String, JMetric> metricMap;
+    private final JMetric applyEntriesMetric;
+    private final AtomicInteger nextSnapshotIteratorId = new AtomicInteger();
     /**
      * 当前Server URI
      */
@@ -163,27 +174,13 @@ public abstract class AbstractServer
      */
     protected Journal journal;
     /**
-     * 存放节点上所有状态快照的稀疏数组，数组的索引（key）就是快照对应的日志位置的索引
-     */
-    protected final NavigableMap<Long, JournalKeeperState> snapshots = new ConcurrentSkipListMap<>();
-
-    /**
      * 当前LEADER节点地址
      */
     protected URI leaderUri;
-
     /**
      * 观察者节点
      */
     protected List<URI> observers;
-    protected final PartialSnapshot partialSnapshot;
-    private final Map<Integer, ReplicableIterator> snapshotIteratorMap = new ConcurrentHashMap<>();
-
-    /**
-     * 可用状态
-     */
-    private boolean available = false;
-
     /**
      * 持久化实现接入点
      */
@@ -192,121 +189,20 @@ public abstract class AbstractServer
      * 元数据持久化服务
      */
     protected MetadataPersistence metadataPersistence;
-
-
-    protected void enable(){
-        this.available = true;
-    }
-
-    protected void disable() {
-        this.available = false;
-    }
-
-    protected boolean isAvailable() {
-        return available;
-    }
-
-    protected final BufferPool bufferPool;
-
     protected ServerRpcAccessPoint serverRpcAccessPoint;
-
-    protected final Map<URI, ServerRpc> remoteServers = new HashMap<>();
+    /**
+     * 可用状态
+     */
+    private boolean available = false;
     private Config config;
-
     private volatile ServerState serverState = ServerState.CREATED;
     /**
      * 上次保存的元数据
      */
     private ServerMetadata lastSavedServerMetadata = null;
-
-    protected final EventBus eventBus;
-
-    protected final Threads threads = ThreadsFactory.create();
-
-    private final JMetricFactory metricFactory;
-    private final Map<String, JMetric> metricMap;
-    private final static JMetric DUMMY_METRIC = new DummyMetric();
-
-    private final static String METRIC_APPLY_ENTRIES = "APPLY_ENTRIES";
-
-    private final JMetric applyEntriesMetric;
-
-    protected final Properties properties;
-    protected final StateFactory stateFactory;
-    protected final JournalEntryParser journalEntryParser;
-    protected final VoterConfigManager voterConfigManager;
-    private final AtomicInteger nextSnapshotIteratorId = new AtomicInteger();
     private ScheduledFuture flushStateFuture;
     private ScheduledFuture compactJournalFuture;
-
-    private AsyncLoopThread buildStateMachineThread() {
-        return ThreadBuilder.builder()
-                .name(threadName(STATE_MACHINE_THREAD))
-                .doWork(this::applyEntries)
-                .sleepTime(50,100)
-                .onException(e -> logger.warn("{} Exception: ", STATE_MACHINE_THREAD, e))
-                .daemon(true)
-                .build();
-    }
-
-
-    private AsyncLoopThread buildFlushJournalThread() {
-        return ThreadBuilder.builder()
-                .name(threadName(FLUSH_JOURNAL_THREAD))
-                .doWork(this::flushJournal)
-                .sleepTime(config.getFlushIntervalMs(), config.getFlushIntervalMs())
-                .onException(e -> logger.warn("{} Exception: ", FLUSH_JOURNAL_THREAD, e))
-                .daemon(true)
-                .build();
-    }
-
-    private AsyncLoopThread buildPrintMetricThread() {
-        return ThreadBuilder.builder()
-                .name(threadName(PRINT_METRIC_THREAD))
-                .doWork(this::printMetrics)
-                .sleepTime(config.getPrintMetricIntervalSec() * 1000, config.getPrintMetricIntervalSec() * 1000)
-                .onException(e -> logger.warn("{} Exception: ", PRINT_METRIC_THREAD, e))
-                .daemon(true)
-                .build();
-    }
-
-    @Override
-    public synchronized void init(URI uri, List<URI> voters, Set<Integer> userPartitions, URI preferredLeader) throws IOException {
-        ReservedPartition.validatePartitions(userPartitions);
-        this.uri = uri;
-        Set<Integer> partitions = new HashSet<>(userPartitions);
-        partitions.add(INTERNAL_PARTITION);
-        partitions.addAll(IntStream.range(TRANSACTION_PARTITION_START, TRANSACTION_PARTITION_START + TRANSACTION_PARTITION_COUNT).boxed().collect(Collectors.toSet()));
-        state.init(statePath(),voters, partitions, preferredLeader);
-        createFistSnapshot(voters, partitions, preferredLeader);
-        lastSavedServerMetadata = createServerMetadata();
-        metadataPersistence.save(metadataFile(),lastSavedServerMetadata);
-    }
-
     private JournalCompactionStrategy journalCompactionStrategy;
-
-    @Override
-    public boolean isInitialized() {
-        try {
-            ServerMetadata  metadata = metadataPersistence.load(metadataFile(), ServerMetadata.class);
-            return metadata != null && metadata.isInitialized();
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    int getTerm(long index) {
-        try {
-            return journal.getTerm(index);
-        } catch (IndexUnderflowException e) {
-            if(index  + 1 == snapshots.firstKey()) {
-                return snapshots.firstEntry().getValue().lastIncludedTerm();
-            } else {
-                throw e;
-            }
-        }
-    }
-
     protected AbstractServer(StateFactory stateFactory,
                              JournalEntryParser journalEntryParser, ScheduledExecutorService scheduledExecutor,
                              ExecutorService asyncExecutor, ServerRpcAccessPoint serverRpcAccessPoint, Properties properties) {
@@ -355,6 +251,88 @@ public abstract class AbstractServer
         state.addInterceptor(InternalEntryType.TYPE_RECOVER_SNAPSHOT, this::recoverSnapShot);
     }
 
+    @Override
+    public URI serverUri() {
+        return uri;
+    }
+
+    protected void enable() {
+        this.available = true;
+    }
+
+    protected void disable() {
+        this.available = false;
+    }
+
+    protected boolean isAvailable() {
+        return available;
+    }
+
+    private AsyncLoopThread buildStateMachineThread() {
+        return ThreadBuilder.builder()
+                .name(threadName(STATE_MACHINE_THREAD))
+                .doWork(this::applyEntries)
+                .sleepTime(50, 100)
+                .onException(e -> logger.warn("{} Exception: ", STATE_MACHINE_THREAD, e))
+                .daemon(true)
+                .build();
+    }
+
+    private AsyncLoopThread buildFlushJournalThread() {
+        return ThreadBuilder.builder()
+                .name(threadName(FLUSH_JOURNAL_THREAD))
+                .doWork(this::flushJournal)
+                .sleepTime(config.getFlushIntervalMs(), config.getFlushIntervalMs())
+                .onException(e -> logger.warn("{} Exception: ", FLUSH_JOURNAL_THREAD, e))
+                .daemon(true)
+                .build();
+    }
+
+    private AsyncLoopThread buildPrintMetricThread() {
+        return ThreadBuilder.builder()
+                .name(threadName(PRINT_METRIC_THREAD))
+                .doWork(this::printMetrics)
+                .sleepTime(config.getPrintMetricIntervalSec() * 1000, config.getPrintMetricIntervalSec() * 1000)
+                .onException(e -> logger.warn("{} Exception: ", PRINT_METRIC_THREAD, e))
+                .daemon(true)
+                .build();
+    }
+
+    @Override
+    public synchronized void init(URI uri, List<URI> voters, Set<Integer> userPartitions, URI preferredLeader) throws IOException {
+        ReservedPartition.validatePartitions(userPartitions);
+        this.uri = uri;
+        Set<Integer> partitions = new HashSet<>(userPartitions);
+        partitions.add(INTERNAL_PARTITION);
+        partitions.addAll(IntStream.range(TRANSACTION_PARTITION_START, TRANSACTION_PARTITION_START + TRANSACTION_PARTITION_COUNT).boxed().collect(Collectors.toSet()));
+        state.init(statePath(), voters, partitions, preferredLeader);
+        createFistSnapshot(voters, partitions, preferredLeader);
+        lastSavedServerMetadata = createServerMetadata();
+        metadataPersistence.save(metadataFile(), lastSavedServerMetadata);
+    }
+
+    @Override
+    public boolean isInitialized() {
+        try {
+            ServerMetadata metadata = metadataPersistence.load(metadataFile(), ServerMetadata.class);
+            return metadata != null && metadata.isInitialized();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    int getTerm(long index) {
+        try {
+            return journal.getTerm(index);
+        } catch (IndexUnderflowException e) {
+            if (index + 1 == snapshots.firstKey()) {
+                return snapshots.firstEntry().getValue().lastIncludedTerm();
+            } else {
+                throw e;
+            }
+        }
+    }
+
     protected Path workingDir() {
         return config.getWorkingDir();
     }
@@ -371,6 +349,7 @@ public abstract class AbstractServer
     protected Path statePath() {
         return workingDir().resolve(STATE_PATH);
     }
+
     protected Path metadataFile() {
         return workingDir().resolve(METADATA_PATH).resolve(METADATA_FILE);
     }
@@ -384,7 +363,7 @@ public abstract class AbstractServer
      * 2. lastApplied自增，将log[lastApplied]应用到状态机，更新当前状态state；
      *
      */
-    private void applyEntries()  {
+    private void applyEntries() {
         while (this.serverState == ServerState.RUNNING && state.lastApplied() < journal.commitIndex()) {
             applyEntriesMetric.start();
 
@@ -407,12 +386,12 @@ public abstract class AbstractServer
         fireEvent(EventType.ON_LEADER_CHANGE, eventData);
     }
 
-    private void announceLeader(InternalEntryType type, byte [] internalEntry) {
+    private void announceLeader(InternalEntryType type, byte[] internalEntry) {
         LeaderAnnouncementEntry leaderAnnouncementEntry = InternalEntriesSerializeSupport.parse(internalEntry);
         fireOnLeaderChangeEvent(leaderAnnouncementEntry.getTerm(), leaderAnnouncementEntry.getLeaderUri());
     }
 
-    private void scalePartitions(InternalEntryType type, byte [] internalEntry) {
+    private void scalePartitions(InternalEntryType type, byte[] internalEntry) {
         ScalePartitionsEntry scalePartitionsEntry = InternalEntriesSerializeSupport.parse(internalEntry);
         Set<Integer> partitions = scalePartitionsEntry.getPartitions();
         try {
@@ -426,7 +405,7 @@ public abstract class AbstractServer
             }
 
             List<Integer> toBeRemoved = new ArrayList<>();
-            for (Integer partition: currentPartitions) {
+            for (Integer partition : currentPartitions) {
                 if (!partitions.contains(partition)) {
                     toBeRemoved.add(partition);
                 }
@@ -450,7 +429,9 @@ public abstract class AbstractServer
      * 当状态变化后触发事件
      * @param updateResult 状态机执行结果
      */
-    protected void afterStateChanged(byte [] updateResult) {}
+    protected void afterStateChanged(byte[] updateResult) {
+    }
+
     /**
      * 如果需要，保存一次快照
      */
@@ -488,7 +469,7 @@ public abstract class AbstractServer
 
                 if (request.getIndex() == state.lastApplied()) {
                     StateQueryResult queryResult = state.query(request.getQuery(), journal);
-                    if(queryResult.getLastApplied() == request.getIndex()) {
+                    if (queryResult.getLastApplied() == request.getIndex()) {
                         return new QueryStateResponse(queryResult.getResult(), queryResult.getLastApplied());
                     }
                 }
@@ -499,7 +480,7 @@ public abstract class AbstractServer
                     throw new IndexUnderflowException();
                 }
 
-                if(request.getIndex() == nearestSnapshot.getKey()) {
+                if (request.getIndex() == nearestSnapshot.getKey()) {
                     snapshot = nearestSnapshot.getValue();
                 } else {
                     snapshot = new JournalKeeperState(stateFactory, metadataPersistence);
@@ -524,13 +505,13 @@ public abstract class AbstractServer
         }, asyncExecutor);
     }
 
-    private void createSnapShot(InternalEntryType type, byte [] internalEntry) {
+    private void createSnapShot(InternalEntryType type, byte[] internalEntry) {
         if (type == InternalEntryType.TYPE_CREATE_SNAPSHOT) {
             createSnapshot();
         }
     }
 
-    private void recoverSnapShot(InternalEntryType type, byte [] internalEntry) {
+    private void recoverSnapShot(InternalEntryType type, byte[] internalEntry) {
         RecoverSnapshotEntry recoverSnapshotEntry = InternalEntriesSerializeSupport.parse(internalEntry);
         JournalKeeperState targetSnapshot = snapshots.get(recoverSnapshotEntry.getIndex());
         if (targetSnapshot == null) {
@@ -632,7 +613,7 @@ public abstract class AbstractServer
     @Override
     public CompletableFuture<PullEventsResponse> pullEvents(PullEventsRequest request) {
         return CompletableFuture.supplyAsync(() -> {
-            if(request.getAckSequence() >= 0 ) {
+            if (request.getAckSequence() >= 0) {
                 eventBus.ackPullEvents(request.getPullWatchId(), request.getAckSequence());
             }
             return new PullEventsResponse(eventBus.pullEvents(request.getPullWatchId()));
@@ -642,8 +623,8 @@ public abstract class AbstractServer
     @Override
     public CompletableFuture<GetServersResponse> getServers() {
         return CompletableFuture.supplyAsync(() ->
-                new GetServersResponse(
-                        new ClusterConfiguration(leaderUri, state.voters(), observers)),
+                        new GetServersResponse(
+                                new ClusterConfiguration(leaderUri, state.voters(), observers)),
                 asyncExecutor);
     }
 
@@ -705,7 +686,7 @@ public abstract class AbstractServer
 
     @Override
     public final void start() {
-        if(this.serverState != ServerState.CREATED) {
+        if (this.serverState != ServerState.CREATED) {
             throw new IllegalStateException("AbstractServer can only start once!");
         }
         this.serverState = ServerState.STARTING;
@@ -731,6 +712,7 @@ public abstract class AbstractServer
     }
 
     protected abstract void doStart();
+
     /**
      * 刷盘：
      * 1. 日志
@@ -747,7 +729,8 @@ public abstract class AbstractServer
         onJournalFlushed();
     }
 
-    protected void onJournalFlushed() {}
+    protected void onJournalFlushed() {
+    }
 
     private void flushState() {
         try {
@@ -757,7 +740,7 @@ public abstract class AbstractServer
                 metadataPersistence.save(metadataFile(), metadata);
                 lastSavedServerMetadata = metadata;
             }
-        } catch(Throwable e) {
+        } catch (Throwable e) {
             logger.warn("Flush exception, commitIndex: {}, lastApplied: {}, server: {}: ",
                     journal.commitIndex(), state.lastApplied(), uri, e);
         }
@@ -771,7 +754,7 @@ public abstract class AbstractServer
     @Override
     public final void stop() {
         try {
-            if(this.serverState == ServerState.RUNNING) {
+            if (this.serverState == ServerState.RUNNING) {
                 this.serverState = ServerState.STOPPING;
                 doStop();
                 remoteServers.values().forEach(ServerRpc::stop);
@@ -804,11 +787,12 @@ public abstract class AbstractServer
     }
 
     protected abstract void doStop();
+
     protected void stopAndWaitScheduledFeature(ScheduledFuture scheduledFuture, long timeout) throws TimeoutException {
         if (scheduledFuture != null) {
             long t0 = System.currentTimeMillis();
             while (!scheduledFuture.isDone()) {
-                if(System.currentTimeMillis() - t0 > timeout) {
+                if (System.currentTimeMillis() - t0 > timeout) {
                     throw new TimeoutException("Wait for async job timeout!");
                 }
                 scheduledFuture.cancel(true);
@@ -830,7 +814,7 @@ public abstract class AbstractServer
     @Override
     public synchronized void recover() throws IOException {
         lastSavedServerMetadata = metadataPersistence.load(metadataFile(), ServerMetadata.class);
-        if(lastSavedServerMetadata == null || !lastSavedServerMetadata.isInitialized()) {
+        if (lastSavedServerMetadata == null || !lastSavedServerMetadata.isInitialized()) {
             throw new RecoverException(
                     String.format("Recover failed! Cause: metadata is not initialized. Metadata path: %s.",
                             metadataFile().toString()));
@@ -848,8 +832,8 @@ public abstract class AbstractServer
         StringBuilder sb = new StringBuilder("\n" +
                 Logo.DOUBLE_LINE +
                 (config.isDisableLogo() ? "" : (Logo.LOGO +
-                "  Version:\t" + version + "\n" +
-                Logo.SINGLE_LINE )) +
+                        "  Version:\t" + version + "\n" +
+                        Logo.SINGLE_LINE)) +
                 String.format("URI:\t%s\n", serverUri()) +
                 String.format("Working dir:\t%s\n", workingDir()) +
                 String.format("Config:\t%s\n", state.getConfigState()) +
@@ -875,25 +859,24 @@ public abstract class AbstractServer
     }
 
 
-
     /**
      * Check reserved entries to ensure the last UpdateVotersConfig entry is applied to the current voter config.
      */
     private void recoverVoterConfig() {
         boolean isRecoveredFromJournal = false;
-        for(long index = journal.maxIndex(INTERNAL_PARTITION) - 1;
-            index >= journal.minIndex(INTERNAL_PARTITION);
-            index --) {
+        for (long index = journal.maxIndex(INTERNAL_PARTITION) - 1;
+             index >= journal.minIndex(INTERNAL_PARTITION);
+             index--) {
             JournalEntry entry = journal.readByPartition(INTERNAL_PARTITION, index);
             InternalEntryType type = InternalEntriesSerializeSupport.parseEntryType(entry.getPayload().getBytes());
 
-            if(type == InternalEntryType.TYPE_UPDATE_VOTERS_S1) {
+            if (type == InternalEntryType.TYPE_UPDATE_VOTERS_S1) {
                 UpdateVotersS1Entry updateVotersS1Entry = InternalEntriesSerializeSupport.parse(entry.getPayload().getBytes());
                 state.setConfigState(new ConfigState(
                         updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew()));
                 isRecoveredFromJournal = true;
                 break;
-            } else if(type == InternalEntryType.TYPE_UPDATE_VOTERS_S2) {
+            } else if (type == InternalEntryType.TYPE_UPDATE_VOTERS_S2) {
                 UpdateVotersS2Entry updateVotersS2Entry = InternalEntriesSerializeSupport.parse(entry.getPayload().getBytes());
                 state.setConfigState(new ConfigState(updateVotersS2Entry.getConfigNew()));
                 isRecoveredFromJournal = true;
@@ -911,25 +894,26 @@ public abstract class AbstractServer
 
 
     private void recoverJournal(Set<Integer> partitions, JournalSnapshot journalSnapshot, long commitIndex) throws IOException {
-        journal.recover(journalPath(), commitIndex, journalSnapshot,  properties);
+        journal.recover(journalPath(), commitIndex, journalSnapshot, properties);
         journal.rePartition(partitions);
     }
 
     private Path journalPath() {
         return workingDir();
     }
+
     private void recoverSnapshots() throws IOException {
-        if(!Files.isDirectory(snapshotsPath())) {
+        if (!Files.isDirectory(snapshotsPath())) {
             Files.createDirectories(snapshotsPath());
         }
         StreamSupport.stream(
                 Files.newDirectoryStream(snapshotsPath(),
                         entry -> entry.getFileName().toString().matches("\\d+")
-                    ).spliterator(), false)
+                ).spliterator(), false)
                 .map(path -> {
                     JournalKeeperState snapshot = new JournalKeeperState(stateFactory, metadataPersistence);
                     snapshot.recover(path, properties, true);
-                    if(Long.parseLong(path.getFileName().toString()) == snapshot.lastApplied()) {
+                    if (Long.parseLong(path.getFileName().toString()) == snapshot.lastApplied()) {
                         return snapshot;
                     } else {
                         return null;
@@ -942,7 +926,6 @@ public abstract class AbstractServer
     protected void onMetadataRecovered(ServerMetadata metadata) {
         this.uri = metadata.getThisServer();
     }
-
 
 
     protected ServerMetadata createServerMetadata() {
@@ -1054,24 +1037,28 @@ public abstract class AbstractServer
      */
     @Override
     public JMetric getMetric(String name) {
-        if(config.isEnableMetric()) {
+        if (config.isEnableMetric()) {
             return metricMap.computeIfAbsent(name, metricFactory::create);
         } else {
             return DUMMY_METRIC;
         }
     }
+
     @Override
-    public boolean isMetricEnabled() {return config.isEnableMetric();}
+    public boolean isMetricEnabled() {
+        return config.isEnableMetric();
+    }
+
     @Override
     public void removeMetric(String name) {
-        if(config.isEnableMetric()) {
+        if (config.isEnableMetric()) {
             metricMap.remove(name);
         }
     }
 
     private void printMetrics() {
         metricMap.values()
-            .stream()
+                .stream()
                 .map(JMetric::getAndReset)
                 .map(JMetricSupport::formatNs)
                 .forEach(logger::info);
@@ -1161,10 +1148,13 @@ public abstract class AbstractServer
     String threadName(String staticThreadName) {
         return serverUri() + "-" + staticThreadName;
     }
+
     /**
      * This method will be invoked when metric
      */
-    protected void onPrintMetric() {}
+    protected void onPrintMetric() {
+    }
+
     public static class Config {
         public final static int DEFAULT_SNAPSHOT_INTERVAL_SEC = 0;
         public final static long DEFAULT_RPC_TIMEOUT_MS = 1000L;

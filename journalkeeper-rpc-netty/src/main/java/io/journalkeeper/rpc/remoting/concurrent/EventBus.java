@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,7 +15,12 @@ package io.journalkeeper.rpc.remoting.concurrent;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -25,7 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author hexiaofeng
  * @since 2013-12-09
  */
-public class EventBus<E>  {
+public class EventBus<E> {
     // 监听器
     protected CopyOnWriteArrayList<EventListener<E>> listeners = new CopyOnWriteArrayList<EventListener<E>>();
     // 事件队里
@@ -320,6 +325,24 @@ public class EventBus<E>  {
     }
 
     /**
+     * 排放器状态
+     */
+    protected enum State {
+        /**
+         * 启动
+         */
+        STARTED,
+        /**
+         * 终止
+         */
+        STOPPED,
+        /**
+         * 优雅终止
+         */
+        STOPPED_GRACEFULLY
+    }
+
+    /**
      * 事件
      */
     protected class Ownership {
@@ -444,24 +467,6 @@ public class EventBus<E>  {
             }
 
         }
-    }
-
-    /**
-     * 排放器状态
-     */
-    protected enum State {
-        /**
-         * 启动
-         */
-        STARTED,
-        /**
-         * 终止
-         */
-        STOPPED,
-        /**
-         * 优雅终止
-         */
-        STOPPED_GRACEFULLY
     }
 
 }

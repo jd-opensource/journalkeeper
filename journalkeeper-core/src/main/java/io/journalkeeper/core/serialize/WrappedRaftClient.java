@@ -20,7 +20,7 @@ import java.util.concurrent.TimeoutException;
  * @author LiYue
  * Date: 2020/2/18
  */
-public class WrappedRaftClient<E, ER, Q, QR> implements Watchable, ClusterReadyAware, ServerConfigAware{
+public class WrappedRaftClient<E, ER, Q, QR> implements Watchable, ClusterReadyAware, ServerConfigAware {
     private final SerializeExtensionPoint serializeExtensionPoint;
     private final RaftClient raftClient;
 
@@ -32,6 +32,7 @@ public class WrappedRaftClient<E, ER, Q, QR> implements Watchable, ClusterReadyA
     /**
      * 写入操作命令变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
      * 日志在集群中复制到大多数节点，并在状态机执行后返回。
+     *
      * @param entry 操作命令
      * @return 操作命令在状态机的执行结果
      */
@@ -43,6 +44,7 @@ public class WrappedRaftClient<E, ER, Q, QR> implements Watchable, ClusterReadyA
 
     /**
      * 查询集群当前的状态，即日志在状态机中执行完成后产生的数据。该服务保证强一致性，保证读到的状态总是集群的最新状态。
+     *
      * @param query 查询条件
      * @return 查询结果
      */
@@ -54,32 +56,37 @@ public class WrappedRaftClient<E, ER, Q, QR> implements Watchable, ClusterReadyA
 
     /**
      * 开启一个新事务，并返回事务ID。
+     *
      * @return 事务ID
      */
     public CompletableFuture<TransactionContext> createTransaction() {
         return raftClient.createTransaction();
     }
+
     /**
      * 开启一个新事务，并返回事务ID。
+     *
      * @param context 事务上下文
      * @return 事务ID
      */
-    public CompletableFuture<TransactionContext> createTransaction(Map<String, String> context){
+    public CompletableFuture<TransactionContext> createTransaction(Map<String, String> context) {
         return raftClient.createTransaction(context);
     }
 
     /**
      * 结束事务，可能是提交或者回滚事务。
+     *
      * @param transactionId 事务ID
      * @param commitOrAbort true：提交事务，false：回滚事务。
      * @return 执行成功返回null，失败抛出异常。
      */
-    public CompletableFuture<Void> completeTransaction(TransactionId transactionId, boolean commitOrAbort){
+    public CompletableFuture<Void> completeTransaction(TransactionId transactionId, boolean commitOrAbort) {
         return raftClient.completeTransaction(transactionId, commitOrAbort);
     }
 
     /**
      * 查询进行中的事务。
+     *
      * @return 进行中的事务ID列表。
      */
     public CompletableFuture<Collection<TransactionContext>> getOpeningTransactions() {
@@ -90,8 +97,9 @@ public class WrappedRaftClient<E, ER, Q, QR> implements Watchable, ClusterReadyA
      * 写入操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
      * 日志在集群中复制到大多数节点，并在状态机执行后返回。
      * 此方法等效于：update(transactionId, updateRequest, false, responseConfig);
+     *
      * @param transactionId 事务ID
-     * @param entry 操作命令
+     * @param entry         操作命令
      * @return 执行成功返回null，失败抛出异常。
      */
     public CompletableFuture<Void> update(TransactionId transactionId, E entry) {

@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,7 +19,11 @@ import io.journalkeeper.rpc.remoting.transport.exception.TransportException;
 import io.journalkeeper.utils.threads.NamedThreadFactory;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
-import io.netty.channel.*;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelHandler;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
 import io.netty.channel.epoll.Epoll;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollSocketChannel;
@@ -51,79 +55,6 @@ public abstract class TransportClientSupport extends Service {
         this.config = config;
     }
 
-    @Override
-    protected void doStop() {
-        if (ioEventGroup != null) {
-            ioEventGroup.shutdownGracefully();
-        }
-    }
-
-    protected Bootstrap newBootstrap(ChannelHandler channelHandler, EventLoopGroup ioEventGroup) {
-        Bootstrap bootstrap = new Bootstrap();
-        bootstrap.channel(Epoll.isAvailable() ? EpollSocketChannel.class : NioSocketChannel.class)
-                .group(ioEventGroup)
-                .handler(channelHandler)
-                .option(ChannelOption.SO_REUSEADDR, config.isReuseAddress())
-                .option(ChannelOption.SO_RCVBUF, config.getSocketBufferSize())
-                .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
-        return bootstrap;
-    }
-
-
-    protected EventLoopGroup newIoEventGroup() {
-        NamedThreadFactory threadFactory = new NamedThreadFactory("Transport-Client-IO-LoopGroup");
-
-        int ioThread = config.getIoThread();
-        if (Epoll.isAvailable()) {
-            return new EpollEventLoopGroup(ioThread, threadFactory);
-        } else {
-            return new NioEventLoopGroup(ioThread, threadFactory);
-        }
-    }
-
-    protected abstract ChannelHandler newChannelHandlerPipeline();
-
-    public ClientConfig getConfig() {
-        return config;
-    }
-
-    protected synchronized Channel createChannel(SocketAddress address, long connectionTimeout) throws TransportException {
-        if (address == null) {
-            throw new IllegalArgumentException("address must not be null!");
-        }
-        if (ioEventGroup == null) {
-            ioEventGroup = newIoEventGroup();
-        }
-        if (bootstrap == null){
-            ChannelHandler channelHandlerPipeline = newChannelHandlerPipeline();
-            bootstrap = newBootstrap(channelHandlerPipeline, ioEventGroup);
-        }
-        try {
-            long timeout = connectionTimeout > 0 ? connectionTimeout : config.getConnectionTimeout();
-            String addr = IpUtil.toAddress(address);
-            ChannelFuture channelFuture;
-            Channel channel = null;
-            channelFuture = bootstrap.connect(address);
-            if (!channelFuture.await(timeout)) {
-                throw TransportException.ConnectionTimeoutException.build(addr);
-            }
-            channel = channelFuture.channel();
-            if (channel == null || !channel.isActive()) {
-                throw TransportException.ConnectionException.build(addr);
-            }
-            return channel;
-        } catch (InterruptedException e) {
-            throw TransportException.InterruptedException.build();
-        } catch (Exception e) {
-            if (e instanceof TransportException) {
-                throw (TransportException) e;
-            } else {
-                throw new TransportException.UnknownException();
-            }
-        }
-    }
-
-
     public static InetSocketAddress createInetSocketAddress(String address) throws TransportException {
         if (address == null || address.isEmpty()) {
             throw new IllegalArgumentException("address must not be empty!");
@@ -153,6 +84,77 @@ public abstract class TransportClientSupport extends Service {
             return new InetSocketAddress(InetAddress.getByName(ip), port);
         } catch (UnknownHostException e) {
             throw TransportException.UnknownHostException.build(ip);
+        }
+    }
+
+    @Override
+    protected void doStop() {
+        if (ioEventGroup != null) {
+            ioEventGroup.shutdownGracefully();
+        }
+    }
+
+    protected Bootstrap newBootstrap(ChannelHandler channelHandler, EventLoopGroup ioEventGroup) {
+        Bootstrap bootstrap = new Bootstrap();
+        bootstrap.channel(Epoll.isAvailable() ? EpollSocketChannel.class : NioSocketChannel.class)
+                .group(ioEventGroup)
+                .handler(channelHandler)
+                .option(ChannelOption.SO_REUSEADDR, config.isReuseAddress())
+                .option(ChannelOption.SO_RCVBUF, config.getSocketBufferSize())
+                .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
+        return bootstrap;
+    }
+
+    protected EventLoopGroup newIoEventGroup() {
+        NamedThreadFactory threadFactory = new NamedThreadFactory("Transport-Client-IO-LoopGroup");
+
+        int ioThread = config.getIoThread();
+        if (Epoll.isAvailable()) {
+            return new EpollEventLoopGroup(ioThread, threadFactory);
+        } else {
+            return new NioEventLoopGroup(ioThread, threadFactory);
+        }
+    }
+
+    protected abstract ChannelHandler newChannelHandlerPipeline();
+
+    public ClientConfig getConfig() {
+        return config;
+    }
+
+    protected synchronized Channel createChannel(SocketAddress address, long connectionTimeout) throws TransportException {
+        if (address == null) {
+            throw new IllegalArgumentException("address must not be null!");
+        }
+        if (ioEventGroup == null) {
+            ioEventGroup = newIoEventGroup();
+        }
+        if (bootstrap == null) {
+            ChannelHandler channelHandlerPipeline = newChannelHandlerPipeline();
+            bootstrap = newBootstrap(channelHandlerPipeline, ioEventGroup);
+        }
+        try {
+            long timeout = connectionTimeout > 0 ? connectionTimeout : config.getConnectionTimeout();
+            String addr = IpUtil.toAddress(address);
+            ChannelFuture channelFuture;
+            Channel channel = null;
+            channelFuture = bootstrap.connect(address);
+            if (!channelFuture.await(timeout)) {
+                throw TransportException.ConnectionTimeoutException.build(addr);
+            }
+            channel = channelFuture.channel();
+            if (channel == null || !channel.isActive()) {
+                throw TransportException.ConnectionException.build(addr);
+            }
+            return channel;
+        } catch (InterruptedException e) {
+            throw TransportException.InterruptedException.build();
+        } catch (Exception e) {
+            if (e instanceof TransportException) {
+                throw (TransportException) e;
+            } else {
+                throw new TransportException.UnknownException();
+            }
         }
     }
 }

@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -44,16 +44,17 @@ import static io.journalkeeper.core.server.ThreadNames.VOTER_REPLICATION_REQUEST
  */
 class Follower extends ServerStateMachine implements StateServer {
     private static final Logger logger = LoggerFactory.getLogger(Follower.class);
-    private final Journal journal;
     /**
      * 节点上的最新状态 和 被状态机执行的最大日志条目的索引值（从 0 开始递增）
      */
     protected final JournalKeeperState state;
+    private final Journal journal;
     private final URI serverUri;
     private final int currentTerm;
     private final VoterConfigManager voterConfigManager;
     private final Threads threads;
-    private final NavigableMap<Long, JournalKeeperState> snapshots;    /**
+    private final NavigableMap<Long, JournalKeeperState> snapshots;
+    /**
      * 待处理的asyncAppendEntries Request，按照request中的preLogTerm和prevLogIndex排序。
      */
     private final BlockingQueue<ReplicationRequestResponse> pendingAppendEntriesRequests;
@@ -65,6 +66,7 @@ class Follower extends ServerStateMachine implements StateServer {
 
 
     private boolean readyForStartPreferredLeaderElection = false;
+
     Follower(Journal journal, JournalKeeperState state, URI serverUri, int currentTerm, VoterConfigManager voterConfigManager, Threads threads, NavigableMap<Long, JournalKeeperState> snapshots, int cachedRequests) {
         super(true);
         this.state = state;
@@ -105,7 +107,7 @@ class Follower extends ServerStateMachine implements StateServer {
         try {
             return journal.getTerm(index);
         } catch (IndexUnderflowException e) {
-            if(index  + 1 == snapshots.firstKey()) {
+            if (index + 1 == snapshots.firstKey()) {
                 return snapshots.firstEntry().getValue().lastIncludedTerm();
             } else {
                 throw e;
@@ -133,7 +135,7 @@ class Follower extends ServerStateMachine implements StateServer {
         if (request.getPrevLogIndex() < journal.minIndex() - 1 ||
                 request.getPrevLogIndex() >= journal.maxIndex() ||
                 getTerm(rr.getPrevLogIndex()) != request.getPrevLogTerm()
-            ) {
+        ) {
             response = new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
                     currentTerm, request.getEntries().size());
             rr.getResponseFuture().complete(response);
@@ -189,7 +191,7 @@ class Follower extends ServerStateMachine implements StateServer {
     CompletableFuture<AsyncAppendEntriesResponse> addAppendEntriesRequest(AsyncAppendEntriesRequest request) {
 
         ReplicationRequestResponse requestResponse = new ReplicationRequestResponse(request);
-        if(serverState() == ServerState.RUNNING) {
+        if (serverState() == ServerState.RUNNING) {
             pendingAppendEntriesRequests.add(requestResponse);
 //            if (request.getEntries() == null || request.getEntries().size() == 0) {
 //                // 心跳直接返回成功

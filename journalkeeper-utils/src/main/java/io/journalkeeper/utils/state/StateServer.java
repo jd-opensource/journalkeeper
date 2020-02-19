@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -23,16 +23,18 @@ import java.util.concurrent.CompletableFuture;
  */
 public interface StateServer {
     void start();
+
     void stop();
+
     ServerState serverState();
 
-    enum ServerState {CREATED, STARTING, RUNNING, STOPPING, STOPPED, START_FAILED, STOP_FAILED}
-
-    default CompletableFuture<Void> startAsync(){
+    default CompletableFuture<Void> startAsync() {
         return CompletableFuture.runAsync(this::start);
     }
 
-    default CompletableFuture<Void> stopAsync(){
+    default CompletableFuture<Void> stopAsync() {
         return CompletableFuture.runAsync(this::stop);
     }
+
+    enum ServerState {CREATED, STARTING, RUNNING, STOPPING, STOPPED, START_FAILED, STOP_FAILED}
 }

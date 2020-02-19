@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -78,12 +78,7 @@ import java.util.concurrent.ScheduledExecutorService;
 public class Server
         implements ServerRpc, RaftServer {
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
-
-    private AbstractServer server;
-    private StateServer rpcServer = null;
-    private ServerState serverState = ServerState.CREATED;
     private final RpcAccessPointFactory rpcAccessPointFactory;
-
     private final ScheduledExecutorService scheduledExecutor;
     private final ExecutorService asyncExecutor;
     private final Properties properties;
@@ -91,8 +86,10 @@ public class Server
     private final JournalEntryParser journalEntryParser;
     private final ServerMonitorInfoProvider serverMonitorInfoProvider;
     private final Collection<MonitorCollector> monitorCollectors;
+    private AbstractServer server;
+    private StateServer rpcServer = null;
+    private ServerState serverState = ServerState.CREATED;
     private ServerRpcAccessPoint serverRpcAccessPoint;
-
 
 
     public Server(Roll roll, StateFactory stateFactory, JournalEntryParser journalEntryParser,
@@ -200,11 +197,11 @@ public class Server
     @Override
     public CompletableFuture<ConvertRollResponse> convertRoll(ConvertRollRequest request) {
 
-        return CompletableFuture.supplyAsync(()-> {
-            if(request.getRoll() != null && request.getRoll() != server.roll()) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (request.getRoll() != null && request.getRoll() != server.roll()) {
                 try {
-                    if(server.serverState() != ServerState.RUNNING) {
-                        throw  new IllegalStateException("Server is not running, current state: " + server.serverState() + "!");
+                    if (server.serverState() != ServerState.RUNNING) {
+                        throw new IllegalStateException("Server is not running, current state: " + server.serverState() + "!");
                     }
                     server.stop();
                     server = createServer(request.getRoll());
@@ -284,14 +281,15 @@ public class Server
     }
 
     private void addMonitorProviderToCollectors() {
-        if(null != monitorCollectors) {
+        if (null != monitorCollectors) {
             for (MonitorCollector monitorCollector : monitorCollectors) {
                 monitorCollector.addServer(serverMonitorInfoProvider);
             }
         }
     }
+
     private void removeMonitorProviderToCollectors() {
-        if(null != monitorCollectors) {
+        if (null != monitorCollectors) {
             for (MonitorCollector monitorCollector : monitorCollectors) {
                 monitorCollector.removeServer(serverMonitorInfoProvider);
             }
@@ -301,7 +299,7 @@ public class Server
     @Override
     public void start() {
         addMonitorProviderToCollectors();
-        if(this.serverState != ServerState.CREATED) {
+        if (this.serverState != ServerState.CREATED) {
             throw new IllegalStateException("Server can only start once!");
         }
         this.serverState = ServerState.STARTING;
@@ -314,7 +312,7 @@ public class Server
 
     @Override
     public void stop() {
-        if(this.serverState == ServerState.RUNNING) {
+        if (this.serverState == ServerState.RUNNING) {
 
             this.serverState = ServerState.STOPPING;
             if (rpcServer != null) {

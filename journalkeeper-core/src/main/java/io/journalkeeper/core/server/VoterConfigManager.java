@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,7 +18,10 @@ import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.api.VoterState;
-import io.journalkeeper.core.entry.internal.*;
+import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
+import io.journalkeeper.core.entry.internal.InternalEntryType;
+import io.journalkeeper.core.entry.internal.UpdateVotersS1Entry;
+import io.journalkeeper.core.entry.internal.UpdateVotersS2Entry;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.metric.JMetric;
@@ -36,7 +39,8 @@ import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
 import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
-import static io.journalkeeper.core.entry.internal.InternalEntryType.*;
+import static io.journalkeeper.core.entry.internal.InternalEntryType.TYPE_UPDATE_VOTERS_S1;
+import static io.journalkeeper.core.entry.internal.InternalEntryType.TYPE_UPDATE_VOTERS_S2;
 
 /**
  * @author LiYue
@@ -60,7 +64,7 @@ public class VoterConfigManager {
                                     int replicationParallelism,
                                     Map<URI, JMetric> appendEntriesRpcMetricMap) throws Exception {
         // 如果是配置变更请求，立刻更新当前配置
-        if(request.getPartition() == INTERNAL_PARTITION){
+        if (request.getPartition() == INTERNAL_PARTITION) {
             InternalEntryType entryType = InternalEntriesSerializeSupport.parseEntryType(request.getEntry());
             if (entryType == TYPE_UPDATE_VOTERS_S1) {
                 UpdateVotersS1Entry updateVotersS1Entry = InternalEntriesSerializeSupport.parse(request.getEntry());
@@ -83,7 +87,7 @@ public class VoterConfigManager {
 
 
                 followers.removeIf(follower -> {
-                    if(!votersConfigStateMachine.voters().contains(follower.getUri())){
+                    if (!votersConfigStateMachine.voters().contains(follower.getUri())) {
                         appendEntriesRpcMetricMap.remove(follower.getUri());
                         return true;
                     } else {
@@ -101,8 +105,8 @@ public class VoterConfigManager {
      */
     private void waitingForAllEntriesCommitted(Journal journal) throws InterruptedException {
         long t0 = System.nanoTime();
-        while(journal.commitIndex() < journal.maxIndex()) {
-            if(System.nanoTime() - t0 < 10000000000L) {
+        while (journal.commitIndex() < journal.maxIndex()) {
+            if (System.nanoTime() - t0 < 10000000000L) {
                 Thread.yield();
             } else {
                 Thread.sleep(10L);
@@ -113,7 +117,7 @@ public class VoterConfigManager {
     // 如果要删除部分未提交的日志，并且待删除的这部分存在配置变更日志，则需要回滚配置
     void maybeRollbackConfig(long startIndex, Journal journal,
                              ConfigState votersConfigStateMachine) {
-        if(startIndex >= journal.maxIndex()) {
+        if (startIndex >= journal.maxIndex()) {
             return;
         }
         long index = journal.maxIndex(INTERNAL_PARTITION);
@@ -124,19 +128,20 @@ public class VoterConfigManager {
                 break;
             }
             InternalEntryType reservedEntryType = InternalEntriesSerializeSupport.parseEntryType(entry.getPayload().getBytes());
-            if(reservedEntryType == TYPE_UPDATE_VOTERS_S2) {
+            if (reservedEntryType == TYPE_UPDATE_VOTERS_S2) {
                 UpdateVotersS2Entry updateVotersS2Entry = InternalEntriesSerializeSupport.parse(entry.getPayload().getBytes());
                 votersConfigStateMachine.rollbackToJointConsensus(updateVotersS2Entry.getConfigOld());
-            } else if(reservedEntryType == TYPE_UPDATE_VOTERS_S1) {
+            } else if (reservedEntryType == TYPE_UPDATE_VOTERS_S1) {
                 votersConfigStateMachine.rollbackToOldConfig();
             }
         }
     }
+
     // 非Leader（Follower和Observer）复制日志到本地后，如果日志中包含配置变更，则立即变更配置
-    void maybeUpdateNonLeaderConfig(List<byte []> entries, ConfigState votersConfigStateMachine) throws Exception {
+    void maybeUpdateNonLeaderConfig(List<byte[]> entries, ConfigState votersConfigStateMachine) throws Exception {
         for (byte[] rawEntry : entries) {
             JournalEntry entryHeader = journalEntryParser.parseHeader(rawEntry);
-            if(entryHeader.getPartition() == INTERNAL_PARTITION) {
+            if (entryHeader.getPartition() == INTERNAL_PARTITION) {
                 int headerLength = journalEntryParser.headerLength();
                 InternalEntryType entryType = InternalEntriesSerializeSupport.parseEntryType(rawEntry, headerLength, rawEntry.length - headerLength);
                 if (entryType == TYPE_UPDATE_VOTERS_S1) {
@@ -151,12 +156,12 @@ public class VoterConfigManager {
         }
     }
 
-    void applyReservedEntry(InternalEntryType type, byte [] reservedEntry, VoterState voterState,
+    void applyReservedEntry(InternalEntryType type, byte[] reservedEntry, VoterState voterState,
                             ConfigState votersConfigStateMachine,
                             ClientServerRpc clientServerRpc, URI serverUri, StateServer server) {
         switch (type) {
             case TYPE_UPDATE_VOTERS_S1:
-                if(voterState == VoterState.LEADER) {
+                if (voterState == VoterState.LEADER) {
                     byte[] s2Entry = InternalEntriesSerializeSupport.serialize(new UpdateVotersS2Entry(votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew()));
                     try {
                         if (votersConfigStateMachine.isJointConsensus()) {
@@ -177,7 +182,7 @@ public class VoterConfigManager {
                                 updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew(),
                                 votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew(), e);
                     }
-                } else if(!votersConfigStateMachine.voters().contains(serverUri)) {
+                } else if (!votersConfigStateMachine.voters().contains(serverUri)) {
                     // Stop myself if I'm no longer a member of the cluster. Any follower can be stopped safely on this stage.
                     server.stopAsync();
                 }
@@ -185,7 +190,7 @@ public class VoterConfigManager {
             case TYPE_UPDATE_VOTERS_S2:
                 // Stop myself if I'm no longer a member of the cluster.
                 // Leader can be stopped on this stage, a new leader will be elected in the new configuration.
-                if(!votersConfigStateMachine.voters().contains(serverUri)) {
+                if (!votersConfigStateMachine.voters().contains(serverUri)) {
                     server.stopAsync();
                 }
                 break;

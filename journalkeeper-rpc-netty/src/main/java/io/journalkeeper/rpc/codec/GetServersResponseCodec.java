@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -30,8 +30,8 @@ import java.util.List;
 public class GetServersResponseCodec extends ResponseCodec<GetServersResponse> implements Type {
     @Override
     protected void encodeResponse(GetServersResponse response, ByteBuf buffer) throws Exception {
-        ClusterConfiguration clusterConfiguration = response == null ? new ClusterConfiguration(): response.getClusterConfiguration();
-        if(null == clusterConfiguration) clusterConfiguration = new ClusterConfiguration();
+        ClusterConfiguration clusterConfiguration = response == null ? new ClusterConfiguration() : response.getClusterConfiguration();
+        if (null == clusterConfiguration) clusterConfiguration = new ClusterConfiguration();
 
         CodecSupport.encodeString(buffer, uriToString(clusterConfiguration.getLeader()));
         CodecSupport.encodeList(buffer, clusterConfiguration.getVoters(), (obj, buffer1) -> CodecSupport.encodeUri(buffer1, (URI) obj));
@@ -51,6 +51,7 @@ public class GetServersResponseCodec extends ResponseCodec<GetServersResponse> i
     public int type() {
         return RpcTypes.GET_SERVERS_RESPONSE;
     }
+
     private String uriToString(URI uri) {
         return null == uri ? null : uri.toString();
     }

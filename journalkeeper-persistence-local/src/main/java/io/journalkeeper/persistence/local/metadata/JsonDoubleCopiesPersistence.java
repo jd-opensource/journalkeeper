@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -33,11 +33,12 @@ public class JsonDoubleCopiesPersistence implements MetadataPersistence {
     @Override
     public <M> void save(Path path, M metadata) throws IOException {
         Files.createDirectories(path.getParent());
-        byte [] serialized = gson.toJson(metadata).getBytes(StandardCharsets.UTF_8);
+        byte[] serialized = gson.toJson(metadata).getBytes(StandardCharsets.UTF_8);
         try {
             Files.write(getCopy(path, FIRST_COPY), serialized);
             Files.write(getCopy(path, SECOND_COPY), serialized);
-        } catch (ClosedByInterruptException ignored) {}
+        } catch (ClosedByInterruptException ignored) {
+        }
     }
 
     Path getCopy(Path path, String copy) {

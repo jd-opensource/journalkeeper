@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -43,6 +43,8 @@ public class JournalTransactionManager extends ServerStateMachine {
     private final ClientServerRpc server;
     private final JournalTransactionState transactionState;
     private final Map<UUID, CompletableFuture<Void>> pendingCompleteTransactionFutures = new ConcurrentHashMap<>();
+    private final TransactionEntrySerializer transactionEntrySerializer = new TransactionEntrySerializer();
+
     public JournalTransactionManager(Journal journal, ClientServerRpc server,
                                      ScheduledExecutorService scheduledExecutor, long transactionTimeoutMs) {
         this.server = server;
@@ -61,18 +63,16 @@ public class JournalTransactionManager extends ServerStateMachine {
         super.doStop();
     }
 
-    private final TransactionEntrySerializer transactionEntrySerializer = new TransactionEntrySerializer();
-
     public CompletableFuture<JournalKeeperTransactionContext> createTransaction(Map<String, String> context) {
         int partition = transactionState.nextFreePartition();
         UUID transactionId = UUID.randomUUID();
         TransactionEntry entry = new TransactionEntry(transactionId, context);
         final long timestamp = entry.getTimestamp();
-        byte [] serializedEntry = transactionEntrySerializer.serialize(entry);
+        byte[] serializedEntry = transactionEntrySerializer.serialize(entry);
 
         return server.updateClusterState(new UpdateClusterStateRequest(new UpdateRequest(serializedEntry, partition, 1)))
                 .thenApply(response -> {
-                    if(response.success()) {
+                    if (response.success()) {
                         return new JournalKeeperTransactionContext(
                                 new UUIDTransactionId(transactionId), context, timestamp
                         );
@@ -86,15 +86,15 @@ public class JournalTransactionManager extends ServerStateMachine {
         int partition = getTransactionPartition(transactionId);
         ensureTransactionOpen(transactionId);
         TransactionEntry entry = new TransactionEntry(transactionId, TransactionEntryType.TRANSACTION_PRE_COMPLETE, completeOrAbort);
-        byte [] serializedEntry = transactionEntrySerializer.serialize(entry);
+        byte[] serializedEntry = transactionEntrySerializer.serialize(entry);
         CompletableFuture<Void> future = new CompletableFuture<>();
         pendingCompleteTransactionFutures.put(transactionId, future);
         server
                 .updateClusterState(new UpdateClusterStateRequest(new UpdateRequest(serializedEntry, partition, 1)))
                 .thenAccept(response -> {
-                    if(!response.success()) {
+                    if (!response.success()) {
                         CompletableFuture<Void> retFuture = pendingCompleteTransactionFutures.remove(transactionId);
-                        if(null != retFuture) {
+                        if (null != retFuture) {
                             retFuture.completeExceptionally(new TransactionException(response.errorString()));
                         }
                     }
@@ -120,7 +120,7 @@ public class JournalTransactionManager extends ServerStateMachine {
 
     public void applyEntry(JournalEntry journalEntry) {
         int partition = journalEntry.getPartition();
-        if(transactionState.isTransactionPartition(partition)) {
+        if (transactionState.isTransactionPartition(partition)) {
             TransactionEntry transactionEntry = transactionEntrySerializer.parse(journalEntry.getPayload().getBytes());
             transactionState.applyEntry(transactionEntry, partition, pendingCompleteTransactionFutures);
         }

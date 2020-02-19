@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -27,8 +27,20 @@ import io.journalkeeper.utils.state.ServerStateMachine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.DelayQueue;
+import java.util.concurrent.Delayed;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -42,19 +54,19 @@ import static io.journalkeeper.core.transaction.JournalTransactionManager.TRANSA
  * Date: 2019/10/22
  */
 class JournalTransactionState extends ServerStateMachine {
+    private static final Logger logger = LoggerFactory.getLogger(JournalTransactionState.class);
+    private static final long RETRY_COMPLETE_TRANSACTION_INTERVAL_MS = 10000L;
     private final Journal journal;
     private final Map<Integer /* partition */, TransactionEntryType /* last transaction entry type */> partitionStatusMap;
     private final Map<UUID /* transaction id */, TransactionState /* transaction state */> openingTransactionMap;
     private final ClientServerRpc server;
-    private static final Logger logger = LoggerFactory.getLogger(JournalTransactionState.class);
     private final TransactionEntrySerializer transactionEntrySerializer = new TransactionEntrySerializer();
     private final AtomicInteger nextFreePartition = new AtomicInteger(TRANSACTION_PARTITION_START);
     private final DelayQueue<CompleteTransactionRetry> retryCompleteTransactions = new DelayQueue<>();
     private final ScheduledExecutorService scheduledExecutor;
+    private final long transactionTimeoutMs;
     private ScheduledFuture retryCompleteTransactionScheduledFuture = null;
     private ScheduledFuture checkOutdatedTransactionsScheduledFuture = null;
-    private static final long RETRY_COMPLETE_TRANSACTION_INTERVAL_MS = 10000L;
-    private final long transactionTimeoutMs;
 
     JournalTransactionState(Journal journal, long transactionTimeoutMs, ClientServerRpc server, ScheduledExecutorService scheduledExecutor) {
         super(false);
@@ -86,10 +98,10 @@ class JournalTransactionState extends ServerStateMachine {
 
     @Override
     protected void doStop() {
-        if(null != retryCompleteTransactionScheduledFuture) {
+        if (null != retryCompleteTransactionScheduledFuture) {
             retryCompleteTransactionScheduledFuture.cancel(false);
         }
-        if(null != checkOutdatedTransactionsScheduledFuture) {
+        if (null != checkOutdatedTransactionsScheduledFuture) {
             checkOutdatedTransactionsScheduledFuture.cancel(false);
         }
         super.doStop();
@@ -100,7 +112,7 @@ class JournalTransactionState extends ServerStateMachine {
         openingTransactionMap.forEach((transactionId, state) -> {
             int partition = state.getPartition();
             long i = journal.maxIndex(partition);
-            while ( -- i >= journal.minIndex(partition)){
+            while (--i >= journal.minIndex(partition)) {
                 JournalEntry journalEntry = journal.readByPartition(partition, i);
                 TransactionEntry transactionEntry = transactionEntrySerializer.parse(journalEntry.getPayload().getBytes());
 
@@ -110,7 +122,7 @@ class JournalTransactionState extends ServerStateMachine {
 
                 if (transactionEntry.getType() == TransactionEntryType.TRANSACTION_START) {
                     long transactionCreateTimestamp = transactionEntry.getTimestamp();
-                    if(transactionCreateTimestamp + transactionTimeoutMs < currentTimestamp) {
+                    if (transactionCreateTimestamp + transactionTimeoutMs < currentTimestamp) {
                         logger.info("Abort outdated transaction: {}.", transactionId.toString());
                         writeTransactionCompleteEntry(transactionId, false, partition);
                     }
@@ -136,10 +148,10 @@ class JournalTransactionState extends ServerStateMachine {
                 long index = journal.maxIndex(partition);
                 long minIndexOfPartition = journal.minIndex(partition);
                 boolean lastEntryOfTheTransaction = true;
-                while (index -- > minIndexOfPartition) {
+                while (index-- > minIndexOfPartition) {
                     JournalEntry journalEntry = journal.readByPartition(partition, index);
                     TransactionEntry transactionEntry = transactionEntrySerializer.parse(journalEntry.getPayload().getBytes());
-                    if(lastEntryOfTheTransaction) {
+                    if (lastEntryOfTheTransaction) {
                         partitionStatusMap.put(partition, transactionEntry.getType());
 
                         // retry pre committed transaction
@@ -151,7 +163,7 @@ class JournalTransactionState extends ServerStateMachine {
                         lastEntryOfTheTransaction = false;
                     }
 
-                    if(transactionEntry.getType() == TransactionEntryType.TRANSACTION_START) {
+                    if (transactionEntry.getType() == TransactionEntryType.TRANSACTION_START) {
                         openingTransactionMap.put(
                                 transactionEntry.getTransactionId(),
                                 new TransactionState(partition, new JournalKeeperTransactionContext(
@@ -220,7 +232,7 @@ class JournalTransactionState extends ServerStateMachine {
                 openingTransactionMap.remove(entry.getTransactionId());
                 partitionStatusMap.remove(partition);
                 CompletableFuture<Void> future = pendingCompleteTransactionFutures.remove(entry.getTransactionId());
-                if(null != future) {
+                if (null != future) {
                     future.complete(null);
                 }
                 break;
@@ -277,31 +289,31 @@ class JournalTransactionState extends ServerStateMachine {
 
                 for (TransactionEntry te : transactionEntries) {
                     futures.add(
-                        server
-                            .updateClusterState(
-                                new UpdateClusterStateRequest(
-                                        new UpdateRequest(
-                                        te.getEntry(), bizPartition, te.getBatchSize()
-                                        )
-                                )
-                            )
-                            .exceptionally(UpdateClusterStateResponse::new)
-                            .thenAccept(response -> {
-                                if (response.success()) {
-                                    unFinishedRequests.decrementAndGet();
-                                } else {
-                                    logger.warn("Transaction commit {} failed! Cause: {}.",
-                                            transactionId.toString(),
-                                            response.errorString());
-                                }
-                            })
+                            server
+                                    .updateClusterState(
+                                            new UpdateClusterStateRequest(
+                                                    new UpdateRequest(
+                                                            te.getEntry(), bizPartition, te.getBatchSize()
+                                                    )
+                                            )
+                                    )
+                                    .exceptionally(UpdateClusterStateResponse::new)
+                                    .thenAccept(response -> {
+                                        if (response.success()) {
+                                            unFinishedRequests.decrementAndGet();
+                                        } else {
+                                            logger.warn("Transaction commit {} failed! Cause: {}.",
+                                                    transactionId.toString(),
+                                                    response.errorString());
+                                        }
+                                    })
                     );
                 }
             }
             CompletableFuture
                     .allOf(futures.toArray(new CompletableFuture[entryCount]))
                     .thenRun(() -> {
-                        if(unFinishedRequests.get() > 0) {
+                        if (unFinishedRequests.get() > 0) {
                             retryCompleteTransactions.add(
                                     new CompleteTransactionRetry(transactionId, partition)
                             );
@@ -309,7 +321,7 @@ class JournalTransactionState extends ServerStateMachine {
                             writeTransactionCompleteEntry(transactionId, true, partition);
                         }
                     });
-            
+
         } else {
             writeTransactionCompleteEntry(transactionId, false, partition);
         }
@@ -342,7 +354,7 @@ class JournalTransactionState extends ServerStateMachine {
         byte[] serializedEntry = transactionEntrySerializer.serialize(entry);
         server.updateClusterState(new UpdateClusterStateRequest(
                 new UpdateRequest(
-                    serializedEntry, partition, 1
+                        serializedEntry, partition, 1
                 )
         ))
                 .exceptionally(UpdateClusterStateResponse::new)
@@ -365,7 +377,7 @@ class JournalTransactionState extends ServerStateMachine {
     int getPartition(UUID transactionId) {
         TransactionState transactionState;
         return ((transactionState = openingTransactionMap
-                .get(transactionId))) != null ? transactionState.getPartition() : - 1;
+                .get(transactionId))) != null ? transactionState.getPartition() : -1;
     }
 
     void ensureTransactionOpen(UUID transactionId) {
@@ -380,10 +392,11 @@ class JournalTransactionState extends ServerStateMachine {
         return partition >= TRANSACTION_PARTITION_START && partition < TRANSACTION_PARTITION_START + TRANSACTION_PARTITION_COUNT;
     }
 
-    private static class CompleteTransactionRetry implements Delayed{
+    private static class CompleteTransactionRetry implements Delayed {
         private final UUID transactionId;
         private final int partition;
         private final long expireTimeMs;
+
         CompleteTransactionRetry(UUID transactionId, int partition) {
             this.transactionId = transactionId;
             this.partition = partition;
@@ -419,12 +432,12 @@ class JournalTransactionState extends ServerStateMachine {
 
         @Override
         public long getDelay(TimeUnit unit) {
-            return unit.convert(this.expireTimeMs - System.currentTimeMillis() , TimeUnit.MILLISECONDS);
+            return unit.convert(this.expireTimeMs - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
         }
 
         @Override
         public int compareTo(Delayed o) {
-            return (int) (this.getDelay(TimeUnit.MILLISECONDS) -o.getDelay(TimeUnit.MILLISECONDS));
+            return (int) (this.getDelay(TimeUnit.MILLISECONDS) - o.getDelay(TimeUnit.MILLISECONDS));
         }
     }
 

@@ -12,7 +12,7 @@ import java.net.URI;
 public class LocalUriParser implements URIParser {
     @Override
     public String[] supportedSchemes() {
-        return new String[] {"local"};
+        return new String[]{"local"};
     }
 
     @Override

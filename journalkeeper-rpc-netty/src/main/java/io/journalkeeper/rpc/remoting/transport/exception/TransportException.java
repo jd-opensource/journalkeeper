@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -53,6 +53,20 @@ public class TransportException extends RuntimeException {
     public TransportException(Throwable cause, int code) {
         super(cause);
         this.code = code;
+    }
+
+    public static boolean isClosed(Throwable e) {
+        if (e == null) {
+            return false;
+        }
+        if (e instanceof IOException) {
+            String message = e.getMessage();
+            if (message.contains("Connection reset") || message.contains("Socket closed") || message
+                    .contains("连接被对端重置") || message.contains("Connection refused")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public int getCode() {
@@ -308,19 +322,5 @@ public class TransportException extends RuntimeException {
             return new CodecException(message);
         }
 
-    }
-
-    public static boolean isClosed(Throwable e) {
-        if (e == null) {
-            return false;
-        }
-        if (e instanceof IOException) {
-            String message = e.getMessage();
-            if (message.contains("Connection reset") || message.contains("Socket closed") || message
-                    .contains("连接被对端重置") || message.contains("Connection refused")) {
-                return true;
-            }
-        }
-        return false;
     }
 }

@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -32,11 +32,11 @@ public class PullEventsResponseCodec extends ResponseCodec<PullEventsResponse> i
     protected void encodeResponse(PullEventsResponse response, ByteBuf buffer) {
         //boolean success, long journalIndex, int term, int entryCount
         CodecSupport.encodeList(buffer, response.getPullEvents(),
-                (obj, buffer1) ->{
+                (obj, buffer1) -> {
                     PullEvent pullEvent = (PullEvent) obj;
                     CodecSupport.encodeInt(buffer1, pullEvent.getEventType());
                     CodecSupport.encodeLong(buffer1, pullEvent.getSequence());
-                    CodecSupport.encodeMap(buffer1, pullEvent.getEventData(),new StringCodec(), new StringCodec());
+                    CodecSupport.encodeMap(buffer1, pullEvent.getEventData(), new StringCodec(), new StringCodec());
 
                 });
     }
@@ -66,7 +66,7 @@ public class PullEventsResponseCodec extends ResponseCodec<PullEventsResponse> i
 
         @Override
         public void encode(Object obj, ByteBuf buffer) throws TransportException.CodecException {
-            CodecSupport.encodeString(buffer,(String) obj);
+            CodecSupport.encodeString(buffer, (String) obj);
         }
     }
 }

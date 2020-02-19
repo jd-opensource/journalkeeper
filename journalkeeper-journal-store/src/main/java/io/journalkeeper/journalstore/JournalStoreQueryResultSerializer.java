@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -66,29 +66,29 @@ public class JournalStoreQueryResultSerializer implements Serializer<JournalStor
 
                 (journalStoreQueryResult.getBoundaries() == null ? 0 :
                         journalStoreQueryResult.getBoundaries().size() * (Short.BYTES + Long.BYTES + Long.BYTES)) +
-                (journalStoreQueryResult.getEntries() == null ? 0 :
-                        journalStoreQueryResult.getEntries().stream().mapToInt(JournalEntry::getLength)
-                        .sum()) + FIXED_LENGTH;
+                        (journalStoreQueryResult.getEntries() == null ? 0 :
+                                journalStoreQueryResult.getEntries().stream().mapToInt(JournalEntry::getLength)
+                                        .sum()) + FIXED_LENGTH;
 
     }
 
     @Override
     public byte[] serialize(JournalStoreQueryResult journalStoreQueryResult) {
-        byte [] bytes = new byte[sizeOf(journalStoreQueryResult)];
+        byte[] bytes = new byte[sizeOf(journalStoreQueryResult)];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
 
         buffer.put((byte) journalStoreQueryResult.getCmd());
         buffer.put((byte) journalStoreQueryResult.getCode());
         buffer.putLong(journalStoreQueryResult.getIndex());
         List<JournalEntry> entries = journalStoreQueryResult.getEntries();
-        if(entries == null) {
+        if (entries == null) {
             entries = Collections.emptyList();
         }
         buffer.putShort((short) entries.size());
         entries.forEach(entry -> buffer.put(entry.getSerializedBytes()));
 
         Map<Integer, JournalStoreQueryResult.Boundary> boundaryMap = journalStoreQueryResult.getBoundaries();
-        if(boundaryMap == null) {
+        if (boundaryMap == null) {
             boundaryMap = Collections.emptyMap();
         }
         buffer.putShort((short) boundaryMap.size());
@@ -109,14 +109,14 @@ public class JournalStoreQueryResultSerializer implements Serializer<JournalStor
         long index = buffer.getLong();
         int entriesSize = buffer.getShort();
         List<JournalEntry> entries = new ArrayList<>(entriesSize);
-        byte [] headerBytes = new byte[journalEntryParser.headerLength()];
+        byte[] headerBytes = new byte[journalEntryParser.headerLength()];
         for (int i = 0; i < entriesSize; i++) {
             buffer.mark();
             buffer.get(headerBytes);
             buffer.reset();
             JournalEntry header = journalEntryParser.parseHeader(headerBytes);
             int length = header.getLength();
-            byte [] raw = new byte[length];
+            byte[] raw = new byte[length];
             buffer.get(raw);
             JournalEntry entry = journalEntryParser.parse(raw);
             entries.add(entry);

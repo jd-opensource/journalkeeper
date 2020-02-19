@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -31,13 +31,13 @@ import java.nio.ByteBuffer;
 public class SetPreferredLeaderEntrySerializer implements Serializer<SetPreferredLeaderEntry> {
     private int sizeOf(SetPreferredLeaderEntry entry) {
         return Byte.BYTES +  // Type:                              1 byte
-                Short.BYTES  +  // Length of the URI String in bytes: 2 bytes
+                Short.BYTES +  // Length of the URI String in bytes: 2 bytes
                 entry.getPreferredLeader().toASCIIString().length(); // URI String in bytes: variable length
     }
 
     @Override
     public byte[] serialize(SetPreferredLeaderEntry entry) {
-        byte [] bytes = new byte[sizeOf(entry)];
+        byte[] bytes = new byte[sizeOf(entry)];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         buffer.put((byte) entry.getType().value());
         UriSerializeSupport.serializerUri(buffer, entry.getPreferredLeader());

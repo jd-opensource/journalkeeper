@@ -17,6 +17,7 @@ public class StateWrapper<E, ER, Q, QR> implements State, Flushable {
     private final SerializeExtensionPoint serializeExtensionPoint;
     private final WrappedState<E, ER, Q, QR> wrappedState;
     private final Flushable flushable;
+
     public StateWrapper(WrappedState<E, ER, Q, QR> wrappedState, SerializeExtensionPoint serializeExtensionPoint) {
         this.serializeExtensionPoint = serializeExtensionPoint;
         this.wrappedState = wrappedState;

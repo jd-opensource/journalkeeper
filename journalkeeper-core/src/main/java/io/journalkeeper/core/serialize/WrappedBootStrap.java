@@ -3,8 +3,6 @@ package io.journalkeeper.core.serialize;
 import io.journalkeeper.core.BootStrap;
 import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.RaftServer;
-import io.journalkeeper.core.api.State;
-import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.utils.spi.ServiceSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,14 +16,16 @@ import java.util.Properties;
  * Date: 2020/2/18
  */
 public class WrappedBootStrap<E, ER, Q, QR> {
+    public final static String SERIALIZER_CONFIG_KEY = "serializer";
     private static final Logger logger = LoggerFactory.getLogger(WrappedBootStrap.class);
     private final BootStrap bootStrap;
     private final SerializeExtensionPoint serializeExtensionPoint;
-    public final static String SERIALIZER_CONFIG_KEY = "serializer";
     private final Properties properties;
+
     /**
      * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。
-     * @param servers 远程Server 列表
+     *
+     * @param servers    远程Server 列表
      * @param properties 配置属性
      */
     public WrappedBootStrap(List<URI> servers,
@@ -40,14 +40,16 @@ public class WrappedBootStrap<E, ER, Q, QR> {
                             Properties properties) {
         this(RaftServer.Roll.VOTER, wrappedStateFactory, properties);
     }
+
     /**
      * 初始化本地Server模式BootStrap，本地包含一个Server，请求本地Server通信。
-     * @param roll 本地Server的角色。
+     *
+     * @param roll                本地Server的角色。
      * @param wrappedStateFactory 状态机工厂，用户创建状态机实例
-     * @param properties 配置属性
+     * @param properties          配置属性
      */
     public WrappedBootStrap(RaftServer.Roll roll, WrappedStateFactory<E, ER, Q, QR> wrappedStateFactory,
-                     Properties properties) {
+                            Properties properties) {
         this.properties = properties;
         this.serializeExtensionPoint = loadSerializer(properties.getProperty(SERIALIZER_CONFIG_KEY, null));
         logger.info("Using serializer: {}.", serializeExtensionPoint.getClass().getCanonicalName());
@@ -57,7 +59,7 @@ public class WrappedBootStrap<E, ER, Q, QR> {
     }
 
     private SerializeExtensionPoint loadSerializer(String serializer) {
-        if(serializer != null && !serializer.isEmpty()) {
+        if (serializer != null && !serializer.isEmpty()) {
             return ServiceSupport.load(SerializeExtensionPoint.class, serializer);
         } else {
             return ServiceSupport.tryLoad(SerializeExtensionPoint.class).orElse(new JavaSerializeExtensionPoint());

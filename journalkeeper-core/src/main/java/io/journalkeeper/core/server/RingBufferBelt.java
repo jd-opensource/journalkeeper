@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -27,6 +27,7 @@ public class RingBufferBelt implements CallbackResultBelt {
     private static final Logger logger = LoggerFactory.getLogger(RingBufferBelt.class);
     private final long timeoutMs;
     private final LockFreeRingBuffer<Callback> buffer;
+
     RingBufferBelt(long timeoutMs, int capacity) {
         this.timeoutMs = timeoutMs;
         buffer = new LockFreeRingBuffer<>(Callback.class, capacity);
@@ -51,7 +52,7 @@ public class RingBufferBelt implements CallbackResultBelt {
 
         while ((c = buffer.get()) != null && c.getPosition() <= position) {
             c = buffer.remove();
-            if(null != c) {
+            if (null != c) {
                 c.getResponseFuture().countDownFlush();
             }
         }
@@ -63,21 +64,21 @@ public class RingBufferBelt implements CallbackResultBelt {
         Callback c;
         while ((c = buffer.get()) != null && c.getTimestamp() < deadline) {
             c = buffer.remove();
-            if(null != c) {
+            if (null != c) {
                 c.getResponseFuture().completedExceptionally(new TimeoutException());
             }
         }
     }
 
     @Override
-    public void callback(long position, byte [] result) {
+    public void callback(long position, byte[] result) {
         Callback c;
         while ((c = buffer.get()) != null && c.getPosition() < position) {
             c = buffer.remove();
             c.getResponseFuture().completedExceptionally(new IllegalStateException());
             logger.warn("Callback index not match! next callback in the waiting buffer: {}, request callback index: {}, ", c.getPosition(), position);
         }
-        if (null != c && c.getPosition() == position ) {
+        if (null != c && c.getPosition() == position) {
             c = buffer.remove();
             c.getResponseFuture().putResult(result);
         }
@@ -85,7 +86,7 @@ public class RingBufferBelt implements CallbackResultBelt {
 
     @Override
     public void failAll() {
-        while (!buffer.empty()){
+        while (!buffer.empty()) {
             buffer.remove()
                     .getResponseFuture().completedExceptionally(new IllegalStateException());
         }

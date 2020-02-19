@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -47,11 +47,11 @@ public class ThreadsManager implements Threads {
     }
 
     private AsyncLoopThread getThread(String name) {
-            AsyncLoopThread thread = threadMap.get(name);
-            if(null == thread) {
-                throw new NoSuchElementException(String.format("Thread name \"%s\" NOT exists.", name));
-            }
-            return thread;
+        AsyncLoopThread thread = threadMap.get(name);
+        if (null == thread) {
+            throw new NoSuchElementException(String.format("Thread name \"%s\" NOT exists.", name));
+        }
+        return thread;
     }
 
     @Override
@@ -81,7 +81,7 @@ public class ThreadsManager implements Threads {
 
     @Override
     public synchronized void start() {
-        if(serverState == ServerState.STOPPED) {
+        if (serverState == ServerState.STOPPED) {
             serverState = ServerState.STARTING;
             CompletableFuture.allOf(
                     threadMap.values().stream()
@@ -98,7 +98,7 @@ public class ThreadsManager implements Threads {
 
     @Override
     public synchronized void stop() {
-        if(serverState == ServerState.RUNNING) {
+        if (serverState == ServerState.RUNNING) {
             serverState = ServerState.STOPPING;
             CompletableFuture.allOf(
                     threadMap.values().stream()

@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,15 +18,16 @@ package io.journalkeeper.utils.state;
  * Date: 2019-09-10
  */
 public class ServerStateMachine implements StateServer {
-    private ServerState state = ServerState.CREATED;
     // 一次性的
     private final boolean oneTime;
+    private ServerState state = ServerState.CREATED;
     private Runnable startRunnable = null;
     private Runnable stopRunnable = null;
 
-    public ServerStateMachine(){
+    public ServerStateMachine() {
         this(false);
     }
+
     public ServerStateMachine(boolean oneTime) {
         this.oneTime = oneTime;
     }
@@ -34,7 +35,7 @@ public class ServerStateMachine implements StateServer {
 
     @Override
     public final synchronized void start() {
-        if(oneTime && state != ServerState.CREATED) {
+        if (oneTime && state != ServerState.CREATED) {
             throw new IllegalStateException(
                     String.format("Server state should be CREATED! state not changed, current state: %s.",
                             state.toString()));
@@ -56,6 +57,7 @@ public class ServerStateMachine implements StateServer {
         }
 
     }
+
     public final void start(Runnable startRunnable) {
         this.startRunnable = startRunnable;
         start();
@@ -67,14 +69,14 @@ public class ServerStateMachine implements StateServer {
     }
 
     protected void doStart() {
-        if(null != startRunnable) {
+        if (null != startRunnable) {
             startRunnable.run();
         }
     }
 
     @Override
     public final synchronized void stop() {
-        if(state != ServerState.RUNNING) {
+        if (state != ServerState.RUNNING) {
             throw new IllegalStateException(
                     String.format("Server state should be RUNNING! state not changed, current state: %s.",
                             state.toString()));
@@ -92,7 +94,7 @@ public class ServerStateMachine implements StateServer {
     }
 
     protected void doStop() {
-        if(null != stopRunnable) {
+        if (null != stopRunnable) {
             stopRunnable.run();
         }
     }
@@ -117,16 +119,17 @@ public class ServerStateMachine implements StateServer {
         this.stopRunnable = stopRunnable;
     }
 
-    public final void resetFailedState () {
+    public final void resetFailedState() {
         resetFailedState(null);
     }
+
     public final synchronized void resetFailedState(Runnable resetRunnable) {
-        if(state != ServerState.START_FAILED && state != ServerState.STOP_FAILED) {
+        if (state != ServerState.START_FAILED && state != ServerState.STOP_FAILED) {
             throw new IllegalStateException(
                     String.format("Server state should be START_FAILED or STOP_FAILED! state not changed, current state: %s.",
                             state.toString()));
         }
-        if(null != resetRunnable) {
+        if (null != resetRunnable) {
             resetRunnable.run();
         }
         state = ServerState.STOPPED;

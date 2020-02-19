@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,11 +20,11 @@ import io.journalkeeper.rpc.BaseResponse;
  * Date: 2019-03-14
  */
 public class GetServerStateResponse extends BaseResponse {
-//    private final S state;
+    //    private final S state;
     private final long lastIncludedIndex;
     private final int lastIncludedTerm;
     private final long offset;
-    private final byte [] data;
+    private final byte[] data;
     private final boolean done;
     private final int iteratorId;
 
@@ -37,6 +37,7 @@ public class GetServerStateResponse extends BaseResponse {
         this.done = done;
         this.iteratorId = iteratorId;
     }
+
     public GetServerStateResponse(Throwable exception) {
         this(exception, -1L, -1, -1L, null, false, -1);
     }

@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,7 +18,6 @@ import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateResult;
-import io.journalkeeper.utils.threads.NamedThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,8 +28,6 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITIONS_START;
@@ -42,14 +39,14 @@ import static io.journalkeeper.journalstore.JournalStoreQuery.CMD_QUERY_PARTITIO
  * @author LiYue
  * Date: 2019-05-09
  */
-public class JournalStoreState implements State , Flushable {
+public class JournalStoreState implements State, Flushable {
     private static final Logger logger = LoggerFactory.getLogger(JournalStoreState.class);
     private final static String STATE_FILE_NAME = "applied_indices";
-    private AppliedIndicesFile appliedIndices;
-    private Path path;
     private final Serializer<Long> appendResultSerializer;
     private final Serializer<JournalStoreQuery> querySerializer;
     private final Serializer<JournalStoreQueryResult> queryResultSerializer;
+    private AppliedIndicesFile appliedIndices;
+    private Path path;
 
     JournalStoreState(JournalEntryParser journalEntryParser) {
         this.appendResultSerializer = new LongSerializer();
@@ -59,14 +56,14 @@ public class JournalStoreState implements State , Flushable {
 
 
     @Override
-    public void recover(Path path, Properties properties) throws IOException{
+    public void recover(Path path, Properties properties) throws IOException {
         this.path = path;
         appliedIndices = recoverAppliedIndices(path.resolve(STATE_FILE_NAME));
     }
 
     @Override
     public void flush() {
-        if(null != path) {
+        if (null != path) {
             flushAppliedIndices(path.resolve(STATE_FILE_NAME));
         }
     }
@@ -85,8 +82,8 @@ public class JournalStoreState implements State , Flushable {
     }
 
     @Override
-    public StateResult execute(byte [] entry, int partition, long lastApplied, int batchSize, RaftJournal journal) {
-        long partitionIndex = appliedIndices.getOrDefault(partition, 0L) ;
+    public StateResult execute(byte[] entry, int partition, long lastApplied, int batchSize, RaftJournal journal) {
+        long partitionIndex = appliedIndices.getOrDefault(partition, 0L);
         appliedIndices.put(partition, partitionIndex + batchSize);
         long minIndex = journal.minIndex(partition);
         long maxIndex = appliedIndices.getOrDefault(partition, 0L);
@@ -95,14 +92,15 @@ public class JournalStoreState implements State , Flushable {
         eventData.put("partition", String.valueOf(partition));
         eventData.put("minIndex", String.valueOf(minIndex));
         eventData.put("maxIndex", String.valueOf(maxIndex));
-        return result ;
+        return result;
     }
 
     @Override
     public byte[] query(byte[] query, RaftJournal journal) {
         return queryResultSerializer.serialize(query(querySerializer.parse(query), journal));
     }
-     private JournalStoreQueryResult query(JournalStoreQuery query, RaftJournal journal) {
+
+    private JournalStoreQueryResult query(JournalStoreQuery query, RaftJournal journal) {
         try {
             switch (query.getCmd()) {
                 case CMD_QUERY_ENTRIES:
@@ -122,39 +120,38 @@ public class JournalStoreState implements State , Flushable {
 
     private JournalStoreQueryResult queryIndex(int partition, long timestamp, RaftJournal journal) {
 
-        return  new JournalStoreQueryResult(journal.queryIndexByTimestamp(partition, timestamp));
+        return new JournalStoreQueryResult(journal.queryIndexByTimestamp(partition, timestamp));
     }
 
     private JournalStoreQueryResult queryPartitions(RaftJournal journal) {
         Set<Integer> partitions = journal.getPartitions();
         partitions.removeIf(partition -> partition >= RESERVED_PARTITIONS_START);
         return
-            new JournalStoreQueryResult(
-                    partitions.stream()
-                    .collect(Collectors.toMap(
-                            Integer::intValue,
-                            partition -> new JournalStoreQueryResult.Boundary(journal.minIndex(partition), appliedIndices.getOrDefault(partition, 0L))
-                    )));
+                new JournalStoreQueryResult(
+                        partitions.stream()
+                                .collect(Collectors.toMap(
+                                        Integer::intValue,
+                                        partition -> new JournalStoreQueryResult.Boundary(journal.minIndex(partition), appliedIndices.getOrDefault(partition, 0L))
+                                )));
     }
-
 
 
     private JournalStoreQueryResult queryEntries(int partition, long index, int size, RaftJournal journal) {
         long maxAppliedIndex = appliedIndices.getOrDefault(partition, 0L);
         int safeSize;
-        if(index > maxAppliedIndex || index > journal.maxIndex(partition)) {
+        if (index > maxAppliedIndex || index > journal.maxIndex(partition)) {
             return new JournalStoreQueryResult(null, null, CMD_QUERY_ENTRIES, index, JournalStoreQueryResult.CODE_OVERFLOW);
         }
 
-        if(index < journal.minIndex(partition)) {
+        if (index < journal.minIndex(partition)) {
             return new JournalStoreQueryResult(null, null, CMD_QUERY_ENTRIES, index, JournalStoreQueryResult.CODE_UNDERFLOW);
         }
 
-        if(index == journal.maxIndex(partition)) {
+        if (index == journal.maxIndex(partition)) {
             return new JournalStoreQueryResult(Collections.emptyList());
         }
 
-        if(index + size >= maxAppliedIndex) {
+        if (index + size >= maxAppliedIndex) {
             safeSize = (int) (maxAppliedIndex - index);
         } else {
             safeSize = size;
@@ -165,7 +162,7 @@ public class JournalStoreState implements State , Flushable {
 
     @Override
     public void close() {
-        if(null != appliedIndices) {
+        if (null != appliedIndices) {
             appliedIndices.close();
         }
     }

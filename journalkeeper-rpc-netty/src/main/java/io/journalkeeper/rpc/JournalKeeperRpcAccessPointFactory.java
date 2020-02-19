@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -48,6 +48,7 @@ public class JournalKeeperRpcAccessPointFactory implements RpcAccessPointFactory
             new HashMap<>();
     private final DefaultTransportServerFactory defaultTransportServerFactory;
     private final UriRoutedCommandHandlerFactory handlerFactory;
+
     public JournalKeeperRpcAccessPointFactory() {
         JournalKeeperCodec journalKeeperCodec = new JournalKeeperCodec();
         transportClientFactory = new DefaultTransportClientFactory(journalKeeperCodec);
@@ -57,6 +58,7 @@ public class JournalKeeperRpcAccessPointFactory implements RpcAccessPointFactory
                 new JournalKeeperCodec(), handlerFactory
         );
     }
+
     @Override
     public ServerRpcAccessPoint createServerRpcAccessPoint(Properties properties) {
         ClientConfig clientConfig = toClientConfig(properties);
@@ -64,7 +66,7 @@ public class JournalKeeperRpcAccessPointFactory implements RpcAccessPointFactory
     }
 
     @Override
-    public ClientServerRpcAccessPoint createClientServerRpcAccessPoint( Properties properties) {
+    public ClientServerRpcAccessPoint createClientServerRpcAccessPoint(Properties properties) {
         ClientConfig clientConfig = toClientConfig(properties);
         return new JournalKeeperClientServerRpcAccessPoint(transportClientFactory.create(clientConfig), properties);
     }
@@ -72,36 +74,36 @@ public class JournalKeeperRpcAccessPointFactory implements RpcAccessPointFactory
     @Override
     public synchronized StateServer bindServerService(ServerRpc serverRpc) {
 
-            InetSocketAddress address = UriSupport.parseUri(serverRpc.serverUri());
-            TransportServerAndReferenceCount server = transportServerMap.computeIfAbsent(address, addr -> {
-                try {
-                    TransportServer ts = defaultTransportServerFactory
-                            .bind(new ServerConfig(), addr.getHostName(), addr.getPort());
-                    ts.start();
-                    return new TransportServerAndReferenceCount(ts);
-                } catch (Throwable t) {
-                    throw new RpcException(t);
-                }
-            });
-            server.getReferenceCounter().incrementAndGet();
-            ServerRpcCommandHandlerRegistry.register(handlerFactory, serverRpc);
+        InetSocketAddress address = UriSupport.parseUri(serverRpc.serverUri());
+        TransportServerAndReferenceCount server = transportServerMap.computeIfAbsent(address, addr -> {
+            try {
+                TransportServer ts = defaultTransportServerFactory
+                        .bind(new ServerConfig(), addr.getHostName(), addr.getPort());
+                ts.start();
+                return new TransportServerAndReferenceCount(ts);
+            } catch (Throwable t) {
+                throw new RpcException(t);
+            }
+        });
+        server.getReferenceCounter().incrementAndGet();
+        ServerRpcCommandHandlerRegistry.register(handlerFactory, serverRpc);
 
-            return new ServerStateMachine(true) {
-                @Override
-                protected void doStop() {
-                    super.doStop();
-                    int ref = server.getReferenceCounter().decrementAndGet();
-                    handlerFactory.unRegister(serverRpc.serverUri());
-                    if(ref <= 0) {
-                        synchronized (JournalKeeperRpcAccessPointFactory.this) {
+        return new ServerStateMachine(true) {
+            @Override
+            protected void doStop() {
+                super.doStop();
+                int ref = server.getReferenceCounter().decrementAndGet();
+                handlerFactory.unRegister(serverRpc.serverUri());
+                if (ref <= 0) {
+                    synchronized (JournalKeeperRpcAccessPointFactory.this) {
 
-                            transportServerMap.remove(address);
-                            server.getTransportServer().stop();
+                        transportServerMap.remove(address);
+                        server.getTransportServer().stop();
 
-                        }
                     }
                 }
-            };
+            }
+        };
 
     }
 

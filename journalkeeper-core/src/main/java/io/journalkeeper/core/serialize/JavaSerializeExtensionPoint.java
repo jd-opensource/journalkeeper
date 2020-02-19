@@ -18,7 +18,7 @@ public class JavaSerializeExtensionPoint implements SerializeExtensionPoint {
     @Override
     @SuppressWarnings("unchecked")
     public <E> E parse(byte[] bytes, int offset, int length) {
-        if(length == 0) {
+        if (length == 0) {
             return null;
         }
         try (ByteArrayInputStream bis = new ByteArrayInputStream(bytes);
@@ -31,7 +31,7 @@ public class JavaSerializeExtensionPoint implements SerializeExtensionPoint {
 
     @Override
     public <E> byte[] serialize(E entry) {
-        if(null == entry) {
+        if (null == entry) {
             return new byte[0];
         }
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();

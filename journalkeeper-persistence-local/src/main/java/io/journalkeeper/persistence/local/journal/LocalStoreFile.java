@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -36,6 +36,12 @@ import java.util.concurrent.locks.StampedLock;
  */
 public class LocalStoreFile implements StoreFile, BufferHolder {
     private static final Logger logger = LoggerFactory.getLogger(LocalStoreFile.class);
+    // 缓存页类型
+    // 只读：
+    // MAPPED_BUFFER：mmap映射内存镜像文件；
+    // 读写：
+    // DIRECT_BUFFER: 数据先写入DirectBuffer，异步刷盘到文件，性能最好；
+    private final static int MAPPED_BUFFER = 0, DIRECT_BUFFER = 1, NO_BUFFER = -1;
     // 文件全局位置
     private final long filePosition;
     // 文件头长度
@@ -45,16 +51,9 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     // buffer读写锁：
     // 访问(包括读和写）buffer时加读锁；
     // 加载、释放buffer时加写锁；
-    private  final StampedLock bufferLock = new StampedLock();
+    private final StampedLock bufferLock = new StampedLock();
     // 缓存页
     private ByteBuffer pageBuffer = null;
-
-    // 缓存页类型
-    // 只读：
-    // MAPPED_BUFFER：mmap映射内存镜像文件；
-    // 读写：
-    // DIRECT_BUFFER: 数据先写入DirectBuffer，异步刷盘到文件，性能最好；
-    private final static int MAPPED_BUFFER = 0, DIRECT_BUFFER = 1, NO_BUFFER = -1;
     private int bufferType = NO_BUFFER;
 
     private PreloadBufferPool bufferPool;
@@ -67,6 +66,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     private int writePosition = 0;
 
     private long timestamp = -1L;
+    private AtomicBoolean flushGate = new AtomicBoolean(false);
 
 
     LocalStoreFile(long filePosition, File base, int headerSize, PreloadBufferPool bufferPool, int maxFileDataLength) {
@@ -75,12 +75,11 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         this.bufferPool = bufferPool;
         this.capacity = maxFileDataLength;
         this.file = new File(base, String.valueOf(filePosition));
-        if(file.exists() && file.length() > headerSize) {
-            this.writePosition = (int)(file.length() - headerSize);
+        if (file.exists() && file.length() > headerSize) {
+            this.writePosition = (int) (file.length() - headerSize);
             this.flushPosition = writePosition;
         }
     }
-
 
     @Override
     public File file() {
@@ -92,7 +91,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         return filePosition;
     }
 
-    private void loadRoUnsafe() throws IOException{
+    private void loadRoUnsafe() throws IOException {
         if (null != pageBuffer) throw new IOException("Buffer already loaded!");
         bufferPool.allocateMMap(this);
         ByteBuffer loadBuffer;
@@ -110,15 +109,15 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         }
     }
 
-    private void loadRwUnsafe() throws IOException{
-            if(bufferType == DIRECT_BUFFER ) {
-                return;
-            } else if(bufferType == MAPPED_BUFFER) {
-                unloadUnsafe();
-            }
+    private void loadRwUnsafe() throws IOException {
+        if (bufferType == DIRECT_BUFFER) {
+            return;
+        } else if (bufferType == MAPPED_BUFFER) {
+            unloadUnsafe();
+        }
 
-            ByteBuffer buffer = bufferPool.allocateDirect(capacity, this);
-            loadDirectBuffer(buffer);
+        ByteBuffer buffer = bufferPool.allocateDirect(capacity, this);
+        loadDirectBuffer(buffer);
 
     }
 
@@ -175,13 +174,13 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     public boolean unload() {
         long stamp = bufferLock.writeLock();
         try {
-            if(isClean()) {
+            if (isClean()) {
                 unloadUnsafe();
                 return true;
             } else {
                 return false;
             }
-        }finally {
+        } finally {
             bufferLock.unlockWrite(stamp);
         }
     }
@@ -191,7 +190,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         long stamp = bufferLock.writeLock();
         try {
             unloadUnsafe();
-        }finally {
+        } finally {
             bufferLock.unlockWrite(stamp);
         }
     }
@@ -201,15 +200,14 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         return this.bufferType != NO_BUFFER;
     }
 
-
     @Override
-    public ByteBuffer read(int position, int length) throws IOException{
+    public ByteBuffer read(int position, int length) throws IOException {
         touch();
         long stamp = bufferLock.readLock();
         try {
             while (!hasPage()) {
                 long ws = bufferLock.tryConvertToWriteLock(stamp);
-                if(ws != 0L) {
+                if (ws != 0L) {
                     // 升级成写锁成功
                     stamp = ws;
                     loadRoUnsafe();
@@ -219,7 +217,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
                 }
             }
             long rs = bufferLock.tryConvertToReadLock(stamp);
-            if(rs != 0L) {
+            if (rs != 0L) {
                 stamp = rs;
             }
             ByteBuffer byteBuffer = pageBuffer.asReadOnlyBuffer();
@@ -249,16 +247,14 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         return writeLength;
     }
 
-
-
     @Override
-    public int append(ByteBuffer byteBuffer) throws IOException{
+    public int append(ByteBuffer byteBuffer) throws IOException {
         touch();
         long stamp = bufferLock.readLock();
         try {
-            while (bufferType != DIRECT_BUFFER ) {
+            while (bufferType != DIRECT_BUFFER) {
                 long ws = bufferLock.tryConvertToWriteLock(stamp);
-                if(ws != 0L) {
+                if (ws != 0L) {
                     // 升级成写锁成功
                     stamp = ws;
                     loadRwUnsafe();
@@ -268,7 +264,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
                 }
             }
             long rs = bufferLock.tryConvertToReadLock(stamp);
-            if(rs != 0L) {
+            if (rs != 0L) {
                 stamp = rs;
             }
             return appendToPageBuffer(byteBuffer);
@@ -280,8 +276,6 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     private void touch() {
         lastAccessTime = System.currentTimeMillis();
     }
-
-    private AtomicBoolean flushGate = new AtomicBoolean(false);
 
     /**
      * 刷盘
@@ -298,7 +292,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
                         writeTimestamp();
                     }
                     try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
-                        return  flushPageBuffer(fileChannel);
+                        return flushPageBuffer(fileChannel);
                     } finally {
                         flushGate.compareAndSet(true, false);
                     }
@@ -330,7 +324,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     // Not thread safe!
     @Override
     public void rollback(int position) throws IOException {
-        if(position < writePosition) {
+        if (position < writePosition) {
             writePosition = position;
         }
         if (position < flushPosition) {
@@ -342,7 +336,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
                 try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
                     fileChannel.truncate(position + headerSize);
                 }
-            }finally {
+            } finally {
                 flushGate.compareAndSet(true, false);
             }
         }
@@ -360,7 +354,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
 
     @Override
     public int fileDataSize() {
-        return Math.max((int)file.length() - headerSize, 0);
+        return Math.max((int) file.length() - headerSize, 0);
     }
 
     @Override
@@ -386,7 +380,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         final ByteBuffer direct = pageBuffer;
         pageBuffer = null;
         this.bufferType = NO_BUFFER;
-        if(null != direct) bufferPool.releaseDirect(direct, this);
+        if (null != direct) bufferPool.releaseDirect(direct, this);
     }
 
     private void unloadMappedBuffer() {
@@ -394,7 +388,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
             final Buffer mapped = pageBuffer;
             pageBuffer = null;
             this.bufferType = NO_BUFFER;
-            if(null != mapped) {
+            if (null != mapped) {
                 Method getCleanerMethod;
                 getCleanerMethod = mapped.getClass().getMethod("cleaner");
                 getCleanerMethod.setAccessible(true);
@@ -402,10 +396,11 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
                 cleaner.clean();
             }
             bufferPool.releaseMMap(this);
-        }catch (Exception e) {
+        } catch (Exception e) {
             logger.warn("Release direct buffer exception: ", e);
         }
     }
+
     @Override
     public int size() {
         return capacity;

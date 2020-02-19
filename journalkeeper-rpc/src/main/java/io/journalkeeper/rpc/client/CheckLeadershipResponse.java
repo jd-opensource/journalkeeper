@@ -7,7 +7,9 @@ import io.journalkeeper.rpc.LeaderResponse;
  * Date: 2019/12/13
  */
 public class CheckLeadershipResponse extends LeaderResponse {
-    public CheckLeadershipResponse() {}
+    public CheckLeadershipResponse() {
+    }
+
     public CheckLeadershipResponse(Throwable throwable) {
         super(throwable);
     }

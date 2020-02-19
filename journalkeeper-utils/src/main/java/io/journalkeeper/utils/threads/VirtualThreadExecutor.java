@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -110,12 +110,14 @@ public class VirtualThreadExecutor {
         virtualThreads.add(vt);
         commandQueue.add(new DelayCommand(vt, name));
     }
+
     public void start(VirtualThread vt, long minDelayMs, String name) {
         virtualThreads.add(vt);
         commandQueue.add(new DelayCommand(vt, minDelayMs, name));
     }
+
     public void stop(VirtualThread vt) throws InterruptedException {
-        if(virtualThreads.remove(vt)) {
+        if (virtualThreads.remove(vt)) {
             toBeRemoved.add(vt);
             if (commandQueue.removeIf(cmd -> cmd.virtualThread == vt)) {
                 toBeRemoved.remove(vt);
@@ -127,14 +129,15 @@ public class VirtualThreadExecutor {
         }
     }
 
-    private void wait(Thread thread){
+    private void wait(Thread thread) {
         logger.info("Stopping thread {}...", thread.getName());
         long t0 = System.currentTimeMillis();
         long timeout = 1000L;
-        while (System.currentTimeMillis() - t0 < timeout && thread.isAlive()){
+        while (System.currentTimeMillis() - t0 < timeout && thread.isAlive()) {
             try {
                 Thread.sleep(10);
-            } catch (InterruptedException ignored) {}
+            } catch (InterruptedException ignored) {
+            }
         }
     }
 
@@ -143,65 +146,19 @@ public class VirtualThreadExecutor {
         workThreads.forEach(this::wait);
     }
 
-    private class WorkThread implements Runnable{
-        @Override
-        public void run() {
-            DelayCommand cmd = null;
-            boolean dryRun = true;
-            while (!Thread.currentThread().isInterrupted() ) {
-
-                try {
-                    cmd = commandQueue.take();
-                    if(toBeRemoved.remove(cmd.virtualThread)) {
-                        continue;
-                    }
-                    long start = System.currentTimeMillis();
-                    dryRun = true;
-                    while (maxUseTime + start >  System.currentTimeMillis()) {
-                        if(cmd.virtualThread.run()) {
-                            if(dryRun) dryRun = false;
-                        } else {
-                            break;
-                        }
-                        Thread.yield();
-                    }
-                } catch (InterruptedException e) {
-                    logger.warn("Virtual thread interrupted!");
-                    break;
-                }catch (Throwable e) {
-                    logger.warn("Exception on {} :", cmd == null ? "": cmd.name , e);
-                }
-                if(null != cmd) {
-                    long now = System.currentTimeMillis();
-                    if(dryRun) {
-                        if(keepAliveTimeMs + cmd.lastRunTime <= now) {
-                            if (cmd.delay < maxIntervalMs) {
-                                cmd.delay += maxIntervalMs / steps;
-                            }
-                        }
-                    } else {
-                        cmd.delay = cmd.minDelayMs;
-                        cmd.lastRunTime = now;
-                    }
-                    cmd.startTime = now + cmd.delay;
-                    commandQueue.put(cmd);
-                }
-            }
-        }
-
-    }
-
-    private static class DelayCommand implements Delayed{
-        private volatile long startTime = System.currentTimeMillis();
+    private static class DelayCommand implements Delayed {
         private final VirtualThread virtualThread;
-        private volatile long lastRunTime = System.currentTimeMillis(); // 上一次有效运行的结束时间
-        private volatile long delay = 0;
         private final long minDelayMs;
         private final String name;
+        private volatile long startTime = System.currentTimeMillis();
+        private volatile long lastRunTime = System.currentTimeMillis(); // 上一次有效运行的结束时间
+        private volatile long delay = 0;
+
         private DelayCommand(VirtualThread virtualThread, String name) {
             this(virtualThread, 0L, name);
 
         }
+
         private DelayCommand(VirtualThread virtualThread, long minDelayMs, String name) {
             this.virtualThread = virtualThread;
             this.minDelayMs = minDelayMs;
@@ -224,6 +181,54 @@ public class VirtualThreadExecutor {
             }
             return 0;
 
+        }
+
+    }
+
+    private class WorkThread implements Runnable {
+        @Override
+        public void run() {
+            DelayCommand cmd = null;
+            boolean dryRun = true;
+            while (!Thread.currentThread().isInterrupted()) {
+
+                try {
+                    cmd = commandQueue.take();
+                    if (toBeRemoved.remove(cmd.virtualThread)) {
+                        continue;
+                    }
+                    long start = System.currentTimeMillis();
+                    dryRun = true;
+                    while (maxUseTime + start > System.currentTimeMillis()) {
+                        if (cmd.virtualThread.run()) {
+                            if (dryRun) dryRun = false;
+                        } else {
+                            break;
+                        }
+                        Thread.yield();
+                    }
+                } catch (InterruptedException e) {
+                    logger.warn("Virtual thread interrupted!");
+                    break;
+                } catch (Throwable e) {
+                    logger.warn("Exception on {} :", cmd == null ? "" : cmd.name, e);
+                }
+                if (null != cmd) {
+                    long now = System.currentTimeMillis();
+                    if (dryRun) {
+                        if (keepAliveTimeMs + cmd.lastRunTime <= now) {
+                            if (cmd.delay < maxIntervalMs) {
+                                cmd.delay += maxIntervalMs / steps;
+                            }
+                        }
+                    } else {
+                        cmd.delay = cmd.minDelayMs;
+                        cmd.lastRunTime = now;
+                    }
+                    cmd.startTime = now + cmd.delay;
+                    commandQueue.put(cmd);
+                }
+            }
         }
 
     }

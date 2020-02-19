@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -25,7 +25,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * 服务
  */
 public abstract class Activity {
-    private final Logger logger = LoggerFactory.getLogger(Activity.class);
     // 锁
     protected final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
     // 锁
@@ -38,6 +37,7 @@ public abstract class Activity {
     protected final AtomicReference<ServiceState> serviceState = new AtomicReference<ServiceState>();
     // 信号量
     protected final Object signal = new Object();
+    private final Logger logger = LoggerFactory.getLogger(Activity.class);
 
     /**
      * 启动
@@ -114,7 +114,7 @@ public abstract class Activity {
      * @param e 异常
      */
     protected void startError(Exception e) {
-        logger.error("start error ",e);
+        logger.error("start error ", e);
     }
 
     /**
@@ -286,22 +286,28 @@ public abstract class Activity {
         /**
          * 准备启动
          */
-        WILL_START, /**
+        WILL_START,
+        /**
          * 启动中
          */
-        STARTING, /**
+        STARTING,
+        /**
          * 启动失败
          */
-        START_FAILED, /**
+        START_FAILED,
+        /**
          * 启动完成
          */
-        STARTED, /**
+        STARTED,
+        /**
          * 准备关闭
          */
-        WILL_STOP, /**
+        WILL_STOP,
+        /**
          * 关闭中
          */
-        STOPPING, /**
+        STOPPING,
+        /**
          * 关闭完成
          */
         STOPPED

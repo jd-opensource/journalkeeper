@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -54,8 +54,8 @@ public interface RaftClient extends Watchable, ClusterReadyAware, ServerConfigAw
      * @param entry 操作命令数组
      * @return 操作命令在状态机的执行结果
      */
-    default CompletableFuture<byte []> update(byte [] entry) {
-        return update(entry, RaftJournal.DEFAULT_PARTITION, 1, false,  ResponseConfig.REPLICATION);
+    default CompletableFuture<byte[]> update(byte[] entry) {
+        return update(entry, RaftJournal.DEFAULT_PARTITION, 1, false, ResponseConfig.REPLICATION);
     }
 
     /**
@@ -66,7 +66,7 @@ public interface RaftClient extends Watchable, ClusterReadyAware, ServerConfigAw
      * @param responseConfig 响应级别。See {@link ResponseConfig}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    default CompletableFuture<byte []> update(byte [] entry, int partition, int batchSize, ResponseConfig responseConfig) {
+    default CompletableFuture<byte[]> update(byte[] entry, int partition, int batchSize, ResponseConfig responseConfig) {
         return update(entry, partition, batchSize, false, responseConfig);
     }
 
@@ -79,7 +79,7 @@ public interface RaftClient extends Watchable, ClusterReadyAware, ServerConfigAw
      * @param responseConfig 响应级别。See {@link ResponseConfig}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    default CompletableFuture<byte []> update(byte [] entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig) {
+    default CompletableFuture<byte[]> update(byte[] entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig) {
         return update(new UpdateRequest(entry, partition, batchSize), includeHeader, responseConfig);
     }
 
@@ -91,10 +91,10 @@ public interface RaftClient extends Watchable, ClusterReadyAware, ServerConfigAw
      * @param responseConfig 响应级别。See {@link ResponseConfig}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    default CompletableFuture<byte []> update(UpdateRequest updateRequest, boolean includeHeader, ResponseConfig responseConfig){
+    default CompletableFuture<byte[]> update(UpdateRequest updateRequest, boolean includeHeader, ResponseConfig responseConfig) {
         return update(Collections.singletonList(updateRequest), includeHeader, responseConfig)
                 .thenApply(ers -> {
-                    if(null != ers && ers.size() > 0) {
+                    if (null != ers && ers.size() > 0) {
                         return ers.get(0);
                     }
                     return null;
@@ -109,7 +109,7 @@ public interface RaftClient extends Watchable, ClusterReadyAware, ServerConfigAw
      * @param responseConfig 响应级别。See {@link ResponseConfig}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    default CompletableFuture<byte []> update(UpdateRequest updateRequest, ResponseConfig responseConfig) {
+    default CompletableFuture<byte[]> update(UpdateRequest updateRequest, ResponseConfig responseConfig) {
         return update(updateRequest, false, responseConfig);
     }
 
@@ -120,7 +120,7 @@ public interface RaftClient extends Watchable, ClusterReadyAware, ServerConfigAw
      * @param updateRequest See {@link UpdateRequest}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    default CompletableFuture<byte []> update(UpdateRequest updateRequest) {
+    default CompletableFuture<byte[]> update(UpdateRequest updateRequest) {
         return update(updateRequest, false, ResponseConfig.REPLICATION);
     }
 
@@ -131,7 +131,7 @@ public interface RaftClient extends Watchable, ClusterReadyAware, ServerConfigAw
      * @param responseConfig 响应级别。See {@link ResponseConfig}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    default CompletableFuture<List<byte []>> update(List<UpdateRequest> updateRequests, ResponseConfig responseConfig) {
+    default CompletableFuture<List<byte[]>> update(List<UpdateRequest> updateRequests, ResponseConfig responseConfig) {
         return update(updateRequests, false, responseConfig);
     }
 
@@ -142,7 +142,7 @@ public interface RaftClient extends Watchable, ClusterReadyAware, ServerConfigAw
      * @param updateRequests See {@link UpdateRequest}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    default CompletableFuture<List<byte []>> update(List<UpdateRequest> updateRequests) {
+    default CompletableFuture<List<byte[]>> update(List<UpdateRequest> updateRequests) {
         return update(updateRequests, false, ResponseConfig.REPLICATION);
     }
 
@@ -153,7 +153,7 @@ public interface RaftClient extends Watchable, ClusterReadyAware, ServerConfigAw
      * @param responseConfig 响应级别。See {@link ResponseConfig}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    CompletableFuture<List<byte []>> update(List<UpdateRequest> updateRequests, boolean includeHeader, ResponseConfig responseConfig);
+    CompletableFuture<List<byte[]>> update(List<UpdateRequest> updateRequests, boolean includeHeader, ResponseConfig responseConfig);
 
 
     /**
@@ -161,7 +161,7 @@ public interface RaftClient extends Watchable, ClusterReadyAware, ServerConfigAw
      * @param query 查询条件
      * @return 查询结果
      */
-    CompletableFuture<byte []> query(byte [] query);
+    CompletableFuture<byte[]> query(byte[] query);
 
     void stop();
 }

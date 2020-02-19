@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -28,19 +28,20 @@ public abstract class LeaderResponseCodec<R extends LeaderResponse> extends Resp
     @Override
     protected final void encodeResponse(R response, ByteBuf buffer) throws Exception {
         encodeLeaderResponse(response, buffer);
-        CodecSupport.encodeString(buffer,response.getLeader() == null ? null: response.getLeader().toString());
+        CodecSupport.encodeString(buffer, response.getLeader() == null ? null : response.getLeader().toString());
     }
 
     @Override
     protected final R decodeResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
         R response = decodeLeaderResponse(header, buffer);
         String leaderStr = CodecSupport.decodeString(buffer);
-        if(leaderStr.length() > 0) {
+        if (leaderStr.length() > 0) {
             response.setLeader(URI.create(leaderStr));
         }
         return response;
     }
 
     protected abstract void encodeLeaderResponse(R leaderResponse, ByteBuf buffer) throws Exception;
+
     protected abstract R decodeLeaderResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception;
 }

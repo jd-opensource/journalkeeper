@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -42,7 +42,7 @@ public interface State {
      * @param journal 当前的journal
      * @return 执行结果。See {@link StateResult}
      */
-    StateResult execute(byte [] entry, int partition, long index, int batchSize, RaftJournal journal);
+    StateResult execute(byte[] entry, int partition, long index, int batchSize, RaftJournal journal);
 
     /**
      * 查询
@@ -50,7 +50,7 @@ public interface State {
      * @param journal 当前的journal
      * @return 查询结果
      */
-    byte [] query(byte [] query, RaftJournal journal);
+    byte[] query(byte[] query, RaftJournal journal);
 
     /**
      * 从磁盘中恢复状态机中的状态数据，在状态机启动的时候调用。
@@ -63,5 +63,6 @@ public interface State {
     /**
      * 安全的关闭状态机
      */
-    default void close(){}
+    default void close() {
+    }
 }

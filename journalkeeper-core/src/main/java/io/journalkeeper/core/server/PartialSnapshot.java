@@ -2,9 +2,21 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -99,20 +111,20 @@ class PartialSnapshot {
 
         ByteBuffer buffer = ByteBuffer.wrap(data);
         int filenameLength = buffer.getInt();
-        byte [] filenameBytes = new byte[filenameLength];
+        byte[] filenameBytes = new byte[filenameLength];
         buffer.get(filenameBytes);
         String filePathString = new String(filenameBytes, StandardCharsets.UTF_8);
         long offsetOfFile = buffer.getLong();
 
         Path filePath = this.partialSnapshotPath.resolve(filePathString);
 
-        if(offsetOfFile == 0) {
+        if (offsetOfFile == 0) {
             Files.createDirectories(filePath.getParent());
         }
 
         logger.info("Installing snapshot file: {}...", filePath);
 
-        if( offsetOfFile == 0 || Files.size(filePath) == offsetOfFile) {
+        if (offsetOfFile == 0 || Files.size(filePath) == offsetOfFile) {
             try (FileOutputStream output = new FileOutputStream(filePath.toFile(), true)) {
                 output.write(data, buffer.position(), buffer.remaining());
             }
@@ -136,7 +148,7 @@ class PartialSnapshot {
     }
 
     private void begin(Path path) throws IOException {
-        if(null == path) {
+        if (null == path) {
             throw new IllegalArgumentException("Path can not be null!");
         }
         this.snapshotPath = path;

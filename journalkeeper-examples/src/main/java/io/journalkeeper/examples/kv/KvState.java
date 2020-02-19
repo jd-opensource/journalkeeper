@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -37,15 +37,14 @@ import java.util.Properties;
  */
 public class KvState implements WrappedState<String, String, String, String> {
     private static final Logger logger = LoggerFactory.getLogger(KvState.class);
-    private Map<String, String> stateMap = new HashMap<>();
     private final static String FILENAME = "map";
-    private final Gson gson = new Gson();
-    private Path statePath;
-
     private static final String CMD_GET = "GET";
     private static final String CMD_SET = "SET";
     private static final String CMD_DEL = "DEL";
     private static final String CMD_LIST = "KEYS";
+    private final Gson gson = new Gson();
+    private Map<String, String> stateMap = new HashMap<>();
+    private Path statePath;
 
     @Override
     public void recover(Path statePath, Properties properties) {
@@ -63,7 +62,7 @@ public class KvState implements WrappedState<String, String, String, String> {
         }
     }
 
-    private void checkInput(String [] input, int count) {
+    private void checkInput(String[] input, int count) {
         if (input.length < count) {
             throw new IllegalArgumentException("Bad request: " + String.join(" ", input) + "!");
         }
@@ -71,7 +70,7 @@ public class KvState implements WrappedState<String, String, String, String> {
 
     @Override
     public String execute(String cmd) {
-        String [] splt = cmd.split("\\s");
+        String[] splt = cmd.split("\\s");
         try {
             checkInput(splt, 1);
 
@@ -97,7 +96,7 @@ public class KvState implements WrappedState<String, String, String, String> {
     @Override
     public String query(String query) {
 
-        String [] splt = query.split("\\s");
+        String[] splt = query.split("\\s");
         try {
             checkInput(splt, 1);
 

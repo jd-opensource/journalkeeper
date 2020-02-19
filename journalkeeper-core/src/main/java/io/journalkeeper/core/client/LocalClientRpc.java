@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,7 +13,6 @@
  */
 package io.journalkeeper.core.client;
 
-import io.journalkeeper.core.exception.NoLeaderException;
 import io.journalkeeper.exceptions.ServerBusyException;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.client.ClientServerRpc;
@@ -44,6 +43,7 @@ public class LocalClientRpc implements ClientRpc {
     private final CheckRetry<BaseResponse> checkRetry = new LocalClientCheckRetry();
     private final Executor executor;
     private final ScheduledExecutorService scheduledExecutor;
+
     public LocalClientRpc(ClientServerRpc localServer, RetryPolicy retryPolicy, Executor executor, ScheduledExecutorService scheduledExecutor) {
         this.localServer = localServer;
         this.scheduledExecutor = scheduledExecutor;
@@ -60,13 +60,13 @@ public class LocalClientRpc implements ClientRpc {
 
     @Override
     public <O extends BaseResponse> CompletableFuture<O> invokeClientServerRpc(URI uri, CompletableRetry.RpcInvoke<O, ClientServerRpc> invoke) {
-        if(localServer.serverUri().equals(uri))  {
+        if (localServer.serverUri().equals(uri)) {
             return invokeClientServerRpc(invoke);
         } else {
             throw new IllegalArgumentException(
                     String.format("Request uri %s is NOT accessible!" +
-                            "You should only request to local server %s in local client mode.",
-                    uri.toString(), localServer.serverUri().toString())
+                                    "You should only request to local server %s in local client mode.",
+                            uri.toString(), localServer.serverUri().toString())
             );
         }
     }
@@ -115,7 +115,8 @@ public class LocalClientRpc implements ClientRpc {
                 throw exception;
             } catch (ServerBusyException | TimeoutException ignored) {
                 return true;
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            }
             return false;
         }
 

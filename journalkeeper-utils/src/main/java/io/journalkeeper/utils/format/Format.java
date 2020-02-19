@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -26,41 +26,42 @@ import java.util.Map;
  * Date: 2019-01-17
  */
 public class Format {
-    private final static long K = 1024,M = K * K;
+    private final static long K = 1024, M = K * K;
     private final static long G = K * M, T = K * G;
-    private final static Map<String,Long> UNIT_MAP = new HashMap<>(4);
-    static {
-        UNIT_MAP.put("k",K);
-        UNIT_MAP.put("m",M);
-        UNIT_MAP.put("g",G);
-        UNIT_MAP.put("t",T);
-    }
-
+    private final static Map<String, Long> UNIT_MAP = new HashMap<>(4);
     private static ThreadLocal<SimpleDateFormat> sdfHolder
             = ThreadLocal.withInitial(() -> new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
+
+    static {
+        UNIT_MAP.put("k", K);
+        UNIT_MAP.put("m", M);
+        UNIT_MAP.put("g", G);
+        UNIT_MAP.put("t", T);
+    }
+
     public static String format(Date date) {
         return sdfHolder.get().format(date);
     }
 
     public static String formatWithComma(long position) {
-        return  NumberFormat.getNumberInstance(Locale.US).format(position);
+        return NumberFormat.getNumberInstance(Locale.US).format(position);
     }
 
     // copied from https://stackoverflow.com/questions/3263892/format-file-size-as-mb-gb-etc/5599842#5599842
     public static String formatSize(long size) {
-        if(size <= 0) return "0";
-        final String[] units = new String[] { "B", "KB", "MB", "GB", "TB" };
-        int digitGroups = (int) (Math.log10(size)/Math.log10(1024));
-        return new DecimalFormat("#,##0.#").format(size/Math.pow(1024, digitGroups)) + " " + units[digitGroups];
+        if (size <= 0) return "0";
+        final String[] units = new String[]{"B", "KB", "MB", "GB", "TB"};
+        int digitGroups = (int) (Math.log10(size) / Math.log10(1024));
+        return new DecimalFormat("#,##0.#").format(size / Math.pow(1024, digitGroups)) + " " + units[digitGroups];
     }
 
-    public static long parseSize(String sizeString,long defaultValue){
+    public static long parseSize(String sizeString, long defaultValue) {
         long size = defaultValue;
-        if(sizeString != null ) {
+        if (sizeString != null) {
             String trimString = sizeString.trim().toLowerCase();
-            if(!trimString.isEmpty()) {
-                long unit = UNIT_MAP.getOrDefault(trimString.substring(sizeString.length() - 1),1L);
-                if(unit > 1L) {
+            if (!trimString.isEmpty()) {
+                long unit = UNIT_MAP.getOrDefault(trimString.substring(sizeString.length() - 1), 1L);
+                if (unit > 1L) {
                     trimString = trimString.substring(0, trimString.length() - 1).trim();
                 }
                 size = Long.parseLong(trimString) * unit;

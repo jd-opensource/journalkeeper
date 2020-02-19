@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -43,6 +43,7 @@ public interface ClusterAccessPoint {
      * @return AdminClient实例。
      */
     AdminClient getAdminClient();
+
     /**
      * 获取绑定到本地Server节点的AdminClient实例，所有请求不经过RPC，直接调用本地Server节点。
      * 注意：如果本地Server节点不是LEADER，所有LEADER请求将会抛出{@link io.journalkeeper.exceptions.NotLeaderException}

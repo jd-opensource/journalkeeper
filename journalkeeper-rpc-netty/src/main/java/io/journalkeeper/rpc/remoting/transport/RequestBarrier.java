@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,7 +15,6 @@ package io.journalkeeper.rpc.remoting.transport;
 
 import io.journalkeeper.rpc.remoting.transport.config.TransportConfig;
 import io.journalkeeper.rpc.remoting.transport.exception.TransportException;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,14 +31,13 @@ import java.util.concurrent.TimeUnit;
 public class RequestBarrier {
 
     protected static Logger logger = LoggerFactory.getLogger(RequestBarrier.class);
-
-    private TransportConfig config;
     // 单向信号量
     public Semaphore onewaySemaphore;
     // 异步信号量
     public Semaphore asyncSemaphore;
     // 存放同步和异步命令应答
     public Map<Integer, ResponseFuture> futures = new ConcurrentHashMap<Integer, ResponseFuture>(200);
+    private TransportConfig config;
 
 
     public RequestBarrier(TransportConfig config) {

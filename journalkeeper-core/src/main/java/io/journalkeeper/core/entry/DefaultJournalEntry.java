@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -25,19 +25,20 @@ import java.util.Arrays;
  * Date: 2019/10/12
  */
 public class DefaultJournalEntry implements JournalEntry {
-    public final static short MAGIC_CODE = ByteBuffer.wrap(new byte[] {(byte) 0XF4, (byte) 0X3C}).getShort();
+    public final static short MAGIC_CODE = ByteBuffer.wrap(new byte[]{(byte) 0XF4, (byte) 0X3C}).getShort();
 
     // 包含Header和Payload
-    private final byte [] serializedBytes;
+    private final byte[] serializedBytes;
     private final ByteBuffer serializedBuffer;
+    private int offset = 0;
 
-    DefaultJournalEntry(byte [] serializedBytes, boolean checkMagic, boolean checkLength) {
+    DefaultJournalEntry(byte[] serializedBytes, boolean checkMagic, boolean checkLength) {
         this.serializedBytes = serializedBytes;
         this.serializedBuffer = ByteBuffer.wrap(serializedBytes);
-        if(checkMagic) {
+        if (checkMagic) {
             checkMagic();
         }
-        if(checkLength) {
+        if (checkLength) {
             checkLength(serializedBytes);
         }
     }
@@ -53,10 +54,7 @@ public class DefaultJournalEntry implements JournalEntry {
     private ByteBuffer serializedBuffer() {
         return serializedBuffer;
     }
-    private int offset = 0;
-    private void setLength(int length) {
-        JournalEntryParseSupport.setInt(serializedBuffer(), JournalEntryParseSupport.LENGTH, length);
-    }
+
     private void checkMagic() {
         short magic = JournalEntryParseSupport.getShort(serializedBuffer(), JournalEntryParseSupport.MAGIC);
         if (magicCode() != magic) {
@@ -90,10 +88,12 @@ public class DefaultJournalEntry implements JournalEntry {
     public void setOffset(int offset) {
         this.offset = offset;
     }
+
     @Override
     public int getTerm() {
         return JournalEntryParseSupport.getInt(serializedBuffer(), JournalEntryParseSupport.TERM);
     }
+
     public void setTerm(int term) {
         JournalEntryParseSupport.setInt(serializedBuffer(), JournalEntryParseSupport.TERM, term);
     }
@@ -116,6 +116,10 @@ public class DefaultJournalEntry implements JournalEntry {
         return JournalEntryParseSupport.getInt(serializedBuffer(), JournalEntryParseSupport.LENGTH);
     }
 
+    private void setLength(int length) {
+        JournalEntryParseSupport.setInt(serializedBuffer(), JournalEntryParseSupport.LENGTH, length);
+    }
+
     @Override
     public long getTimestamp() {
         return JournalEntryParseSupport.getLong(serializedBuffer(), JournalEntryParseSupport.TIMESTAMP);
@@ -134,5 +138,7 @@ public class DefaultJournalEntry implements JournalEntry {
         return Arrays.hashCode(serializedBytes);
     }
 
-    private short magicCode() {return MAGIC_CODE;}
+    private short magicCode() {
+        return MAGIC_CODE;
+    }
 }

@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -16,13 +16,20 @@ package io.journalkeeper.core.client;
 import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.UpdateRequest;
+import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
 import io.journalkeeper.core.api.transaction.TransactionContext;
 import io.journalkeeper.core.api.transaction.TransactionId;
-import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
 import io.journalkeeper.core.api.transaction.UUIDTransactionId;
-import io.journalkeeper.rpc.client.*;
+import io.journalkeeper.rpc.client.ClientServerRpc;
+import io.journalkeeper.rpc.client.CompleteTransactionRequest;
+import io.journalkeeper.rpc.client.CreateTransactionRequest;
+import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
+import io.journalkeeper.rpc.client.QueryStateRequest;
+import io.journalkeeper.rpc.client.QueryStateResponse;
+import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -45,12 +52,12 @@ public class DefaultRaftClient extends AbstractClient implements RaftClient {
 
     @Override
     public CompletableFuture<List<byte[]>> update(List<UpdateRequest> entries, boolean includeHeader, ResponseConfig responseConfig) {
-        return super.update(entries,includeHeader, responseConfig);
+        return super.update(entries, includeHeader, responseConfig);
     }
 
 
     @Override
-    public CompletableFuture<byte[]> query(byte [] query) {
+    public CompletableFuture<byte[]> query(byte[] query) {
         return clientRpc.invokeClientLeaderRpc(leaderRpc -> leaderRpc.queryClusterState(new QueryStateRequest(query)))
                 .thenApply(super::checkResponse)
                 .thenApply(QueryStateResponse::getResult);
