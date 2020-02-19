@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,15 +17,15 @@ import io.journalkeeper.rpc.remoting.concurrent.EventBus;
 import io.journalkeeper.rpc.remoting.event.TransportEvent;
 import io.journalkeeper.rpc.remoting.event.TransportEventType;
 import io.journalkeeper.rpc.remoting.retry.RetryPolicy;
-import io.journalkeeper.rpc.remoting.transport.command.Command;
-import io.journalkeeper.rpc.remoting.transport.command.CommandCallback;
-import io.journalkeeper.rpc.remoting.transport.config.TransportConfig;
-import io.journalkeeper.rpc.remoting.transport.exception.TransportException;
 import io.journalkeeper.rpc.remoting.transport.ChannelTransport;
 import io.journalkeeper.rpc.remoting.transport.IpUtil;
 import io.journalkeeper.rpc.remoting.transport.TransportAttribute;
 import io.journalkeeper.rpc.remoting.transport.TransportClient;
 import io.journalkeeper.rpc.remoting.transport.TransportState;
+import io.journalkeeper.rpc.remoting.transport.command.Command;
+import io.journalkeeper.rpc.remoting.transport.command.CommandCallback;
+import io.journalkeeper.rpc.remoting.transport.config.TransportConfig;
+import io.journalkeeper.rpc.remoting.transport.exception.TransportException;
 import io.netty.channel.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

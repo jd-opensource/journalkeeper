@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -38,13 +38,17 @@ public class JournalKeeperHeader implements Header {
     private long sendTime;
     private URI destination;
 
-    public JournalKeeperHeader(){}
-    public JournalKeeperHeader(Direction direction, int type,  URI destination) {
-        this(DEFAULT_VERSION, false, direction, nextRequestId(), type, System.currentTimeMillis(), destination,  0, null);
+    public JournalKeeperHeader() {
     }
-    public JournalKeeperHeader(Direction direction, int requestId,  int type, URI destination) {
+
+    public JournalKeeperHeader(Direction direction, int type, URI destination) {
+        this(DEFAULT_VERSION, false, direction, nextRequestId(), type, System.currentTimeMillis(), destination, 0, null);
+    }
+
+    public JournalKeeperHeader(Direction direction, int requestId, int type, URI destination) {
         this(DEFAULT_VERSION, false, direction, requestId, type, System.currentTimeMillis(), destination, 0, null);
     }
+
     public JournalKeeperHeader(int version, boolean oneWay, Direction direction, int requestId, int type, long sendTime, URI destination, int status, String error) {
         this.version = version;
         this.oneWay = oneWay;
@@ -55,6 +59,10 @@ public class JournalKeeperHeader implements Header {
         this.status = status;
         this.error = error;
         this.destination = destination;
+    }
+
+    private static int nextRequestId() {
+        return requestIdGenerator.incrementAndGet();
     }
 
     @Override
@@ -133,10 +141,6 @@ public class JournalKeeperHeader implements Header {
 
     public void setSendTime(long sendTime) {
         this.sendTime = sendTime;
-    }
-
-    private static int nextRequestId() {
-        return requestIdGenerator.incrementAndGet();
     }
 
     @Override

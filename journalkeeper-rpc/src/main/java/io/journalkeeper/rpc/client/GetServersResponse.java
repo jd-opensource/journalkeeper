@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -24,7 +24,7 @@ import io.journalkeeper.rpc.BaseResponse;
  * @author LiYue
  * Date: 2019-03-14
  */
-public class GetServersResponse  extends BaseResponse {
+public class GetServersResponse extends BaseResponse {
     private final ClusterConfiguration clusterConfiguration;
 
     public GetServersResponse(Throwable exception) {
@@ -34,6 +34,7 @@ public class GetServersResponse  extends BaseResponse {
     public GetServersResponse(ClusterConfiguration clusterConfiguration) {
         this(null, clusterConfiguration);
     }
+
     private GetServersResponse(Throwable exception, ClusterConfiguration clusterConfiguration) {
         super(exception);
         this.clusterConfiguration = clusterConfiguration;

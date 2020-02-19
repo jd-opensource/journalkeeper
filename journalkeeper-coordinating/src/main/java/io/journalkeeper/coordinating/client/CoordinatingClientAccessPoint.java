@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,18 +13,12 @@
  */
 package io.journalkeeper.coordinating.client;
 
-import io.journalkeeper.base.Serializer;
 import io.journalkeeper.coordinating.state.domain.ReadRequest;
 import io.journalkeeper.coordinating.state.domain.ReadResponse;
 import io.journalkeeper.coordinating.state.domain.WriteRequest;
 import io.journalkeeper.coordinating.state.domain.WriteResponse;
-import io.journalkeeper.coordinating.state.serializer.KryoSerializer;
-import io.journalkeeper.core.BootStrap;
-import io.journalkeeper.core.api.RaftClient;
-import io.journalkeeper.core.client.DefaultRaftClient;
-import io.journalkeeper.rpc.RpcAccessPointFactory;
-import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
-import io.journalkeeper.utils.spi.ServiceSupport;
+import io.journalkeeper.core.serialize.WrappedBootStrap;
+import io.journalkeeper.core.serialize.WrappedRaftClient;
 
 import java.net.URI;
 import java.util.List;
@@ -39,35 +33,15 @@ import java.util.Properties;
 public class CoordinatingClientAccessPoint {
 
     private Properties config;
-    private Serializer<WriteRequest> entrySerializer;
-    private Serializer<WriteResponse> entryResultSerializer;
-    private Serializer<ReadRequest> querySerializer;
-    private Serializer<ReadResponse> resultSerializer;
 
     public CoordinatingClientAccessPoint(Properties config) {
-        this(config,
-                new KryoSerializer<>(WriteRequest.class),
-                new KryoSerializer<>(WriteResponse.class),
-                new KryoSerializer<>(ReadRequest.class),
-                new KryoSerializer<>(ReadResponse.class));
-    }
-
-    public CoordinatingClientAccessPoint(Properties config,
-                                         Serializer<WriteRequest> entrySerializer,
-                                         Serializer<WriteResponse> entryResultSerializer,
-                                         Serializer<ReadRequest> querySerializer,
-                                         Serializer<ReadResponse> resultSerializer) {
         this.config = config;
-        this.entrySerializer = entrySerializer;
-        this.entryResultSerializer = entryResultSerializer;
-        this.querySerializer = querySerializer;
-        this.resultSerializer = resultSerializer;
     }
 
     public CoordinatingClient createClient(List<URI> servers) {
-        BootStrap<WriteRequest, WriteResponse, ReadRequest, ReadResponse> bootStrap =
-                new BootStrap<>(servers, entrySerializer, entryResultSerializer, querySerializer, resultSerializer, config);
-        RaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client =
+        WrappedBootStrap<WriteRequest, WriteResponse, ReadRequest, ReadResponse> bootStrap =
+                new WrappedBootStrap<>(servers, config);
+        WrappedRaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client =
                 bootStrap.getClient();
         return new CoordinatingClient(servers, config, client);
     }

@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -46,13 +46,19 @@ public interface JournalPersistence extends Closeable {
      * 当前刷盘位置
      * @return 当前刷盘位置
      */
-    default long flushed() { return max();}
+    default long flushed() {
+        return max();
+    }
 
     /**
      * 执行一次刷盘操作
      * @throws IOException 发生IO异常时抛出
      */
-    default void flush() throws IOException {};
+    default void flush() throws IOException {
+    }
+
+    ;
+
     /**
      * 截断最新的日志。
      * @param givenMax 新的最大位置.
@@ -77,7 +83,7 @@ public interface JournalPersistence extends Closeable {
      * @throws TooManyBytesException 当写入数据超长时抛出
      * @throws IOException 发生IO异常时抛出
      */
-    long append(byte [] entry) throws IOException;
+    long append(byte[] entry) throws IOException;
 
     /**
      * 读取数据
@@ -86,7 +92,7 @@ public interface JournalPersistence extends Closeable {
      * @return 存放数据的ByteBuffer
      * @throws IOException 发生IO异常时抛出
      */
-    byte [] read(long position, int length) throws IOException;
+    byte[] read(long position, int length) throws IOException;
 
     /**
      * 从指定Path恢复Journal，如果没有则创建一个空的。

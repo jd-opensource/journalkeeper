@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -27,21 +27,23 @@ import io.journalkeeper.rpc.StatusCode;
  * * @author LiYue
  * Date: 2019-03-14
  */
-public class QueryStateResponse  extends LeaderResponse {
-    private final byte [] result;
+public class QueryStateResponse extends LeaderResponse {
+    private final byte[] result;
     private final long lastApplied;
+
     public QueryStateResponse(Throwable t) {
-        this(null, -1,  t);
+        this(null, -1, t);
     }
 
-    public QueryStateResponse(byte [] result, long lastApplied){
+    public QueryStateResponse(byte[] result, long lastApplied) {
         this(result, lastApplied, null);
     }
-    public QueryStateResponse(byte [] result){
+
+    public QueryStateResponse(byte[] result) {
         this(result, -1L, null);
     }
 
-    private QueryStateResponse(byte [] result, long lastApplied, Throwable t) {
+    private QueryStateResponse(byte[] result, long lastApplied, Throwable t) {
         super(t);
         this.result = result;
         this.lastApplied = lastApplied;
@@ -51,7 +53,7 @@ public class QueryStateResponse  extends LeaderResponse {
      * 序列化后的查询结果。
      * @return 序列化后的查询结果。
      */
-    public byte [] getResult() {
+    public byte[] getResult() {
         return result;
     }
 

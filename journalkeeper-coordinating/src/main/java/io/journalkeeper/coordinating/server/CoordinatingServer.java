@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,16 +13,15 @@
  */
 package io.journalkeeper.coordinating.server;
 
-import io.journalkeeper.base.Serializer;
 import io.journalkeeper.coordinating.client.CoordinatingClient;
 import io.journalkeeper.coordinating.exception.CoordinatingException;
 import io.journalkeeper.coordinating.state.domain.ReadRequest;
 import io.journalkeeper.coordinating.state.domain.ReadResponse;
 import io.journalkeeper.coordinating.state.domain.WriteRequest;
 import io.journalkeeper.coordinating.state.domain.WriteResponse;
-import io.journalkeeper.core.BootStrap;
 import io.journalkeeper.core.api.RaftServer;
-import io.journalkeeper.core.api.StateFactory;
+import io.journalkeeper.core.serialize.WrappedBootStrap;
+import io.journalkeeper.core.serialize.WrappedStateFactory;
 import io.journalkeeper.utils.state.StateServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +29,6 @@ import org.slf4j.LoggerFactory;
 import java.net.URI;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.TimeUnit;
 
 /**
  * CoordinatingServer
@@ -47,21 +45,17 @@ public class CoordinatingServer implements StateServer {
     private RaftServer.Roll role;
     private Properties config;
 
-    private BootStrap<WriteRequest, WriteResponse, ReadRequest, ReadResponse> bootStrap;
+    private WrappedBootStrap<WriteRequest, WriteResponse, ReadRequest, ReadResponse> bootStrap;
     private volatile CoordinatingClient client;
 
     public CoordinatingServer(URI current, List<URI> servers, Properties config,
                               RaftServer.Roll role,
-                              StateFactory<WriteRequest, WriteResponse, ReadRequest, ReadResponse> stateFactory,
-                              Serializer<WriteRequest> entrySerializer,
-                              Serializer<WriteResponse> entryResultSerializer,
-                              Serializer<ReadRequest> querySerializer,
-                              Serializer<ReadResponse> resultSerializer) {
+                              WrappedStateFactory<WriteRequest, WriteResponse, ReadRequest, ReadResponse> stateFactory) {
         this.current = current;
         this.servers = servers;
         this.role = role;
         this.config = config;
-        this.bootStrap = new BootStrap<>(role, stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer, config);
+        this.bootStrap = new WrappedBootStrap<>(role, stateFactory, config);
     }
 
 

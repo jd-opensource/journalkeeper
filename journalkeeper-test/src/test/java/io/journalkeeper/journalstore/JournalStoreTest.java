@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -74,6 +74,7 @@ public class JournalStoreTest {
     public void before() throws IOException {
         base = TestPathUtils.prepareBaseDir();
     }
+
     @After
     public void after() {
         TestPathUtils.destroyBaseDir(base.toFile());
@@ -81,23 +82,23 @@ public class JournalStoreTest {
 
 
     @Test
-    public void writeReadSyncOneNode() throws Exception{
-        writeReadTest(1, Stream.of(2).collect(Collectors.toSet()), 1024, 1,  32 , false);
+    public void writeReadSyncOneNode() throws Exception {
+        writeReadTest(1, Stream.of(2).collect(Collectors.toSet()), 1024, 1, 32, false);
     }
 
     @Test
-    public void writeReadSyncTripleNodes() throws Exception{
-        writeReadTest(3, Stream.of(2, 3, 4, 5, 6).collect(Collectors.toSet()), 1024, 32, 32 , false);
+    public void writeReadSyncTripleNodes() throws Exception {
+        writeReadTest(3, Stream.of(2, 3, 4, 5, 6).collect(Collectors.toSet()), 1024, 32, 32, false);
     }
 
     @Test
-    public void writeReadAsyncOneNode() throws Exception{
-        writeReadTest(1, Stream.of(2).collect(Collectors.toSet()), 1024, 1,  32 , true);
+    public void writeReadAsyncOneNode() throws Exception {
+        writeReadTest(1, Stream.of(2).collect(Collectors.toSet()), 1024, 1, 32, true);
     }
 
     @Test
-    public void writeReadAsyncTripleNodes() throws Exception{
-        writeReadTest(3, Stream.of(2, 3, 4, 5, 6).collect(Collectors.toSet()), 1024, 32, 32 , true);
+    public void writeReadAsyncTripleNodes() throws Exception {
+        writeReadTest(3, Stream.of(2, 3, 4, 5, 6).collect(Collectors.toSet()), 1024, 32, 32, true);
     }
 
     @Test
@@ -144,7 +145,7 @@ public class JournalStoreTest {
         Path workingDir = base.resolve("server-recover");
         Properties properties = new Properties();
         properties.setProperty("working_dir", workingDir.toString());
-        JournalStoreServer journalStoreServer  = new JournalStoreServer(properties);
+        JournalStoreServer journalStoreServer = new JournalStoreServer(properties);
         journalStoreServer.init(uri, Collections.singletonList(uri), partitions);
         journalStoreServer.recover();
         journalStoreServer.start();
@@ -156,7 +157,7 @@ public class JournalStoreTest {
 
         journalStoreServer.stop();
 
-        journalStoreServer  = new JournalStoreServer(properties);
+        journalStoreServer = new JournalStoreServer(properties);
         journalStoreServer.recover();
         journalStoreServer.start();
 
@@ -169,16 +170,17 @@ public class JournalStoreTest {
 
 
     }
+
     @Test
     public void queryIndexTest() throws IOException, ExecutionException, InterruptedException, TimeoutException {
-        JournalEntryParser journalEntryParser =new DefaultJournalEntryParser();
+        JournalEntryParser journalEntryParser = new DefaultJournalEntryParser();
         JournalStoreServer server = createServers(1, base).get(0);
 
         JournalStoreClient client = server.createLocalClient();
         client.waitForClusterReady();
 
-        long [] timestamps = new long[] {10, 11, 12 , 100, 100, 101, 105, 110, 2000};
-        long [] indices = new long[timestamps.length];
+        long[] timestamps = new long[]{10, 11, 12, 100, 100, 101, 105, 110, 2000};
+        long[] indices = new long[timestamps.length];
         for (int i = 0; i < timestamps.length; i++) {
             long timestamp = timestamps[i];
             byte[] payload = new byte[128];
@@ -227,17 +229,17 @@ public class JournalStoreTest {
             for (int i = 0; i < rawEntries.length; i++) {
                 rawEntries[i] = (byte) (i % Byte.MAX_VALUE);
             }
-            if(async) {
+            if (async) {
                 asyncWrite(partitions, batchSize, batchCount, client, rawEntries);
             } else {
                 syncWrite(partitions, batchSize, batchCount, client, rawEntries);
             }
             long t1 = System.nanoTime();
             logger.info("Replication finished. " +
-                    "Write takes: {}ms, {}ps, tps: {}.",
-                     (t1 - t0) / 1000000,
-                    Format.formatSize( 1000000000L * partitions.size() * entrySize * batchCount  / (t1 - t0)),
-                    1000000000L * partitions.size() * batchCount  / (t1 - t0));
+                            "Write takes: {}ms, {}ps, tps: {}.",
+                    (t1 - t0) / 1000000,
+                    Format.formatSize(1000000000L * partitions.size() * entrySize * batchCount / (t1 - t0)),
+                    1000000000L * partitions.size() * batchCount / (t1 - t0));
 
 
             // read
@@ -258,8 +260,8 @@ public class JournalStoreTest {
             logger.info("Read finished. " +
                             "Takes: {}ms {}ps, tps: {}.",
                     (t1 - t0) / 1000000,
-                    Format.formatSize( 1000000000L * partitions.size() * entrySize * batchCount  / (t1 - t0)),
-                    1000000000L * partitions.size() * batchCount  / (t1 - t0));
+                    Format.formatSize(1000000000L * partitions.size() * entrySize * batchCount / (t1 - t0)),
+                    1000000000L * partitions.size() * batchCount / (t1 - t0));
         } finally {
             stopServers(servers);
 
@@ -270,7 +272,7 @@ public class JournalStoreTest {
     @Test
     public void batchWriteReadTest() throws Exception {
         int nodes = 3;
-        Integer [] partitions = new Integer[] {0, 1, 2, 3, 4};
+        Integer[] partitions = new Integer[]{0, 1, 2, 3, 4};
         int entrySize = 1024;
         int batchSize = 12;
         int batchCount = 1024;
@@ -279,49 +281,50 @@ public class JournalStoreTest {
             JournalStoreClient client = servers.get(0).createClient();
             client.waitForClusterReady();
 
-            List<byte []> bytes = ByteUtils.createRandomSizeByteList(entrySize, batchCount);
-            List<UpdateRequest<byte []>> requests = new ArrayList<>(bytes.size());
+            List<byte[]> bytes = ByteUtils.createRandomSizeByteList(entrySize, batchCount);
+            List<UpdateRequest> requests = new ArrayList<>(bytes.size());
             for (int i = 0; i < bytes.size(); i++) {
                 int partition = partitions[i % partitions.length];
-                requests.add(new UpdateRequest<>(bytes.get(i), partition, batchSize));
+                requests.add(new UpdateRequest(bytes.get(i), partition, batchSize));
             }
             long t0 = System.nanoTime();
             List<Long> indices = client.append(requests).get();
             long t1 = System.nanoTime();
             logger.info("Replication finished. " +
-                    "Write takes: {}ms, {}ps, tps: {}.",
-                     (t1 - t0) / 1000000,
-                    Format.formatSize( 1000000000L * partitions.length * entrySize * batchCount  / (t1 - t0)),
-                    1000000000L * partitions.length * batchCount  / (t1 - t0));
+                            "Write takes: {}ms, {}ps, tps: {}.",
+                    (t1 - t0) / 1000000,
+                    Format.formatSize(1000000000L * partitions.length * entrySize * batchCount / (t1 - t0)),
+                    1000000000L * partitions.length * batchCount / (t1 - t0));
 
 
             // read
 
             t0 = System.nanoTime();
 
-                for (int i = 0; i < batchCount; i++) {
-                    int partition = partitions[i % partitions.length];
-                    List<JournalEntry> raftEntries = client.get(partition, indices.get(i), batchSize).get();
-                    Assert.assertEquals(1, raftEntries.size());
-                    JournalEntry entry = raftEntries.get(0);
-                    Assert.assertEquals(partition, entry.getPartition());
-                    Assert.assertEquals(batchSize, entry.getBatchSize());
-                    Assert.assertEquals(0, entry.getOffset());
-                    Assert.assertArrayEquals(bytes.get(i), entry.getPayload().getBytes());
-                }
+            for (int i = 0; i < batchCount; i++) {
+                int partition = partitions[i % partitions.length];
+                List<JournalEntry> raftEntries = client.get(partition, indices.get(i), batchSize).get();
+                Assert.assertEquals(1, raftEntries.size());
+                JournalEntry entry = raftEntries.get(0);
+                Assert.assertEquals(partition, entry.getPartition());
+                Assert.assertEquals(batchSize, entry.getBatchSize());
+                Assert.assertEquals(0, entry.getOffset());
+                Assert.assertArrayEquals(bytes.get(i), entry.getPayload().getBytes());
+            }
 
             t1 = System.nanoTime();
             logger.info("Read finished. " +
                             "Takes: {}ms {}ps, tps: {}.",
                     (t1 - t0) / 1000000,
-                    Format.formatSize( 1000000000L * partitions.length * entrySize * batchCount  / (t1 - t0)),
-                    1000000000L * partitions.length * batchCount  / (t1 - t0));
+                    Format.formatSize(1000000000L * partitions.length * entrySize * batchCount / (t1 - t0)),
+                    1000000000L * partitions.length * batchCount / (t1 - t0));
         } finally {
             stopServers(servers);
 
         }
 
     }
+
     @Test
     public void allResponseTest() throws Exception {
         int nodes = 5;
@@ -333,7 +336,7 @@ public class JournalStoreTest {
             client.waitForClusterReady();
             logger.info("Cluster is ready.");
             byte[] rawEntries = ByteUtils.createFixedSizeBytes(entrySize);
-            CompletableFuture[] futures = new CompletableFuture [count];
+            CompletableFuture[] futures = new CompletableFuture[count];
             for (int i = 0; i < count; i++) {
                 futures[i] = client.append(0, 1, rawEntries, ResponseConfig.ALL);
             }
@@ -380,7 +383,7 @@ public class JournalStoreTest {
         Assert.assertEquals(context, transactionContext.context());
 
         // Send some transactional messages
-        CompletableFuture [] futures = new CompletableFuture[rawEntries.size()];
+        CompletableFuture[] futures = new CompletableFuture[rawEntries.size()];
         for (int i = 0; i < rawEntries.size(); i++) {
             int partition = i % partitions.size();
             futures[i] = client.append(transactionContext.transactionId(), rawEntries.get(i), partition, 1);
@@ -409,7 +412,7 @@ public class JournalStoreTest {
             List<JournalEntry> journalEntries = client.get(partition, index, 1).get();
             Assert.assertEquals(1, journalEntries.size());
             JournalEntry journalEntry = journalEntries.get(0);
-            byte [] readEntry = journalEntry.getPayload().getBytes();
+            byte[] readEntry = journalEntry.getPayload().getBytes();
 
             Assert.assertArrayEquals(rawEntries.get(i), readEntry);
 
@@ -439,7 +442,7 @@ public class JournalStoreTest {
         Assert.assertNotNull(transactionContext.transactionId());
 
         // Send some transactional messages
-        CompletableFuture [] futures = new CompletableFuture[rawEntries.size()];
+        CompletableFuture[] futures = new CompletableFuture[rawEntries.size()];
         for (int i = 0; i < rawEntries.size(); i++) {
             int partition = i % partitions.size();
             futures[i] = client.append(transactionContext.transactionId(), rawEntries.get(i), partition, 1);
@@ -497,7 +500,7 @@ public class JournalStoreTest {
         Assert.assertEquals(context, transactionContext.context());
 
         // Send some transactional messages
-        CompletableFuture [] futures = new CompletableFuture[rawEntries.size() / 2];
+        CompletableFuture[] futures = new CompletableFuture[rawEntries.size() / 2];
         int i = 0;
         for (; i < rawEntries.size() / 2; i++) {
             int partition = i % partitions.size();
@@ -517,7 +520,7 @@ public class JournalStoreTest {
 
         // Send some transactional messages
         futures = new CompletableFuture[rawEntries.size() - rawEntries.size() / 2];
-        for (; i < rawEntries.size() ; i++) {
+        for (; i < rawEntries.size(); i++) {
             int partition = i % partitions.size();
             futures[i - rawEntries.size() / 2] = client.append(transactionContext.transactionId(), rawEntries.get(i), partition, 1);
         }
@@ -546,7 +549,7 @@ public class JournalStoreTest {
             List<JournalEntry> journalEntries = client.get(partition, index, 1).get();
             Assert.assertEquals(1, journalEntries.size());
             JournalEntry journalEntry = journalEntries.get(0);
-            byte [] readEntry = journalEntry.getPayload().getBytes();
+            byte[] readEntry = journalEntry.getPayload().getBytes();
 
             Assert.assertArrayEquals(rawEntries.get(i), readEntry);
 
@@ -575,7 +578,7 @@ public class JournalStoreTest {
         Assert.assertNotNull(transactionContext);
 
         // Send some transactional messages
-        CompletableFuture [] futures = new CompletableFuture[rawEntries.size()];
+        CompletableFuture[] futures = new CompletableFuture[rawEntries.size()];
         for (int i = 0; i < rawEntries.size(); i++) {
             int partition = i % partitions.size();
             futures[i] = client.append(transactionContext.transactionId(), rawEntries.get(i), partition, 1);
@@ -594,7 +597,6 @@ public class JournalStoreTest {
     }
 
 
-
     private void asyncWrite(Set<Integer> partitions, int batchSize, int batchCount, JournalStoreClient client, byte[] rawEntries) throws InterruptedException {
         ExecutorService executors = Executors.newFixedThreadPool(10, new NamedThreadFactory("ClientRetryThreads"));
         CountDownLatch latch = new CountDownLatch(partitions.size() * batchCount);
@@ -610,7 +612,7 @@ public class JournalStoreTest {
         logger.info("Async write finished. " +
                         "Takes: {}ms {}ps.",
                 (t1 - t0) / 1000000,
-                Format.formatSize( 1000000000L * partitions.size() * rawEntries.length * batchCount  / (t1 - t0)));
+                Format.formatSize(1000000000L * partitions.size() * rawEntries.length * batchCount / (t1 - t0)));
 
         while (!latch.await(1, TimeUnit.SECONDS)) {
             Thread.yield();
@@ -625,13 +627,13 @@ public class JournalStoreTest {
         client.append(partition, batchSize, rawEntries, ResponseConfig.REPLICATION)
                 .whenCompleteAsync((v, e) -> {
 
-                    if(e instanceof CompletionException && e.getCause() instanceof ServerBusyException) {
+                    if (e instanceof CompletionException && e.getCause() instanceof ServerBusyException) {
 //                        logger.info("AbstractServer busy!");
                         Thread.yield();
                         asyncAppend(client, rawEntries, partition, batchSize, latch, executorService, exceptions);
 
                     } else {
-                        if(null != e) {
+                        if (null != e) {
                             logger.warn("Exception: ", e);
                             exceptions.add(e);
                         }
@@ -644,7 +646,7 @@ public class JournalStoreTest {
         // write
         for (int partition : partitions) {
             for (int i = 0; i < batchCount; i++) {
-                client.append(partition, batchSize, rawEntries,ResponseConfig.REPLICATION).get();
+                client.append(partition, batchSize, rawEntries, ResponseConfig.REPLICATION).get();
             }
         }
     }
@@ -660,6 +662,7 @@ public class JournalStoreTest {
         }
         logger.info("All servers were stopped.");
     }
+
     private List<JournalStoreServer> createServers(int nodes, Path path) throws IOException {
         return createServers(nodes, path, Collections.singleton(0));
     }
@@ -682,7 +685,7 @@ public class JournalStoreTest {
             properties.setProperty("rpc_timeout_ms", "600000");
             properties.setProperty("cache_requests", String.valueOf(1024L * 1024));
 
-            if(null != props) {
+            if (null != props) {
                 properties.putAll(props);
             }
 //            properties.setProperty("print_metric_interval_sec", String.valueOf(5));
@@ -698,7 +701,7 @@ public class JournalStoreTest {
     private List<JournalStoreServer> createServers(List<URI> serverURIs, List<Properties> propertiesList, Set<Integer> partitions) throws IOException {
         List<JournalStoreServer> journalStoreServers = new ArrayList<>(serverURIs.size());
         for (int i = 0; i < serverURIs.size(); i++) {
-            JournalStoreServer journalStoreServer  = new JournalStoreServer(propertiesList.get(i));
+            JournalStoreServer journalStoreServer = new JournalStoreServer(propertiesList.get(i));
             journalStoreServers.add(journalStoreServer);
             journalStoreServer.init(serverURIs.get(i), serverURIs, partitions);
             journalStoreServer.recover();

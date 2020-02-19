@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -22,7 +22,9 @@ import java.net.URI;
 public interface Header {
 
     boolean isOneWay();
+
     void setOneWay(boolean isOneWay);
+
     /**
      * 状态
      *
@@ -80,13 +82,6 @@ public interface Header {
     void setDirection(Direction direction);
 
     /**
-     * 设置版本号
-     *
-     * @param version 版本号
-     */
-    void setVersion(int version);
-
-    /**
      * 版本号
      *
      * @return 版本号
@@ -94,11 +89,11 @@ public interface Header {
     int getVersion();
 
     /**
-     * 设置类型
+     * 设置版本号
      *
-     * @param type 类型
+     * @param version 版本号
      */
-    void setType(int type);
+    void setVersion(int version);
 
     /**
      * 类型
@@ -106,6 +101,13 @@ public interface Header {
      * @return 类型
      */
     int getType();
+
+    /**
+     * 设置类型
+     *
+     * @param type 类型
+     */
+    void setType(int type);
 
     /**
      * 获取目标地址

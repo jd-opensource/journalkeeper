@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -94,6 +94,7 @@ public interface ClientServerRpc {
      * @return See {@link GetServerStatusResponse}
      */
     CompletableFuture<GetServerStatusResponse> getServerStatus();
+
     /**
      * 添加pull模式事件监听。
      * @see EventBus
@@ -162,12 +163,14 @@ public interface ClientServerRpc {
      * @return See {@link CheckLeadershipResponse}
      */
     CompletableFuture<CheckLeadershipResponse> checkLeadership();
+
     /**
      * 添加事件监听器，当事件发生时会调用监听器
      * @see EventBus
      * @param eventWatcher 事件监听器
      */
     void watch(EventWatcher eventWatcher);
+
     /**
      * 删除事件监听器
      * @see EventBus

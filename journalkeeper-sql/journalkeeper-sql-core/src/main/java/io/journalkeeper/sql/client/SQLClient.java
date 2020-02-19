@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,10 +13,10 @@
  */
 package io.journalkeeper.sql.client;
 
+import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.BootStrap;
 import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.RaftClient;
-import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.sql.client.domain.Codes;
 import io.journalkeeper.sql.client.domain.OperationTypes;
 import io.journalkeeper.sql.client.domain.ReadRequest;
@@ -45,15 +45,27 @@ import java.util.concurrent.TimeoutException;
 public class SQLClient {
 
     protected static final Logger logger = LoggerFactory.getLogger(SQLClient.class);
-
+    private final Serializer<WriteRequest> writeRequestSerializer;
+    private final Serializer<WriteResponse> writeResponseSerializer;
+    private final Serializer<ReadRequest> readRequestSerializer;
+    private final Serializer<ReadResponse> readResponseSerializer;
     private List<URI> servers;
     private Properties config;
-    private BootStrap<WriteRequest, WriteResponse, ReadRequest, ReadResponse> bootStrap;
-    private RaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client;
+    private BootStrap bootStrap;
+    private RaftClient client;
 
     public SQLClient(List<URI> servers,
                      Properties config,
-                     BootStrap<WriteRequest, WriteResponse, ReadRequest, ReadResponse> bootStrap) {
+                     BootStrap bootStrap,
+                     Serializer<WriteRequest> writeRequestSerializer,
+                     Serializer<WriteResponse> writeResponseSerializer,
+                     Serializer<ReadRequest> readRequestSerializer,
+                     Serializer<ReadResponse> readResponseSerializer) {
+        this.writeRequestSerializer = writeRequestSerializer;
+        this.writeResponseSerializer = writeResponseSerializer;
+        this.readRequestSerializer = readRequestSerializer;
+        this.readResponseSerializer = readResponseSerializer;
+
         this.servers = servers;
         this.config = config;
         this.bootStrap = bootStrap;
@@ -186,22 +198,26 @@ public class SQLClient {
     }
 
     protected CompletableFuture<WriteResponse> doUpdate(WriteRequest request) {
-        return client.update(request, 0, 1, ResponseConfig.REPLICATION).exceptionally(t -> {
+        return client.update(writeRequestSerializer.serialize(request)).exceptionally(t -> {
             throw new SQLClientException(t.getCause());
-        }).thenApply(response -> {
-            if (response.getCode() != Codes.SUCCESS.getCode()) {
-                throw new SQLClientException(String.format("code: %s, msg: %s",
-                        String.valueOf(Codes.valueOf(response.getCode())), response.getMsg()));
-            }
-            return response;
-        });
+        })
+                .thenApply(writeResponseSerializer::parse)
+                .thenApply(response -> {
+                    if (response.getCode() != Codes.SUCCESS.getCode()) {
+                        throw new SQLClientException(String.format("code: %s, msg: %s",
+                                String.valueOf(Codes.valueOf(response.getCode())), response.getMsg()));
+                    }
+                    return response;
+                });
     }
 
     protected CompletableFuture<ReadResponse> doQuery(ReadRequest request) {
-        return client.query(request)
+        return client.query(readRequestSerializer.serialize(request))
                 .exceptionally(t -> {
                     throw new SQLClientException(t.getCause());
-                }).thenApply(response -> {
+                })
+                .thenApply(readResponseSerializer::parse)
+                .thenApply(response -> {
                     if (response.getCode() != Codes.SUCCESS.getCode()) {
                         throw new SQLClientException(String.format("code: %s, msg: %s",
                                 String.valueOf(Codes.valueOf(response.getCode())), response.getMsg()));

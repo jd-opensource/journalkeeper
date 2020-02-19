@@ -2,9 +2,21 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -45,11 +57,11 @@ import java.util.stream.Collectors;
 public class FolderTrunkIterator implements ReplicableIterator {
     private final Path root;
     private final List<Path> files;
-    private int fileIndex = 0;
-    private long offsetOfCurrentFile = 0;
     private final int maxTrunkSize;
     private final long lastIncludedIndex;
     private final int lastIncludedTerm;
+    private int fileIndex = 0;
+    private long offsetOfCurrentFile = 0;
     private long offset;
 
     public FolderTrunkIterator(Path root, List<Path> files, int maxTrunkSize, long lastIncludedIndex, int lastIncludedTerm) {
@@ -92,18 +104,18 @@ public class FolderTrunkIterator implements ReplicableIterator {
         Path relFile = files.get(fileIndex);
         Path file = root.resolve(relFile);
         long fileSize = Files.size(file);
-        long remainingSize ;
+        long remainingSize;
 
-        byte [] trunk;
+        byte[] trunk;
         ByteBuffer buffer;
 
-        byte [] filenameBytes = relFile.toString().getBytes(StandardCharsets.UTF_8);
+        byte[] filenameBytes = relFile.toString().getBytes(StandardCharsets.UTF_8);
         remainingSize =
                 fileSize +
-                        Integer.BYTES + filenameBytes.length  + Long.BYTES - // Header size
+                        Integer.BYTES + filenameBytes.length + Long.BYTES - // Header size
                         offsetOfCurrentFile;
 
-        trunk = new byte[(int) Math.min(remainingSize , maxTrunkSize)];
+        trunk = new byte[(int) Math.min(remainingSize, maxTrunkSize)];
         buffer = ByteBuffer.wrap(trunk);
         buffer.putInt(filenameBytes.length);
         buffer.put(filenameBytes);
@@ -120,7 +132,7 @@ public class FolderTrunkIterator implements ReplicableIterator {
         offsetOfCurrentFile += sizeToRead;
 
         if (offsetOfCurrentFile == fileSize) {
-            fileIndex ++;
+            fileIndex++;
             offsetOfCurrentFile = 0;
         }
         offset += trunk.length;

@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -14,7 +14,6 @@
 package io.journalkeeper.core.server;
 
 import io.journalkeeper.core.api.RaftServer;
-import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.state.ConfigState;
@@ -86,8 +85,8 @@ public class ServerMonitorInfoProvider implements MonitoredServer {
 
     private DiskMonitorInfo collectDistMonitorInfo(JournalPersistence journalPersistence) {
         DiskMonitorInfo diskMonitorInfo = new DiskMonitorInfo();
-        if(journalPersistence instanceof MonitoredPersistence) {
-            MonitoredPersistence monitoredPersistence = (MonitoredPersistence ) journalPersistence;
+        if (journalPersistence instanceof MonitoredPersistence) {
+            MonitoredPersistence monitoredPersistence = (MonitoredPersistence) journalPersistence;
 
             diskMonitorInfo.setPath(monitoredPersistence.getPath());
             diskMonitorInfo.setFree(monitoredPersistence.getFreeSpace());
@@ -104,7 +103,7 @@ public class ServerMonitorInfoProvider implements MonitoredServer {
         voterMonitorInfo.setNextElectionTime(voter.getNextElectionTime());
         voterMonitorInfo.setLastHeartbeat(voter.getLastHeartbeat());
         voterMonitorInfo.setPreferredLeader(voter.getPreferredLeader());
-        if(voter.getVoterState() == VoterState.LEADER) {
+        if (voter.getVoterState() == VoterState.LEADER) {
             Leader leader = voter.getLeader();
             LeaderMonitorInfo leaderMonitorInfo;
             leaderMonitorInfo = collectLeaderMonitorInfo(leader);
@@ -131,14 +130,14 @@ public class ServerMonitorInfoProvider implements MonitoredServer {
 
     private LeaderMonitorInfo collectLeaderMonitorInfo(Leader leader) {
         LeaderMonitorInfo leaderMonitorInfo = null;
-        if(null != leader) {
+        if (null != leader) {
             leaderMonitorInfo = new LeaderMonitorInfo();
             leaderMonitorInfo.setState(leader.serverState());
             leaderMonitorInfo.setRequestQueueSize(leader.getRequestQueueSize());
             leaderMonitorInfo.setWriteEnabled(leader.isWriteEnabled());
             @SuppressWarnings("unchecked")
             List<Leader.ReplicationDestination> replicationDestinations = leader.getFollowers();
-            if(null != replicationDestinations) {
+            if (null != replicationDestinations) {
                 List<LeaderFollowerMonitorInfo> leaderFollowerMonitorInfoList = new ArrayList<>(replicationDestinations.size());
                 for (Leader.ReplicationDestination destination : replicationDestinations) {
                     LeaderFollowerMonitorInfo destInfo = collectLeaderFollowerMonitorInfo(destination);
@@ -166,7 +165,7 @@ public class ServerMonitorInfoProvider implements MonitoredServer {
         if (null != voterConfigurationStateMachine) {
             nodeMonitorInfo = new NodeMonitorInfo();
             nodeMonitorInfo.setJointConsensus(voterConfigurationStateMachine.isJointConsensus());
-            if(voterConfigurationStateMachine.isJointConsensus()) {
+            if (voterConfigurationStateMachine.isJointConsensus()) {
                 nodeMonitorInfo.setNewConfig(voterConfigurationStateMachine.getConfigNew());
                 nodeMonitorInfo.setOldConfig(voterConfigurationStateMachine.getConfigOld());
             } else {
@@ -178,7 +177,7 @@ public class ServerMonitorInfoProvider implements MonitoredServer {
 
     private JournalMonitorInfo collectJournalMonitorInfo(Journal journal, JournalKeeperState state) {
         JournalMonitorInfo journalMonitorInfo = new JournalMonitorInfo();
-        if(null != journal) {
+        if (null != journal) {
             journalMonitorInfo.setMinIndex(journal.minIndex());
             journalMonitorInfo.setMaxIndex(journal.maxIndex());
             journalMonitorInfo.setFlushIndex(journal.flushedIndex());
@@ -201,20 +200,20 @@ public class ServerMonitorInfoProvider implements MonitoredServer {
                         .forEach(entry -> {
                             int partition = entry.getKey();
                             JournalPersistence persistence = entry.getValue();
-                    JournalPartitionMonitorInfo partitionMonitorInfo = new JournalPartitionMonitorInfo();
-                    partitionMonitorInfo.setPartition(partition);
-                    partitionMonitorInfo.setMinIndex(persistence.min() / INDEX_STORAGE_SIZE);
-                    partitionMonitorInfo.setMaxIndex(persistence.max() / INDEX_STORAGE_SIZE);
-                    partitionMonitorInfo.setMinOffset(persistence.min());
-                    partitionMonitorInfo.setMaxOffset(persistence.max());
-                    partitionMonitorInfo.setFlushOffset(persistence.flushed());
-                    partitionMonitorInfoList.add(partitionMonitorInfo);
-                });
+                            JournalPartitionMonitorInfo partitionMonitorInfo = new JournalPartitionMonitorInfo();
+                            partitionMonitorInfo.setPartition(partition);
+                            partitionMonitorInfo.setMinIndex(persistence.min() / INDEX_STORAGE_SIZE);
+                            partitionMonitorInfo.setMaxIndex(persistence.max() / INDEX_STORAGE_SIZE);
+                            partitionMonitorInfo.setMinOffset(persistence.min());
+                            partitionMonitorInfo.setMaxOffset(persistence.max());
+                            partitionMonitorInfo.setFlushOffset(persistence.flushed());
+                            partitionMonitorInfoList.add(partitionMonitorInfo);
+                        });
                 journalMonitorInfo.setPartitions(partitionMonitorInfoList);
             }
         }
 
-        if(null != state) {
+        if (null != state) {
             journalMonitorInfo.setAppliedIndex(state.lastApplied());
         }
         return journalMonitorInfo;

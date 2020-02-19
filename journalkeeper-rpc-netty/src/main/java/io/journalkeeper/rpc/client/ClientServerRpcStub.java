@@ -2,9 +2,21 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -59,16 +71,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ClientServerRpcStub implements ClientServerRpc {
     private static final Logger logger = LoggerFactory.getLogger(ClientServerRpcStub.class);
-    protected Transport transport;
     protected final TransportClient transportClient;
     protected final InetSocketAddress inetSocketAddress;
     protected final URI uri;
+    private final Executor responseExecutor;
+    protected Transport transport;
     protected EventBus eventBus = null;
     protected AsyncLoopThread pullEventThread = null;
     protected long pullWatchId = -1L;
     protected long ackSequence = -1L;
     protected AtomicBoolean lastRequestSuccess = new AtomicBoolean(true);
-    private final Executor responseExecutor ;
 
     public ClientServerRpcStub(TransportClient transportClient, URI uri, InetSocketAddress inetSocketAddress) {
         this.transportClient = transportClient;
@@ -299,7 +311,7 @@ public class ClientServerRpcStub implements ClientServerRpc {
     }
 
     private synchronized void closeTransport() {
-        if (null != transport ) {
+        if (null != transport) {
             transport.stop();
             transport = null;
         }

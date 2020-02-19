@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -24,7 +24,7 @@ import java.util.Map;
  * @author LiYue
  * Date: 2019-05-09
  */
-public class JournalStoreQueryResult{
+public class JournalStoreQueryResult {
     public static final int CODE_SUCCESS = 0;
     public static final int CODE_UNDERFLOW = -1;
     public static final int CODE_OVERFLOW = -2;
@@ -52,7 +52,7 @@ public class JournalStoreQueryResult{
     }
 
 
-    public JournalStoreQueryResult( Map<Integer, Boundary> boundaries) {
+    public JournalStoreQueryResult(Map<Integer, Boundary> boundaries) {
         this(null, boundaries, 0L, JournalStoreQuery.CMD_QUERY_PARTITIONS);
     }
 
@@ -76,24 +76,6 @@ public class JournalStoreQueryResult{
         }
     }
 
-    public static class Boundary {
-        private final long min;
-        private final long max;
-
-        public Boundary(long min, long max) {
-            this.min = min;
-            this.max = max;
-        }
-
-        public long getMin() {
-            return min;
-        }
-
-        public long getMax() {
-            return max;
-        }
-    }
-
     public int getCmd() {
         return cmd;
     }
@@ -112,5 +94,23 @@ public class JournalStoreQueryResult{
 
     public long getIndex() {
         return index;
+    }
+
+    public static class Boundary {
+        private final long min;
+        private final long max;
+
+        public Boundary(long min, long max) {
+            this.min = min;
+            this.max = max;
+        }
+
+        public long getMin() {
+            return min;
+        }
+
+        public long getMax() {
+            return max;
+        }
     }
 }

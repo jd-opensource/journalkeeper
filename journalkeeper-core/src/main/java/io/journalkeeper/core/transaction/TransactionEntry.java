@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -25,9 +25,9 @@ public class TransactionEntry {
     private final UUID transactionId;
     private int partition = -1;
     private boolean commitOrAbort = false;
-    private byte [] entry = new byte[0];
+    private byte[] entry = new byte[0];
     private int batchSize = 1;
-    private long timestamp = System.currentTimeMillis() ;
+    private long timestamp = System.currentTimeMillis();
     private Map<String, String> context;
 
     public TransactionEntry(UUID transactionId, Map<String, String> context) {
@@ -37,13 +37,13 @@ public class TransactionEntry {
 
     }
 
-    public TransactionEntry(UUID transactionId,TransactionEntryType type, boolean commitOrAbort) {
+    public TransactionEntry(UUID transactionId, TransactionEntryType type, boolean commitOrAbort) {
         this.type = type;
         this.transactionId = transactionId;
         this.commitOrAbort = commitOrAbort;
     }
 
-    public TransactionEntry(UUID transactionId, int partition, int batchSize, byte [] entry) {
+    public TransactionEntry(UUID transactionId, int partition, int batchSize, byte[] entry) {
         this.transactionId = transactionId;
         this.type = TransactionEntryType.TRANSACTION_ENTRY;
         this.partition = partition;
@@ -51,7 +51,7 @@ public class TransactionEntry {
         this.entry = entry;
     }
 
-    public TransactionEntry(UUID transactionId, long timestamp, TransactionEntryType type, int partition, boolean commitOrAbort, int batchSize, byte [] entry, Map<String, String> context) {
+    public TransactionEntry(UUID transactionId, long timestamp, TransactionEntryType type, int partition, boolean commitOrAbort, int batchSize, byte[] entry, Map<String, String> context) {
         this.transactionId = transactionId;
         this.timestamp = timestamp;
         this.type = type;

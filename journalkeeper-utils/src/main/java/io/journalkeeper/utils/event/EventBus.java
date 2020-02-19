@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -70,7 +70,7 @@ public class EventBus implements Watchable {
     }
 
     public EventBus() {
-        this( 1000L);
+        this(1000L);
     }
 
     private AsyncLoopThread buildRemoveTimeoutPullWatchersThread() {
@@ -92,17 +92,17 @@ public class EventBus implements Watchable {
      * @param event 事件
      */
     public synchronized void fireEvent(Event event) {
-        for(EventInterceptor interceptor : interceptors) {
-            if(!interceptor.onEvent(event, this)) {
+        for (EventInterceptor interceptor : interceptors) {
+            if (!interceptor.onEvent(event, this)) {
                 logger.info("Event canceled by an interceptor, type: {}, data: {}"
-                        , event.getEventType(),event.getEventData());
+                        , event.getEventType(), event.getEventData());
                 return;
             }
         }
         // 回调Push eventWatchers
         eventWatchers.forEach(eventWatcher -> eventWatcher.onEvent(event));
 
-        if(!pullEventWatchers.isEmpty()) {
+        if (!pullEventWatchers.isEmpty()) {
             cachedEvents.put(nextSequence.getAndIncrement(), event);
         }
     }
@@ -113,7 +113,7 @@ public class EventBus implements Watchable {
      */
     @Override
     public void watch(EventWatcher eventWatcher) {
-        if(eventWatcher != null) {
+        if (eventWatcher != null) {
             eventWatchers.add(eventWatcher);
         }
     }
@@ -124,7 +124,7 @@ public class EventBus implements Watchable {
      */
     @Override
     public void unWatch(EventWatcher eventWatcher) {
-        if(eventWatcher != null) {
+        if (eventWatcher != null) {
             eventWatchers.remove(eventWatcher);
         }
     }
@@ -164,14 +164,14 @@ public class EventBus implements Watchable {
      */
     public List<PullEvent> pullEvents(long pullWatchId) {
         PullEventWatcher pullEventWatcher = pullEventWatchers.get(pullWatchId);
-        if(null != pullEventWatcher) {
+        if (null != pullEventWatcher) {
             List<PullEvent> pullEvents = cachedEvents.tailMap(pullEventWatcher.sequence.get())
                     .entrySet().stream()
                     .map(entry ->
                             new PullEvent(entry.getValue().getEventType(),
                                     entry.getKey(),
                                     entry.getValue().getEventData()
-                                    ))
+                            ))
                     .collect(Collectors.toList());
             pullEventWatcher.touch();
             return pullEvents;
@@ -186,21 +186,8 @@ public class EventBus implements Watchable {
      */
     public void ackPullEvents(long pullWatchId, long sequence) {
         PullEventWatcher pullEventWatcher = pullEventWatchers.get(pullWatchId);
-        if(null != pullEventWatcher && pullEventWatcher.sequence.get() > sequence) {
+        if (null != pullEventWatcher && pullEventWatcher.sequence.get() > sequence) {
             pullEventWatcher.sequence.set(sequence);
-        }
-    }
-
-
-    private static class PullEventWatcher {
-        PullEventWatcher(long sequence) {
-            this.sequence.set(sequence);
-        }
-        private final AtomicLong sequence = new AtomicLong(0L);
-        private long lastPullTimestamp = System.currentTimeMillis();
-
-        void touch() {
-            lastPullTimestamp = System.currentTimeMillis();
         }
     }
 
@@ -210,5 +197,17 @@ public class EventBus implements Watchable {
 
     public boolean hasEventWatchers() {
         return !eventWatchers.isEmpty();
+    }
+
+    private static class PullEventWatcher {
+        private final AtomicLong sequence = new AtomicLong(0L);
+        private long lastPullTimestamp = System.currentTimeMillis();
+        PullEventWatcher(long sequence) {
+            this.sequence.set(sequence);
+        }
+
+        void touch() {
+            lastPullTimestamp = System.currentTimeMillis();
+        }
     }
 }

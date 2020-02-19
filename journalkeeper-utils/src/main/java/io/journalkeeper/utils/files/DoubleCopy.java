@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -31,30 +31,16 @@ import java.util.zip.Checksum;
 public abstract class DoubleCopy implements Closeable {
 
 
+    private static Logger logger = LoggerFactory.getLogger(DoubleCopy.class);
     // 第二份数据的位置
     private final int NEXT;
-
-    // 时间戳
-    private long timestamp;
-    // 文件
-    protected File file;
-    private RandomAccessFile raf;
-    private static Logger logger = LoggerFactory.getLogger(DoubleCopy.class);
-
-
-    protected abstract String getName();
-
-    protected abstract byte [] serialize();
-
-    protected abstract void parse(byte [] data);
-
-    protected int next() {
-        return NEXT;
-    }
-
-
     private final AtomicLong dataVersion = new AtomicLong(0L);
     private final AtomicLong flushVersion = new AtomicLong(0L);
+    // 文件
+    protected File file;
+    // 时间戳
+    private long timestamp;
+    private RandomAccessFile raf;
 
     /**
      * 构造函数
@@ -68,6 +54,16 @@ public abstract class DoubleCopy implements Closeable {
         this.file = file;
         NEXT = maxDataSize;
         validate();
+    }
+
+    protected abstract String getName();
+
+    protected abstract byte[] serialize();
+
+    protected abstract void parse(byte[] data);
+
+    protected int next() {
+        return NEXT;
     }
 
     protected void increaseVersion() {
@@ -147,12 +143,12 @@ public abstract class DoubleCopy implements Closeable {
         long timestamp = raf.readLong();
         long checksum = raf.readLong();
 
-        byte [] data = new byte [length];
+        byte[] data = new byte[length];
 
         int size = raf.read(data, 0, length);
 
-        if(size == length) {
-            if(checksum == getChecksum(data)) {
+        if (size == length) {
+            if (checksum == getChecksum(data)) {
                 // 数据正常
                 this.timestamp = timestamp;
                 parse(data);
@@ -168,7 +164,7 @@ public abstract class DoubleCopy implements Closeable {
      * 写入到磁盘中
      */
     private void doFlush() {
-        byte [] data = serialize();
+        byte[] data = serialize();
         int length = data.length;
         long timestamp = System.currentTimeMillis();
         long checksum = getChecksum(data);
@@ -199,18 +195,18 @@ public abstract class DoubleCopy implements Closeable {
      * 刷盘
      */
     public synchronized void flush() {
-            long version = dataVersion.get();
-            if(version != flushVersion.get()) {
-                doFlush();
-                flushVersion.set(dataVersion.get());
-            }
+        long version = dataVersion.get();
+        if (version != flushVersion.get()) {
+            doFlush();
+            flushVersion.set(dataVersion.get());
+        }
     }
 
     public long getTimestamp() {
         return timestamp;
     }
 
-    private long getChecksum(byte [] data){
+    private long getChecksum(byte[] data) {
         Checksum crc = new CRC32();
         crc.update(data, 0, data.length);
         return crc.getValue();

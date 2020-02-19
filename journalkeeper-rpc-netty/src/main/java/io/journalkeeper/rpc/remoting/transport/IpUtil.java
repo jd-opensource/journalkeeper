@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,8 +18,18 @@ package io.journalkeeper.rpc.remoting.transport;
 
 import sun.net.util.IPAddressUtil;
 
-import java.net.*;
-import java.util.*;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
+import java.net.SocketAddress;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Enumeration;
+import java.util.List;
+import java.util.StringTokenizer;
 
 /**
  * Ipv4工具
@@ -28,11 +38,14 @@ import java.util.*;
  */
 public class IpUtil {
 
+    /**
+     * 内网地址
+     */
+    public static final Lan INTRANET = new Lan("172.16.0.0/12;192.168.0.0/16;10.0.0.0/8");
     public static String IPV4_PORT_SEPARATOR = ":";
     public static String IPV6_PORT_SEPARATOR = "_";
     public static String IPV4_SEPARATOR = ".";
     public static String IPV6_SEPARATOR = ":";
-
     /**
      * 管理IP
      */
@@ -41,12 +54,6 @@ public class IpUtil {
      * 网卡
      */
     public static String NET_INTERFACE;
-
-    /**
-     * 内网地址
-     */
-    public static final Lan INTRANET = new Lan("172.16.0.0/12;192.168.0.0/16;10.0.0.0/8");
-
     /**
      * 是否启用IPV6
      */

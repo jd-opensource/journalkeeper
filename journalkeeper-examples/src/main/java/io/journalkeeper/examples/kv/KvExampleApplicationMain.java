@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,29 +13,27 @@
  */
 package io.journalkeeper.examples.kv;
 
-import io.journalkeeper.core.api.AdminClient;
+import io.journalkeeper.core.serialize.WrappedBootStrap;
+import io.journalkeeper.core.serialize.WrappedRaftClient;
 import io.journalkeeper.utils.net.NetworkingUtils;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeoutException;
-import java.util.stream.Collectors;
 
 public class KvExampleApplicationMain {
     private static final Logger logger = LoggerFactory.getLogger(KvExampleApplicationMain.class);
-    public static void main(String [] args) throws IOException, InterruptedException, TimeoutException {
+
+    public static void main(String[] args) throws Exception {
         int nodes = 1;
         logger.info("Usage: java " + KvExampleApplicationMain.class.getName() + " [nodes(default 3)]");
-        if(args.length > 0) {
+        if (args.length > 0) {
             nodes = Integer.parseInt(args[0]);
         }
         logger.info("Nodes: {}", nodes);
@@ -44,52 +42,56 @@ public class KvExampleApplicationMain {
             URI uri = URI.create("jk://localhost:" + NetworkingUtils.findRandomOpenPortOnAllLocalInterfaces());
             serverURIs.add(uri);
         }
-        List<KvServer> kvServers = new ArrayList<>(serverURIs.size());
+
+        List<WrappedBootStrap<String, String, String, String>> serverBootStraps = new ArrayList<>(serverURIs.size());
+
+        KvStateFactory stateFactory = new KvStateFactory();
         for (int i = 0; i < serverURIs.size(); i++) {
             Path workingDir = Paths.get(System.getProperty("user.dir")).resolve("journalkeeper").resolve("server" + i);
             FileUtils.deleteDirectory(workingDir.toFile());
             Properties properties = new Properties();
             properties.put("working_dir", workingDir.toString());
-            KvServer kvServer = new KvServer( properties);
-            kvServers.add(kvServer);
-            kvServer.init(serverURIs.get(i), serverURIs);
-            kvServer.recover();
-            kvServer.start();
+            WrappedBootStrap<String, String, String, String> bootStrap = new WrappedBootStrap<>(stateFactory, properties);
+            bootStrap.getServer().init(serverURIs.get(i), serverURIs);
+            bootStrap.getServer().recover();
+            bootStrap.getServer().start();
+            serverBootStraps.add(bootStrap);
         }
 
-        AdminClient adminClient = kvServers.get(0).getAdminClient();
-        adminClient.waitForClusterReady(0L);
+        WrappedBootStrap<String, String, String, String> clientBootStrap = new WrappedBootStrap<>(serverURIs, new Properties());
 
-        List<KvClient> kvClients = kvServers.stream().map(KvServer::createClient).collect(Collectors.toList());
+        WrappedRaftClient<String, String, String, String> kvClient = clientBootStrap.getClient();
+        kvClient.waitForClusterReady();
+        logger.info("SET key1 hello!");
+        String result = kvClient.update("SET key1 hello!").get();
+        logger.info(result);
 
+        logger.info("SET key2 world!");
+        result = kvClient.update("SET key2 world!").get();
+        logger.info(result);
 
+        logger.info("GET key1");
+        result = kvClient.query("GET key1").get();
+        logger.info(result);
 
-        for (int j = 0; j < 10; j++) {
-            int i = j;
-            logger.info("SET {} {}", "key1", "hello!");
-            kvClients.get(i++ % serverURIs.size()).set("key1", "hello!");
+        logger.info("KEYS");
+        result = kvClient.query("KEYS").get();
+        logger.info(result);
 
-            logger.info("SET {} {}", "key2", "hello!");
-            kvClients.get(i++ % serverURIs.size()).set("key2", "world!");
+        logger.info("DEL key2");
+        result = kvClient.update("DEL key2").get();
+        logger.info(result);
 
-            logger.info("GET {}", "key1");
-            logger.info("Result: {}", kvClients.get(i++ % serverURIs.size()).get("key1"));
+        logger.info("GET key2");
+        result = kvClient.query("GET key2").get();
+        logger.info(result);
 
-            logger.info("KEYS");
-            logger.info("Result: {}", kvClients.get(i++ % serverURIs.size()).listKeys());
+        logger.info("KEYS");
+        result = kvClient.query("KEYS").get();
+        logger.info(result);
 
-            logger.info("DEL key2");
-            kvClients.get(i++ % serverURIs.size()).del("key2");
-
-            logger.info("GET {}", "key2");
-            logger.info("Result: {}", kvClients.get(i++ % serverURIs.size()).get("key2"));
-
-            logger.info("KEYS");
-            logger.info("Result: {}", kvClients.get(i ++ % serverURIs.size()).listKeys());
-        }
-
-        kvServers.parallelStream().forEach(KvServer::stop);
-
+        clientBootStrap.shutdown();
+        serverBootStraps.forEach(WrappedBootStrap::shutdown);
     }
 
 }

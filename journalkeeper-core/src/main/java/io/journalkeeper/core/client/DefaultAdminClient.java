@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,15 +13,14 @@
  */
 package io.journalkeeper.core.client;
 
-import io.journalkeeper.base.VoidSerializer;
 import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ResponseConfig;
-import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.SnapshotsEntry;
+import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.entry.internal.CreateSnapshotEntry;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.RecoverSnapshotEntry;
@@ -50,7 +49,6 @@ import java.util.concurrent.CompletableFuture;
 public class DefaultAdminClient extends AbstractClient implements AdminClient {
 
 
-
     public DefaultAdminClient(ClientRpc clientRpc, Properties properties) {
         super(clientRpc);
     }
@@ -69,7 +67,7 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
 
     @Override
     public CompletableFuture<Boolean> updateVoters(List<URI> oldConfig, List<URI> newConfig) {
-        return  clientRpc.invokeClientLeaderRpc(leaderRpc -> leaderRpc.updateVoters(new UpdateVotersRequest(oldConfig, newConfig)))
+        return clientRpc.invokeClientLeaderRpc(leaderRpc -> leaderRpc.updateVoters(new UpdateVotersRequest(oldConfig, newConfig)))
                 .thenApply(BaseResponse::success);
     }
 
@@ -87,13 +85,11 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
         return this.update(InternalEntriesSerializeSupport.serialize(new ScalePartitionsEntry(partitions)));
     }
 
-    private CompletableFuture<Void> update(byte [] entry) {
-        return update(
-                Collections.singletonList(new SerializedUpdateRequest(entry, RaftJournal.INTERNAL_PARTITION, 1)),
-                ResponseConfig.REPLICATION,
-                VoidSerializer.getInstance()
-        ).thenApply(list -> list.get(0));
+    private CompletableFuture<Void> update(byte[] entry) {
+        return update(Collections.singletonList(new UpdateRequest(entry, RaftJournal.INTERNAL_PARTITION, 1)), false,
+                ResponseConfig.REPLICATION).thenApply(v -> null);
     }
+
     @Override
     public CompletableFuture<ServerStatus> getServerStatus(URI uri) {
         return clientRpc.invokeClientServerRpc(uri,

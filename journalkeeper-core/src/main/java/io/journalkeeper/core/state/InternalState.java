@@ -2,9 +2,21 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -51,7 +63,8 @@ public class InternalState implements JournalSnapshot {
     private long snapshotTimestamp = System.currentTimeMillis();
 
 
-    public InternalState() {}
+    public InternalState() {
+    }
 
     public InternalState(ConfigState configState, Set<Integer> partitions, URI preferredLeader) {
         this.configState = configState;
@@ -78,16 +91,16 @@ public class InternalState implements JournalSnapshot {
         return Collections.unmodifiableSet(partitionIndices.keySet());
     }
 
-    public ConfigState getConfigState() {
-        return configState;
-    }
-
     public void setPartitions(Set<Integer> partitions) {
         Map<Integer, Long> copyOnWriteMap = new HashMap<>();
         for (Integer partition : partitions) {
             copyOnWriteMap.put(partition, partitionIndices.getOrDefault(partition, 0L));
         }
         partitionIndices = copyOnWriteMap;
+    }
+
+    public ConfigState getConfigState() {
+        return configState;
     }
 
     public void setConfigState(ConfigState configState) {
@@ -111,7 +124,7 @@ public class InternalState implements JournalSnapshot {
     }
 
     public void next() {
-        lastIncludedIndex ++;
+        lastIncludedIndex++;
     }
 
     @Override
@@ -129,14 +142,6 @@ public class InternalState implements JournalSnapshot {
         return minOffset;
     }
 
-    public void setPartitionIndices(Map<Integer, Long> partitionIndices) {
-        this.partitionIndices = new HashMap<>(partitionIndices);
-    }
-
-    public void setMinOffset(long minOffset) {
-        this.minOffset = minOffset;
-    }
-
     public long getSnapshotTimestamp() {
         return snapshotTimestamp;
     }
@@ -149,8 +154,16 @@ public class InternalState implements JournalSnapshot {
         return Collections.unmodifiableMap(partitionIndices);
     }
 
+    public void setPartitionIndices(Map<Integer, Long> partitionIndices) {
+        this.partitionIndices = new HashMap<>(partitionIndices);
+    }
+
     public long getMinOffset() {
         return minOffset;
+    }
+
+    public void setMinOffset(long minOffset) {
+        this.minOffset = minOffset;
     }
 
     @Override

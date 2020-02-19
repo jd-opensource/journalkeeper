@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.sql.state;
 
+import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateResult;
@@ -39,15 +40,24 @@ import java.util.Properties;
  * author: gaohaoxiang
  * date: 2019/8/1
  */
-public class SQLState implements State<WriteRequest, WriteResponse, ReadRequest, ReadResponse> {
+public class SQLState implements State {
 
     private static final Logger logger = LoggerFactory.getLogger(SQLState.class);
-
+    private final Serializer<WriteRequest> writeRequestSerializer;
+    private final Serializer<WriteResponse> writeResponseSerializer;
+    private final Serializer<ReadRequest> readRequestSerializer;
+    private final Serializer<ReadResponse> readResponseSerializer;
     private Path path;
     private Properties properties;
     private SQLExecutor executor;
     private SQLStateHandler handler;
 
+    public SQLState(Serializer<WriteRequest> writeRequestSerializer, Serializer<WriteResponse> writeResponseSerializer, Serializer<ReadRequest> readRequestSerializer, Serializer<ReadResponse> readResponseSerializer) {
+        this.writeRequestSerializer = writeRequestSerializer;
+        this.writeResponseSerializer = writeResponseSerializer;
+        this.readRequestSerializer = readRequestSerializer;
+        this.readResponseSerializer = readResponseSerializer;
+    }
 
     @Override
     public void recover(Path path, Properties properties) throws IOException {
@@ -83,9 +93,12 @@ public class SQLState implements State<WriteRequest, WriteResponse, ReadRequest,
     }
 
     @Override
-    public StateResult<WriteResponse> execute(WriteRequest request, int partition, long index, int batchSize, RaftJournal raftJournal) {
+    public StateResult execute(byte[] requestEntry, int partition, long index, int batchSize, RaftJournal raftJournal) {
+        WriteRequest request = writeRequestSerializer.parse(requestEntry);
         WriteResponse response = handler.handleWrite(request);
-        StateResult<WriteResponse> result = new StateResult<>(response);
+        StateResult result = new StateResult(
+                writeResponseSerializer.serialize(response)
+        );
         result.getEventData().put("type", String.valueOf(request.getType()));
         result.getEventData().put("sql", String.valueOf(request.getSql()));
         result.getEventData().put("batchSql", String.valueOf(request.getSqlList()));
@@ -94,8 +107,10 @@ public class SQLState implements State<WriteRequest, WriteResponse, ReadRequest,
     }
 
     @Override
-    public ReadResponse query(ReadRequest request, RaftJournal raftJournal) {
-       return handler.handleRead(request);
+    public byte[] query(byte[] request, RaftJournal raftJournal) {
+        return readResponseSerializer.serialize(handler.handleRead(
+                readRequestSerializer.parse(request)
+        ));
     }
 
     @Override

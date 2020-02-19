@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,7 +13,6 @@
  */
 package io.journalkeeper.core.server;
 
-import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.StateFactory;
@@ -82,7 +81,7 @@ import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
  * @author LiYue
  * Date: 2019-03-15
  */
-class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
+class Observer extends AbstractServer {
     private static final Logger logger = LoggerFactory.getLogger(Observer.class);
 
     private final JMetric replicationMetric;
@@ -90,20 +89,15 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     private final CompletableRetry<URI> serverRpcRetry;
     private final Config config;
 
-    Observer(StateFactory<E, ER, Q, QR> stateFactory,
-                    Serializer<E> entrySerializer,
-                    Serializer<ER> entryResultSerializer,
-                    Serializer<Q> querySerializer,
-                    Serializer<QR> queryResultSerializer,
-                    JournalEntryParser journalEntryParser,
-                    ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor,
-                    ServerRpcAccessPoint serverRpcAccessPoint,
-                    Properties properties) {
-        super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer,
-                journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
+    Observer(StateFactory stateFactory,
+             JournalEntryParser journalEntryParser,
+             ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor,
+             ServerRpcAccessPoint serverRpcAccessPoint,
+             Properties properties) {
+        super(stateFactory, journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         this.config = toConfig(properties);
         this.replicationMetric = getMetric(METRIC_OBSERVER_REPLICATION);
-        serverRpcRetry = new CompletableRetry<>(new IncreasingRetryPolicy(new long [] {100, 500, 3000, 10000}, 50),
+        serverRpcRetry = new CompletableRetry<>(new IncreasingRetryPolicy(new long[]{100, 500, 3000, 10000}, 50),
                 new RandomDestinationSelector<>(config.getParents()));
     }
 
@@ -117,7 +111,7 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
         String parentsString = properties.getProperty(
                 Config.PARENTS_KEY,
                 null);
-        if(null != parentsString) {
+        if (null != parentsString) {
             config.setParents(Arrays.stream(parentsString.split(","))
                     .map(String::trim)
                     .map(URI::create).collect(Collectors.toList()));
@@ -126,12 +120,13 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
         }
         return config;
     }
+
     private AsyncLoopThread buildReplicationThread() {
         return ThreadBuilder.builder()
                 .name(threadName(OBSERVER_REPLICATION_THREAD))
                 .condition(() -> this.serverState() == ServerState.RUNNING)
                 .doWork(this::pullEntries)
-                .sleepTime(50,100)
+                .sleepTime(50, 100)
                 .onException(e -> logger.warn("{} Exception: ", OBSERVER_REPLICATION_THREAD, e))
                 .daemon(true)
                 .build();
@@ -160,10 +155,10 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
         }
         GetServerEntriesResponse response =
                 invokeParentsRpc(
-                        rpc -> rpc.getServerEntries(new GetServerEntriesRequest(journal.commitIndex(),config.getPullBatchSize()))
+                        rpc -> rpc.getServerEntries(new GetServerEntriesRequest(journal.commitIndex(), config.getPullBatchSize()))
                 ).get();
 
-        if(response.success()){
+        if (response.success()) {
 
             journal.appendBatchRaw(response.getEntries());
 
@@ -175,9 +170,9 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
             traffic = response.getEntries().stream().mapToLong(bytes -> bytes.length).sum();
 
 
-        } else if( response.getStatusCode() == StatusCode.INDEX_UNDERFLOW){
+        } else if (response.getStatusCode() == StatusCode.INDEX_UNDERFLOW) {
             installSnapshot(response.getMinIndex());
-        } else if( response.getStatusCode() != StatusCode.INDEX_OVERFLOW){
+        } else if (response.getStatusCode() != StatusCode.INDEX_OVERFLOW) {
             logger.warn("Pull entry failed! {}", response.errorString());
         }
         replicationMetric.end(traffic);

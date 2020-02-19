@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -16,6 +16,7 @@ package io.journalkeeper.utils.spi;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -27,20 +28,30 @@ import java.util.stream.StreamSupport;
  */
 public class ServiceSupport {
     private final static Map<String, Object> singletonServices = new HashMap<>();
+
     @SuppressWarnings("unchecked")
     public synchronized static <S> S load(Class<? super S> service, String className) {
-        return (S ) StreamSupport.
+        return (S) StreamSupport.
                 stream(ServiceLoader.load(service).spliterator(), false)
                 .filter(s -> s.getClass().getCanonicalName().equals(className))
                 .map(ServiceSupport::singletonFilter)
                 .findFirst().orElseThrow(ServiceLoadException::new);
     }
+
     public synchronized static <S> S load(Class<S> service) {
         return StreamSupport.
                 stream(ServiceLoader.load(service).spliterator(), false)
                 .map(ServiceSupport::singletonFilter)
                 .findFirst().orElseThrow(ServiceLoadException::new);
     }
+
+    public synchronized static <S> Optional<S> tryLoad(Class<S> service) {
+        return StreamSupport.
+                stream(ServiceLoader.load(service).spliterator(), false)
+                .map(ServiceSupport::singletonFilter)
+                .findFirst();
+    }
+
     public synchronized static <S> Collection<S> loadAll(Class<S> service) {
         return StreamSupport.
                 stream(ServiceLoader.load(service).spliterator(), false)
@@ -48,9 +59,9 @@ public class ServiceSupport {
     }
 
     @SuppressWarnings("unchecked")
-    private static <S>  S singletonFilter(S service) {
+    private static <S> S singletonFilter(S service) {
 
-        if(service.getClass().isAnnotationPresent(Singleton.class)) {
+        if (service.getClass().isAnnotationPresent(Singleton.class)) {
             String className = service.getClass().getCanonicalName();
             Object singletonInstance = singletonServices.putIfAbsent(className, service);
             return singletonInstance == null ? service : (S) singletonInstance;

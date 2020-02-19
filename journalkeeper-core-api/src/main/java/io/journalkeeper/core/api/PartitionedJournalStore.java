@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -49,7 +49,7 @@ public interface PartitionedJournalStore extends Watchable {
      * @param entries 待写入的序列化后的日志。
      * @return 已写入的日志在分区上的索引序号。
      */
-    default CompletableFuture<Long> append(int partition, int batchSize, byte [] entries) {
+    default CompletableFuture<Long> append(int partition, int batchSize, byte[] entries) {
         return append(partition, batchSize, entries, ResponseConfig.REPLICATION);
     }
 
@@ -62,9 +62,10 @@ public interface PartitionedJournalStore extends Watchable {
      * @return 已写入的日志在分区上的索引序号。注意：由于日志的分区索引序号是在日志提交阶段构建的，
      * 因此只有responseConfig为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时，才会返回分区索引序号。其它responseConfig时，返回null。
      */
-    default CompletableFuture<Long> append(int partition, int batchSize, byte [] entries, ResponseConfig responseConfig) {
+    default CompletableFuture<Long> append(int partition, int batchSize, byte[] entries, ResponseConfig responseConfig) {
         return append(partition, batchSize, entries, false, responseConfig);
     }
+
     /**
      * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
      * @param partition 分区
@@ -75,8 +76,8 @@ public interface PartitionedJournalStore extends Watchable {
      * @return 已写入的日志在分区上的索引序号。注意：由于日志的分区索引序号是在日志提交阶段构建的，
      * 因此只有responseConfig为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时，才会返回分区索引序号。其它responseConfig时，返回null。
      */
-    default CompletableFuture<Long> append(int partition, int batchSize, byte [] entries, boolean includeHeader, ResponseConfig responseConfig) {
-        return append(new UpdateRequest<>(entries, partition, batchSize), includeHeader, responseConfig);
+    default CompletableFuture<Long> append(int partition, int batchSize, byte[] entries, boolean includeHeader, ResponseConfig responseConfig) {
+        return append(new UpdateRequest(entries, partition, batchSize), includeHeader, responseConfig);
     }
 
 
@@ -86,7 +87,7 @@ public interface PartitionedJournalStore extends Watchable {
      * @param updateRequest See {@link UpdateRequest}
      * @return 已写入的日志在分区上的索引序号。
      */
-    default CompletableFuture<Long> append(UpdateRequest<byte []> updateRequest) {
+    default CompletableFuture<Long> append(UpdateRequest updateRequest) {
         return append(updateRequest, ResponseConfig.REPLICATION);
     }
 
@@ -97,9 +98,10 @@ public interface PartitionedJournalStore extends Watchable {
      * @return 已写入的日志在分区上的索引序号。注意：由于日志的分区索引序号是在日志提交阶段构建的，
      * 因此只有responseConfig为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时，才会返回分区索引序号。其它responseConfig时，返回null。
      */
-    default CompletableFuture<Long> append(UpdateRequest<byte []> updateRequest, ResponseConfig responseConfig) {
+    default CompletableFuture<Long> append(UpdateRequest updateRequest, ResponseConfig responseConfig) {
         return append(updateRequest, false, responseConfig);
     }
+
     /**
      * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
      * @param updateRequest See {@link UpdateRequest}
@@ -108,14 +110,15 @@ public interface PartitionedJournalStore extends Watchable {
      * @return 已写入的日志在分区上的索引序号。注意：由于日志的分区索引序号是在日志提交阶段构建的，
      * 因此只有responseConfig为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时，才会返回分区索引序号。其它responseConfig时，返回null。
      */
-    CompletableFuture<Long> append(UpdateRequest<byte []> updateRequest, boolean includeHeader, ResponseConfig responseConfig);
+    CompletableFuture<Long> append(UpdateRequest updateRequest, boolean includeHeader, ResponseConfig responseConfig);
+
     /**
      * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
      * 日志在集群中被复制到大多数节点后返回。
      * @param updateRequests See {@link UpdateRequest}
      * @return 写入日志在分区上的索引序号列表
      */
-    default CompletableFuture<List<Long>> append(List<UpdateRequest<byte []>> updateRequests) {
+    default CompletableFuture<List<Long>> append(List<UpdateRequest> updateRequests) {
         return append(updateRequests, ResponseConfig.REPLICATION);
     }
 
@@ -126,9 +129,10 @@ public interface PartitionedJournalStore extends Watchable {
      * @return 已写入的日志在分区上的索引序号列表。注意：由于日志的分区索引序号是在日志提交阶段构建的，
      * 因此只有responseConfig为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时，才会返回分区索引序号。其它responseConfig时，返回null。
      */
-    default CompletableFuture<List<Long>> append(List<UpdateRequest<byte []>> updateRequests, ResponseConfig responseConfig) {
+    default CompletableFuture<List<Long>> append(List<UpdateRequest> updateRequests, ResponseConfig responseConfig) {
         return append(updateRequests, false, responseConfig);
     }
+
     /**
      * 写入日志。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个客户端使用该服务。
      * @param updateRequests See {@link UpdateRequest}
@@ -137,7 +141,7 @@ public interface PartitionedJournalStore extends Watchable {
      * @return 已写入的日志在分区上的索引序号列表。注意：由于日志的分区索引序号是在日志提交阶段构建的，
      * 因此只有responseConfig为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时，才会返回分区索引序号。其它responseConfig时，返回null。
      */
-    CompletableFuture<List<Long>> append(List<UpdateRequest<byte []>> updateRequests, boolean includeHeader, ResponseConfig responseConfig);
+    CompletableFuture<List<Long>> append(List<UpdateRequest> updateRequests, boolean includeHeader, ResponseConfig responseConfig);
 
     /**
      * 查询日志

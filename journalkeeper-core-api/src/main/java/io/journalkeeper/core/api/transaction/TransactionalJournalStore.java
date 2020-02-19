@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -93,7 +93,7 @@ public interface TransactionalJournalStore {
      * @return 执行成功返回null，失败抛出异常。
      */
     default CompletableFuture<Void> append(TransactionId transactionId, byte[] entry, int partition, int batchSize, boolean includeHeader) {
-        return append(transactionId, new UpdateRequest<>(entry, partition, batchSize), includeHeader);
+        return append(transactionId, new UpdateRequest(entry, partition, batchSize), includeHeader);
     }
 
 
@@ -105,7 +105,7 @@ public interface TransactionalJournalStore {
      * @param includeHeader entry中是否包含Header
      * @return 执行成功返回null，失败抛出异常。
      */
-    CompletableFuture<Void> append(TransactionId transactionId, UpdateRequest<byte []> updateRequest, boolean includeHeader);
+    CompletableFuture<Void> append(TransactionId transactionId, UpdateRequest updateRequest, boolean includeHeader);
 
     /**
      * 写入事务操作日志变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
@@ -115,7 +115,7 @@ public interface TransactionalJournalStore {
      * @param updateRequest See {@link UpdateRequest}
      * @return 执行成功返回null，失败抛出异常。
      */
-    default CompletableFuture<Void> append(TransactionId transactionId, UpdateRequest<byte []> updateRequest) {
+    default CompletableFuture<Void> append(TransactionId transactionId, UpdateRequest updateRequest) {
         return append(transactionId, updateRequest, false);
     }
 
@@ -127,7 +127,7 @@ public interface TransactionalJournalStore {
      * @param updateRequests See {@link UpdateRequest}
      * @return 执行成功返回null，失败抛出异常。
      */
-    default CompletableFuture<Void> append(TransactionId transactionId, List<UpdateRequest<byte []>> updateRequests) {
+    default CompletableFuture<Void> append(TransactionId transactionId, List<UpdateRequest> updateRequests) {
         return append(transactionId, updateRequests, false);
     }
 
@@ -139,6 +139,6 @@ public interface TransactionalJournalStore {
      * @param includeHeader entry中是否包含Header
      * @return 执行成功返回null，失败抛出异常。
      */
-    CompletableFuture<Void> append(TransactionId transactionId, List<UpdateRequest<byte []>> updateRequests, boolean includeHeader);
+    CompletableFuture<Void> append(TransactionId transactionId, List<UpdateRequest> updateRequests, boolean includeHeader);
 
 }

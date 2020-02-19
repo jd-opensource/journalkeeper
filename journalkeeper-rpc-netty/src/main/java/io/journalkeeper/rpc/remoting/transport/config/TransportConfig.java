@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -26,35 +26,35 @@ import io.journalkeeper.rpc.remoting.transport.IpUtil;
 public class TransportConfig {
 
     // 绑定地址
-    private  String host = IpUtil.getLocalIp();
+    private String host = IpUtil.getLocalIp();
     // 接受请求线程数
-    private  int acceptThread = 1;
+    private int acceptThread = 1;
     // io线程数
-    private  int ioThread = Runtime.getRuntime().availableProcessors();
+    private int ioThread = Runtime.getRuntime().availableProcessors();
     // 通道最大空闲时间(毫秒)
-    private  int maxIdleTime = 120 * 1000;
+    private int maxIdleTime = 120 * 1000;
     // 表示是否允许重用Socket所绑定的本地地址
-    private  boolean reuseAddress = true;
+    private boolean reuseAddress = true;
     // 关闭时候，对未发送数据包等待时间(秒)，-1,0:禁用,丢弃未发送的数据包;>0，等到指定时间，如果还未发送则丢弃
-    private  int soLinger = -1;
+    private int soLinger = -1;
     // 启用nagle算法，为真立即发送，否则得到确认或缓冲区满发送
-    private  boolean tcpNoDelay = true;
+    private boolean tcpNoDelay = true;
     // 保持活动连接，定期心跳包
-    private  boolean keepAlive = true;
+    private boolean keepAlive = true;
     // socket读超时时间(毫秒)
-    private  int soTimeout = 1000;
+    private int soTimeout = 1000;
     // socket缓冲区大小
-    private  int socketBufferSize = 1024 * 1024 * 2;
+    private int socketBufferSize = 1024 * 1024 * 2;
     // 数据包最大大小
-    private  int frameMaxSize = 1024 * 1024 * 4 + 1024;
+    private int frameMaxSize = 1024 * 1024 * 4 + 1024;
     // 连接请求最大队列长度，如果队列满时收到连接指示，则拒绝该连接。
-    private  int backlog = 65536;
+    private int backlog = 65536;
     // 最大单向请求并发数
-    private  int maxOneway = 10240;
+    private int maxOneway = 10240;
     // 非阻塞oneway
     private boolean nonBlockOneway = false;
     // 最大异步请求数
-    private  int maxAsync = 10240;
+    private int maxAsync = 10240;
     // 异步回调线程数量
     private int callbackThreads = Runtime.getRuntime().availableProcessors();
     // 默认发送数据包超时时间
@@ -62,7 +62,7 @@ public class TransportConfig {
 
     /*** 重试策略配置 ***/
     // 最大重试次数(无限制)
-    private int  maxRetrys = 1;
+    private int maxRetrys = 1;
     // 最大重试间隔(默认5分钟)
     private int maxRetryDelay = 50;
     // 重试间隔
@@ -82,6 +82,10 @@ public class TransportConfig {
             this.retryPolicy = new RetryPolicy(getRetryDelay(), getMaxRetryDelay(), getMaxRetrys(), isUseExponentialBackOff(), getBackOffMultiplier(), getExpireTime());
         }
         return retryPolicy;
+    }
+
+    public void setRetryPolicy(RetryPolicy retryPolicy) {
+        this.retryPolicy = retryPolicy;
     }
 
     public String getHost() {
@@ -260,15 +264,11 @@ public class TransportConfig {
         this.expireTime = expireTime;
     }
 
-    public void setRetryPolicy(RetryPolicy retryPolicy) {
-        this.retryPolicy = retryPolicy;
+    public boolean isNonBlockOneway() {
+        return nonBlockOneway;
     }
 
     public void setNonBlockOneway(boolean nonBlockOneway) {
         this.nonBlockOneway = nonBlockOneway;
-    }
-
-    public boolean isNonBlockOneway() {
-        return nonBlockOneway;
     }
 }

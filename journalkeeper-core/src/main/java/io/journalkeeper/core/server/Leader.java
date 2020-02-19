@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -14,12 +14,11 @@
 package io.journalkeeper.core.server;
 
 import io.journalkeeper.base.ReplicableIterator;
-import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.ResponseConfig;
-import io.journalkeeper.core.api.SerializedUpdateRequest;
+import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
 import io.journalkeeper.core.entry.internal.CreateSnapshotEntry;
@@ -62,8 +61,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
@@ -78,7 +75,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -96,35 +92,29 @@ import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
  * @author LiYue
  * Date: 2019-09-10
  */
-class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
+class Leader extends ServerStateMachine implements StateServer {
     private static final Logger logger = LoggerFactory.getLogger(Leader.class);
-
+    /**
+     * 节点上的最新状态 和 被状态机执行的最大日志条目的索引值（从 0 开始递增）
+     */
+    protected final JournalKeeperState state;
     /**
      * 客户端更新状态请求队列
      */
     private final BlockingQueue<UpdateStateRequestResponse> pendingUpdateStateRequests;
-
     /**
      * 保存异步响应的回调方法
      */
     private final CallbackResultBelt replicationCallbacks;
     private final CallbackResultBelt flushCallbacks;
-
     /**
      * 当角色为LEADER时，记录所有FOLLOWER的位置等信息
      */
     private final List<ReplicationDestination> followers = new CopyOnWriteArrayList<>();
-
     /**
      * 刷盘位置，用于回调
      */
     private final AtomicLong journalFlushIndex = new AtomicLong(0L);
-
-    /**
-     * Leader有效期，用于读取状态时判断leader是否还有效，每次从Follower收到心跳响应，定时更新leader的有效期。
-     */
-    private AtomicLong leaderShipDeadLineMs = new AtomicLong(0L);
-
     private final Threads threads;
     private final long heartbeatIntervalMs;
     private final int replicationParallelism;
@@ -134,43 +124,40 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     /**
      * 存放节点上所有状态快照的稀疏数组，数组的索引（key）就是快照对应的日志位置的索引
      */
-    private final Map<Long, JournalKeeperState<E, ER, Q, QR>> immutableSnapshots;
+    private final Map<Long, JournalKeeperState> immutableSnapshots;
 
     private final URI serverUri;
     private final int currentTerm;
-    /**
-     * 节点上的最新状态 和 被状态机执行的最大日志条目的索引值（从 0 开始递增）
-     */
-    protected final JournalKeeperState state;
-    private JMetric updateClusterStateMetric;
-    private JMetric appendJournalMetric;
     private final Map<URI, JMetric> appendEntriesRpcMetricMap;
-
     private final ServerRpcProvider serverRpcProvider;
     private final ExecutorService asyncExecutor;
     private final ScheduledExecutorService scheduledExecutor;
-    private ScheduledFuture heartbeatScheduledFuture;
     private final VoterConfigManager voterConfigManager;
     private final MetricProvider metricProvider;
     private final CheckTermInterceptor checkTermInterceptor;
-
     private final AtomicBoolean writeEnabled = new AtomicBoolean(true);
-    private final Serializer<ER> entryResultSerializer;
     private final JournalEntryParser journalEntryParser;
-
     private final JournalTransactionManager journalTransactionManager;
     private final ApplyReservedEntryInterceptor journalTransactionInterceptor;
     private final ApplyInternalEntryInterceptor leaderAnnouncementInterceptor;
-    private final NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> snapshots;
+    private final NavigableMap<Long, JournalKeeperState> snapshots;
     private final int snapshotIntervalSec;
-    private ScheduledFuture takeSnapshotFuture;
     private final AtomicBoolean isLeaderAnnouncementApplied = new AtomicBoolean(false);
     private final AtomicLong callbackBarrier = new AtomicLong(0L);
-    Leader(Journal journal, JournalKeeperState state, Map<Long, JournalKeeperState<E, ER, Q, QR>> immutableSnapshots,
+    /**
+     * Leader有效期，用于读取状态时判断leader是否还有效，每次从Follower收到心跳响应，定时更新leader的有效期。
+     */
+    private AtomicLong leaderShipDeadLineMs = new AtomicLong(0L);
+    private JMetric updateClusterStateMetric;
+    private JMetric appendJournalMetric;
+    private ScheduledFuture heartbeatScheduledFuture;
+    private ScheduledFuture takeSnapshotFuture;
+
+    Leader(Journal journal, JournalKeeperState state, Map<Long, JournalKeeperState> immutableSnapshots,
            int currentTerm,
            URI serverUri,
            int cacheRequests, long heartbeatIntervalMs, long rpcTimeoutMs, int replicationParallelism, int replicationBatchSize,
-           int snapshotIntervalSec, Serializer<ER> entryResultSerializer,
+           int snapshotIntervalSec,
            Threads threads,
            ServerRpcProvider serverRpcProvider,
            ClientServerRpc server,
@@ -180,7 +167,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
            MetricProvider metricProvider,
            CheckTermInterceptor checkTermInterceptor,
            JournalEntryParser journalEntryParser,
-           long transactionTimeoutMs, NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> snapshots) {
+           long transactionTimeoutMs, NavigableMap<Long, JournalKeeperState> snapshots) {
 
         super(true);
         this.pendingUpdateStateRequests = new LinkedBlockingQueue<>(cacheRequests);
@@ -204,22 +191,25 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.replicationCallbacks = new RingBufferBelt(rpcTimeoutMs, cacheRequests);
         this.flushCallbacks = new RingBufferBelt(rpcTimeoutMs, cacheRequests);
         this.appendEntriesRpcMetricMap = new HashMap<>(2);
-        this.entryResultSerializer = entryResultSerializer;
         this.journal = journal;
         this.heartbeatIntervalMs = heartbeatIntervalMs;
         this.journalTransactionManager = new JournalTransactionManager(journal, server, scheduledExecutor, transactionTimeoutMs);
         this.journalTransactionInterceptor = (journalEntry, index) -> journalTransactionManager.applyEntry(journalEntry);
         this.leaderAnnouncementInterceptor = (type, internalEntry) -> {
             if (type == InternalEntryType.TYPE_LEADER_ANNOUNCEMENT) {
-               LeaderAnnouncementEntry leaderAnnouncementEntry = InternalEntriesSerializeSupport.parse(internalEntry);
-               if (leaderAnnouncementEntry.getTerm() == currentTerm) {
-                   logger.info("Leader announcement applied! Leader: {}, term: {}.", serverUri, currentTerm);
-                   isLeaderAnnouncementApplied.compareAndSet(false, true);
-               }
+                LeaderAnnouncementEntry leaderAnnouncementEntry = InternalEntriesSerializeSupport.parse(internalEntry);
+                if (leaderAnnouncementEntry.getTerm() == currentTerm) {
+                    logger.info("Leader announcement applied! Leader: {}, term: {}.", serverUri, currentTerm);
+                    isLeaderAnnouncementApplied.compareAndSet(false, true);
+                }
             }
         };
 
         this.callbackBarrier.set(journal.maxIndex());
+    }
+
+    private static String getMetricName(String prefix, URI followerUri) {
+        return prefix + "_" + followerUri.toString();
     }
 
     private AsyncLoopThread buildLeaderAppendJournalEntryThread() {
@@ -276,8 +266,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         final ResponseFuture responseFuture = rr.getResponseFuture();
         try {
 
-            if(request.getRequests().size() == 1  && voterConfigManager.maybeUpdateLeaderConfig(request.getRequests().get(0),
-                    state.getConfigState(),journal, () -> doAppendJournalEntryCallable(request, responseFuture),
+            if (request.getRequests().size() == 1 && voterConfigManager.maybeUpdateLeaderConfig(request.getRequests().get(0),
+                    state.getConfigState(), journal, () -> doAppendJournalEntryCallable(request, responseFuture),
                     serverUri, followers, replicationParallelism, appendEntriesRpcMetricMap)) {
                 return;
             }
@@ -299,10 +289,10 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         appendJournalMetric.start();
 
         List<JournalEntry> journalEntries = new ArrayList<>(request.getRequests().size());
-        for (SerializedUpdateRequest serializedUpdateRequest : request.getRequests()) {
-            JournalEntry entry ;
+        for (UpdateRequest serializedUpdateRequest : request.getRequests()) {
+            JournalEntry entry;
 
-            if(request.isIncludeHeader()) {
+            if (request.isIncludeHeader()) {
                 entry = journalEntryParser.parse(serializedUpdateRequest.getEntry());
             } else {
                 entry = journalEntryParser.createJournalEntry(serializedUpdateRequest.getEntry());
@@ -312,7 +302,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
             entry.setTerm(currentTerm);
 
 
-            if(request.getTransactionId() != null) {
+            if (request.getTransactionId() != null) {
                 entry = journalTransactionManager.wrapTransactionalEntry(entry, request.getTransactionId(), journalEntryParser);
             }
             journalEntries.add(entry);
@@ -325,7 +315,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     }
 
     private void appendAndCallback(List<JournalEntry> journalEntries, ResponseConfig responseConfig, ResponseFuture responseFuture) throws InterruptedException {
-        if(journalEntries.size() == 1) {
+        if (journalEntries.size() == 1) {
             long offset = journal.append(journalEntries.get(0));
             setCallback(responseConfig, responseFuture, offset);
         } else {
@@ -387,7 +377,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private void sendHeartbeat() {
         for (ReplicationDestination follower : followers) {
             // Send heartbeat
-            if (System.currentTimeMillis() - follower.getLastHeartbeatRequestTime() >= heartbeatIntervalMs ) {
+            if (System.currentTimeMillis() - follower.getLastHeartbeatRequestTime() >= heartbeatIntervalMs) {
                 AsyncAppendEntriesRequest request =
                         new AsyncAppendEntriesRequest(currentTerm, serverUri,
                                 follower.getNextIndex() - 1, getPreLogTerm(follower.getNextIndex()),
@@ -397,7 +387,6 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         }
 
     }
-
 
     private void sendAppendEntriesRequest(ReplicationDestination follower, AsyncAppendEntriesRequest request) {
         if (serverState() != ServerState.RUNNING || request.getTerm() != currentTerm) {
@@ -416,7 +405,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                             "follower: {}, " +
                             "term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, " +
                             "entries: {}, leaderCommit: {}, {}.",
-                    isHeartbeat ? "heartbeat": "appendEntriesRequest",
+                    isHeartbeat ? "heartbeat" : "appendEntriesRequest",
                     follower.getUri(),
                     request.getTerm(), request.getLeader(), request.getPrevLogIndex(), request.getPrevLogTerm(),
                     request.getEntries().size(), request.getLeaderCommit(), voterInfo());
@@ -432,7 +421,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                 .thenCompose(serverRpc -> serverRpc.asyncAppendEntries(request))
                 .exceptionally(AsyncAppendEntriesResponse::new)
                 .thenApply(response -> {
-                    if(null != metric && traffic > 0) {
+                    if (null != metric && traffic > 0) {
                         metric.mark(System.nanoTime() - start, traffic);
                     }
                     return response;
@@ -442,9 +431,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
     }
 
-
     private void leaderOnAppendEntriesResponse(ReplicationDestination follower, AsyncAppendEntriesRequest request, AsyncAppendEntriesResponse response) {
-        if(checkTermInterceptor.checkTerm(response.getTerm())) {
+        if (checkTermInterceptor.checkTerm(response.getTerm())) {
             return;
         }
 
@@ -455,12 +443,11 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
             follower.setLastHeartbeatResponseTime(System.currentTimeMillis());
 
             // 计算leader有效期
-            long [] sortedHeartbeatResponseTimes = followers.stream().mapToLong(ReplicationDestination::getLastHeartbeatResponseTime)
+            long[] sortedHeartbeatResponseTimes = followers.stream().mapToLong(ReplicationDestination::getLastHeartbeatResponseTime)
                     .sorted().toArray();
 
             leaderShipDeadLineMs.set(
-                    (sortedHeartbeatResponseTimes[sortedHeartbeatResponseTimes.length / 2]) + heartbeatIntervalMs) ;
-
+                    (sortedHeartbeatResponseTimes[sortedHeartbeatResponseTimes.length / 2]) + heartbeatIntervalMs);
 
 
             if (response.getTerm() == currentTerm) {
@@ -484,9 +471,9 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                 logger.warn("Drop outdated AsyncAppendEntries Response: follower: {}, term: {}, index: {}, {}.",
                         follower.getUri(), response.getTerm(), response.getJournalIndex(), voterInfo());
             }
-        } else if(request.getEntries().size() > 0 ){ // 心跳不重试
+        } else if (request.getEntries().size() > 0) { // 心跳不重试
 
-            logger.warn("Replication response error: {}.", response.errorString());
+//            logger.warn("Replication response error: {}.", response.errorString());
             delaySendAsyncAppendEntriesRpc(follower, request);
         }
     }
@@ -494,7 +481,6 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private void delaySendAsyncAppendEntriesRpc(ReplicationDestination follower, AsyncAppendEntriesRequest request) {
         this.scheduledExecutor.schedule(() -> sendAppendEntriesRequest(follower, request), heartbeatIntervalMs, TimeUnit.MILLISECONDS);
     }
-
 
     private int getPreLogTerm(long currentLogIndex) {
         if (currentLogIndex > journal.minIndex()) {
@@ -507,9 +493,6 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
             throw new IndexUnderflowException();
         }
     }
-
-
-
 
     /**
      * 对于每一个AsyncAppendRequest RPC请求，当收到成功响应的时需要更新repStartIndex、matchIndex和commitIndex。
@@ -643,7 +626,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                     if (follower.getRepStartIndex() == response.getJournalIndex()) {
 
                         // 如果回退到最小位置，先安装快照
-                        if(follower.getRepStartIndex() <= snapshots.firstKey()) {
+                        if (follower.getRepStartIndex() <= snapshots.firstKey()) {
                             installSnapshot(follower, snapshots.firstEntry().getValue());
                             follower.setRepStartIndex(snapshots.firstKey());
                             follower.setNextIndex(snapshots.firstKey());
@@ -682,11 +665,12 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         }
         return isMatchIndexUpdated;
     }
+
     private int getTerm(long index) {
         try {
             return journal.getTerm(index);
         } catch (IndexUnderflowException e) {
-            if(index  + 1 == snapshots.firstKey()) {
+            if (index + 1 == snapshots.firstKey()) {
                 return snapshots.firstEntry().getValue().lastIncludedTerm();
             } else {
                 throw e;
@@ -694,7 +678,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         }
     }
 
-    private void installSnapshot(ReplicationDestination follower, JournalKeeperState<E,ER,Q,QR> snapshot) {
+    private void installSnapshot(ReplicationDestination follower, JournalKeeperState snapshot) {
 
         try {
             logger.info("Install snapshot to {} ...", follower.getUri());
@@ -702,13 +686,13 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
             int offset = 0;
             ReplicableIterator iterator = snapshot.iterator();
             while (iterator.hasMoreTrunks()) {
-                byte [] trunk = iterator.nextTrunk();
+                byte[] trunk = iterator.nextTrunk();
                 InstallSnapshotRequest request = new InstallSnapshotRequest(
                         currentTerm, serverUri, snapshot.lastIncludedIndex(), snapshot.lastIncludedTerm(),
                         offset, trunk, !iterator.hasMoreTrunks()
                 );
                 InstallSnapshotResponse response = rpc.installSnapshot(request).get();
-                if(!response.success()) {
+                if (!response.success()) {
                     logger.warn("Install snapshot to {} failed! Cause: {}.", follower.getUri(), response.errorString());
                     return;
                 }
@@ -735,17 +719,16 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                 journal.maxIndex(), journal.commitIndex(), state.lastApplied(), serverUri.toString());
     }
 
-
     CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
 
         UpdateStateRequestResponse requestResponse = new UpdateStateRequestResponse(request, updateClusterStateMetric);
 
         try {
-            if(serverState() != ServerState.RUNNING) {
+            if (serverState() != ServerState.RUNNING) {
                 throw new IllegalStateException(String.format("Leader is not RUNNING, state: %s.", serverState().toString()));
             }
 
-            if(!writeEnabled.get()) {
+            if (!writeEnabled.get()) {
                 throw new IllegalStateException("Server disabled temporarily.");
             }
 
@@ -760,7 +743,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     }
 
     void disableWrite(long timeoutMs, int term) {
-        if(currentTerm != term) {
+        if (currentTerm != term) {
             throw new IllegalStateException(
                     String.format("Term not matched! Term in leader: %d, term in request: %d", currentTerm, term));
         }
@@ -817,12 +800,13 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
             logger.warn("Exception: ", e);
         }
     }
+
     private void takeSnapshotPeriodically() {
         if (state.lastApplied() > snapshots.lastKey()) {
             logger.info("Send create snapshot request.");
             updateClusterState(
                     new UpdateClusterStateRequest(
-                            new SerializedUpdateRequest(InternalEntriesSerializeSupport.serialize(
+                            new UpdateRequest(InternalEntriesSerializeSupport.serialize(
                                     new CreateSnapshotEntry()), RaftJournal.INTERNAL_PARTITION, 1
                             )
                     )
@@ -841,7 +825,8 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         }
         mayBeWaitingForAppendJournals();
 
-        state.removeInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT, leaderAnnouncementInterceptor);;
+        state.removeInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT, leaderAnnouncementInterceptor);
+        ;
         state.removeInterceptor(this.journalTransactionInterceptor);
         journalTransactionManager.stop();
         this.threads.stopThread(threadName(LEADER_APPEND_ENTRY_THREAD));
@@ -853,7 +838,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         this.threads.removeThread(threadName(LEADER_CALLBACK_THREAD));
         this.threads.removeThread(threadName(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD));
         this.threads.removeThread(threadName(LEADER_REPLICATION_THREAD));
-        if(null != heartbeatScheduledFuture) {
+        if (null != heartbeatScheduledFuture) {
             heartbeatScheduledFuture.cancel(false);
         }
         removeAppendEntriesRpcMetrics();
@@ -883,27 +868,23 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
                 metricProvider.removeMetric(getMetricName(METRIC_APPEND_ENTRIES_RPC, followerUri)));
     }
 
-    private static String getMetricName(String prefix, URI followerUri) {
-        return prefix + "_" + followerUri.toString();
-    }
-
-
-    void callback(long lastApplied, ER result)  {
+    void callback(long lastApplied, byte[] result) {
         while (lastApplied > callbackBarrier.get()) {
             Thread.yield();
         }
-        replicationCallbacks.callback(lastApplied, entryResultSerializer.serialize(result));
+        replicationCallbacks.callback(lastApplied, result);
     }
 
     void onJournalFlushed() {
 
         journalFlushIndex.set(journal.maxIndex());
-        if(serverState() == ServerState.RUNNING) {
+        if (serverState() == ServerState.RUNNING) {
             threads.wakeupThread(threadName(LEADER_APPEND_ENTRY_THREAD));
             threads.wakeupThread(threadName(LEADER_CALLBACK_THREAD));
         }
 
     }
+
     /**
      * 异步检测Leader有效性，成功返回null，失败抛出异常。
      */
@@ -912,11 +893,11 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     }
 
     private CompletableFuture<Void> waitLeadership(long deadLineTimestamp) {
-        if(System.currentTimeMillis() > deadLineTimestamp) {
+        if (System.currentTimeMillis() > deadLineTimestamp) {
             CompletableFuture<Void> future = new CompletableFuture<>();
             future.completeExceptionally(new NotLeaderException(null));
             return future;
-        } else if(checkLeadership()) {
+        } else if (checkLeadership()) {
             return CompletableFuture.completedFuture(null);
         } else {
             return Async.scheduleAsync(scheduledExecutor, () -> waitLeadership(deadLineTimestamp), heartbeatIntervalMs / 10, TimeUnit.MILLISECONDS);
@@ -990,6 +971,7 @@ class Leader<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
         ResponseFuture getResponseFuture() {
             return this.responseFuture;
         }
+
         public long getLogIndex() {
             return logIndex;
         }

@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -72,39 +72,40 @@ public class PositioningStoreTest {
         }
 
     }
+
     // recover
     @Test
     public void recoverTest() throws IOException {
-             JournalPersistence store =
-                     new PositioningStore();
-            store.recover(path, new Properties());
-            int size = 10;
-            int maxLength = 999;
-            long start = store.max();
-            List<byte []> journals = ByteUtils.createRandomSizeByteList(maxLength, size);
-            int length = journals.stream().mapToInt(journal -> journal.length).sum();
+        JournalPersistence store =
+                new PositioningStore();
+        store.recover(path, new Properties());
+        int size = 10;
+        int maxLength = 999;
+        long start = store.max();
+        List<byte[]> journals = ByteUtils.createRandomSizeByteList(maxLength, size);
+        int length = journals.stream().mapToInt(journal -> journal.length).sum();
 
-            long writePosition = 0L;
-            for(byte [] journal: journals) {
-                writePosition = store.append(journal);
-            }
+        long writePosition = 0L;
+        for (byte[] journal : journals) {
+            writePosition = store.append(journal);
+        }
 
-            Assert.assertEquals(length + start, writePosition);
-            Assert.assertEquals(writePosition, store.max());
+        Assert.assertEquals(length + start, writePosition);
+        Assert.assertEquals(writePosition, store.max());
 
-            while (store.flushed() < store.max()) {
-                store.flush();
-            }
+        while (store.flushed() < store.max()) {
+            store.flush();
+        }
 
-            store.close();
-            store =
-                    new PositioningStore();
-            store.recover(path, new Properties());
+        store.close();
+        store =
+                new PositioningStore();
+        store.recover(path, new Properties());
 
-            byte [] readBytes = store.read(start, length);
-            byte [] writeBytes = ByteUtils.concatBytes(journals);
-            Assert.assertArrayEquals(writeBytes, readBytes);
-            store.close();
+        byte[] readBytes = store.read(start, length);
+        byte[] writeBytes = ByteUtils.concatBytes(journals);
+        Assert.assertArrayEquals(writeBytes, readBytes);
+        store.close();
 
     }
 
@@ -115,27 +116,27 @@ public class PositioningStoreTest {
             int size = 10;
             int maxLength = 999;
             long start = store.max();
-            List<byte []> journals = ByteUtils.createRandomSizeByteList(maxLength, size);
+            List<byte[]> journals = ByteUtils.createRandomSizeByteList(maxLength, size);
             int length = journals.stream().mapToInt(journal -> journal.length).sum();
 
             long writePosition = 0L;
-            for(byte [] journal: journals) {
+            for (byte[] journal : journals) {
                 writePosition = store.append(journal);
             }
 
             Assert.assertEquals(length + start, writePosition);
             Assert.assertEquals(writePosition, store.max());
 
-            long position = IntStream.range(0,7).mapToObj(journals::get).mapToInt(journal -> journal.length).sum();
+            long position = IntStream.range(0, 7).mapToObj(journals::get).mapToInt(journal -> journal.length).sum();
             store.truncate(position);
-            Assert.assertEquals(position,store.max());
+            Assert.assertEquals(position, store.max());
 
             journals.remove(9);
             journals.remove(8);
             journals.remove(7);
 
-            byte [] readBytes = store.read(start, length);
-            byte [] writeBytes = ByteUtils.concatBytes(journals);
+            byte[] readBytes = store.read(start, length);
+            byte[] writeBytes = ByteUtils.concatBytes(journals);
             Assert.assertArrayEquals(writeBytes, readBytes);
 
             while (store.flushed() < store.max()) {
@@ -143,7 +144,7 @@ public class PositioningStoreTest {
             }
 
             journals.remove(6);
-            position = IntStream.range(0,6).mapToObj(journals::get).mapToInt(journal -> journal.length).sum();
+            position = IntStream.range(0, 6).mapToObj(journals::get).mapToInt(journal -> journal.length).sum();
             store.truncate(position);
 
             readBytes = store.read(start, length);
@@ -155,6 +156,7 @@ public class PositioningStoreTest {
 
         }
     }
+
     @Ignore
     @Test
     public void writePerformanceTest() throws IOException, InterruptedException {
@@ -194,7 +196,8 @@ public class PositioningStoreTest {
         Thread.sleep(1000L);
         return store;
     }
-    private void read(JournalPersistence store, int batchSize, long maxSize) throws IOException{
+
+    private void read(JournalPersistence store, int batchSize, long maxSize) throws IOException {
         long start;
         long t;
         long spendTimeMs;
@@ -204,7 +207,7 @@ public class PositioningStoreTest {
 
         start = System.currentTimeMillis();
         while (position < maxSize) {
-            int readSize = maxSize - position > batchSize ? batchSize : (int)(maxSize - position);
+            int readSize = maxSize - position > batchSize ? batchSize : (int) (maxSize - position);
             position += store.read(position, readSize).length;
         }
 
@@ -216,11 +219,11 @@ public class PositioningStoreTest {
         Assert.assertEquals(maxSize, position);
     }
 
-    private void write(JournalPersistence store, long maxSize, byte [] journal) throws IOException {
+    private void write(JournalPersistence store, long maxSize, byte[] journal) throws IOException {
         long currentMax = 0;
         AsyncLoopThread flushThread = ThreadBuilder.builder()
                 .doWork(store::flush)
-                .sleepTime(0,0)
+                .sleepTime(0, 0)
                 .onException(e -> logger.warn("Flush Exception: ", e))
                 .daemon(true)
                 .build();

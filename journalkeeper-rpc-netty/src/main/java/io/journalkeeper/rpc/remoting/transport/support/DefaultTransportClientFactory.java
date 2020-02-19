@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.rpc.remoting.transport.support;
 
+import io.journalkeeper.rpc.remoting.concurrent.EventBus;
 import io.journalkeeper.rpc.remoting.event.TransportEvent;
 import io.journalkeeper.rpc.remoting.transport.RequestBarrier;
 import io.journalkeeper.rpc.remoting.transport.TransportClient;
@@ -25,7 +26,6 @@ import io.journalkeeper.rpc.remoting.transport.command.support.DefaultCommandHan
 import io.journalkeeper.rpc.remoting.transport.command.support.RequestHandler;
 import io.journalkeeper.rpc.remoting.transport.command.support.ResponseHandler;
 import io.journalkeeper.rpc.remoting.transport.config.ClientConfig;
-import io.journalkeeper.rpc.remoting.concurrent.EventBus;
 
 /**
  * 默认通信客户端工厂
@@ -33,7 +33,7 @@ import io.journalkeeper.rpc.remoting.concurrent.EventBus;
  *
  * date: 2018/8/24
  */
-public class  DefaultTransportClientFactory implements TransportClientFactory {
+public class DefaultTransportClientFactory implements TransportClientFactory {
 
     private Codec codec;
     private CommandHandlerFactory commandHandlerFactory;

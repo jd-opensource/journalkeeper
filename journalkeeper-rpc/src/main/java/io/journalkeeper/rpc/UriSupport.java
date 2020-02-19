@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -24,12 +24,12 @@ import java.util.Collection;
  * Date: 2019/9/30
  */
 public class UriSupport {
-    private static final Collection<URIParser> uriParsers =  ServiceSupport.loadAll(URIParser.class);
+    private static final Collection<URIParser> uriParsers = ServiceSupport.loadAll(URIParser.class);
 
     public static InetSocketAddress parseUri(URI uri) {
         for (URIParser uriParser : uriParsers) {
             for (String scheme : uriParser.supportedSchemes()) {
-                if(scheme.equals(uri.getScheme())) {
+                if (scheme.equals(uri.getScheme())) {
                     return uriParser.parse(uri);
                 }
             }

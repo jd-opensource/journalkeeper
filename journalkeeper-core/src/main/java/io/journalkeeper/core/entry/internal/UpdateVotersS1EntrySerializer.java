@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -49,15 +49,15 @@ public class UpdateVotersS1EntrySerializer implements Serializer<UpdateVotersS1E
                 Short.BYTES * 2 +  // Size of the Old Config List: 2 bytes
                 Short.BYTES * 2 +  // Size of the New Config List: 2 bytes
                 Stream.concat(entry.getConfigNew().stream(), entry.getConfigOld().stream())
-                .map(URI::toASCIIString)
-                .map(s -> s.getBytes(StandardCharsets.US_ASCII))
-                .mapToInt(b -> b.length + Short.BYTES)
-                .sum();
+                        .map(URI::toASCIIString)
+                        .map(s -> s.getBytes(StandardCharsets.US_ASCII))
+                        .mapToInt(b -> b.length + Short.BYTES)
+                        .sum();
     }
 
     @Override
     public byte[] serialize(UpdateVotersS1Entry entry) {
-        byte [] bytes = new byte[sizeOf(entry)];
+        byte[] bytes = new byte[sizeOf(entry)];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         buffer.put((byte) entry.getType().value());
 

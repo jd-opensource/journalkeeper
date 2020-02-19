@@ -2,9 +2,21 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -48,9 +60,8 @@ import java.util.stream.Stream;
 public class ConfigState {
     private final List<URI> configNew = new ArrayList<>(3);
     private final List<URI> configOld = new ArrayList<>(3);
-    private boolean jointConsensus;
     private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
-
+    private boolean jointConsensus;
     // all voters include configNew and configOld
     private List<URI> allVoters = new ArrayList<>(3);
 
@@ -62,16 +73,16 @@ public class ConfigState {
         buildAllVoters();
     }
 
-    private void buildAllVoters() {
-        allVoters = Stream.concat(configNew.stream(), configOld.stream())
-                .distinct()
-                .collect(Collectors.toList());
-    }
-
     public ConfigState(List<URI> configNew) {
         jointConsensus = false;
         this.configNew.addAll(configNew);
         buildAllVoters();
+    }
+
+    private void buildAllVoters() {
+        allVoters = Stream.concat(configNew.stream(), configOld.stream())
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     public List<URI> getConfigNew() {
@@ -113,7 +124,7 @@ public class ConfigState {
     public void toNewConfig(Callable appendEntryCallable) throws Exception {
         rwLock.writeLock().lock();
         try {
-            if(!jointConsensus) {
+            if (!jointConsensus) {
                 throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == true, actual: false.");
             }
             appendEntryCallable.call();
@@ -121,7 +132,7 @@ public class ConfigState {
             configOld.clear();
             buildAllVoters();
 
-        }finally {
+        } finally {
             rwLock.writeLock().unlock();
         }
     }
@@ -129,7 +140,7 @@ public class ConfigState {
     public void toJointConsensus(List<URI> configNew, Callable appendEntryCallable) throws Exception {
         rwLock.writeLock().lock();
         try {
-            if(jointConsensus) {
+            if (jointConsensus) {
                 throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == false, actual: true.");
             }
 
@@ -140,7 +151,7 @@ public class ConfigState {
             this.configNew.addAll(configNew);
             buildAllVoters();
 
-        }finally {
+        } finally {
             rwLock.writeLock().unlock();
         }
     }
@@ -149,7 +160,7 @@ public class ConfigState {
     public ConfigState clone() {
         rwLock.readLock().lock();
         try {
-            if(jointConsensus) {
+            if (jointConsensus) {
                 return new ConfigState(new ArrayList<>(configOld), new ArrayList<>(configNew));
             } else {
                 return new ConfigState(new ArrayList<>(configNew));
@@ -166,7 +177,7 @@ public class ConfigState {
         try {
             String str = "jointConsensus: " +
                     jointConsensus + ", ";
-            if(jointConsensus) {
+            if (jointConsensus) {
                 str += "old config: [" +
                         configOld.stream().map(URI::toString).collect(Collectors.joining(", ")) + "], ";
                 str += "new config: [" +
@@ -184,7 +195,7 @@ public class ConfigState {
     public void rollbackToOldConfig() {
         rwLock.writeLock().lock();
         try {
-            if(!jointConsensus) {
+            if (!jointConsensus) {
                 throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == true, actual: false.");
             }
             jointConsensus = false;
@@ -193,7 +204,7 @@ public class ConfigState {
             configOld.clear();
             buildAllVoters();
 
-        }finally {
+        } finally {
             rwLock.writeLock().unlock();
         }
     }
@@ -201,7 +212,7 @@ public class ConfigState {
     public void rollbackToJointConsensus(List<URI> configOld) {
         rwLock.writeLock().lock();
         try {
-            if(jointConsensus) {
+            if (jointConsensus) {
                 throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == false, actual: true.");
             }
 
@@ -209,7 +220,7 @@ public class ConfigState {
             this.configOld.addAll(configOld);
             buildAllVoters();
 
-        }finally {
+        } finally {
             rwLock.writeLock().unlock();
         }
     }

@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -21,12 +21,13 @@ import io.journalkeeper.coordinating.state.domain.WriteRequest;
 import io.journalkeeper.coordinating.state.domain.WriteResponse;
 import io.journalkeeper.coordinating.state.store.KVStore;
 import io.journalkeeper.coordinating.state.store.KVStoreManager;
-import io.journalkeeper.core.api.RaftJournal;
-import io.journalkeeper.core.api.State;
-import io.journalkeeper.core.api.StateResult;
+import io.journalkeeper.core.serialize.WrappedState;
+import io.journalkeeper.core.serialize.WrappedStateResult;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -35,7 +36,7 @@ import java.util.Properties;
  *
  * date: 2019/5/30
  */
-public class CoordinatingState implements State<WriteRequest, WriteResponse, ReadRequest, ReadResponse> {
+public class CoordinatingState implements WrappedState<WriteRequest, WriteResponse, ReadRequest, ReadResponse> {
 
     private Properties properties;
     private KVStore kvStore;
@@ -49,22 +50,27 @@ public class CoordinatingState implements State<WriteRequest, WriteResponse, Rea
     }
 
     @Override
-    public StateResult<WriteResponse> execute(WriteRequest request, int partition, long index, int batchSize, RaftJournal raftJournal) {
-        WriteResponse response = handler.handle(request);
-        StateResult<WriteResponse> result = new StateResult<>(response);
+    public WrappedStateResult<WriteResponse> executeAndNotify(WriteRequest request) {
+        WriteResponse response = execute(request);
         if (response.getCode() != StateCodes.SUCCESS.getCode()) {
-            return result;
+            return new WrappedStateResult<>(response, null);
         }
-        result.putEventData("type", String.valueOf(request.getType()));
-        result.putEventData("key", new String(request.getKey(), StandardCharsets.UTF_8));
+        Map<String, String> events = new HashMap<>(3);
+        events.put("type", String.valueOf(request.getType()));
+        events.put("key", new String(request.getKey(), StandardCharsets.UTF_8));
         if (request.getValue() != null) {
-            result.putEventData("value", new String(request.getValue(), StandardCharsets.UTF_8));
+            events.put("value", new String(request.getValue(), StandardCharsets.UTF_8));
         }
-        return result;
+        return new WrappedStateResult<>(response, events);
     }
 
     @Override
-    public ReadResponse query(ReadRequest request, RaftJournal raftJournal) {
+    public WriteResponse execute(WriteRequest request) {
+        return handler.handle(request);
+    }
+
+    @Override
+    public ReadResponse query(ReadRequest request) {
         return handler.handle(request);
     }
 

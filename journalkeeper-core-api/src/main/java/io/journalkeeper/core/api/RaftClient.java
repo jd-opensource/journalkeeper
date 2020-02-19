@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -29,7 +29,7 @@ import java.util.concurrent.CompletableFuture;
  * 操作命令在安全写入日志后，将在状态机中执行，
  * 执行的结果将会更新状态机中的状态。
  *
- * {@link #query(Object)}方法用于查询状态机中的数据。
+ * {@link #query(byte[])}方法用于查询状态机中的数据。
  *
  * 例如，状态机是一个关系型数据库（RDBMS），数据库中的数据就是“状态”，或者成为状态数据。
  * 在这里，可以把更新数据的SQL（UPDATE，INSERT, ALTER 等）作为操作命令，调用{@link #update(java.util.List, boolean, io.journalkeeper.core.api.ResponseConfig)}方法
@@ -39,18 +39,14 @@ import java.util.concurrent.CompletableFuture;
  * 这些节点的数据库中必然有相同的数据。
  *
  * 如果需要查询数据库中的数据，可以把查询SQL（SELECT）作为查询条件，
- * 调用{@link #query(Object)}方法，JournalKeeper将查询命令发送给当前LEADER节点的状态机，
+ * 调用{@link #query(byte[])}方法，JournalKeeper将查询命令发送给当前LEADER节点的状态机，
  * 也就是数据库，去执行查询SQL语句，然后将结果返回给客户端。
  *
  * @author LiYue
  * Date: 2019-03-14
- * @param <Q> 状态查询条件类型
- * @param <QR> 状态查询结果类型
- * @param <E> 操作命令的类型
- * @param <ER> 状态机执行结果类型
  *
  */
-public interface RaftClient<E, ER, Q, QR> extends Watchable, ClusterReadyAware, ServerConfigAware, TransactionClient<E> {
+public interface RaftClient extends Watchable, ClusterReadyAware, ServerConfigAware, TransactionClient {
 
     /**
      * 写入操作命令变更状态。集群保证按照提供的顺序写入，保证原子性，服务是线性的，任一时间只能有一个update操作被执行。
@@ -58,8 +54,8 @@ public interface RaftClient<E, ER, Q, QR> extends Watchable, ClusterReadyAware, 
      * @param entry 操作命令数组
      * @return 操作命令在状态机的执行结果
      */
-    default CompletableFuture<ER> update(E entry) {
-        return update(entry, RaftJournal.DEFAULT_PARTITION, 1, false,  ResponseConfig.REPLICATION);
+    default CompletableFuture<byte[]> update(byte[] entry) {
+        return update(entry, RaftJournal.DEFAULT_PARTITION, 1, false, ResponseConfig.REPLICATION);
     }
 
     /**
@@ -70,7 +66,7 @@ public interface RaftClient<E, ER, Q, QR> extends Watchable, ClusterReadyAware, 
      * @param responseConfig 响应级别。See {@link ResponseConfig}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    default CompletableFuture<ER> update(E entry, int partition, int batchSize, ResponseConfig responseConfig) {
+    default CompletableFuture<byte[]> update(byte[] entry, int partition, int batchSize, ResponseConfig responseConfig) {
         return update(entry, partition, batchSize, false, responseConfig);
     }
 
@@ -83,8 +79,8 @@ public interface RaftClient<E, ER, Q, QR> extends Watchable, ClusterReadyAware, 
      * @param responseConfig 响应级别。See {@link ResponseConfig}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    default CompletableFuture<ER> update(E entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig) {
-        return update(new UpdateRequest<>(entry, partition, batchSize), includeHeader, responseConfig);
+    default CompletableFuture<byte[]> update(byte[] entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig) {
+        return update(new UpdateRequest(entry, partition, batchSize), includeHeader, responseConfig);
     }
 
 
@@ -95,10 +91,10 @@ public interface RaftClient<E, ER, Q, QR> extends Watchable, ClusterReadyAware, 
      * @param responseConfig 响应级别。See {@link ResponseConfig}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    default CompletableFuture<ER> update(UpdateRequest<E> updateRequest, boolean includeHeader, ResponseConfig responseConfig){
+    default CompletableFuture<byte[]> update(UpdateRequest updateRequest, boolean includeHeader, ResponseConfig responseConfig) {
         return update(Collections.singletonList(updateRequest), includeHeader, responseConfig)
                 .thenApply(ers -> {
-                    if(null != ers && ers.size() > 0) {
+                    if (null != ers && ers.size() > 0) {
                         return ers.get(0);
                     }
                     return null;
@@ -113,7 +109,7 @@ public interface RaftClient<E, ER, Q, QR> extends Watchable, ClusterReadyAware, 
      * @param responseConfig 响应级别。See {@link ResponseConfig}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    default CompletableFuture<ER> update(UpdateRequest<E> updateRequest, ResponseConfig responseConfig) {
+    default CompletableFuture<byte[]> update(UpdateRequest updateRequest, ResponseConfig responseConfig) {
         return update(updateRequest, false, responseConfig);
     }
 
@@ -124,7 +120,7 @@ public interface RaftClient<E, ER, Q, QR> extends Watchable, ClusterReadyAware, 
      * @param updateRequest See {@link UpdateRequest}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    default CompletableFuture<ER> update(UpdateRequest<E> updateRequest) {
+    default CompletableFuture<byte[]> update(UpdateRequest updateRequest) {
         return update(updateRequest, false, ResponseConfig.REPLICATION);
     }
 
@@ -135,7 +131,7 @@ public interface RaftClient<E, ER, Q, QR> extends Watchable, ClusterReadyAware, 
      * @param responseConfig 响应级别。See {@link ResponseConfig}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    default CompletableFuture<List<ER>> update(List<UpdateRequest<E>> updateRequests, ResponseConfig responseConfig) {
+    default CompletableFuture<List<byte[]>> update(List<UpdateRequest> updateRequests, ResponseConfig responseConfig) {
         return update(updateRequests, false, responseConfig);
     }
 
@@ -146,7 +142,7 @@ public interface RaftClient<E, ER, Q, QR> extends Watchable, ClusterReadyAware, 
      * @param updateRequests See {@link UpdateRequest}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    default CompletableFuture<List<ER>> update(List<UpdateRequest<E>> updateRequests) {
+    default CompletableFuture<List<byte[]>> update(List<UpdateRequest> updateRequests) {
         return update(updateRequests, false, ResponseConfig.REPLICATION);
     }
 
@@ -157,7 +153,7 @@ public interface RaftClient<E, ER, Q, QR> extends Watchable, ClusterReadyAware, 
      * @param responseConfig 响应级别。See {@link ResponseConfig}
      * @return 操作执行结果。只有响应级别为{@link ResponseConfig#REPLICATION}或者{@link ResponseConfig#ALL}时才返回执行结果，否则返回null.
      */
-    CompletableFuture<List<ER>> update(List<UpdateRequest<E>> updateRequests, boolean includeHeader, ResponseConfig responseConfig);
+    CompletableFuture<List<byte[]>> update(List<UpdateRequest> updateRequests, boolean includeHeader, ResponseConfig responseConfig);
 
 
     /**
@@ -165,7 +161,7 @@ public interface RaftClient<E, ER, Q, QR> extends Watchable, ClusterReadyAware, 
      * @param query 查询条件
      * @return 查询结果
      */
-    CompletableFuture<QR> query(Q query);
+    CompletableFuture<byte[]> query(byte[] query);
 
     void stop();
 }

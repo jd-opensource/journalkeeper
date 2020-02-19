@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,8 +20,7 @@ import io.journalkeeper.coordinating.state.domain.StateCodes;
 import io.journalkeeper.coordinating.state.domain.StateTypes;
 import io.journalkeeper.coordinating.state.domain.WriteRequest;
 import io.journalkeeper.coordinating.state.domain.WriteResponse;
-import io.journalkeeper.core.api.RaftClient;
-import io.journalkeeper.core.api.ResponseConfig;
+import io.journalkeeper.core.serialize.WrappedRaftClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,11 +45,11 @@ public class CoordinatingClient {
 
     private List<URI> servers;
     private Properties config;
-    private RaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client;
+    private WrappedRaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client;
 
     public CoordinatingClient(List<URI> servers,
                               Properties config,
-                              RaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client) {
+                              WrappedRaftClient<WriteRequest, WriteResponse, ReadRequest, ReadResponse> client) {
         this.servers = servers;
         this.config = config;
         this.client = client;
@@ -123,7 +122,6 @@ public class CoordinatingClient {
     }
 
     public void stop() {
-        client.stop();
     }
 
     protected CoordinatingClientException convertException(Throwable cause) {
@@ -137,7 +135,7 @@ public class CoordinatingClient {
     }
 
     protected CompletableFuture<WriteResponse> doUpdate(WriteRequest request) {
-        return client.update(request, 0, 1, ResponseConfig.REPLICATION);
+        return client.update(request);
     }
 
     protected CompletableFuture<ReadResponse> doQuery(ReadRequest request) {

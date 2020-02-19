@@ -2,9 +2,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -33,10 +33,6 @@ public enum StateCodes {
         this.code = type;
     }
 
-    public int getCode() {
-        return code;
-    }
-
     public static StateCodes valueOf(int type) {
         switch (type) {
             case 0:
@@ -46,5 +42,9 @@ public enum StateCodes {
             default:
                 throw new UnsupportedOperationException(String.valueOf(type));
         }
+    }
+
+    public int getCode() {
+        return code;
     }
 }
