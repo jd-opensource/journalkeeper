@@ -26,21 +26,23 @@ import java.util.List;
  */
 public class UpdateClusterStateResponse extends LeaderResponse {
     private final List<byte[]> results;
-
+    private final long lastApplied;
     public UpdateClusterStateResponse() {
         super();
         this.results = Collections.emptyList();
-        ;
+        this.lastApplied = -1L;
     }
 
-    public UpdateClusterStateResponse(List<byte[]> results) {
+    public UpdateClusterStateResponse(List<byte[]> results, long lastApplied) {
         super();
         this.results = results;
+        this.lastApplied = lastApplied;
     }
 
     public UpdateClusterStateResponse(Throwable exception) {
         super(exception);
         this.results = Collections.emptyList();
+        this.lastApplied = -1L;
 
     }
 
@@ -63,4 +65,7 @@ public class UpdateClusterStateResponse extends LeaderResponse {
         }
     }
 
+    public long getLastApplied() {
+        return lastApplied;
+    }
 }

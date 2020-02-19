@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.core.client;
 
+import io.journalkeeper.core.api.QueryConsistency;
 import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.UpdateRequest;
@@ -27,6 +28,7 @@ import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
 import io.journalkeeper.rpc.client.QueryStateRequest;
 import io.journalkeeper.rpc.client.QueryStateResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
+import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -44,7 +47,7 @@ import java.util.stream.Collectors;
  */
 public class DefaultRaftClient extends AbstractClient implements RaftClient {
     private static final Logger logger = LoggerFactory.getLogger(DefaultRaftClient.class);
-
+    private final AtomicLong lastApplied = new AtomicLong(-1L);
     public DefaultRaftClient(ClientRpc clientRpc,
                              Properties properties) {
         super(clientRpc);
@@ -52,14 +55,47 @@ public class DefaultRaftClient extends AbstractClient implements RaftClient {
 
     @Override
     public CompletableFuture<List<byte[]>> update(List<UpdateRequest> entries, boolean includeHeader, ResponseConfig responseConfig) {
-        return super.update(entries, includeHeader, responseConfig);
+        return
+                clientRpc.invokeClientLeaderRpc(rpc -> rpc.updateClusterState(new UpdateClusterStateRequest(entries, includeHeader, responseConfig)))
+                        .thenApply(this::checkResponse)
+                        .thenApply(response -> {
+                            maybeUpdateLastApplied(response.getLastApplied());
+                            return response;
+                        })
+                        .thenApply(UpdateClusterStateResponse::getResults);
     }
 
 
     @Override
+    public CompletableFuture<byte[]> query(byte[] query, QueryConsistency consistency) {
+        if (consistency == QueryConsistency.STRICT) {
+            return query(query);
+        }
+        return queryAllServers(query, consistency);
+    }
+
+    private CompletableFuture<byte[]> queryAllServers(byte[] query, QueryConsistency consistency) {
+       return clientRpc.invokeClientServerRpc(
+               rpc -> rpc.queryServerState(new QueryStateRequest(query, consistency == QueryConsistency.NONE ? -1L : lastApplied.get()))
+       )
+                .thenApply(super::checkResponse)
+                .thenApply(response -> {
+                    maybeUpdateLastApplied(response.getLastApplied());
+                    return response;
+                })
+                .thenApply(QueryStateResponse::getResult);
+
+    }
+
+    @Override
     public CompletableFuture<byte[]> query(byte[] query) {
+
         return clientRpc.invokeClientLeaderRpc(leaderRpc -> leaderRpc.queryClusterState(new QueryStateRequest(query)))
                 .thenApply(super::checkResponse)
+                .thenApply(response -> {
+                    maybeUpdateLastApplied(response.getLastApplied());
+                    return response;
+                })
                 .thenApply(QueryStateResponse::getResult);
     }
 
@@ -98,7 +134,23 @@ public class DefaultRaftClient extends AbstractClient implements RaftClient {
                         entries,
                         includeHeader)))
                         .thenApply(this::checkResponse)
-                        .thenApply(response -> null);
+                        .thenApply(response -> {
+                            maybeUpdateLastApplied(response.getLastApplied());
+                            return null;
+                        });
+    }
+
+    private void maybeUpdateLastApplied(long index) {
+        for (;;) {
+            long finalLastApplied = lastApplied.get();
+            if (index > finalLastApplied) {
+                if(lastApplied.compareAndSet(finalLastApplied, index)) {
+                    return;
+                };
+            } else {
+                return;
+            }
+        }
     }
 
 }

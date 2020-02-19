@@ -1,6 +1,7 @@
 package io.journalkeeper.core.serialize;
 
 import io.journalkeeper.core.api.ClusterReadyAware;
+import io.journalkeeper.core.api.QueryConsistency;
 import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.core.api.ServerConfigAware;
 import io.journalkeeper.core.api.UpdateRequest;
@@ -51,6 +52,19 @@ public class WrappedRaftClient<E, ER, Q, QR> implements Watchable, ClusterReadyA
     public CompletableFuture<QR> query(Q query) {
         return raftClient.query(
                 serializeExtensionPoint.serialize(query)
+        ).thenApply(serializeExtensionPoint::parse);
+    }
+
+    /**
+     * 查询集群当前的状态，即日志在状态机中执行完成后产生的数据。
+     *
+     * @param query 查询条件
+     * @param consistency 查询一致性。 See {@link QueryConsistency}
+     * @return 查询结果
+     */
+    public CompletableFuture<QR> query(Q query, QueryConsistency consistency) {
+        return raftClient.query(
+                serializeExtensionPoint.serialize(query), consistency
         ).thenApply(serializeExtensionPoint::parse);
     }
 

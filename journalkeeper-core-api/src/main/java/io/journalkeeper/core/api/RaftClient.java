@@ -161,7 +161,15 @@ public interface RaftClient extends Watchable, ClusterReadyAware, ServerConfigAw
      * @param query 查询条件
      * @return 查询结果
      */
-    CompletableFuture<byte[]> query(byte[] query);
+    default CompletableFuture<byte[]> query(byte[] query) {return query(query, QueryConsistency.STRICT);}
+
+    /**
+     * 查询集群当前的状态，即日志在状态机中执行完成后产生的数据。
+     * @param query 查询条件
+     * @param consistency 查询一致性。 See {@link QueryConsistency}
+     * @return 查询结果
+     */
+    CompletableFuture<byte[]> query(byte[] query, QueryConsistency consistency);
 
     void stop();
 }

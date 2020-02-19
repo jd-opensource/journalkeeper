@@ -16,6 +16,7 @@ package io.journalkeeper.sql.client;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.BootStrap;
 import io.journalkeeper.core.api.AdminClient;
+import io.journalkeeper.core.api.QueryConsistency;
 import io.journalkeeper.core.api.RaftClient;
 import io.journalkeeper.sql.client.domain.Codes;
 import io.journalkeeper.sql.client.domain.OperationTypes;
@@ -26,6 +27,7 @@ import io.journalkeeper.sql.client.domain.WriteRequest;
 import io.journalkeeper.sql.client.domain.WriteResponse;
 import io.journalkeeper.sql.client.exception.SQLClientException;
 import io.journalkeeper.sql.exception.SQLException;
+import io.journalkeeper.sql.state.config.SQLConfigs;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +55,7 @@ public class SQLClient {
     private Properties config;
     private BootStrap bootStrap;
     private RaftClient client;
+    private final QueryConsistency queryConsistency;
 
     public SQLClient(List<URI> servers,
                      Properties config,
@@ -65,7 +68,7 @@ public class SQLClient {
         this.writeResponseSerializer = writeResponseSerializer;
         this.readRequestSerializer = readRequestSerializer;
         this.readResponseSerializer = readResponseSerializer;
-
+        this.queryConsistency = QueryConsistency.valueOf(config.getProperty(SQLConfigs.CONSISTENCY, SQLConfigs.DEFAULT_CONSISTENCY));
         this.servers = servers;
         this.config = config;
         this.bootStrap = bootStrap;
@@ -212,7 +215,7 @@ public class SQLClient {
     }
 
     protected CompletableFuture<ReadResponse> doQuery(ReadRequest request) {
-        return client.query(readRequestSerializer.serialize(request))
+        return client.query(readRequestSerializer.serialize(request), queryConsistency)
                 .exceptionally(t -> {
                     throw new SQLClientException(t.getCause());
                 })

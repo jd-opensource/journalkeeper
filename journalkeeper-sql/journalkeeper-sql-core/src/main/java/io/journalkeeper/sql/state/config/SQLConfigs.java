@@ -28,6 +28,9 @@ public class SQLConfigs {
     public static final String TIMEOUT = PREFIX + ".timeout";
     public static final int DEFAULT_TIMEOUT = 1000 * 10;
 
+    public static final String CONSISTENCY = PREFIX + ".consistency";
+    public static final String DEFAULT_CONSISTENCY = "STRICT";
+
     public static final String TRANSACTION_TIMEOUT = PREFIX + ".transaction.timeout";
     public static final int DEFAULT_TRANSACTION_TIMEOUT = 1000 * 30;
 

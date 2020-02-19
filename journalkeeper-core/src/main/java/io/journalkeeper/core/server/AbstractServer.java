@@ -440,8 +440,12 @@ public abstract class AbstractServer
     public CompletableFuture<QueryStateResponse> queryServerState(QueryStateRequest request) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                StateQueryResult queryResult = state.query(request.getQuery(), journal);
-                return new QueryStateResponse(queryResult.getResult(), queryResult.getLastApplied());
+                if (request.getIndex() > 0 && state.lastApplied() < request.getIndex()) {
+                    return new QueryStateResponse(new IllegalStateException());
+                } else {
+                    StateQueryResult queryResult = state.query(request.getQuery(), journal);
+                    return new QueryStateResponse(queryResult.getResult(), queryResult.getLastApplied());
+                }
             } catch (Throwable throwable) {
                 return new QueryStateResponse(throwable);
             }

@@ -151,7 +151,7 @@ public class Server
 
     @Override
     public CompletableFuture<QueryStateResponse> queryServerState(QueryStateRequest request) {
-        return server.queryClusterState(request);
+        return server.queryServerState(request);
     }
 
     @Override
