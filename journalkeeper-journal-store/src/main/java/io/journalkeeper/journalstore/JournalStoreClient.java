@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.journalstore;
 
+import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.BootStrap;
 import io.journalkeeper.core.api.*;
 import io.journalkeeper.core.api.transaction.TransactionContext;
@@ -41,10 +42,16 @@ import java.util.stream.Collectors;
  */
 public class JournalStoreClient implements PartitionedJournalStore, TransactionalJournalStore {
     private static final Logger logger = LoggerFactory.getLogger(JournalStoreClient.class);
-    private final RaftClient<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient;
-
-    JournalStoreClient(RaftClient<byte[], Long, JournalStoreQuery, JournalStoreQueryResult> raftClient) {
+    private final RaftClient raftClient;
+    private final Serializer<Long> appendResultSerializer;
+    private final Serializer<JournalStoreQuery> querySerializer;
+    private final Serializer<JournalStoreQueryResult> queryResultSerializer;
+    JournalStoreClient(RaftClient raftClient) {
         this.raftClient = raftClient;
+        this.appendResultSerializer = new LongSerializer();
+        this.querySerializer = new JournalStoreQuerySerializer();
+        this.queryResultSerializer = new JournalStoreQueryResultSerializer(new DefaultJournalEntryParser());
+
     }
 
     /**
@@ -56,24 +63,23 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
         this(servers, new DefaultJournalEntryParser(), properties);
     }
     public JournalStoreClient(List<URI> servers, JournalEntryParser journalEntryParser, Properties properties) {
-        BootStrap<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> bootStrap = new BootStrap<>(
+        this.appendResultSerializer = new LongSerializer();
+        this.querySerializer = new JournalStoreQuerySerializer();
+        this.queryResultSerializer = new JournalStoreQueryResultSerializer(journalEntryParser);
+
+        BootStrap bootStrap = new BootStrap(
                 servers,
-                new ByteArraySerializer(),
-                new LongSerializer(),
-                new JournalStoreQuerySerializer(),
-                new JournalStoreQueryResultSerializer(journalEntryParser),
                 properties
                 );
         raftClient = bootStrap.getClient();
     }
 
     public JournalStoreClient(List<URI> servers, JournalEntryParser journalEntryParser, ExecutorService asyncExecutor, ScheduledExecutorService scheduledExecutor, Properties properties) {
-        BootStrap<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> bootStrap = new BootStrap<>(
+        this.appendResultSerializer = new LongSerializer();
+        this.querySerializer = new JournalStoreQuerySerializer();
+        this.queryResultSerializer = new JournalStoreQueryResultSerializer(journalEntryParser);
+        BootStrap bootStrap = new BootStrap(
                 servers,
-                new ByteArraySerializer(),
-                new LongSerializer(),
-                new JournalStoreQuerySerializer(),
-                new JournalStoreQueryResultSerializer(journalEntryParser),
                 asyncExecutor, scheduledExecutor,
                 properties
                 );
@@ -81,28 +87,29 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
     }
 
     @Override
-    public CompletableFuture<Long> append(UpdateRequest<byte []> updateRequest, boolean includeHeader, ResponseConfig responseConfig) {
+    public CompletableFuture<Long> append(UpdateRequest updateRequest, boolean includeHeader, ResponseConfig responseConfig) {
         ReservedPartition.validatePartition(updateRequest.getPartition());
-        return raftClient.update(updateRequest, includeHeader, responseConfig);
+        return raftClient.update(updateRequest, includeHeader, responseConfig).thenApply(appendResultSerializer::parse);
     }
 
     @Override
-    public CompletableFuture<Void> append(TransactionId transactionId, UpdateRequest<byte []> updateRequest, boolean includeHeader) {
+    public CompletableFuture<Void> append(TransactionId transactionId, UpdateRequest updateRequest, boolean includeHeader) {
         ReservedPartition.validatePartition(updateRequest.getPartition());
         return raftClient.update(transactionId, updateRequest, includeHeader);
     }
 
     @Override
-    public CompletableFuture<List<Long>> append(List<UpdateRequest<byte []>> updateRequests, boolean includeHeader, ResponseConfig responseConfig) {
-        for (UpdateRequest<byte[]> updateRequest : updateRequests) {
+    public CompletableFuture<List<Long>> append(List<UpdateRequest> updateRequests, boolean includeHeader, ResponseConfig responseConfig) {
+        for (UpdateRequest updateRequest : updateRequests) {
             ReservedPartition.validatePartition(updateRequest.getPartition());
         }
-        return raftClient.update(updateRequests, includeHeader, responseConfig);
+        return raftClient.update(updateRequests, includeHeader, responseConfig)
+                .thenApply(results -> results.stream().map(appendResultSerializer::parse).collect(Collectors.toList()));
     }
 
     @Override
-    public CompletableFuture<Void> append(TransactionId transactionId, List<UpdateRequest<byte []>> updateRequests, boolean includeHeader) {
-        for (UpdateRequest<byte[]> updateRequest : updateRequests) {
+    public CompletableFuture<Void> append(TransactionId transactionId, List<UpdateRequest> updateRequests, boolean includeHeader) {
+        for (UpdateRequest updateRequest : updateRequests) {
             ReservedPartition.validatePartition(updateRequest.getPartition());
         }
         return raftClient.update(transactionId, updateRequests, includeHeader);
@@ -110,7 +117,8 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
     @Override
     public CompletableFuture<List<JournalEntry>> get(int partition, long index, int size) {
         ReservedPartition.validatePartition(partition);
-        return raftClient.query(JournalStoreQuery.createQueryEntries(partition, index, size))
+        return raftClient.query(querySerializer.serialize(JournalStoreQuery.createQueryEntries(partition, index, size)))
+                .thenApply(queryResultSerializer::parse)
                 .thenApply(result -> {
                     if(result.getCode() == JournalStoreQueryResult.CODE_SUCCESS) {
                         return result;
@@ -127,7 +135,8 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
 
     @Override
     public CompletableFuture<Map<Integer, Long>> minIndices() {
-        return raftClient.query(JournalStoreQuery.createQueryPartitions())
+        return raftClient.query(querySerializer.serialize(JournalStoreQuery.createQueryPartitions()))
+                .thenApply(queryResultSerializer::parse)
                 .thenApply(JournalStoreQueryResult::getBoundaries)
                 .thenApply(boundaries -> boundaries.entrySet().stream()
                     .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().getMin()))
@@ -136,7 +145,8 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
 
     @Override
     public CompletableFuture<Map<Integer, Long>> maxIndices() {
-        return raftClient.query(JournalStoreQuery.createQueryPartitions())
+        return raftClient.query(querySerializer.serialize(JournalStoreQuery.createQueryPartitions()))
+                .thenApply(queryResultSerializer::parse)
                 .thenApply(JournalStoreQueryResult::getBoundaries)
                 .thenApply(boundaries -> boundaries.entrySet().stream()
                         .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().getMax()))
@@ -145,7 +155,8 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
 
     @Override
     public CompletableFuture<Set<Integer>> listPartitions() {
-        return raftClient.query(JournalStoreQuery.createQueryPartitions())
+        return raftClient.query(querySerializer.serialize(JournalStoreQuery.createQueryPartitions()))
+                .thenApply(queryResultSerializer::parse)
                 .thenApply(JournalStoreQueryResult::getBoundaries)
                 .thenApply(Map::keySet);
     }
@@ -154,7 +165,8 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
     public CompletableFuture<Long> queryIndex(int partition, long timestamp) {
         ReservedPartition.validatePartition(partition);
         return raftClient
-                .query(JournalStoreQuery.createQueryIndex(partition, timestamp))
+                .query(querySerializer.serialize(JournalStoreQuery.createQueryIndex(partition, timestamp)))
+                .thenApply(queryResultSerializer::parse)
                 .thenApply(result -> result.getCode() == JournalStoreQueryResult.CODE_SUCCESS ? result.getIndex(): -1L)
                 .exceptionally(e -> {
                     logger.warn("Query index exception:", e);
@@ -162,11 +174,11 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
                 });
     }
 
-    public void waitForClusterReady(long timeoutMs) throws InterruptedException, TimeoutException {
+    public void waitForClusterReady(long timeoutMs) throws TimeoutException {
         raftClient.waitForClusterReady(timeoutMs);
     }
 
-    public void waitForClusterReady() throws InterruptedException {
+    public void waitForClusterReady() {
         raftClient.waitForClusterReady();
     }
 

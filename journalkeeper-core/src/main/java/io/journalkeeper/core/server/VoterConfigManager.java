@@ -16,7 +16,7 @@ package io.journalkeeper.core.server;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ResponseConfig;
-import io.journalkeeper.core.api.SerializedUpdateRequest;
+import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.entry.internal.*;
 import io.journalkeeper.core.journal.Journal;
@@ -51,7 +51,7 @@ public class VoterConfigManager {
         this.journalEntryParser = journalEntryParser;
     }
 
-    boolean maybeUpdateLeaderConfig(SerializedUpdateRequest request,
+    boolean maybeUpdateLeaderConfig(UpdateRequest request,
                                     ConfigState votersConfigStateMachine,
                                     Journal journal,
                                     Callable appendEntryCallable,
@@ -162,7 +162,7 @@ public class VoterConfigManager {
                         if (votersConfigStateMachine.isJointConsensus()) {
                             clientServerRpc.updateClusterState(new UpdateClusterStateRequest(
                                     Collections.singletonList(
-                                            new SerializedUpdateRequest(
+                                            new UpdateRequest(
                                                     s2Entry, INTERNAL_PARTITION, 1
                                             )
                                     )

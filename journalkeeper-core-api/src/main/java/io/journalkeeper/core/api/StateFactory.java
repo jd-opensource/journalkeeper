@@ -17,6 +17,6 @@ package io.journalkeeper.core.api;
  * @author LiYue
  * Date: 2019-03-20
  */
-public interface StateFactory<E, ER, Q, QR> {
-    State<E, ER, Q, QR> createState();
+public interface StateFactory {
+    State createState();
 }

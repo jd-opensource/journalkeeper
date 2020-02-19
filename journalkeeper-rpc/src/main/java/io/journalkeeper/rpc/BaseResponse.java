@@ -13,11 +13,6 @@
  */
 package io.journalkeeper.rpc;
 
-import io.journalkeeper.exceptions.NotLeaderException;
-
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.nio.file.Files;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeoutException;
 
@@ -55,12 +50,6 @@ public abstract class BaseResponse {
     }
 
     protected void onSetException(Throwable throwable) {
-//        StringWriter sw = new StringWriter();
-//        sw.write("Remote stack trace:" + System.lineSeparator());
-//        throwable.printStackTrace(new PrintWriter(sw));
-//        sw.write("End of remote stack trace." + System.lineSeparator());
-
-//        error = sw.toString();
         error = throwable.getMessage();
     }
 

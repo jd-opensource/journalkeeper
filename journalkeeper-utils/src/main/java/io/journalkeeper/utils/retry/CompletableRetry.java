@@ -24,10 +24,8 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Supplier;
 
 /**
  * @author LiYue
@@ -79,16 +77,18 @@ public class CompletableRetry<D/* 对端地址类型 */> {
                         retry = checkRetry.checkResult(r.getResult());
                     }
                     if(retry) {
-                        destination.set(null);
-                        long delay;
-                        if((delay = retryPolicy.getRetryDelayMs(retryInvoke.getInvokeTimes())) >= 0) {
+                        long delay = retryPolicy.getRetryDelayMs(retryInvoke.getInvokeTimes());
+                        logger.debug("Retry, invokes times: {}, " +
+                                        "last result: {}, " +
+                                        "last destination: {}, " +
+                                        "next retry delay: {}ms.",
+                                retryInvoke.getInvokeTimes(), r, destination.get(), delay);
 
-                            if (delay > 0) {
-                                logger.debug("Retry, invokes times: {}.", retryInvoke.getInvokeTimes());
-                                return Async.scheduleAsync(scheduledExecutor, () -> retry(retryInvoke, checkRetry, fixDestination, executor, scheduledExecutor), delay, TimeUnit.MILLISECONDS);
-                            } else {
-                                return retry(retryInvoke, checkRetry, fixDestination, executor, scheduledExecutor);
-                            }
+                        destination.set(null);
+                        if (delay > 0) {
+                            return Async.scheduleAsync(scheduledExecutor, () -> retry(retryInvoke, checkRetry, fixDestination, executor, scheduledExecutor), delay, TimeUnit.MILLISECONDS);
+                        } else if (delay == 0){
+                            return retry(retryInvoke, checkRetry, fixDestination, executor, scheduledExecutor);
                         }
                     }
                     CompletableFuture<R> future = new CompletableFuture<>();
@@ -121,9 +121,8 @@ public class CompletableRetry<D/* 对端地址类型 */> {
         public CompletableFuture<R> invoke(D destination) {
             try {
                 invokeTimes++;
-                CompletableFuture<R> future = rpcInvoke.invoke( destination);
                 invokedDestinations.add(destination);
-                return future;
+                return rpcInvoke.invoke(destination);
             } catch (Throwable throwable) {
                 CompletableFuture<R> future = new CompletableFuture<>();
                 future.completeExceptionally(throwable);
@@ -167,6 +166,14 @@ public class CompletableRetry<D/* 对端地址类型 */> {
             } else {
                 return e;
             }
+        }
+
+        @Override
+        public String toString() {
+            return "ResultAndException{" +
+                    "result=" + result +
+                    ", throwable=" + throwable +
+                    '}';
         }
     }
 }

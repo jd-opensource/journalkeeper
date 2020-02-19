@@ -280,10 +280,10 @@ public class JournalStoreTest {
             client.waitForClusterReady();
 
             List<byte []> bytes = ByteUtils.createRandomSizeByteList(entrySize, batchCount);
-            List<UpdateRequest<byte []>> requests = new ArrayList<>(bytes.size());
+            List<UpdateRequest> requests = new ArrayList<>(bytes.size());
             for (int i = 0; i < bytes.size(); i++) {
                 int partition = partitions[i % partitions.length];
-                requests.add(new UpdateRequest<>(bytes.get(i), partition, batchSize));
+                requests.add(new UpdateRequest(bytes.get(i), partition, batchSize));
             }
             long t0 = System.nanoTime();
             List<Long> indices = client.append(requests).get();

@@ -19,9 +19,9 @@ import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ResponseConfig;
-import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.SnapshotsEntry;
+import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.entry.internal.CreateSnapshotEntry;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.RecoverSnapshotEntry;
@@ -88,11 +88,8 @@ public class DefaultAdminClient extends AbstractClient implements AdminClient {
     }
 
     private CompletableFuture<Void> update(byte [] entry) {
-        return update(
-                Collections.singletonList(new SerializedUpdateRequest(entry, RaftJournal.INTERNAL_PARTITION, 1)),
-                ResponseConfig.REPLICATION,
-                VoidSerializer.getInstance()
-        ).thenApply(list -> list.get(0));
+        return update(Collections.singletonList(new UpdateRequest(entry, RaftJournal.INTERNAL_PARTITION, 1)), false,
+                ResponseConfig.REPLICATION).thenApply(v -> null);
     }
     @Override
     public CompletableFuture<ServerStatus> getServerStatus(URI uri) {

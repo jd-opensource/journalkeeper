@@ -11,40 +11,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.examples.kv;
+package io.journalkeeper.core.state;
+
+import io.journalkeeper.core.serialize.WrappedState;
+import io.journalkeeper.core.serialize.WrappedStateFactory;
 
 /**
- * kv 操作命令
  * @author LiYue
  * Date: 2019-04-03
  */
-public class KvQuery {
-    public final static int CMD_GET = 1;
-    public final static int CMD_LIST_KEYS = 3;
+public class KvStateFactory implements WrappedStateFactory<String, String, String, String> {
 
-    private int cmd;
-    private String key;
 
-    public KvQuery() {}
-
-    public KvQuery(int cmd, String key) {
-        this.cmd = cmd;
-        this.key = key;
-    }
-
-    public int getCmd() {
-        return cmd;
-    }
-
-    public String getKey() {
-        return key;
-    }
-
-    public void setCmd(int cmd) {
-        this.cmd = cmd;
-    }
-
-    public void setKey(String key) {
-        this.key = key;
+    @Override
+    public WrappedState<String, String, String, String> createState() {
+        return new KvState();
     }
 }

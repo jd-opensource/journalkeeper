@@ -16,10 +16,10 @@ package io.journalkeeper.rpc;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ResponseConfig;
-import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.SnapshotEntry;
 import io.journalkeeper.core.api.SnapshotsEntry;
+import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
 import io.journalkeeper.core.api.transaction.UUIDTransactionId;
@@ -184,10 +184,10 @@ public class RpcTest {
         logger.info("Running test {}.", Thread.currentThread()
                 .getStackTrace()[1]
                 .getMethodName());
-        List<SerializedUpdateRequest> entries = Arrays.asList(
-              new SerializedUpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
-              new SerializedUpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
-              new SerializedUpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1)
+        List<UpdateRequest> entries = Arrays.asList(
+              new UpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
+              new UpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
+              new UpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1)
         );
         UpdateClusterStateRequest request = new UpdateClusterStateRequest(UUID.randomUUID(), entries, false, ResponseConfig.RECEIVE);
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());

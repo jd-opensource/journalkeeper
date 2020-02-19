@@ -14,7 +14,6 @@
 package io.journalkeeper.rpc.client;
 
 import io.journalkeeper.core.api.ResponseConfig;
-import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.UpdateRequest;
 
 import java.util.Collections;
@@ -30,7 +29,7 @@ import java.util.UUID;
  */
 public class UpdateClusterStateRequest {
     private final UUID transactionId;
-    private final List<SerializedUpdateRequest> requests;
+    private final List<UpdateRequest> requests;
     private final boolean includeHeader;
     private final ResponseConfig responseConfig;
 
@@ -47,33 +46,33 @@ public class UpdateClusterStateRequest {
     }
 
     public UpdateClusterStateRequest(UUID transactionId, byte[] entry, int partition, int batchSize, boolean includeHeader, ResponseConfig responseConfig) {
-        this(transactionId, Collections.singletonList(new SerializedUpdateRequest(entry, partition, batchSize)), includeHeader, responseConfig);
+        this(transactionId, Collections.singletonList(new UpdateRequest(entry, partition, batchSize)), includeHeader, responseConfig);
     }
 
-    public UpdateClusterStateRequest(UUID transactionId, List<SerializedUpdateRequest> requests, boolean includeHeader, ResponseConfig responseConfig) {
+    public UpdateClusterStateRequest(UUID transactionId, List<UpdateRequest> requests, boolean includeHeader, ResponseConfig responseConfig) {
         this.transactionId = transactionId;
         this.requests = requests;
         this.includeHeader = includeHeader;
         this.responseConfig = responseConfig;
     }
 
-    public UpdateClusterStateRequest(List<SerializedUpdateRequest> requests, boolean includeHeader, ResponseConfig responseConfig) {
+    public UpdateClusterStateRequest(List<UpdateRequest> requests, boolean includeHeader, ResponseConfig responseConfig) {
         this(null, requests, includeHeader, responseConfig);
     }
 
-    public UpdateClusterStateRequest(List<SerializedUpdateRequest> requests) {
+    public UpdateClusterStateRequest(List<UpdateRequest> requests) {
         this(null, requests, false, ResponseConfig.REPLICATION);
     }
 
-    public UpdateClusterStateRequest(SerializedUpdateRequest request) {
+    public UpdateClusterStateRequest(UpdateRequest request) {
         this(null, Collections.singletonList(request), false, ResponseConfig.REPLICATION);
     }
 
-    public UpdateClusterStateRequest(UUID transactionId, List<SerializedUpdateRequest> requests, boolean includeHeader) {
+    public UpdateClusterStateRequest(UUID transactionId, List<UpdateRequest> requests, boolean includeHeader) {
         this(transactionId, requests, includeHeader, ResponseConfig.REPLICATION);
     }
 
-    public List<SerializedUpdateRequest> getRequests() {
+    public List<UpdateRequest> getRequests() {
         return requests;
     }
 

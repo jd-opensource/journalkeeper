@@ -75,18 +75,18 @@ import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITIONS_START;
  * @author LiYue
  * Date: 2019/11/20
  */
-public class JournalKeeperState <E, ER, Q, QR> implements Replicable, Flushable {
+public class JournalKeeperState implements Replicable, Flushable {
     private static final Logger logger = LoggerFactory.getLogger(JournalKeeperState.class);
     private static final String USER_STATE_PATH = "user";
     private static final String INTERNAL_STATE_PATH = "internal";
     private static final String INTERNAL_STATE_FILE = "state";
     private static final int MAX_TRUNK_SIZE = 1024 * 1024;
     private Path path;
-    private State<E, ER, Q, QR> userState;
+    private State userState;
     private InternalState internalState;
     private final Map<InternalEntryType, List<ApplyInternalEntryInterceptor>> internalEntryInterceptors = new HashMap<>();
     private final List<ApplyReservedEntryInterceptor> reservedEntryInterceptors = new CopyOnWriteArrayList<>();
-    private final StateFactory<E, ER, Q, QR> userStateFactory;
+    private final StateFactory userStateFactory;
     private final MetadataPersistence metadataPersistence;
     private Properties properties;
     /**
@@ -100,7 +100,7 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable, Flushable 
      */
     private final StampedLock stateLock = new StampedLock();
 
-    public JournalKeeperState(StateFactory<E, ER, Q, QR> userStateFactory, MetadataPersistence metadataPersistence) {
+    public JournalKeeperState(StateFactory userStateFactory, MetadataPersistence metadataPersistence) {
         this.userStateFactory = userStateFactory;
         this.metadataPersistence = metadataPersistence;
     }
@@ -226,17 +226,17 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable, Flushable 
         return lastIncludedIndex() + 1;
     }
 
-    public StateResult<ER> applyEntry(JournalEntry journalEntry, Serializer<E> entrySerializer, RaftJournal journal) {
+    public StateResult applyEntry(JournalEntry journalEntry, RaftJournal journal) {
         byte [] payloadBytes = journalEntry.getPayload().getBytes();
         int partition = journalEntry.getPartition();
         int batchSize = journalEntry.getBatchSize();
 
-        StateResult<ER> result = new StateResult<>(null);
+        StateResult  result = new StateResult(null);
         long stamp = stateLock.writeLock();
         try {
             if(partition< RESERVED_PARTITIONS_START) {
-                E entry = entrySerializer.parse(payloadBytes);
-                result = userState.execute(entry, partition, lastApplied(), batchSize, journal);
+
+                result = userState.execute(payloadBytes, partition, lastApplied(), batchSize, journal);
             } else if (partition == INTERNAL_PARTITION){
                 applyInternalEntry(journalEntry.getPayload().getBytes());
 
@@ -301,16 +301,16 @@ public class JournalKeeperState <E, ER, Q, QR> implements Replicable, Flushable 
         userState.recover(path.resolve(USER_STATE_PATH), properties);
     }
 
-    public StateQueryResult<QR> query(Q query, RaftJournal journal) {
-        StateQueryResult<QR> result;
+    public StateQueryResult query(byte [] query, RaftJournal journal) {
+        StateQueryResult result;
 
         long stamp = stateLock.tryOptimisticRead();
-        result = new StateQueryResult<>(userState.query(query, journal), lastApplied());
+        result = new StateQueryResult(userState.query(query, journal), lastApplied());
 
         if (!stateLock.validate(stamp)) {
             stamp = stateLock.readLock();
             try {
-                result = new StateQueryResult<>(userState.query(query, journal), lastApplied());
+                result = new StateQueryResult(userState.query(query, journal), lastApplied());
             } finally {
                 stateLock.unlockRead(stamp);
             }

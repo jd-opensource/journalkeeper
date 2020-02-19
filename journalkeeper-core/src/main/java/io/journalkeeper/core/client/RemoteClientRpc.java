@@ -73,20 +73,18 @@ public class RemoteClientRpc implements ClientRpc {
 
     @Override
     public final  <O extends BaseResponse> CompletableFuture<O> invokeClientServerRpc(CompletableRetry.RpcInvoke<O, ClientServerRpc> invoke) {
-        return completableRetry.retry((uri) -> invoke.invoke(clientServerRpcAccessPoint.getClintServerRpc(uri)), clientCheckRetry, executor, scheduledExecutor);
+        return completableRetry.retry(uri -> invoke.invoke(clientServerRpcAccessPoint.getClintServerRpc(uri)), clientCheckRetry, executor, scheduledExecutor);
     }
 
     @Override
     public <O extends BaseResponse> CompletableFuture<O> invokeClientServerRpc(URI uri, CompletableRetry.RpcInvoke<O, ClientServerRpc> invoke) {
-        return completableRetry.retry((uri1) -> invoke.invoke(clientServerRpcAccessPoint.getClintServerRpc(uri1)), clientCheckRetry, uri, executor, scheduledExecutor);
+        return completableRetry.retry(uri1 -> invoke.invoke(clientServerRpcAccessPoint.getClintServerRpc(uri1)), clientCheckRetry, uri, executor, scheduledExecutor);
     }
 
     @Override
     public final  <O extends BaseResponse> CompletableFuture<O> invokeClientLeaderRpc(CompletableRetry.RpcInvoke<O, ClientServerRpc> invoke) {
-        return invokeClientServerRpc((rpc) -> unSetLeaderUriWhenLeaderRpcFailed(
-                getCachedLeaderRpc(rpc)
-                .thenCompose(invoke::invoke)
-                )
+        return invokeClientServerRpc(rpc ->
+                unSetLeaderUriWhenLeaderRpcFailed(getCachedLeaderRpc(rpc).thenCompose(invoke::invoke))
         );
     }
 

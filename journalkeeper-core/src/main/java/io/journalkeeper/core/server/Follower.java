@@ -42,7 +42,7 @@ import static io.journalkeeper.core.server.ThreadNames.VOTER_REPLICATION_REQUEST
  * @author LiYue
  * Date: 2019-09-10
  */
-class Follower<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
+class Follower extends ServerStateMachine implements StateServer {
     private static final Logger logger = LoggerFactory.getLogger(Follower.class);
     private final Journal journal;
     /**
@@ -53,7 +53,7 @@ class Follower<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
     private final int currentTerm;
     private final VoterConfigManager voterConfigManager;
     private final Threads threads;
-    private final NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> snapshots;    /**
+    private final NavigableMap<Long, JournalKeeperState> snapshots;    /**
      * 待处理的asyncAppendEntries Request，按照request中的preLogTerm和prevLogIndex排序。
      */
     private final BlockingQueue<ReplicationRequestResponse> pendingAppendEntriesRequests;
@@ -65,7 +65,7 @@ class Follower<E, ER, Q, QR> extends ServerStateMachine implements StateServer {
 
 
     private boolean readyForStartPreferredLeaderElection = false;
-    Follower(Journal journal, JournalKeeperState<E, ER, Q, QR> state, URI serverUri, int currentTerm, VoterConfigManager voterConfigManager, Threads threads, NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> snapshots, int cachedRequests) {
+    Follower(Journal journal, JournalKeeperState state, URI serverUri, int currentTerm, VoterConfigManager voterConfigManager, Threads threads, NavigableMap<Long, JournalKeeperState> snapshots, int cachedRequests) {
         super(true);
         this.state = state;
         this.voterConfigManager = voterConfigManager;

@@ -82,7 +82,7 @@ import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
  * @author LiYue
  * Date: 2019-03-15
  */
-class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
+class Observer extends AbstractServer {
     private static final Logger logger = LoggerFactory.getLogger(Observer.class);
 
     private final JMetric replicationMetric;
@@ -90,17 +90,12 @@ class Observer<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> {
     private final CompletableRetry<URI> serverRpcRetry;
     private final Config config;
 
-    Observer(StateFactory<E, ER, Q, QR> stateFactory,
-                    Serializer<E> entrySerializer,
-                    Serializer<ER> entryResultSerializer,
-                    Serializer<Q> querySerializer,
-                    Serializer<QR> queryResultSerializer,
+    Observer(StateFactory stateFactory,
                     JournalEntryParser journalEntryParser,
                     ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor,
                     ServerRpcAccessPoint serverRpcAccessPoint,
                     Properties properties) {
-        super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer,
-                journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
+        super(stateFactory, journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         this.config = toConfig(properties);
         this.replicationMetric = getMetric(METRIC_OBSERVER_REPLICATION);
         serverRpcRetry = new CompletableRetry<>(new IncreasingRetryPolicy(new long [] {100, 500, 3000, 10000}, 50),

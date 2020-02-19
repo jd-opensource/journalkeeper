@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.journalstore;
 
+import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 
@@ -20,9 +21,15 @@ import io.journalkeeper.core.api.StateFactory;
  * @author LiYue
  * Date: 2019-05-09
  */
-public class JournalStoreStateFactory implements StateFactory<byte [], Long , JournalStoreQuery, JournalStoreQueryResult> {
+public class JournalStoreStateFactory implements StateFactory {
+    private final JournalEntryParser journalEntryParser;
+
+    public JournalStoreStateFactory(JournalEntryParser journalEntryParser) {
+        this.journalEntryParser = journalEntryParser;
+    }
+
     @Override
-    public State<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> createState() {
-        return new JournalStoreState();
+    public State createState() {
+        return new JournalStoreState(journalEntryParser);
     }
 }

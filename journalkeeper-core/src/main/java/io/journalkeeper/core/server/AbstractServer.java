@@ -14,7 +14,6 @@
 package io.journalkeeper.core.server;
 
 import io.journalkeeper.base.ReplicableIterator;
-import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.Logo;
 import io.journalkeeper.core.api.ClusterConfiguration;
 import io.journalkeeper.core.api.JournalEntry;
@@ -127,7 +126,7 @@ import static io.journalkeeper.core.transaction.JournalTransactionManager.TRANSA
  * @author LiYue
  * Date: 2019-03-14
  */
-public abstract class AbstractServer<E, ER, Q, QR>
+public abstract class AbstractServer
         implements ServerRpc, RaftServer, ServerRpcProvider, MetricProvider {
     private static final Logger logger = LoggerFactory.getLogger(AbstractServer.class);
 
@@ -145,7 +144,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     /**
      * 节点上的最新状态 和 被状态机执行的最大日志条目的索引值（从 0 开始递增）
      */
-    protected final JournalKeeperState<E, ER, Q, QR> state;
+    protected final JournalKeeperState state;
 
     protected final ScheduledExecutorService scheduledExecutor;
 
@@ -166,7 +165,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     /**
      * 存放节点上所有状态快照的稀疏数组，数组的索引（key）就是快照对应的日志位置的索引
      */
-    protected final NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> snapshots = new ConcurrentSkipListMap<>();
+    protected final NavigableMap<Long, JournalKeeperState> snapshots = new ConcurrentSkipListMap<>();
 
     /**
      * 当前LEADER节点地址
@@ -207,11 +206,6 @@ public abstract class AbstractServer<E, ER, Q, QR>
         return available;
     }
 
-    protected final Serializer<E> entrySerializer;
-    protected final Serializer<ER> entryResultSerializer;
-    protected final Serializer<Q> querySerializer;
-    protected final Serializer<QR> resultSerializer;
-
     protected final BufferPool bufferPool;
 
     protected ServerRpcAccessPoint serverRpcAccessPoint;
@@ -238,7 +232,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
     private final JMetric applyEntriesMetric;
 
     protected final Properties properties;
-    protected final StateFactory<E, ER, Q, QR> stateFactory;
+    protected final StateFactory stateFactory;
     protected final JournalEntryParser journalEntryParser;
     protected final VoterConfigManager voterConfigManager;
     private final AtomicInteger nextSnapshotIteratorId = new AtomicInteger();
@@ -313,19 +307,13 @@ public abstract class AbstractServer<E, ER, Q, QR>
         }
     }
 
-    protected AbstractServer(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer,
-                             Serializer<ER> entryResultSerializer, Serializer<Q> querySerializer,
-                             Serializer<QR> resultSerializer,
+    protected AbstractServer(StateFactory stateFactory,
                              JournalEntryParser journalEntryParser, ScheduledExecutorService scheduledExecutor,
                              ExecutorService asyncExecutor, ServerRpcAccessPoint serverRpcAccessPoint, Properties properties) {
         this.journalEntryParser = journalEntryParser;
         this.scheduledExecutor = scheduledExecutor;
         this.asyncExecutor = asyncExecutor;
         this.config = toConfig(properties);
-        this.entrySerializer = entrySerializer;
-        this.querySerializer = querySerializer;
-        this.resultSerializer = resultSerializer;
-        this.entryResultSerializer = entryResultSerializer;
         this.serverRpcAccessPoint = serverRpcAccessPoint;
         this.properties = properties;
         this.stateFactory = stateFactory;
@@ -358,7 +346,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         journal = new Journal(
                 persistenceFactory,
                 bufferPool, journalEntryParser);
-        this.state = new JournalKeeperState<>(stateFactory, metadataPersistence);
+        this.state = new JournalKeeperState(stateFactory, metadataPersistence);
 
         this.partialSnapshot = new PartialSnapshot(partialSnapshotPath());
         state.addInterceptor(InternalEntryType.TYPE_SCALE_PARTITIONS, this::scalePartitions);
@@ -376,9 +364,8 @@ public abstract class AbstractServer<E, ER, Q, QR>
     }
 
     private void createFistSnapshot(List<URI> voters, Set<Integer> partitions, URI preferredLeader) throws IOException {
-        JournalKeeperState<E, ER, Q, QR> snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
+        JournalKeeperState snapshot = new JournalKeeperState(stateFactory, metadataPersistence);
         snapshot.init(snapshotsPath().resolve(String.valueOf(0L)), voters, partitions, preferredLeader);
-        ;
     }
 
     protected Path statePath() {
@@ -402,7 +389,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
             applyEntriesMetric.start();
 
             JournalEntry journalEntry = journal.read(state.lastApplied());
-            StateResult<ER> stateResult = state.applyEntry(journalEntry, entrySerializer, journal);
+            StateResult stateResult = state.applyEntry(journalEntry, journal);
             afterStateChanged(stateResult.getUserResult());
 
             Map<String, String> parameters = new HashMap<>(stateResult.getEventData().size() + 1);
@@ -463,7 +450,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
      * 当状态变化后触发事件
      * @param updateResult 状态机执行结果
      */
-    protected void afterStateChanged(ER updateResult) {}
+    protected void afterStateChanged(byte [] updateResult) {}
     /**
      * 如果需要，保存一次快照
      */
@@ -472,8 +459,8 @@ public abstract class AbstractServer<E, ER, Q, QR>
     public CompletableFuture<QueryStateResponse> queryServerState(QueryStateRequest request) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                StateQueryResult<QR> queryResult = state.query(querySerializer.parse(request.getQuery()), journal);
-                return new QueryStateResponse(resultSerializer.serialize(queryResult.getResult()), queryResult.getLastApplied());
+                StateQueryResult queryResult = state.query(request.getQuery(), journal);
+                return new QueryStateResponse(queryResult.getResult(), queryResult.getLastApplied());
             } catch (Throwable throwable) {
                 return new QueryStateResponse(throwable);
             }
@@ -500,14 +487,14 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 }
 
                 if (request.getIndex() == state.lastApplied()) {
-                    StateQueryResult<QR> queryResult = state.query(querySerializer.parse(request.getQuery()), journal);
+                    StateQueryResult queryResult = state.query(request.getQuery(), journal);
                     if(queryResult.getLastApplied() == request.getIndex()) {
-                        return new QueryStateResponse(resultSerializer.serialize(queryResult.getResult()), queryResult.getLastApplied());
+                        return new QueryStateResponse(queryResult.getResult(), queryResult.getLastApplied());
                     }
                 }
 
-                JournalKeeperState<E, ER, Q, QR> snapshot;
-                Map.Entry<Long, JournalKeeperState<E, ER, Q, QR>> nearestSnapshot = snapshots.floorEntry(request.getIndex());
+                JournalKeeperState snapshot;
+                Map.Entry<Long, JournalKeeperState> nearestSnapshot = snapshots.floorEntry(request.getIndex());
                 if (null == nearestSnapshot) {
                     throw new IndexUnderflowException();
                 }
@@ -515,7 +502,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 if(request.getIndex() == nearestSnapshot.getKey()) {
                     snapshot = nearestSnapshot.getValue();
                 } else {
-                    snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
+                    snapshot = new JournalKeeperState(stateFactory, metadataPersistence);
                     Path tempSnapshotPath = snapshotsPath().resolve(String.valueOf(request.getIndex()));
                     if (Files.exists(tempSnapshotPath)) {
                         throw new ConcurrentModificationException(String.format("A snapshot of position %d is creating, please retry later.", request.getIndex()));
@@ -524,13 +511,13 @@ public abstract class AbstractServer<E, ER, Q, QR>
                     snapshot.recover(tempSnapshotPath, properties);
 
                     while (snapshot.lastApplied() < request.getIndex()) {
-                        snapshot.applyEntry(journal.read(snapshot.lastApplied()), entrySerializer, journal);
+                        snapshot.applyEntry(journal.read(snapshot.lastApplied()), journal);
                     }
                     snapshot.flush();
 
                     snapshots.putIfAbsent(request.getIndex(), snapshot);
                 }
-                return new QueryStateResponse(resultSerializer.serialize(snapshot.query(querySerializer.parse(request.getQuery()), journal).getResult()));
+                return new QueryStateResponse(snapshot.query(request.getQuery(), journal).getResult());
             } catch (Throwable throwable) {
                 return new QueryStateResponse(throwable);
             }
@@ -545,7 +532,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
 
     private void recoverSnapShot(InternalEntryType type, byte [] internalEntry) {
         RecoverSnapshotEntry recoverSnapshotEntry = InternalEntriesSerializeSupport.parse(internalEntry);
-        JournalKeeperState<E, ER, Q, QR> targetSnapshot = snapshots.get(recoverSnapshotEntry.getIndex());
+        JournalKeeperState targetSnapshot = snapshots.get(recoverSnapshotEntry.getIndex());
         if (targetSnapshot == null) {
             logger.warn("recover snapshot failed, snapshot not exist, index: {}", recoverSnapshotEntry.getIndex());
             return;
@@ -558,7 +545,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         }
     }
 
-    protected void doRecoverSnapshot(JournalKeeperState<E, ER, Q, QR> targetSnapshot) throws IOException {
+    protected void doRecoverSnapshot(JournalKeeperState targetSnapshot) throws IOException {
         logger.info("recover snapshot, target snapshot: {}", targetSnapshot.getPath());
 
         threads.stopThread(threadName(ThreadNames.FLUSH_JOURNAL_THREAD));
@@ -670,7 +657,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         Path snapshotPath = snapshotsPath().resolve(String.valueOf(lastApplied));
         try {
             state.dump(snapshotPath);
-            JournalKeeperState<E, ER, Q, QR> snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
+            JournalKeeperState snapshot = new JournalKeeperState(stateFactory, metadataPersistence);
             snapshot.recover(snapshotPath, properties);
             snapshot.createSnapshot(journal);
             snapshots.put(snapshot.lastApplied(), snapshot);
@@ -690,7 +677,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
                     iteratorId = request.getIteratorId();
                 } else {
                     long snapshotIndex = request.getLastIncludedIndex() + 1;
-                    JournalKeeperState<E, ER, Q, QR> snapshot = snapshots.get(snapshotIndex);
+                    JournalKeeperState snapshot = snapshots.get(snapshotIndex);
                     if (null != snapshot) {
                         ReplicableIterator iterator = snapshot.iterator();
                         iteratorId = nextSnapshotIteratorId.getAndIncrement();
@@ -784,24 +771,26 @@ public abstract class AbstractServer<E, ER, Q, QR>
     @Override
     public final void stop() {
         try {
-            this.serverState = ServerState.STOPPING;
-            doStop();
-            remoteServers.values().forEach(ServerRpc::stop);
-            waitJournalApplied();
-            threads.stopThread(threadName(STATE_MACHINE_THREAD));
-            threads.stopThread(threadName(FLUSH_JOURNAL_THREAD));
-            if(threads.exists(threadName(PRINT_METRIC_THREAD))) {
-                threads.stopThread(threadName(PRINT_METRIC_THREAD));
-            }
+            if(this.serverState == ServerState.RUNNING) {
+                this.serverState = ServerState.STOPPING;
+                doStop();
+                remoteServers.values().forEach(ServerRpc::stop);
+                waitJournalApplied();
+                threads.stopThread(threadName(STATE_MACHINE_THREAD));
+                threads.stopThread(threadName(FLUSH_JOURNAL_THREAD));
+                if (threads.exists(threadName(PRINT_METRIC_THREAD))) {
+                    threads.stopThread(threadName(PRINT_METRIC_THREAD));
+                }
 
-            stopAndWaitScheduledFeature(compactJournalFuture, 1000L);
-            stopAndWaitScheduledFeature(flushStateFuture, 1000L);
-            if(persistenceFactory instanceof Closeable) {
-                ((Closeable) persistenceFactory).close();
+                stopAndWaitScheduledFeature(compactJournalFuture, 1000L);
+                stopAndWaitScheduledFeature(flushStateFuture, 1000L);
+                if (persistenceFactory instanceof Closeable) {
+                    ((Closeable) persistenceFactory).close();
+                }
+                flushAll();
+                journal.close();
+                this.serverState = ServerState.STOPPED;
             }
-            flushAll();
-            journal.close();
-            this.serverState = ServerState.STOPPED;
         } catch (Throwable t) {
             t.printStackTrace();
             logger.warn("Exception: ", t);
@@ -938,7 +927,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
                         entry -> entry.getFileName().toString().matches("\\d+")
                     ).spliterator(), false)
                 .map(path -> {
-                    JournalKeeperState<E, ER, Q, QR> snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
+                    JournalKeeperState snapshot = new JournalKeeperState(stateFactory, metadataPersistence);
                     snapshot.recover(path, properties, true);
                     if(Long.parseLong(path.getFileName().toString()) == snapshot.lastApplied()) {
                         return snapshot;
@@ -1031,14 +1020,14 @@ public abstract class AbstractServer<E, ER, Q, QR>
     private void compactJournalToSnapshot(long index) {
         logger.info("Compact journal to index: {}...", index);
         try {
-            JournalKeeperState<E, ER, Q, QR> snapshot = snapshots.get(index);
+            JournalKeeperState snapshot = snapshots.get(index);
             if (null != snapshot) {
                 JournalSnapshot journalSnapshot = snapshot.getJournalSnapshot();
                 logger.info("Compact journal entries, journal snapshot: {}, journal: {}...", journalSnapshot, journal);
                 journal.compact(snapshot.getJournalSnapshot());
                 logger.info("Compact journal finished, journal: {}.", journal);
 
-                NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> headMap = snapshots.headMap(index, false);
+                NavigableMap<Long, JournalKeeperState> headMap = snapshots.headMap(index, false);
                 while (!headMap.isEmpty()) {
                     snapshot = headMap.remove(headMap.firstKey());
                     logger.info("Discard snapshot: {}.", snapshot.getPath());
@@ -1053,7 +1042,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
         }
     }
 
-    public JournalKeeperState<E, ER, Q, QR> getState() {
+    public JournalKeeperState getState() {
         return state;
     }
 
@@ -1114,7 +1103,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
                     ThreadSafeFormat.formatWithComma(journal.commitIndex())
             );
 
-            JournalKeeperState<E, ER, Q, QR> snapshot;
+            JournalKeeperState snapshot;
             long lastApplied = lastIncludedIndex + 1;
             Path snapshotPath = snapshotsPath().resolve(String.valueOf(lastApplied));
             partialSnapshot.installTrunk(offset, data, snapshotPath);
@@ -1122,7 +1111,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
             if (isDone) {
                 logger.info("All snapshot files received, discard any existing snapshot with a same or smaller index...");
                 // discard any existing snapshot with a same or smaller index
-                NavigableMap<Long, JournalKeeperState<E, ER, Q, QR>> headMap = snapshots.headMap(lastApplied, true);
+                NavigableMap<Long, JournalKeeperState> headMap = snapshots.headMap(lastApplied, true);
                 while (!headMap.isEmpty()) {
                     snapshot = headMap.remove(headMap.firstKey());
                     logger.info("Discard snapshot: {}.", snapshot.getPath());
@@ -1132,7 +1121,7 @@ public abstract class AbstractServer<E, ER, Q, QR>
                 logger.info("add the installed snapshot to snapshots: {}...", snapshotPath);
                 partialSnapshot.finish();
                 // add the installed snapshot to snapshots.
-                snapshot = new JournalKeeperState<>(stateFactory, metadataPersistence);
+                snapshot = new JournalKeeperState(stateFactory, metadataPersistence);
                 snapshot.recover(snapshotPath, properties);
                 snapshots.put(lastApplied, snapshot);
 

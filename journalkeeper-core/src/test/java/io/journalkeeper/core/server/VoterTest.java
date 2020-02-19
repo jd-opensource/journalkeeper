@@ -16,11 +16,11 @@ package io.journalkeeper.core.server;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
-import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.StateResult;
+import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.entry.DefaultJournalEntryParser;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
@@ -84,7 +84,7 @@ public class VoterTest {
     @Ignore
     @Test
     public void singleNodeWritePerformanceTest() throws IOException, ExecutionException, InterruptedException {
-        Server<byte[],byte[], byte[], byte[]> voter = createVoter();
+        Server voter = createVoter();
 
 
         try {
@@ -131,7 +131,7 @@ public class VoterTest {
     @Ignore
     @Test
     public void multiThreadsWritePerformanceTest() throws IOException, ExecutionException, InterruptedException {
-        Server<byte[], byte[], byte[], byte[]> voter = createVoter();
+        Server voter = createVoter();
 
 
         try {
@@ -193,7 +193,7 @@ public class VoterTest {
     }
     @Test
     public void updateClusterStateResultTest() throws IOException, ExecutionException, InterruptedException {
-        Server<byte[],byte[], byte[], byte[]> voter = createVoter();
+        Server voter = createVoter();
 
 
         try {
@@ -223,7 +223,7 @@ public class VoterTest {
 
     @Test
     public void batchUpdateClusterStateTest() throws IOException, ExecutionException, InterruptedException {
-        Server<byte[],byte[], byte[], byte[]> voter = createVoter();
+        Server voter = createVoter();
 
 
         try {
@@ -231,8 +231,8 @@ public class VoterTest {
             while(voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
             }
-            List<SerializedUpdateRequest> requests = bytes.stream()
-                    .map(byteArray -> new SerializedUpdateRequest(byteArray, RaftJournal.DEFAULT_PARTITION, 1))
+            List<UpdateRequest> requests = bytes.stream()
+                    .map(byteArray -> new UpdateRequest(byteArray, RaftJournal.DEFAULT_PARTITION, 1))
                     .collect(Collectors.toList());
             logger.info("Send UpdateClusterStateRequest...");
 
@@ -262,7 +262,7 @@ public class VoterTest {
         properties.put("journal_retention_min", "1");
 //        properties.setProperty("enable_metric", "true");
 //        properties.setProperty("print_metric_interval_sec", "3");
-        Server<byte[], byte[], byte[], byte[]> voter = createVoter(properties);
+        Server voter = createVoter(properties);
         try {
             while (voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
@@ -285,15 +285,14 @@ public class VoterTest {
     }
 
 
-    private Server<byte[], byte[], byte[], byte[]> createVoter() throws IOException {
+    private Server createVoter() throws IOException {
         return createVoter(null);
     }
 
-    private Server<byte[], byte[], byte[], byte[]> createVoter(Properties customProperties) throws IOException {
-        StateFactory<byte [], byte [], byte [], byte []> stateFactory = new NoopStateFactory();
+    private Server createVoter(Properties customProperties) throws IOException {
+        StateFactory stateFactory = new NoopStateFactory();
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(4, new NamedThreadFactory("JournalKeeper-Scheduled-Executor"));
         ExecutorService asyncExecutorService = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors() * 2, new NamedThreadFactory("JournalKeeper-Async-Executor"));
-        BytesSerializer bytesSerializer = new BytesSerializer();
         Properties properties = new Properties();
         properties.setProperty("working_dir", base.toString());
         if (null != customProperties) {
@@ -303,57 +302,40 @@ public class VoterTest {
 //        properties.setProperty("print_metric_interval_sec", "3");
 //        properties.setProperty("cache_requests", String.valueOf(1024L * 1024 * 5));
 
-        Server<byte [], byte [], byte [], byte []>  voter =
-                new Server<>(
+        Server  voter =
+                new Server(
                         RaftServer.Roll.VOTER,
-                        stateFactory,
-                        bytesSerializer, bytesSerializer, bytesSerializer, bytesSerializer, new DefaultJournalEntryParser(),
+                        stateFactory, new DefaultJournalEntryParser(),
                         scheduledExecutorService, asyncExecutorService, properties);
-        URI uri = URI.create("jk://localhost:8888");
+        URI uri = URI.create("local://test");
         voter.init(uri, Collections.singletonList(uri));
         voter.recover();
         voter.start();
         return voter;
     }
 
-    static class BytesSerializer implements Serializer<byte []> {
-
+    static class EchoState implements State {
         @Override
-        public byte[] serialize(byte[] entry) {
-            return entry;
-        }
-
-        @Override
-        public byte[] parse(byte[] bytes) {
-            return bytes;
-        }
-    }
-
-
-    static class EchoState implements State<byte[], byte[], byte[], byte[]> {
-        private AtomicInteger term = new AtomicInteger(0);
-        @Override
-        public StateResult<byte []> execute(byte[] entry, int partition, long index, int batchSize, RaftJournal raftJournal) {
-            return new StateResult<>(entry);
+        public StateResult execute(byte[] entry, int partition, long index, int batchSize, RaftJournal raftJournal) {
+            return new StateResult(entry);
         }
 
 
         @Override
         public void recover(Path path, Properties properties) {
-            term = new AtomicInteger(0);
         }
 
         @Override
         public byte[] query(byte[] query, RaftJournal raftJournal) {
-            return new byte[0];
+            return query;
         }
     }
 
 
-    class NoopStateFactory implements StateFactory<byte [], byte [], byte [], byte []> {
+    static class NoopStateFactory implements StateFactory {
 
         @Override
-        public State<byte[], byte[], byte[], byte[]> createState() {
+        public State createState() {
             return new EchoState();
         }
     }

@@ -36,20 +36,16 @@ import java.util.concurrent.ScheduledExecutorService;
  */
 public class JournalStoreServer implements StateServer {
     private static final Logger logger = LoggerFactory.getLogger(JournalStoreServer.class);
-    private final BootStrap<byte [], Long, JournalStoreQuery, JournalStoreQueryResult> bootStrap;
+    private final BootStrap bootStrap;
 
     public JournalStoreServer(Properties properties) {
         this(RaftServer.Roll.VOTER, new DefaultJournalEntryParser(), properties);
     }
 
     public JournalStoreServer(RaftServer.Roll roll, JournalEntryParser journalEntryParser, Properties properties) {
-        bootStrap = new BootStrap<>(
+        bootStrap = new BootStrap(
                 roll,
-                new JournalStoreStateFactory(),
-                new ByteArraySerializer(),
-                new LongSerializer(),
-                new JournalStoreQuerySerializer(),
-                new JournalStoreQueryResultSerializer(journalEntryParser),
+                new JournalStoreStateFactory(journalEntryParser),
                 journalEntryParser,
                 properties
         );
@@ -63,13 +59,9 @@ public class JournalStoreServer implements StateServer {
             ExecutorService serverAsyncExecutor,
             ScheduledExecutorService serverScheduledExecutor,
             Properties properties) {
-        bootStrap = new BootStrap<>(
+        bootStrap = new BootStrap(
                 roll,
-                new JournalStoreStateFactory(),
-                new ByteArraySerializer(),
-                new LongSerializer(),
-                new JournalStoreQuerySerializer(),
-                new JournalStoreQueryResultSerializer(journalEntryParser),
+                new JournalStoreStateFactory(journalEntryParser),
                 journalEntryParser,
                 clientAsyncExecutor,
                 clientScheduledExecutor,

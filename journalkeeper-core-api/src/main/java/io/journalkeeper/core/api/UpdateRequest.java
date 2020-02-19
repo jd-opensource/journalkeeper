@@ -17,25 +17,25 @@ package io.journalkeeper.core.api;
  * @author LiYue
  * Date: 2019/11/13
  */
-public class UpdateRequest<E> {
+public class UpdateRequest {
     // Entry
-    private final E entry;
+    private final byte [] entry;
     // 分区
     private final int partition;
     // 批量大小
     private final int batchSize;
 
-    public UpdateRequest(E entry, int partition, int batchSize) {
+    public UpdateRequest(byte [] entry, int partition, int batchSize) {
         this.entry = entry;
         this.partition = partition;
         this.batchSize = batchSize;
     }
 
-    public UpdateRequest(E entry) {
+    public UpdateRequest(byte [] entry) {
         this(entry, RaftJournal.DEFAULT_PARTITION, 1);
     }
 
-    public E getEntry() {
+    public byte [] getEntry() {
         return entry;
     }
 

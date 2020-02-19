@@ -26,14 +26,13 @@
  */
 package io.journalkeeper.core.server;
 
-import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
-import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.SnapshotEntry;
 import io.journalkeeper.core.api.SnapshotsEntry;
 import io.journalkeeper.core.api.StateFactory;
+import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.api.transaction.UUIDTransactionId;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
@@ -94,7 +93,7 @@ import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
  * @author LiYue
  * Date: 2019-03-18
  */
-class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckTermInterceptor{
+class Voter extends AbstractServer implements CheckTermInterceptor{
     private static final Logger logger = LoggerFactory.getLogger(Voter.class);
 
     /**
@@ -139,15 +138,16 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     private ScheduledFuture checkElectionTimeoutFuture;
     private ScheduledFuture printStateFuture;
 
-    private Leader<E, ER, Q, QR> leader;
-    private Follower<E, ER, Q, QR> follower;
+    private Leader leader;
+    private Follower follower;
 
-    Voter(StateFactory<E, ER, Q, QR> stateFactory, Serializer<E> entrySerializer, Serializer<ER> entryResultSerializer,
-                 Serializer<Q> querySerializer, Serializer<QR> resultSerializer,
+    Voter(StateFactory stateFactory,
                  JournalEntryParser journalEntryParser,
-                 ScheduledExecutorService scheduledExecutor, ExecutorService asyncExecutor, ServerRpcAccessPoint serverRpcAccessPoint, Properties properties) {
-        super(stateFactory, entrySerializer, entryResultSerializer, querySerializer, resultSerializer,
-                journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
+                 ScheduledExecutorService scheduledExecutor,
+          ExecutorService asyncExecutor,
+          ServerRpcAccessPoint serverRpcAccessPoint,
+          Properties properties) {
+        super(stateFactory, journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         this.config = toConfig(properties);
 
         state.addInterceptor(InternalEntryType.TYPE_UPDATE_VOTERS_S1, this::applyUpdateVotersInternalEntry);
@@ -383,10 +383,10 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
             VoterState oldState = voterState.getState();
             voterState.convertToLeader();
 
-            this.leader = new Leader<>(journal, state, snapshots,currentTerm.get(),
+            this.leader = new Leader(journal, state, snapshots,currentTerm.get(),
                     uri, config.getCacheRequests(), config.getHeartbeatIntervalMs(), config.getRpcTimeoutMs(),
                     config.getReplicationParallelism(),config.getReplicationBatchSize(),
-                    config.getSnapshotIntervalSec(), entryResultSerializer, threads,
+                    config.getSnapshotIntervalSec(), threads,
                     this, this, asyncExecutor, scheduledExecutor, voterConfigManager, this, this,
                     this.journalEntryParser, config.getTransactionTimeoutMs(), snapshots);
             leader.start();
@@ -429,7 +429,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 follower = null;
             }
 
-            follower = new Follower<>(journal, state, uri, currentTerm.get(),
+            follower = new Follower(journal, state, uri, currentTerm.get(),
                     voterConfigManager, threads,
                     snapshots, config.getCacheRequests());
             follower.start();
@@ -579,7 +579,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     //snapshot’s cluster configuration)
     @Override
     public CompletableFuture<InstallSnapshotResponse> installSnapshot(InstallSnapshotRequest request) {
-        JournalKeeperState<E, ER, Q, QR> snapshot;
+        JournalKeeperState snapshot;
         if(checkTerm(request.getTerm())) {
             return CompletableFuture.completedFuture(new InstallSnapshotResponse(currentTerm.get()));
         }
@@ -605,7 +605,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
 
     @Override
     public CompletableFuture<UpdateClusterStateResponse> updateClusterState(UpdateClusterStateRequest request) {
-        Leader<E, ER, Q, QR> finalLeader = leader;
+        Leader finalLeader = leader;
         if(isLeaderAvailable(finalLeader)) {
             return finalLeader.updateClusterState(request)
                     .exceptionally(UpdateClusterStateResponse::new);
@@ -617,8 +617,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     @Override
     public CompletableFuture<QueryStateResponse> queryClusterState(QueryStateRequest request) {
         return waitLeadership()
-                .thenApplyAsync(aVoid -> state.query(querySerializer.parse(request.getQuery()), journal).getResult(), asyncExecutor)
-                .thenApply(resultSerializer::serialize)
+                .thenApplyAsync(aVoid -> state.query(request.getQuery(), journal).getResult(), asyncExecutor)
                 .thenApply(QueryStateResponse::new)
                 .exceptionally(exception -> {
                     try {
@@ -666,7 +665,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     }
 
     private CompletableFuture<Void> waitLeadership() {
-        Leader<E, ER, Q, QR> finalLeader = leader;
+        Leader finalLeader = leader;
         if (isLeaderAvailable(finalLeader)) {
             return finalLeader.waitLeadership();
         } else {
@@ -740,7 +739,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         return CompletableFuture.supplyAsync(
                 () -> new UpdateVotersS1Entry(request.getOldConfig(), request.getNewConfig()), asyncExecutor)
                 .thenApply(InternalEntriesSerializeSupport::serialize)
-                .thenApply(entry -> new UpdateClusterStateRequest(new SerializedUpdateRequest(entry, INTERNAL_PARTITION, 1)))
+                .thenApply(entry -> new UpdateClusterStateRequest(new UpdateRequest(entry, INTERNAL_PARTITION, 1)))
                 .thenCompose(this::updateClusterState)
                 .thenAccept(response -> {
                     if(!response.success()) {
@@ -794,7 +793,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
                 });
     }
 
-    private boolean isLeaderAvailable(Leader<E, ER, Q, QR> finalLeader) {
+    private boolean isLeaderAvailable(Leader finalLeader) {
         return voterState() == VoterState.LEADER && finalLeader != null;
     }
 
@@ -813,7 +812,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
         }
     }
 
-    private void ensureLeadership(Leader<E, ER, Q, QR> finalLeader) {
+    private void ensureLeadership(Leader finalLeader) {
         if(voterState() != VoterState.LEADER || finalLeader == null) {
             throw new NotLeaderException(leaderUri);
         }
@@ -866,7 +865,7 @@ class Voter<E, ER, Q, QR> extends AbstractServer<E, ER, Q, QR> implements CheckT
     }
 
     @Override
-    protected void afterStateChanged(ER updateResult) {
+    protected void afterStateChanged(byte [] updateResult) {
         super.afterStateChanged(updateResult);
         if(null != leader) {
             try {

@@ -13,18 +13,15 @@
  */
 package io.journalkeeper.core.client;
 
-import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.ClusterReadyAware;
 import io.journalkeeper.core.api.ResponseConfig;
-import io.journalkeeper.core.api.SerializedUpdateRequest;
 import io.journalkeeper.core.api.ServerConfigAware;
+import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.StatusCode;
 import io.journalkeeper.rpc.client.CheckLeadershipResponse;
 import io.journalkeeper.rpc.client.ClientServerRpc;
-import io.journalkeeper.rpc.client.GetServersResponse;
-import io.journalkeeper.rpc.client.QueryStateResponse;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
 import io.journalkeeper.utils.event.EventWatcher;
@@ -39,7 +36,6 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.stream.Collectors;
 
 /**
  * @author LiYue
@@ -52,17 +48,11 @@ public abstract class AbstractClient implements ClusterReadyAware, ServerConfigA
         this.clientRpc = clientRpc;
     }
 
-    protected <R> CompletableFuture<List<R>> update(List<SerializedUpdateRequest> entries, boolean includeHeader, ResponseConfig responseConfig, Serializer<R> serializer) {
+    protected  CompletableFuture<List<byte []>> update(List<UpdateRequest> entries, boolean includeHeader, ResponseConfig responseConfig) {
         return
                 clientRpc.invokeClientLeaderRpc(rpc -> rpc.updateClusterState(new UpdateClusterStateRequest(entries, includeHeader, responseConfig)))
                         .thenApply(this::checkResponse)
-                        .thenApply(UpdateClusterStateResponse::getResults)
-                        .thenApply(serializedResults ->
-                                serializedResults.stream().map(serializer::parse).collect(Collectors.toList())
-                                );
-    }
-    protected <R> CompletableFuture<List<R>> update(List<SerializedUpdateRequest> entries, ResponseConfig responseConfig, Serializer<R> serializer) {
-        return update(entries, false, responseConfig, serializer);
+                        .thenApply(UpdateClusterStateResponse::getResults);
     }
 
     <R extends BaseResponse> R  checkResponse(R response) {

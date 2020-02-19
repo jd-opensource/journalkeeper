@@ -13,7 +13,6 @@
  */
 package io.journalkeeper.core;
 
-import io.journalkeeper.base.Serializer;
 import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.ClusterAccessPoint;
 import io.journalkeeper.core.api.JournalEntryParser;
@@ -47,74 +46,41 @@ import java.util.concurrent.*;
  * @author LiYue
  * Date: 2019-03-25
  */
-public class BootStrap<
-        E, // 操作日志类型
-        ER, // 状态机执行操作日志后返回结果类型
-        Q, // 查询接口请求参数的类型
-        QR // 查询接口返回查询结果类型
-        > implements ClusterAccessPoint<E, ER, Q, QR> {
+public class BootStrap implements ClusterAccessPoint {
     private static final Logger logger = LoggerFactory.getLogger(BootStrap.class);
-    private final static int SCHEDULE_EXECUTOR_THREADS = 4;
+    private final static int SCHEDULE_EXECUTOR_QUEUE_SIZE = 128;
 
-    private final StateFactory<E, ER, Q, QR> stateFactory;
-    private final Serializer<E> entrySerializer;
-    private final Serializer<ER> entryResultSerializer;
-    private final Serializer<Q> querySerializer;
-    private final Serializer<QR> queryResultSerializer;
+    private final StateFactory stateFactory;
     private final Properties properties;
     private ScheduledExecutorService serverScheduledExecutor, clientScheduledExecutor;
     private ExecutorService serverAsyncExecutor, clientAsyncExecutor;
     private final RaftServer.Roll roll;
     private final RpcAccessPointFactory rpcAccessPointFactory;
     private final List<URI> servers;
-    private final Server<E, ER, Q, QR> server;
-    private RaftClient<E, ER, Q, QR> client = null;
+    private final Server server;
+    private RaftClient client = null;
     private AdminClient adminClient = null;
-    private RaftClient<E, ER, Q, QR> localClient = null;
+    private RaftClient localClient = null;
     private AdminClient localAdminClient = null;
     private final JournalEntryParser journalEntryParser;
-    private final RetryPolicy remoteRetryPolicy = new IncreasingRetryPolicy(new long [] {50, 50, 50, 100, 300, 500, 1000, 3000, 10000, 30000}, 50);
+    private final RetryPolicy remoteRetryPolicy =
+            new IncreasingRetryPolicy(
+                    new long [] {50, 50, 50, 50, 50,
+                            100, 100, 100, 100, 100, 100,
+                            300, 300, 300, 300, 300, 300,
+                            500, 500, 500, 500, 500, 500,
+                            1000, 1000, 1000, 1000, 1000,
+                            5000, 5000, 5000, 5000, 5000}, 50);
     private final boolean isExecutorProvided;
-    /**
-     * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。
-     * @param servers 远程Server 列表
-     * @param properties 配置属性
-     */
-    public BootStrap(List<URI> servers, Properties properties) {
-        this(servers, null, null, null, null, properties);
-    }
 
     /**
      * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。
      * @param servers 远程Server 列表
-     * @param clientAsyncExecutor 用于执行异步任务的Executor
-     * @param clientScheduledExecutor 用于执行定时任务的Executor
-     * @param properties 配置属性
-     *
-     */
-    public BootStrap(List<URI> servers, ExecutorService clientAsyncExecutor, ScheduledExecutorService clientScheduledExecutor, Properties properties) {
-        this(null, servers, null, null, null, null,
-                null, null, clientAsyncExecutor, clientScheduledExecutor, null, null, properties);
-
-    }
-
-
-    /**
-     * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。
-     * @param servers 远程Server 列表
-     * @param entrySerializer 操作日志序列化器
-     * @param entryResultSerializer 操作日志执行结果序列化器
-     * @param querySerializer 查询参数序列化器
-     * @param queryResultSerializer 查询结果序列化器
      * @param properties 配置属性
      */
     public BootStrap(List<URI> servers,
-                     Serializer<E> entrySerializer,
-                     Serializer<ER> entryResultSerializer,
-                     Serializer<Q> querySerializer,
-                     Serializer<QR> queryResultSerializer,
                      Properties properties) {
-        this(null, servers, null, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, null,
+        this(null, servers, null, null,
                 null, null, null, null,
                 properties);
     }
@@ -122,22 +88,14 @@ public class BootStrap<
     /**
      * 初始化远程模式的BootStrap，本地没有任何Server，所有操作直接请求远程Server。
      * @param servers 远程Server 列表
-     * @param entrySerializer 操作日志序列化器
-     * @param entryResultSerializer 操作日志执行结果序列化器
-     * @param querySerializer 查询参数序列化器
-     * @param queryResultSerializer 查询结果序列化器
      * @param clientAsyncExecutor 用于执行异步任务的Executor
      * @param clientScheduledExecutor 用于执行定时任务的Executor
      * @param properties 配置属性
      */
     public BootStrap(List<URI> servers,
-                     Serializer<E> entrySerializer,
-                     Serializer<ER> entryResultSerializer,
-                     Serializer<Q> querySerializer,
-                     Serializer<QR> queryResultSerializer,
                      ExecutorService clientAsyncExecutor, ScheduledExecutorService clientScheduledExecutor,
                      Properties properties) {
-        this(null, servers, null, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, null,
+        this(null, servers, null, null,
                 clientAsyncExecutor, clientScheduledExecutor, null, null,
                 properties);
     }
@@ -146,20 +104,11 @@ public class BootStrap<
      * 初始化本地Server模式BootStrap，本地包含一个Server，请求本地Server通信。
      * @param roll 本地Server的角色。
      * @param stateFactory 状态机工厂，用户创建状态机实例
-     * @param entrySerializer 操作日志序列化器
-     * @param entryResultSerializer 操作日志执行结果序列化器
-     * @param querySerializer 查询参数序列化器
-     * @param queryResultSerializer 查询结果序列化器
      * @param properties 配置属性
      */
-    public BootStrap(RaftServer.Roll roll, StateFactory<E, ER, Q, QR> stateFactory,
-                     Serializer<E> entrySerializer,
-                     Serializer<ER> entryResultSerializer,
-                     Serializer<Q> querySerializer,
-                     Serializer<QR> queryResultSerializer,
+    public BootStrap(RaftServer.Roll roll, StateFactory stateFactory,
                      Properties properties) {
-        this(roll, null, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer,
-                new DefaultJournalEntryParser(), null, null,null, null,
+        this(roll, null, stateFactory, new DefaultJournalEntryParser(), null, null,null, null,
                 properties);
     }
 
@@ -167,22 +116,13 @@ public class BootStrap<
      * 初始化本地Server模式BootStrap，本地包含一个Server，请求本地Server通信。
      * @param roll 本地Server的角色。
      * @param stateFactory 状态机工厂，用户创建状态机实例
-     * @param entrySerializer 操作日志序列化器
-     * @param entryResultSerializer 操作日志执行结果序列化器
-     * @param querySerializer 查询参数序列化器
-     * @param queryResultSerializer 查询结果序列化器
      * @param journalEntryParser 操作日志的解析器，一般不需要提供，使用默认解析器即可。
      * @param properties 配置属性
      */
-    public BootStrap(RaftServer.Roll roll, StateFactory<E, ER, Q, QR> stateFactory,
-                     Serializer<E> entrySerializer,
-                     Serializer<ER> entryResultSerializer,
-                     Serializer<Q> querySerializer,
-                     Serializer<QR> queryResultSerializer,
+    public BootStrap(RaftServer.Roll roll, StateFactory stateFactory,
                      JournalEntryParser journalEntryParser,
                      Properties properties) {
-        this(roll, null, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer,
-                journalEntryParser,
+        this(roll, null, stateFactory, journalEntryParser,
                 null, null, null, null,
                 properties);
     }
@@ -191,10 +131,6 @@ public class BootStrap<
      * 初始化本地Server模式BootStrap，本地包含一个Server，请求本地Server通信。
      * @param roll 本地Server的角色。
      * @param stateFactory 状态机工厂，用户创建状态机实例
-     * @param entrySerializer 操作日志序列化器
-     * @param entryResultSerializer 操作日志执行结果序列化器
-     * @param querySerializer 查询参数序列化器
-     * @param queryResultSerializer 查询结果序列化器
      * @param journalEntryParser 操作日志的解析器，一般不需要提供，使用默认解析器即可。
      * @param clientAsyncExecutor Client用于执行异步任务的Executor
      * @param clientScheduledExecutor Client用于执行定时任务的Executor
@@ -202,29 +138,21 @@ public class BootStrap<
      * @param serverScheduledExecutor Server用于执行定时任务的Executor
      * @param properties 配置属性
      */
-    public BootStrap(RaftServer.Roll roll, StateFactory<E, ER, Q, QR> stateFactory,
-                     Serializer<E> entrySerializer,
-                     Serializer<ER> entryResultSerializer,
-                     Serializer<Q> querySerializer,
-                     Serializer<QR> queryResultSerializer,
+    public BootStrap(RaftServer.Roll roll, StateFactory stateFactory,
                      JournalEntryParser journalEntryParser,
                      ExecutorService clientAsyncExecutor,
                      ScheduledExecutorService clientScheduledExecutor,
                      ExecutorService serverAsyncExecutor,
                      ScheduledExecutorService serverScheduledExecutor,
                      Properties properties) {
-        this(roll, null, stateFactory, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer,
+        this(roll, null, stateFactory,
                 journalEntryParser,
                 clientAsyncExecutor, clientScheduledExecutor, serverAsyncExecutor, serverScheduledExecutor,
                 properties);
     }
 
 
-    private BootStrap(RaftServer.Roll roll, List<URI> servers, StateFactory<E, ER, Q, QR> stateFactory,
-                      Serializer<E> entrySerializer,
-                      Serializer<ER> entryResultSerializer,
-                      Serializer<Q> querySerializer,
-                      Serializer<QR> queryResultSerializer,
+    private BootStrap(RaftServer.Roll roll, List<URI> servers, StateFactory stateFactory,
                       JournalEntryParser journalEntryParser,
                       ExecutorService clientAsyncExecutor,
                       ScheduledExecutorService clientScheduledExecutor,
@@ -232,10 +160,6 @@ public class BootStrap<
                       ScheduledExecutorService serverScheduledExecutor,
                       Properties properties) {
         this.stateFactory = stateFactory;
-        this.entrySerializer = entrySerializer;
-        this.entryResultSerializer = entryResultSerializer;
-        this.querySerializer = querySerializer;
-        this.queryResultSerializer = queryResultSerializer;
         this.properties = properties;
         this.roll = roll;
         this.rpcAccessPointFactory = ServiceSupport.load(RpcAccessPointFactory.class);
@@ -253,35 +177,35 @@ public class BootStrap<
         this.servers = servers;
     }
 
-    private Server<E, ER, Q, QR> createServer() {
+    private Server createServer() {
         if(null == serverScheduledExecutor && !isExecutorProvided) {
-            this.serverScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_THREADS, new NamedThreadFactory("JournalKeeper-Server-Scheduled-Executor"));
+            this.serverScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_QUEUE_SIZE, new NamedThreadFactory("JournalKeeper-Server-Scheduled-Executor"));
         }
         if(null == serverAsyncExecutor && !isExecutorProvided) {
             this.serverAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Server-Async-Executor"));
         }
 
         if(null != roll) {
-            return new Server<>(roll,stateFactory,entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, journalEntryParser, serverScheduledExecutor, serverAsyncExecutor, properties);
+            return new Server(roll, stateFactory, journalEntryParser, serverScheduledExecutor, serverAsyncExecutor, properties);
         }
         return null;
     }
 
     @Override
-    public RaftClient<E, ER, Q, QR> getClient() {
+    public RaftClient getClient() {
         if(null == client) {
             RemoteClientRpc clientRpc = createRemoteClientRpc();
-            client = new DefaultRaftClient<>(clientRpc, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
+            client = new DefaultRaftClient(clientRpc, properties);
         }
         return client;
     }
 
     @Override
-    public RaftClient<E, ER, Q, QR> getLocalClient() {
+    public RaftClient getLocalClient() {
 
         if(null == localClient) {
             LocalClientRpc clientRpc = createLocalClientRpc();
-            localClient = new DefaultRaftClient<>(clientRpc, entrySerializer, entryResultSerializer, querySerializer, queryResultSerializer, properties);
+            localClient = new DefaultRaftClient(clientRpc, properties);
         }
         return localClient;
     }
@@ -291,7 +215,7 @@ public class BootStrap<
             this.clientAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Client-Async-Executor"));
         }
         if(null == clientScheduledExecutor && !isExecutorProvided) {
-            this.clientScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_THREADS, new NamedThreadFactory("JournalKeeper-Client-Scheduled-Executor"));
+            this.clientScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_QUEUE_SIZE, new NamedThreadFactory("JournalKeeper-Client-Scheduled-Executor"));
         }
 
         if(this.server != null) {
@@ -306,7 +230,7 @@ public class BootStrap<
             this.clientAsyncExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("JournalKeeper-Client-Async-Executor"));
         }
         if(null == clientScheduledExecutor && !isExecutorProvided) {
-            this.clientScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_THREADS, new NamedThreadFactory("JournalKeeper-Client-Scheduled-Executor"));
+            this.clientScheduledExecutor = Executors.newScheduledThreadPool(SCHEDULE_EXECUTOR_QUEUE_SIZE, new NamedThreadFactory("JournalKeeper-Client-Scheduled-Executor"));
         }
 
         ClientServerRpcAccessPoint clientServerRpcAccessPoint = rpcAccessPointFactory.createClientServerRpcAccessPoint(this.properties);

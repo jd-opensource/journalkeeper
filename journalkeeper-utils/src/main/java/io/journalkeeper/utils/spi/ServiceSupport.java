@@ -16,6 +16,7 @@ package io.journalkeeper.utils.spi;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -40,6 +41,12 @@ public class ServiceSupport {
                 stream(ServiceLoader.load(service).spliterator(), false)
                 .map(ServiceSupport::singletonFilter)
                 .findFirst().orElseThrow(ServiceLoadException::new);
+    }
+    public synchronized static <S> Optional<S> tryLoad(Class<S> service) {
+        return StreamSupport.
+                stream(ServiceLoader.load(service).spliterator(), false)
+                .map(ServiceSupport::singletonFilter)
+                .findFirst();
     }
     public synchronized static <S> Collection<S> loadAll(Class<S> service) {
         return StreamSupport.

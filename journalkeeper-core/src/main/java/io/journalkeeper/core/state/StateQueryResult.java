@@ -30,16 +30,16 @@ package io.journalkeeper.core.state;
  * @author LiYue
  * Date: 2019/11/20
  */
-public class StateQueryResult<QR> {
-    private final QR result;
+public class StateQueryResult {
+    private final byte [] result;
     private final long lastApplied;
 
-    public StateQueryResult(QR result, long lastApplied) {
+    public StateQueryResult(byte [] result, long lastApplied) {
         this.result = result;
         this.lastApplied = lastApplied;
     }
 
-    public QR getResult() {
+    public byte[] getResult() {
         return result;
     }
 

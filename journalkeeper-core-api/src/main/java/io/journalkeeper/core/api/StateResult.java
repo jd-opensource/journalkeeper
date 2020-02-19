@@ -33,21 +33,21 @@ import java.util.Map;
  * @author LiYue
  * Date: 2019/11/20
  */
-public class StateResult<ER> {
-    private final ER userResult;
+public class StateResult {
+    private final byte [] userResult;
     private final Map<String, String> eventData;
     private long lastApplied;
 
-    public StateResult(ER userResult) {
+    public StateResult(byte [] userResult) {
         this(userResult, new HashMap<>());
     }
 
-    public StateResult(ER userResult, Map<String, String> eventData) {
+    public StateResult(byte [] userResult, Map<String, String> eventData) {
         this.userResult = userResult;
         this.eventData = eventData == null ? new HashMap<>() : eventData;
     }
 
-    public ER getUserResult() {
+    public byte [] getUserResult() {
         return userResult;
     }
 
