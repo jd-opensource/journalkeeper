@@ -203,11 +203,12 @@ public class RpcTest {
                 new UpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1),
                 new UpdateRequest(ByteUtils.createRandomSizeBytes(128), 0, 1)
         );
+        long lastApplied = 9999L;
         UpdateClusterStateRequest request = new UpdateClusterStateRequest(UUID.randomUUID(), entries, false, ResponseConfig.RECEIVE);
         ClientServerRpc clientServerRpc = clientServerRpcAccessPoint.getClintServerRpc(serverRpcMock.serverUri());
         UpdateClusterStateResponse response, serverResponse;
         serverResponse = new UpdateClusterStateResponse(
-                ByteUtils.createFixedSizeByteList(32, 3)
+                ByteUtils.createFixedSizeByteList(32, 3), lastApplied
         );
         // Test success response
         when(serverRpcMock.updateClusterState(any(UpdateClusterStateRequest.class)))
@@ -215,6 +216,7 @@ public class RpcTest {
         response = clientServerRpc.updateClusterState(request).get();
         Assert.assertTrue(response.success());
         Assert.assertEquals(response.getResults().size(), serverResponse.getResults().size());
+        Assert.assertEquals(response.getLastApplied(), serverResponse.getLastApplied());
         for (int i = 0; i < response.getResults().size(); i++) {
             Assert.assertArrayEquals(response.getResults().get(i), serverResponse.getResults().get(i));
         }

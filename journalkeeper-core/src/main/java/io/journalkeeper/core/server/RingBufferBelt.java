@@ -80,7 +80,7 @@ public class RingBufferBelt implements CallbackResultBelt {
         }
         if (null != c && c.getPosition() == position) {
             c = buffer.remove();
-            c.getResponseFuture().putResult(result);
+            c.getResponseFuture().putResult(result, position);
         }
     }
 

@@ -27,12 +27,15 @@ public class UpdateClusterStateResponseCodec extends LeaderResponseCodec<UpdateC
     @Override
     protected void encodeLeaderResponse(UpdateClusterStateResponse leaderResponse, ByteBuf buffer) {
         CodecSupport.encodeList(buffer, leaderResponse.getResults(), (obj, buffer1) -> CodecSupport.encodeBytes(buffer, (byte[]) obj));
-
+        CodecSupport.encodeLong(buffer, leaderResponse.getLastApplied());
     }
 
     @Override
     protected UpdateClusterStateResponse decodeLeaderResponse(JournalKeeperHeader header, ByteBuf buffer) {
-        return new UpdateClusterStateResponse(CodecSupport.decodeList(buffer, CodecSupport::decodeBytes));
+        return new UpdateClusterStateResponse(
+                CodecSupport.decodeList(buffer, CodecSupport::decodeBytes),
+                CodecSupport.decodeLong(buffer)
+        );
     }
 
     @Override

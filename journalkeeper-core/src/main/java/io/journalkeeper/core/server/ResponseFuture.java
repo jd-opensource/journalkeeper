@@ -83,14 +83,14 @@ class ResponseFuture {
 
     void countDownFlush() {
         if (--flushCountDown == 0) {
-            flushFuture.complete(new UpdateClusterStateResponse(Collections.emptyList()));
+            flushFuture.complete(new UpdateClusterStateResponse(Collections.emptyList(), -1L));
         }
     }
 
-    void putResult(byte[] result) {
+    void putResult(byte[] result, long lastApplied) {
         results.add(result);
         if (--replicationCountDown == 0) {
-            replicationFuture.complete(new UpdateClusterStateResponse(results));
+            replicationFuture.complete(new UpdateClusterStateResponse(results, lastApplied));
         }
     }
 

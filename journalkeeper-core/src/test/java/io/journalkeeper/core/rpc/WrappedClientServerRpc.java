@@ -57,7 +57,7 @@ public class WrappedClientServerRpc implements ClientServerRpc {
 
     @Override
     public CompletableFuture<QueryStateResponse> queryServerState(QueryStateRequest request) {
-        return clientServerRpc.queryClusterState(request);
+        return clientServerRpc.queryServerState(request);
     }
 
     @Override
