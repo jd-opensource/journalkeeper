@@ -273,7 +273,7 @@ public abstract class AbstractServer
                 .name(threadName(STATE_MACHINE_THREAD))
                 .doWork(this::applyEntries)
                 .sleepTime(50, 100)
-                .onException(e -> logger.warn("{} Exception: ", STATE_MACHINE_THREAD, e))
+                .onException(new DefaultExceptionListener(STATE_MACHINE_THREAD))
                 .daemon(true)
                 .build();
     }
@@ -283,7 +283,7 @@ public abstract class AbstractServer
                 .name(threadName(FLUSH_JOURNAL_THREAD))
                 .doWork(this::flushJournal)
                 .sleepTime(config.getFlushIntervalMs(), config.getFlushIntervalMs())
-                .onException(e -> logger.warn("{} Exception: ", FLUSH_JOURNAL_THREAD, e))
+                .onException(new DefaultExceptionListener(FLUSH_JOURNAL_THREAD))
                 .daemon(true)
                 .build();
     }
@@ -293,7 +293,7 @@ public abstract class AbstractServer
                 .name(threadName(PRINT_METRIC_THREAD))
                 .doWork(this::printMetrics)
                 .sleepTime(config.getPrintMetricIntervalSec() * 1000, config.getPrintMetricIntervalSec() * 1000)
-                .onException(e -> logger.warn("{} Exception: ", PRINT_METRIC_THREAD, e))
+                .onException(new DefaultExceptionListener(PRINT_METRIC_THREAD))
                 .daemon(true)
                 .build();
     }
@@ -364,7 +364,7 @@ public abstract class AbstractServer
      *
      */
     private void applyEntries() {
-        while (this.serverState == ServerState.RUNNING && state.lastApplied() < journal.commitIndex()) {
+        while (state.lastApplied() < journal.commitIndex()) {
             applyEntriesMetric.start();
 
             JournalEntry journalEntry = journal.read(state.lastApplied());

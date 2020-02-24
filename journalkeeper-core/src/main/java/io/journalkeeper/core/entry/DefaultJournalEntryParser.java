@@ -48,10 +48,11 @@ public class DefaultJournalEntryParser implements JournalEntryParser {
         JournalEntryParseSupport.setShort(buffer, JournalEntryParseSupport.MAGIC, DefaultJournalEntry.MAGIC_CODE);
         JournalEntryParseSupport.setLong(buffer, JournalEntryParseSupport.TIMESTAMP, System.currentTimeMillis());
 
+
         for (int i = 0; i < payload.length; i++) {
             rawEntry[headerLength + i] = payload[i];
         }
-        return parse(rawEntry);
+        return new DefaultJournalEntry(rawEntry, false, false);
 
     }
 }

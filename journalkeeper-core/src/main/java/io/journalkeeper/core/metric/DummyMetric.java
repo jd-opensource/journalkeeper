@@ -15,6 +15,7 @@ package io.journalkeeper.core.metric;
 
 import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.metric.JMetricReport;
+import io.journalkeeper.metric.MetricCollector;
 
 /**
  * @author LiYue
@@ -34,6 +35,16 @@ public class DummyMetric implements JMetric {
 
     @Override
     public void mark(long latencyNs, long traffic) {
+
+    }
+
+    @Override
+    public void mark(MetricCollector<Long> latencyCollector, MetricCollector<Long> trafficCollector) {
+
+    }
+
+    @Override
+    public void end(MetricCollector<Long> trafficCollector) {
 
     }
 

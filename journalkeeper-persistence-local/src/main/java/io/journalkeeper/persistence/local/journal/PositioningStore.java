@@ -28,7 +28,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Properties;
@@ -245,6 +247,34 @@ public class PositioningStore implements JournalPersistence, MonitoredPersistenc
         }
 
         return writePosition.addAndGet(writeStoreFile.append(buffer));
+    }
+
+
+    @Override
+    public long append(List<byte[]> bytesList ) throws IOException {
+
+        int totalLength = 0;
+
+        List<ByteBuffer> byteBufferList = new ArrayList<>(bytesList.size());
+        for (byte[] bytes : bytesList) {
+            totalLength += bytes.length;
+            byteBufferList.add(ByteBuffer.wrap(bytes));
+        }
+
+        if (totalLength > config.fileDataSize) {
+            throw new TooManyBytesException(totalLength, config.fileDataSize, base.toPath());
+        }
+
+        // Wait for flush
+        maybeWaitForFlush();
+
+
+        if (null == writeStoreFile) writeStoreFile = createStoreFile(writePosition.get());
+        if (config.getFileDataSize() - writeStoreFile.writePosition() < totalLength) {
+            writeStoreFile = createStoreFile(writePosition.get());
+        }
+
+        return writePosition.addAndGet(writeStoreFile.append(byteBufferList));
     }
 
 

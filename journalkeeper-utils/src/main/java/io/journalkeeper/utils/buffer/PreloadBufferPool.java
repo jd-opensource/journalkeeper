@@ -314,13 +314,14 @@ public class PreloadBufferPool {
                     preLoadCache.onFlyCounter.getAndIncrement();
                     return byteBuffer;
                 } catch (NoSuchElementException e) {
-                    logger.warn("Pool is empty, create ByteBuffer: {}", bufferSize);
+                    logger.warn("Pool is empty, create ByteBuffer: {}", Format.formatSize(bufferSize));
                     ByteBuffer byteBuffer = createOne(bufferSize);
                     preLoadCache.onFlyCounter.getAndIncrement();
+                    threads.wakeupThread(PRELOAD_THREAD);
                     return byteBuffer;
                 }
             } else {
-                logger.warn("No cached buffer in pool, create ByteBuffer: {}", bufferSize);
+                logger.warn("No cached buffer in pool, create ByteBuffer: {}", Format.formatSize(bufferSize));
                 return createOne(bufferSize);
 
             }

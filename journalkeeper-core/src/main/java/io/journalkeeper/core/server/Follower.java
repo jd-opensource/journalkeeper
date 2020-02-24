@@ -87,7 +87,7 @@ class Follower extends ServerStateMachine implements StateServer {
                 .name(threadName(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD))
                 .doWork(this::followerHandleAppendEntriesRequest)
                 .sleepTime(0L, 0L)
-                .onException(e -> logger.warn("{} Exception, {}: ", VOTER_REPLICATION_REQUESTS_HANDLER_THREAD, voterInfo(), e))
+                .onException(new DefaultExceptionListener(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD))
                 .daemon(true)
                 .build();
     }

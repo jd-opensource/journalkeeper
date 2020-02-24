@@ -73,6 +73,28 @@ public class PositioningStoreTest {
 
     }
 
+
+    @Test
+    public void batchWriteTest() throws IOException, InterruptedException {
+        try (JournalPersistence store = prepareStore()) {
+            int size = 10;
+            int maxLength = 999;
+            long start = store.max();
+            List<byte[]> journals = ByteUtils.createRandomSizeByteList(maxLength, size);
+            int length = journals.stream().mapToInt(journal -> journal.length).sum();
+
+            long writePosition = store.append(journals);
+
+            Assert.assertEquals(length + start, writePosition);
+            Assert.assertEquals(writePosition, store.max());
+
+            byte[] readBytes = store.read(start, length);
+            byte[] writeBytes = ByteUtils.concatBytes(journals);
+            Assert.assertArrayEquals(writeBytes, readBytes);
+        }
+
+    }
+
     // recover
     @Test
     public void recoverTest() throws IOException {

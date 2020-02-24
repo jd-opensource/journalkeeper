@@ -42,7 +42,7 @@ public class RingBufferBelt implements CallbackResultBelt {
     @Override
     public void put(Callback callback) throws InterruptedException {
         while (!buffer.put(callback)) {
-            Thread.sleep(1);
+            Thread.yield();
         }
     }
 

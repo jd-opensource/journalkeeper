@@ -26,8 +26,10 @@ import java.io.RandomAccessFile;
 import java.lang.reflect.Method;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.FileChannel;
 import java.util.ConcurrentModificationException;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.StampedLock;
 
@@ -101,6 +103,8 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
             pageBuffer = loadBuffer;
             bufferType = MAPPED_BUFFER;
             pageBuffer.clear();
+        } catch (ClosedByInterruptException cie) {
+            throw cie;
         } catch (Throwable t) {
             logger.warn("Exception: ", t);
             bufferPool.releaseMMap(this);
@@ -247,6 +251,18 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         return writeLength;
     }
 
+    // Not thread safe!
+    private int appendToPageBuffer(List<ByteBuffer> byteBuffers) {
+        pageBuffer.position(writePosition);
+        int writeLength = 0;
+        for (ByteBuffer byteBuffer : byteBuffers) {
+            writeLength += byteBuffer.remaining();
+            pageBuffer.put(byteBuffer);
+        }
+        writePosition += writeLength;
+        return writeLength;
+    }
+
     @Override
     public int append(ByteBuffer byteBuffer) throws IOException {
         touch();
@@ -268,6 +284,33 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
                 stamp = rs;
             }
             return appendToPageBuffer(byteBuffer);
+        } finally {
+            bufferLock.unlock(stamp);
+        }
+    }
+
+
+    @Override
+    public int append(List<ByteBuffer> byteBuffers) throws IOException {
+        touch();
+        long stamp = bufferLock.readLock();
+        try {
+            while (bufferType != DIRECT_BUFFER) {
+                long ws = bufferLock.tryConvertToWriteLock(stamp);
+                if (ws != 0L) {
+                    // 升级成写锁成功
+                    stamp = ws;
+                    loadRwUnsafe();
+                } else {
+                    bufferLock.unlockRead(stamp);
+                    stamp = bufferLock.writeLock();
+                }
+            }
+            long rs = bufferLock.tryConvertToReadLock(stamp);
+            if (rs != 0L) {
+                stamp = rs;
+            }
+            return appendToPageBuffer(byteBuffers);
         } finally {
             bufferLock.unlock(stamp);
         }

@@ -16,6 +16,7 @@ package io.journalkeeper.persistence;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -77,13 +78,22 @@ public interface JournalPersistence extends Closeable {
     long compact(long givenMin) throws IOException;
 
     /**
-     * 追加写入
+     * 追加写入，保证原子性
      * @param entry 待写入的entry
      * @return 写入后新的位置
      * @throws TooManyBytesException 当写入数据超长时抛出
      * @throws IOException 发生IO异常时抛出
      */
     long append(byte[] entry) throws IOException;
+
+    /**
+     * 追加写入，保证原子性
+     * @param entries 待写入的entry列表
+     * @return 写入后新的位置
+     * @throws TooManyBytesException 当写入数据超长时抛出
+     * @throws IOException 发生IO异常时抛出
+     */
+    long append(List<byte[]> entries) throws IOException;
 
     /**
      * 读取数据

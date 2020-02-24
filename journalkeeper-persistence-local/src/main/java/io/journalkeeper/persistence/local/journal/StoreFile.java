@@ -16,6 +16,7 @@ package io.journalkeeper.persistence.local.journal;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.List;
 
 public interface StoreFile extends Timed {
 
@@ -58,12 +59,20 @@ public interface StoreFile extends Timed {
     ByteBuffer read(int position, int length) throws IOException;
 
     /**
-     * 写入一段ByteBuffer
+     * 写入一段ByteBuffer，保证原子性
      * @param buffer 待写入的buffer
      * @return 写入之后文件的全局写入位置
      * @throws IOException 发生IO异常时抛出
      */
     int append(ByteBuffer buffer) throws IOException;
+
+    /**
+     * 写入一段ByteBuffer，保证原子性
+     * @param buffer 待写入的buffer
+     * @return 写入之后文件的全局写入位置
+     * @throws IOException 发生IO异常时抛出
+     */
+    int append(List<ByteBuffer> buffer) throws IOException;
 
 
     /**

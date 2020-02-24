@@ -13,14 +13,17 @@
  */
 package io.journalkeeper.core.server;
 
+import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
+import io.journalkeeper.core.api.ResponseConfig;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.State;
 import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.StateResult;
 import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.api.VoterState;
+import io.journalkeeper.core.entry.DefaultJournalEntry;
 import io.journalkeeper.core.entry.DefaultJournalEntryParser;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
@@ -46,6 +49,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -83,48 +87,55 @@ public class VoterTest {
     @Ignore
     @Test
     public void singleNodeWritePerformanceTest() throws IOException, ExecutionException, InterruptedException {
-        Server voter = createVoter();
+        Set<Integer> partitions = Stream.of(2).collect(Collectors.toSet());
+        List<Integer> partitionList = new ArrayList<>(partitions);
+        Properties properties = new Properties();
 
+        properties.setProperty("cache_requests", String.valueOf(10 * 1024));
+        properties.setProperty("print_state_interval_sec", String.valueOf(3));
+        Server voter = createVoter(properties, partitions);
+        JournalEntryParser journalEntryParser = new DefaultJournalEntryParser();
 
         try {
-            int count = 10 * 1024 * 1024;
-            int entrySize = 1024;
-            Set<Integer> partitions = Stream.of(2).collect(Collectors.toSet());
-
+            long totalBytes = 5L * 1024 * 1024 * 1024;
+            int entrySize =  1024;
+            int batch = 10;
             while (voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
                 Thread.sleep(50L);
             }
-
-            voter.updateClusterState(new UpdateClusterStateRequest(
-                    InternalEntriesSerializeSupport
-                            .serialize(new ScalePartitionsEntry(partitions)),
-                    RaftJournal.INTERNAL_PARTITION, 1)).get();
-
-
-            byte[] entry = ByteUtils.createFixedSizeBytes(entrySize);
+            List<UpdateRequest> entries = new ArrayList<>(batch);
+            for (int i = 0; i < batch; i++) {
+                byte[] entry = ByteUtils.createFixedSizeBytes(entrySize);
+                entry = journalEntryParser.createJournalEntry(entry).getSerializedBytes();
+                int partition = partitionList.get(i % partitionList.size());
+                UpdateRequest updateRequest = new UpdateRequest(entry, partition, 1);
+                entries.add(updateRequest);
+            }
+            UpdateClusterStateRequest request = new UpdateClusterStateRequest(entries, true, ResponseConfig.RECEIVE);
+            long bytesOfRequest = request.getRequests().stream().mapToLong(r -> r.getEntry().length).sum();
             long t0 = System.nanoTime();
-            for (Integer partition : partitions) {
-                UpdateClusterStateRequest request = new UpdateClusterStateRequest(entry, partition, 1);
 
-                for (long l = 0; l < count; l++) {
-                    voter.updateClusterState(request);
-                }
+            long currentBytes = 0L;
+            long currentCount = 0L;
 
+            while (currentBytes < totalBytes) {
+                voter.updateClusterState(request);
+                currentBytes += bytesOfRequest;
+                currentCount += batch;
             }
 
             long t1 = System.nanoTime();
             long takesMs = (t1 - t0) / 1000000;
-            logger.info("Write finished. " +
+            logger.info("Write finished, total write {}. " +
                             "Write takes: {}ms, {}ps, tps: {}.",
+                    Format.formatSize(currentBytes),
                     takesMs,
-                    Format.formatSize(1000L * partitions.size() * entrySize * count / takesMs),
-                    1000L * partitions.size() * count / takesMs);
+                    Format.formatSize(1000L * currentBytes / takesMs),
+                    1000L * currentCount / takesMs);
 
         } finally {
             voter.stop();
         }
-
-
     }
 
     @Ignore
@@ -287,8 +298,11 @@ public class VoterTest {
     private Server createVoter() throws IOException {
         return createVoter(null);
     }
-
     private Server createVoter(Properties customProperties) throws IOException {
+        return createVoter(customProperties,null);
+    }
+
+    private Server createVoter(Properties customProperties, Set<Integer> partitions) throws IOException {
         StateFactory stateFactory = new NoopStateFactory();
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(4, new NamedThreadFactory("JournalKeeper-Scheduled-Executor"));
         ExecutorService asyncExecutorService = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors() * 2, new NamedThreadFactory("JournalKeeper-Async-Executor"));
@@ -299,7 +313,7 @@ public class VoterTest {
         }
 //        properties.setProperty("enable_metric", "true");
 //        properties.setProperty("print_metric_interval_sec", "3");
-//        properties.setProperty("cache_requests", String.valueOf(1024L * 1024 * 5));
+        properties.setProperty("cache_requests", String.valueOf(10 * 1024));
 
         Server voter =
                 new Server(
@@ -307,7 +321,7 @@ public class VoterTest {
                         stateFactory, new DefaultJournalEntryParser(),
                         scheduledExecutorService, asyncExecutorService, properties);
         URI uri = URI.create("local://test");
-        voter.init(uri, Collections.singletonList(uri));
+        voter.init(uri, Collections.singletonList(uri), partitions, uri);
         voter.recover();
         voter.start();
         return voter;

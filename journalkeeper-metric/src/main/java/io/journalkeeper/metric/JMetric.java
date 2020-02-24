@@ -49,6 +49,10 @@ public interface JMetric {
      */
     void end(long traffic);
 
+
+    default void end(MetricCollector<Long> trafficCollector) {
+        end(trafficCollector.collect());
+    }
     /**
      * 记录一次处理。效果等同于一次start() 和 end()。
      * 同 mark(0L);
@@ -65,6 +69,12 @@ public interface JMetric {
     default void mark(long latencyNs) {
         mark(latencyNs, 0L);
     }
+
+
+    default void mark(MetricCollector<Long> latencyCollector, MetricCollector<Long> trafficCollector) {
+        mark(latencyCollector.collect(), trafficCollector.collect());
+    }
+
 
     /**
      * 记录一次处理。效果等同于一次start() 和 end()。
@@ -102,4 +112,5 @@ public interface JMetric {
      * @return 名字。
      */
     String name();
+
 }

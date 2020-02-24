@@ -70,7 +70,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         DEFAULT_JOURNAL_PROPERTIES.put("cached_file_max_count", String.valueOf(10));
         DEFAULT_JOURNAL_PROPERTIES.put("max_dirty_size", String.valueOf(128 * 1024 * 1024));
         DEFAULT_INDEX_PROPERTIES.put("file_data_size", String.valueOf(512 * 1024));
-        DEFAULT_INDEX_PROPERTIES.put("cached_file_core_count", String.valueOf(10));
+        DEFAULT_INDEX_PROPERTIES.put("cached_file_core_count", String.valueOf(6));
         DEFAULT_INDEX_PROPERTIES.put("cached_file_max_count", String.valueOf(20));
     }
 
@@ -257,12 +257,14 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         // 记录当前最大位置，也是写入的Journal的offset
         long offset = journalPersistence.max();
         long index = maxIndex();
-        ByteBuffer entryBuffer = ByteBuffer.wrap(new byte[entries.stream().mapToInt(e -> e.getSerializedBytes().length).sum()]);
         ByteBuffer indicesBuffer = ByteBuffer.wrap(new byte[entries.size() * INDEX_STORAGE_SIZE]);
+        List<byte[]> entryBuffers = new ArrayList<>(entries.size());
+
         List<Long> indices = new ArrayList<>(entries.size());
         for (JournalEntry entry : entries) {
 
-            entryBuffer.put(entry.getSerializedBytes());
+            entryBuffers.add(entry.getSerializedBytes());
+
             indicesBuffer.putLong(offset);
             offset += entry.getLength();
             indices.add(++index);
@@ -270,7 +272,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
         try {
             // 写入Journal header
-            journalPersistence.append(entryBuffer.array());
+            journalPersistence.append(entryBuffers);
 
             // 写入全局索引
             indexPersistence.append(indicesBuffer.array());

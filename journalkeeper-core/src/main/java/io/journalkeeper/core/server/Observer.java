@@ -127,7 +127,7 @@ class Observer extends AbstractServer {
                 .condition(() -> this.serverState() == ServerState.RUNNING)
                 .doWork(this::pullEntries)
                 .sleepTime(50, 100)
-                .onException(e -> logger.warn("{} Exception: ", OBSERVER_REPLICATION_THREAD, e))
+                .onException(new DefaultExceptionListener(OBSERVER_REPLICATION_THREAD))
                 .daemon(true)
                 .build();
     }
@@ -167,7 +167,6 @@ class Observer extends AbstractServer {
             journal.commit(journal.maxIndex());
             // 唤醒状态机线程
             threads.wakeupThread(threadName(STATE_MACHINE_THREAD));
-            traffic = response.getEntries().stream().mapToLong(bytes -> bytes.length).sum();
 
 
         } else if (response.getStatusCode() == StatusCode.INDEX_UNDERFLOW) {
@@ -175,7 +174,7 @@ class Observer extends AbstractServer {
         } else if (response.getStatusCode() != StatusCode.INDEX_OVERFLOW) {
             logger.warn("Pull entry failed! {}", response.errorString());
         }
-        replicationMetric.end(traffic);
+        replicationMetric.end(() -> response.getEntries().stream().mapToLong(bytes -> bytes.length).sum());
 
     }
 
