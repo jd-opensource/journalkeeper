@@ -56,4 +56,14 @@ public class AsyncAppendEntriesResponse extends BaseResponse implements Termed {
     public boolean isSuccess() {
         return success;
     }
+
+    @Override
+    public String toString() {
+        return "AsyncAppendEntriesResponse{" +
+                "success=" + success +
+                ", journalIndex=" + journalIndex +
+                ", term=" + term +
+                ", entryCount=" + entryCount +
+                '}';
+    }
 }

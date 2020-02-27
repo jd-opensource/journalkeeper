@@ -82,6 +82,7 @@ import org.slf4j.LoggerFactory;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -112,6 +113,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.StreamSupport;
 
+import static io.journalkeeper.core.api.RaftJournal.DEFAULT_PARTITION;
 import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
 import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITIONS_START;
 import static io.journalkeeper.core.journal.Journal.INDEX_STORAGE_SIZE;
@@ -300,6 +302,14 @@ public abstract class AbstractServer
 
     @Override
     public synchronized void init(URI uri, List<URI> voters, Set<Integer> userPartitions, URI preferredLeader) throws IOException {
+        if(null == userPartitions) {
+            userPartitions = new HashSet<>();
+        }
+
+        if(userPartitions.isEmpty()) {
+            userPartitions.add(DEFAULT_PARTITION);
+        }
+
         ReservedPartition.validatePartitions(userPartitions);
         this.uri = uri;
         Set<Integer> partitions = new HashSet<>(userPartitions);
@@ -744,6 +754,7 @@ public abstract class AbstractServer
                 metadataPersistence.save(metadataFile(), metadata);
                 lastSavedServerMetadata = metadata;
             }
+        } catch (ClosedByInterruptException ignored) {
         } catch (Throwable e) {
             logger.warn("Flush exception, commitIndex: {}, lastApplied: {}, server: {}: ",
                     journal.commitIndex(), state.lastApplied(), uri, e);

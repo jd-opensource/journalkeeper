@@ -32,7 +32,7 @@ public interface RaftServer extends StateServer {
     Roll roll();
 
     default void init(URI uri, List<URI> voters) throws IOException {
-        init(uri, voters, Collections.singleton(0));
+        init(uri, voters, null);
     }
 
     default void init(URI uri, List<URI> voters, Set<Integer> partitions) throws IOException {

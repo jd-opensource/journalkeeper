@@ -130,14 +130,16 @@ class Follower extends ServerStateMachine implements StateServer {
         AsyncAppendEntriesRequest request = rr.getRequest();
         AsyncAppendEntriesResponse response = null;
 
-        // Reply false if log doesn’t contain an entry at prevLogIndex
+        boolean notHeartBeat = null != request.getEntries() && request.getEntries().size() > 0;
+        // Reply false if log does not contain an entry at prevLogIndex
         // whose term matches prevLogTerm
-        if (request.getPrevLogIndex() < journal.minIndex() - 1 ||
+        if (notHeartBeat &&
+                (request.getPrevLogIndex() < journal.minIndex() - 1 ||
                 request.getPrevLogIndex() >= journal.maxIndex() ||
-                getTerm(rr.getPrevLogIndex()) != request.getPrevLogTerm()
+                getTerm(rr.getPrevLogIndex()) != request.getPrevLogTerm())
         ) {
             response = new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
-                    currentTerm, request.getEntries().size());
+                    request.getTerm(), request.getEntries().size());
             rr.getResponseFuture().complete(response);
             return;
         }
@@ -149,7 +151,7 @@ class Follower extends ServerStateMachine implements StateServer {
             //  follow it
             //  Append any new entries not already in the log
 
-            if (null != request.getEntries() && request.getEntries().size() > 0) {
+            if (notHeartBeat) {
                 final long startIndex = request.getPrevLogIndex() + 1;
 
                 // 如果要删除部分未提交的日志，并且待删除的这部分存在配置变更日志，则需要回滚配置

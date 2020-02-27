@@ -111,7 +111,7 @@ public class VoterTest {
                 UpdateRequest updateRequest = new UpdateRequest(entry, partition, 1);
                 entries.add(updateRequest);
             }
-            UpdateClusterStateRequest request = new UpdateClusterStateRequest(entries, true, ResponseConfig.RECEIVE);
+            UpdateClusterStateRequest request = new UpdateClusterStateRequest(entries, true, ResponseConfig.REPLICATION);
             long bytesOfRequest = request.getRequests().stream().mapToLong(r -> r.getEntry().length).sum();
             long t0 = System.nanoTime();
 

@@ -67,4 +67,17 @@ public class AsyncAppendEntriesRequest implements Termed {
     public long getMaxIndex() {
         return maxIndex;
     }
+
+    @Override
+    public String toString() {
+        return "{" +
+                "term=" + term +
+                ", leader=" + leader +
+                ", prevLogIndex=" + prevLogIndex +
+                ", prevLogTerm=" + prevLogTerm +
+                ", entries=" + entries.size() +
+                ", leaderCommit=" + leaderCommit +
+                ", maxIndex=" + maxIndex +
+                '}';
+    }
 }

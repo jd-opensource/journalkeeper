@@ -904,10 +904,15 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
     }
 
     private String voterInfo() {
-        return String.format("VoterState: %s, currentTerm: %d, minIndex: %d, " +
-                        "maxIndex: %d, commitIndex: %d, lastApplied: %d, uri: %s",
+        String ret = String.format("VoterState: %s, currentTerm: %d, minIndex: %d, " +
+                        "maxIndex: %d, commitIndex: %d, lastApplied: %d, %s, leader: %s, uri: %s, ",
                 voterState.getState(), currentTerm.get(), journal.minIndex(),
-                journal.maxIndex(), journal.commitIndex(), state.lastApplied(), uri.toString());
+                journal.maxIndex(), journal.commitIndex(), state.lastApplied(),
+                state.getConfigState().toString(), leaderUri, uri.toString());
+        if (leader != null) {
+           ret += leader.getFollowers().stream().map(Leader.ReplicationDestination::toString).collect(Collectors.joining(", "));
+        }
+        return ret;
     }
 
     private boolean checkPreferredLeader() {

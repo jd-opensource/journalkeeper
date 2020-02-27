@@ -235,7 +235,6 @@ class Leader extends ServerStateMachine implements StateServer {
     private AsyncLoopThread buildLeaderReplicationResponseThread() {
         return ThreadBuilder.builder()
                 .name(threadName(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD))
-                .condition(() -> journal.commitIndex() < journal.maxIndex())
                 .doWork(this::leaderUpdateCommitIndex)
                 .sleepTime(heartbeatIntervalMs, heartbeatIntervalMs)
                 .onException(new DefaultExceptionListener(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD))
@@ -431,10 +430,6 @@ class Leader extends ServerStateMachine implements StateServer {
     }
 
     private void leaderOnAppendEntriesResponse(ReplicationDestination follower, AsyncAppendEntriesRequest request, AsyncAppendEntriesResponse response) {
-        if (checkTermInterceptor.checkTerm(response.getTerm())) {
-            return;
-        }
-
         if (response.success()) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Update lastHeartbeatResponseTime of {}, {}.", follower.getUri(), voterInfo());
@@ -512,7 +507,10 @@ class Leader extends ServerStateMachine implements StateServer {
      */
     private void leaderUpdateCommitIndex() throws InterruptedException, ExecutionException, IOException {
         long lastCommit = -1;
-        while (journal.commitIndex() > lastCommit && (lastCommit = journal.commitIndex()) < journal.maxIndex()) {
+
+        while ((journal.commitIndex() > lastCommit && (lastCommit = journal.commitIndex()) < journal.maxIndex()) ||
+                (followers.stream().anyMatch(f -> !f.pendingResponses.isEmpty()))  // 有待处理的AsyncAppendEntries响应
+                ) {
             ConfigState configState = state.getConfigState();
             List<ReplicationDestination> finalFollowers = new ArrayList<>(followers);
             long N = 0L;
@@ -1072,6 +1070,16 @@ class Leader extends ServerStateMachine implements StateServer {
 
         public void setLastHeartbeatRequestTime(long lastHeartbeatRequestTime) {
             this.lastHeartbeatRequestTime = lastHeartbeatRequestTime;
+        }
+
+        @Override
+        public String toString() {
+            return "{" +
+                    "uri=" + uri +
+                    ", nextIndex=" + nextIndex +
+                    ", matchIndex=" + matchIndex +
+                    ", repStartIndex=" + repStartIndex +
+                    '}';
         }
     }
 
