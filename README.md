@@ -1,7 +1,7 @@
 
 # JournalKeeper
 
-[![License](https://img.shields.io/github/license/chubaostream/journalkeeper)](./LICENSE) [![Release](https://img.shields.io/github/v/release/chubaostream/journalkeeper)](https://github.com/chubaostream/journalkeeper/releases) [![Maven Central](https://img.shields.io/maven-central/v/io.journalkeeper/journalkeeper?color=blue)](https://search.maven.org/search?q=io.journalkeeper) [![Last commit](https://img.shields.io/github/last-commit/chubaostream/journalkeeper)](https://github.com/chubaostream/journalkeeper/commits) [![Travis](https://img.shields.io/travis/chubaostream/journalkeeper)](https://travis-ci.org/chubaostream/journalkeeper) [![Coverage Status](https://coveralls.io/repos/github/chubaostream/journalkeeper/badge.svg)](https://coveralls.io/github/chubaostream/journalkeeper)
+[![License](https://img.shields.io/github/license/chubaostream/journalkeeper)](./LICENSE) [![Release](https://img.shields.io/github/v/release/chubaostream/journalkeeper)](https://github.com/chubaostream/journalkeeper/releases) [![Maven Central](https://img.shields.io/maven-central/v/io.journalkeeper/journalkeeper?color=blue)](https://search.maven.org/search?q=io.journalkeeper) [![Last commit](https://img.shields.io/github/last-commit/chubaostream/journalkeeper)](https://github.com/chubaostream/journalkeeper/commits) [![Travis](https://img.shields.io/travis/chubaostream/journalkeeper)](https://travis-ci.org/chubaostream/journalkeeper)[![Coverage Status](https://coveralls.io/repos/github/chubaostream/journalkeeper/badge.svg?branch=master)](https://coveralls.io/github/chubaostream/journalkeeper?branch=master)
 
 [中文版](./README_cn.md)
 
