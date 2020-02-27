@@ -178,6 +178,29 @@ public class PreloadBufferPool {
         }
     }
 
+    private void printMetric() {
+        long totalUsed = usedSize.get();
+        long plUsed = bufferCache.values().stream().mapToLong(preLoadCache -> {
+            long cached = preLoadCache.cache.size();
+            long usedPreLoad = preLoadCache.onFlyCounter.get();
+            long totalSize = preLoadCache.bufferSize * (cached + usedPreLoad);
+            logger.info("PreloadCache usage: cached: {} * {} = {}, used: {} * {} = {}, total: {}",
+                    Format.formatSize(preLoadCache.bufferSize), cached, Format.formatSize(preLoadCache.bufferSize * cached),
+                    Format.formatSize(preLoadCache.bufferSize), usedPreLoad, Format.formatSize(preLoadCache.bufferSize * usedPreLoad),
+                    Format.formatSize(totalSize));
+            return totalSize;
+        }).sum();
+        long mmpUsed = mMapBufferHolders.stream().mapToLong(BufferHolder::size).sum();
+        long directUsed = directBufferHolders.stream().mapToLong(BufferHolder::size).sum();
+        logger.info("Direct memory usage: preload/direct/mmp/used/max: {}/{}/{}/{}/{}.",
+                Format.formatSize(plUsed),
+                Format.formatSize(directUsed),
+                Format.formatSize(mmpUsed),
+                Format.formatSize(totalUsed),
+                Format.formatSize(maxMemorySize));
+    }
+
+
     private boolean needEviction() {
         return usedSize.get() > evictMemorySize;
     }

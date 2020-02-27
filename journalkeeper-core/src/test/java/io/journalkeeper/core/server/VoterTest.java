@@ -95,9 +95,8 @@ public class VoterTest {
         properties.setProperty("print_state_interval_sec", String.valueOf(3));
         Server voter = createVoter(properties, partitions);
         JournalEntryParser journalEntryParser = new DefaultJournalEntryParser();
-
         try {
-            long totalBytes = 5L * 1024 * 1024 * 1024;
+            long totalBytes = 10L * 1024 * 1024 * 1024;
             int entrySize =  1024;
             int batch = 10;
             while (voter.getServerStatus().get().getServerStatus().getVoterState() != VoterState.LEADER) {
@@ -111,15 +110,17 @@ public class VoterTest {
                 UpdateRequest updateRequest = new UpdateRequest(entry, partition, 1);
                 entries.add(updateRequest);
             }
-            UpdateClusterStateRequest request = new UpdateClusterStateRequest(entries, true, ResponseConfig.REPLICATION);
+            UpdateClusterStateRequest request = new UpdateClusterStateRequest(entries, true, ResponseConfig.RECEIVE);
             long bytesOfRequest = request.getRequests().stream().mapToLong(r -> r.getEntry().length).sum();
+            Thread.sleep(100);
+
             long t0 = System.nanoTime();
 
             long currentBytes = 0L;
             long currentCount = 0L;
 
             while (currentBytes < totalBytes) {
-                voter.updateClusterState(request);
+                voter.updateClusterState(request).get();
                 currentBytes += bytesOfRequest;
                 currentCount += batch;
             }
@@ -129,6 +130,18 @@ public class VoterTest {
             logger.info("Write finished, total write {}. " +
                             "Write takes: {}ms, {}ps, tps: {}.",
                     Format.formatSize(currentBytes),
+                    takesMs,
+                    Format.formatSize(1000L * currentBytes / takesMs),
+                    1000L * currentCount / takesMs);
+
+            while (voter.getServer().state.lastApplied() < currentCount) {
+                Thread.sleep(1);
+            }
+
+            t1 = System.nanoTime();
+            takesMs = (t1 - t0) / 1000000;
+            logger.info("All entries applied, " +
+                            "takes: {}ms, {}ps, tps: {}.",
                     takesMs,
                     Format.formatSize(1000L * currentBytes / takesMs),
                     1000L * currentCount / takesMs);

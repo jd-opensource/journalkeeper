@@ -385,7 +385,7 @@ public abstract class AbstractServer
             stateResult.getEventData().forEach(parameters::put);
             parameters.put("lastApplied", String.valueOf(state.lastApplied()));
             fireEvent(EventType.ON_STATE_CHANGE, parameters);
-            applyEntriesMetric.end(journalEntry.getLength());
+            applyEntriesMetric.end(() -> (long) journalEntry.getLength());
         }
     }
 
