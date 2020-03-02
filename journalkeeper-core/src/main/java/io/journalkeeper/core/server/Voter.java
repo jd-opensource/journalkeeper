@@ -249,6 +249,12 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
                 properties.getProperty(
                         AbstractServer.Config.PRINT_METRIC_INTERVAL_SEC_KEY,
                         String.valueOf(AbstractServer.Config.DEFAULT_PRINT_METRIC_INTERVAL_SEC))));
+
+        config.setEnableEvents(Boolean.parseBoolean(
+                properties.getProperty(
+                        AbstractServer.Config.ENABLE_EVENTS_KEY,
+                        String.valueOf(AbstractServer.Config.DEFAULT_ENABLE_EVENTS))));
+
         return config;
     }
 

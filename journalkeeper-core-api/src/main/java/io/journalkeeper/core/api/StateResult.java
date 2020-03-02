@@ -51,7 +51,7 @@ public class StateResult {
     private long lastApplied;
 
     public StateResult(byte[] userResult) {
-        this(userResult, new HashMap<>());
+        this(userResult, null);
     }
 
     public StateResult(byte[] userResult, Map<String, String> eventData) {

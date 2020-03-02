@@ -93,6 +93,7 @@ public class VoterTest {
 
         properties.setProperty("cache_requests", String.valueOf(10 * 1024));
         properties.setProperty("print_state_interval_sec", String.valueOf(3));
+        properties.setProperty("enable_events", String.valueOf(false));
         Server voter = createVoter(properties, partitions, false);
         JournalEntryParser journalEntryParser = new DefaultJournalEntryParser();
         try {

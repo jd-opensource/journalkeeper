@@ -383,40 +383,27 @@ public abstract class AbstractServer
      */
     private void applyEntries() {
         while (state.lastApplied() < journal.commitIndex()) {
-//            applyEntriesMetric.start();
-            long t0 = System.nanoTime();
+            applyEntriesMetric.start();
             long offset = journal.readOffset(state.lastApplied());
             JournalEntry entryHeader = journal.readEntryHeaderByOffset(offset);
-            long t1 = System.nanoTime();
-
             StateResult stateResult = state.applyEntry(entryHeader, new EntryFutureImpl(journal, offset), journal);
-            long t2 = System.nanoTime();
-
             afterStateChanged(stateResult.getUserResult());
-            long t3 = System.nanoTime();
 
-            if(stateResult.getEventData().size() > 0) {
-                Map<String, String> parameters = new HashMap<>(stateResult.getEventData().size() + 1);
-                stateResult.getEventData().forEach(parameters::put);
-                parameters.put("lastApplied", String.valueOf(state.lastApplied()));
-                fireEvent(EventType.ON_STATE_CHANGE, parameters);
+            if(config.isEnableEvents()) {
+                stateResult.putEventData("lastApplied", String.valueOf(state.lastApplied()));
+                fireEvent(EventType.ON_STATE_CHANGE, stateResult.getEventData());
             }
-            long t4 = System.nanoTime();
-
-//            if(t4 - t0 > 1000000) {
-//                logger.info("{} + {} + {} + {} = {} ns.",
-//                        t1 - t0, t2 - t1, t3 - t2, t4 - t3, t4 - t0);
-//            }
-
-//            applyEntriesMetric.end(() -> (long) entryHeader.getLength());
+            applyEntriesMetric.end(() -> (long) entryHeader.getLength());
         }
     }
 
     private void fireOnLeaderChangeEvent(int term, URI leaderUri) {
-        Map<String, String> eventData = new HashMap<>();
-        eventData.put("leader", String.valueOf(leaderUri));
-        eventData.put("term", String.valueOf(term));
-        fireEvent(EventType.ON_LEADER_CHANGE, eventData);
+        if(config.isEnableEvents()) {
+            Map<String, String> eventData = new HashMap<>();
+            eventData.put("leader", String.valueOf(leaderUri));
+            eventData.put("term", String.valueOf(term));
+            fireEvent(EventType.ON_LEADER_CHANGE, eventData);
+        }
     }
 
     private void announceLeader(InternalEntryType type, byte[] internalEntry) {
@@ -455,7 +442,9 @@ public abstract class AbstractServer
     }
 
     protected void fireEvent(int eventType, Map<String, String> eventData) {
-        eventBus.fireEvent(new Event(eventType, eventData));
+        if(config.isEnableEvents()) {
+            eventBus.fireEvent(new Event(eventType, eventData));
+        }
     }
 
     /**
@@ -616,6 +605,11 @@ public abstract class AbstractServer
                 properties.getProperty(
                         Config.PRINT_METRIC_INTERVAL_SEC_KEY,
                         String.valueOf(Config.DEFAULT_PRINT_METRIC_INTERVAL_SEC))));
+
+        config.setEnableEvents(Boolean.parseBoolean(
+                properties.getProperty(
+                        Config.ENABLE_EVENTS_KEY,
+                        String.valueOf(Config.DEFAULT_ENABLE_EVENTS))));
 
         return config;
     }
@@ -1199,7 +1193,7 @@ public abstract class AbstractServer
         public final static boolean DEFAULT_DISABLE_LOGO = false;
         public final static int DEFAULT_PRINT_METRIC_INTERVAL_SEC = 0;
         public final static int DEFAULT_JOURNAL_RETENTION_MIN = 0;
-
+        public final static boolean DEFAULT_ENABLE_EVENTS = true;
         public final static String SNAPSHOT_INTERVAL_SEC_KEY = "snapshot_interval_sec";
         public final static String RPC_TIMEOUT_MS_KEY = "rpc_timeout_ms";
         public final static String FLUSH_INTERVAL_MS_KEY = "flush_interval_ms";
@@ -1209,6 +1203,7 @@ public abstract class AbstractServer
         public final static String DISABLE_LOGO_KEY = "disable_logo";
         public final static String PRINT_METRIC_INTERVAL_SEC_KEY = "print_metric_interval_sec";
         public final static String JOURNAL_RETENTION_MIN_KEY = "journal_retention_min";
+        public final static String ENABLE_EVENTS_KEY = "enable_events";
 
         private int snapshotIntervalSec = DEFAULT_SNAPSHOT_INTERVAL_SEC;
         private long rpcTimeoutMs = DEFAULT_RPC_TIMEOUT_MS;
@@ -1219,7 +1214,7 @@ public abstract class AbstractServer
         private boolean disableLogo = DEFAULT_DISABLE_LOGO;
         private int printMetricIntervalSec = DEFAULT_PRINT_METRIC_INTERVAL_SEC;
         private int journalRetentionMin = DEFAULT_JOURNAL_RETENTION_MIN;
-
+        private boolean enableEvents = DEFAULT_ENABLE_EVENTS;
         int getSnapshotIntervalSec() {
             return snapshotIntervalSec;
         }
@@ -1290,6 +1285,14 @@ public abstract class AbstractServer
 
         public void setDisableLogo(boolean disableLogo) {
             this.disableLogo = disableLogo;
+        }
+
+        public boolean isEnableEvents() {
+            return enableEvents;
+        }
+
+        public void setEnableEvents(boolean enableEvents) {
+            this.enableEvents = enableEvents;
         }
     }
 }
