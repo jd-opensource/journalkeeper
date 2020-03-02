@@ -18,7 +18,7 @@ import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
 import io.journalkeeper.core.api.transaction.UUIDTransactionId;
-import io.journalkeeper.core.exception.TransactionException;
+import io.journalkeeper.exceptions.TransactionException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;

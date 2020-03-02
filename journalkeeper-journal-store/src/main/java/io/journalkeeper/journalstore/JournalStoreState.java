@@ -14,6 +14,7 @@
 package io.journalkeeper.journalstore;
 
 import io.journalkeeper.base.Serializer;
+import io.journalkeeper.core.api.EntryFuture;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.State;
@@ -28,6 +29,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITIONS_START;
@@ -83,6 +85,11 @@ public class JournalStoreState implements State, Flushable {
 
     @Override
     public StateResult execute(byte[] entry, int partition, long lastApplied, int batchSize, RaftJournal journal) {
+        return null;
+    }
+
+    @Override
+    public StateResult execute(EntryFuture getEntryFuture, int partition, long index, int batchSize, RaftJournal journal) {
         long partitionIndex = appliedIndices.getOrDefault(partition, 0L);
         appliedIndices.put(partition, partitionIndex + batchSize);
         long minIndex = journal.minIndex(partition);

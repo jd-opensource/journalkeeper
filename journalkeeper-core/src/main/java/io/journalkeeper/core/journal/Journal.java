@@ -17,7 +17,7 @@ package io.journalkeeper.core.journal;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.RaftJournal;
-import io.journalkeeper.core.exception.JournalException;
+import io.journalkeeper.exceptions.JournalException;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.persistence.BufferPool;
@@ -305,7 +305,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         }
     }
 
-    private JournalEntry readEntryHeaderByOffset(long offset) {
+    public JournalEntry readEntryHeaderByOffset(long offset) {
         try {
             byte[] headerBytes = journalPersistence.read(offset, journalEntryParser.headerLength());
             return journalEntryParser.parseHeader(headerBytes);
@@ -445,7 +445,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         return journalEntryParser.parse(readRaw(index));
     }
 
-    private JournalEntry readByOffset(long offset) {
+    public JournalEntry readByOffset(long offset) {
         return journalEntryParser.parse(readRawByOffset(offset));
     }
 
@@ -483,8 +483,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
 
     private long readOffset(JournalPersistence indexPersistence, long index) {
         try {
-            byte[] indexBytes = indexPersistence.read(index * INDEX_STORAGE_SIZE, INDEX_STORAGE_SIZE);
-            return ByteBuffer.wrap(indexBytes).getLong();
+            return indexPersistence.readLong(index * INDEX_STORAGE_SIZE);
         } catch (IOException e) {
             throw new JournalException(e);
         }

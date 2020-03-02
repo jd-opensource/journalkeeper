@@ -40,6 +40,7 @@ package io.journalkeeper.core.state;
 
 import io.journalkeeper.base.Replicable;
 import io.journalkeeper.base.ReplicableIterator;
+import io.journalkeeper.core.api.EntryFuture;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.State;
@@ -49,7 +50,7 @@ import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.InternalEntryType;
 import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.internal.SetPreferredLeaderEntry;
-import io.journalkeeper.core.exception.StateRecoverException;
+import io.journalkeeper.exceptions.StateRecoverException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.journal.JournalSnapshot;
 import io.journalkeeper.persistence.MetadataPersistence;
@@ -74,6 +75,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.StampedLock;
@@ -109,6 +111,7 @@ public class JournalKeeperState implements Replicable, Flushable {
     private State userState;
     private InternalState internalState;
     private Properties properties;
+    private AtomicBoolean isUserStateAvailable = new AtomicBoolean(false);
 
     public JournalKeeperState(StateFactory userStateFactory, MetadataPersistence metadataPersistence) {
         this.userStateFactory = userStateFactory;
@@ -140,7 +143,9 @@ public class JournalKeeperState implements Replicable, Flushable {
         try {
             stateFilesLock.writeLock().lock();
             flushInternalState();
-            flushUserState();
+            if(isUserStateAvailable.get()) {
+                flushUserState();
+            }
         } finally {
             stateFilesLock.writeLock().unlock();
         }
@@ -236,26 +241,24 @@ public class JournalKeeperState implements Replicable, Flushable {
         return lastIncludedIndex() + 1;
     }
 
-    public StateResult applyEntry(JournalEntry journalEntry, RaftJournal journal) {
-        byte[] payloadBytes = journalEntry.getPayload().getBytes();
-        int partition = journalEntry.getPartition();
-        int batchSize = journalEntry.getBatchSize();
+    public StateResult applyEntry(JournalEntry entryHeader, EntryFuture entryFuture, RaftJournal journal) {
+        int partition = entryHeader.getPartition();
+        int batchSize = entryHeader.getBatchSize();
 
         StateResult result = new StateResult(null);
         long stamp = stateLock.writeLock();
         try {
             if (partition < RESERVED_PARTITIONS_START) {
-
-                result = userState.execute(payloadBytes, partition, lastApplied(), batchSize, journal);
+                result = userState.execute(entryFuture, partition, lastApplied(), batchSize, journal);
             } else if (partition == INTERNAL_PARTITION) {
-                applyInternalEntry(journalEntry.getPayload().getBytes());
-
+                applyInternalEntry(entryFuture.get());
             } else {
+
                 for (ApplyReservedEntryInterceptor reservedEntryInterceptor : reservedEntryInterceptors) {
-                    reservedEntryInterceptor.applyReservedEntry(journalEntry, lastApplied());
+                    reservedEntryInterceptor.applyReservedEntry(entryHeader, entryFuture, lastApplied());
                 }
             }
-            internalState.setLastIncludedTerm(journalEntry.getTerm());
+            internalState.setLastIncludedTerm(entryHeader.getTerm());
             internalState.next();
             result.setLastApplied(lastApplied());
         } finally {
@@ -309,6 +312,7 @@ public class JournalKeeperState implements Replicable, Flushable {
         Path userStatePath = path.resolve(USER_STATE_PATH);
         Files.createDirectories(userStatePath);
         userState.recover(path.resolve(USER_STATE_PATH), properties);
+        isUserStateAvailable.set(true);
     }
 
     public StateQueryResult query(byte[] query, RaftJournal journal) {
@@ -377,8 +381,10 @@ public class JournalKeeperState implements Replicable, Flushable {
     }
 
     public void closeUnsafe() {
-        if (null != userState) {
-            userState.close();
+        if(isUserStateAvailable.compareAndSet(true, false)) {
+            if (null != userState) {
+                userState.close();
+            }
         }
     }
 

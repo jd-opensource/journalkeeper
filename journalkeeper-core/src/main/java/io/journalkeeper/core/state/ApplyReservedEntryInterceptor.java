@@ -38,6 +38,7 @@
  */
 package io.journalkeeper.core.state;
 
+import io.journalkeeper.core.api.EntryFuture;
 import io.journalkeeper.core.api.JournalEntry;
 
 /**
@@ -45,5 +46,5 @@ import io.journalkeeper.core.api.JournalEntry;
  * Date: 2019/11/20
  */
 public interface ApplyReservedEntryInterceptor {
-    void applyReservedEntry(JournalEntry journalEntry, long index);
+    void applyReservedEntry(JournalEntry entryHeader, EntryFuture entryFuture, long index);
 }

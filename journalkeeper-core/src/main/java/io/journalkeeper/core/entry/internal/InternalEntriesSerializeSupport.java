@@ -14,7 +14,7 @@
 package io.journalkeeper.core.entry.internal;
 
 import io.journalkeeper.base.Serializer;
-import io.journalkeeper.core.exception.SerializeException;
+import io.journalkeeper.exceptions.SerializeException;
 
 import java.util.Arrays;
 import java.util.HashMap;

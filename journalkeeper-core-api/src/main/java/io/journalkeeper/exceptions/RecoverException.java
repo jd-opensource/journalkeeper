@@ -11,22 +11,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.exception;
+package io.journalkeeper.exceptions;
 
-public class JournalException extends RuntimeException {
-    public JournalException(String message) {
+public class RecoverException extends RuntimeException {
+    public RecoverException(String message) {
         super(message);
     }
 
-    public JournalException() {
+    public RecoverException() {
         super();
     }
 
-    public JournalException(String message, Throwable t) {
+    public RecoverException(String message, Throwable t) {
         super(message, t);
     }
 
-    public JournalException(Throwable t) {
+    public RecoverException(Throwable t) {
         super(t);
     }
 }

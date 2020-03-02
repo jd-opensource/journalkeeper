@@ -14,7 +14,7 @@
 package io.journalkeeper.core.client;
 
 import io.journalkeeper.core.api.ClusterConfiguration;
-import io.journalkeeper.core.exception.NoLeaderException;
+import io.journalkeeper.exceptions.NoLeaderException;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.exceptions.RequestTimeoutException;
 import io.journalkeeper.exceptions.ServerBusyException;

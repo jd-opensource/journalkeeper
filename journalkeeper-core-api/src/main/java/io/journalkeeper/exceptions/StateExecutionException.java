@@ -11,22 +11,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.exception;
+package io.journalkeeper.exceptions;
 
-public class TransactionException extends RuntimeException {
-    public TransactionException(String message) {
-        super(message);
+/**
+ * @author LiYue
+ * Date: 2019-03-25
+ */
+public class StateExecutionException extends RuntimeException {
+    public StateExecutionException(String msg) {
+        super(msg);
     }
 
-    public TransactionException() {
-        super();
+    public StateExecutionException(Throwable throwable) {
+        super(throwable);
     }
 
-    public TransactionException(String message, Throwable t) {
-        super(message, t);
-    }
-
-    public TransactionException(Throwable t) {
-        super(t);
-    }
 }

@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.core.server;
 
+import io.journalkeeper.core.api.EntryFuture;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.RaftJournal;
 import io.journalkeeper.core.api.RaftServer;
@@ -23,7 +24,6 @@ import io.journalkeeper.core.api.StateFactory;
 import io.journalkeeper.core.api.StateResult;
 import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.api.VoterState;
-import io.journalkeeper.core.entry.DefaultJournalEntry;
 import io.journalkeeper.core.entry.DefaultJournalEntryParser;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
@@ -93,7 +93,7 @@ public class VoterTest {
 
         properties.setProperty("cache_requests", String.valueOf(10 * 1024));
         properties.setProperty("print_state_interval_sec", String.valueOf(3));
-        Server voter = createVoter(properties, partitions);
+        Server voter = createVoter(properties, partitions, false);
         JournalEntryParser journalEntryParser = new DefaultJournalEntryParser();
         try {
             long totalBytes = 10L * 1024 * 1024 * 1024;
@@ -316,7 +316,10 @@ public class VoterTest {
     }
 
     private Server createVoter(Properties customProperties, Set<Integer> partitions) throws IOException {
-        StateFactory stateFactory = new NoopStateFactory();
+        return createVoter(customProperties, partitions, true);
+    }
+    private Server createVoter(Properties customProperties, Set<Integer> partitions, boolean echo) throws IOException {
+        StateFactory stateFactory = new NoopStateFactory(echo);
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(4, new NamedThreadFactory("JournalKeeper-Scheduled-Executor"));
         ExecutorService asyncExecutorService = new ScheduledThreadPoolExecutor(Runtime.getRuntime().availableProcessors() * 2, new NamedThreadFactory("JournalKeeper-Async-Executor"));
         Properties properties = new Properties();
@@ -341,11 +344,19 @@ public class VoterTest {
     }
 
     static class EchoState implements State {
+        private boolean echo = true;
+        public EchoState(boolean echo) {
+            this.echo = echo;
+        }
         @Override
         public StateResult execute(byte[] entry, int partition, long index, int batchSize, RaftJournal raftJournal) {
             return new StateResult(entry);
         }
 
+        @Override
+        public StateResult execute(EntryFuture getEntryFuture, int partition, long index, int batchSize, RaftJournal journal) {
+            return echo ? new StateResult(getEntryFuture.get()): new StateResult(new byte[0]);
+        }
 
         @Override
         public void recover(Path path, Properties properties) {
@@ -359,10 +370,16 @@ public class VoterTest {
 
 
     static class NoopStateFactory implements StateFactory {
+        private final boolean echo;
+
+        NoopStateFactory(boolean echo) {
+            this.echo = echo;
+        }
+
 
         @Override
         public State createState() {
-            return new EchoState();
+            return new EchoState(echo);
         }
     }
 }

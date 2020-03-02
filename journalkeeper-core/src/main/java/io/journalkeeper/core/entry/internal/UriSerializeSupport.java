@@ -13,7 +13,7 @@
  */
 package io.journalkeeper.core.entry.internal;
 
-import io.journalkeeper.core.exception.SerializeException;
+import io.journalkeeper.exceptions.SerializeException;
 
 import java.net.URI;
 import java.nio.ByteBuffer;

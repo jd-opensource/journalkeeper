@@ -11,18 +11,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.exception;
+package io.journalkeeper.exceptions;
 
-/**
- * @author LiYue
- * Date: 2019-08-12
- */
-public class SerializeException extends RuntimeException {
-    public SerializeException(String msg) {
-        super(msg);
+public class JournalException extends RuntimeException {
+    public JournalException(String message) {
+        super(message);
     }
 
-    public SerializeException(Throwable throwable) {
-        super(throwable);
+    public JournalException() {
+        super();
+    }
+
+    public JournalException(String message, Throwable t) {
+        super(message, t);
+    }
+
+    public JournalException(Throwable t) {
+        super(t);
     }
 }

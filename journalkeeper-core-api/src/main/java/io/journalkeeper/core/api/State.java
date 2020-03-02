@@ -13,9 +13,13 @@
  */
 package io.journalkeeper.core.api;
 
+import io.journalkeeper.exceptions.StateExecutionException;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
 /**
  * 状态机接口。
@@ -43,6 +47,29 @@ public interface State {
      * @return 执行结果。See {@link StateResult}
      */
     StateResult execute(byte[] entry, int partition, long index, int batchSize, RaftJournal journal);
+
+    /**
+     * 在状态state上执行命令entries，JournalKeeper保证执行操作命令的线性语义。要求：
+     * <ul>
+     *     <li>原子性</li>
+     *     <li>幂等性</li>
+     * </ul>
+     * 成功返回执行结果，否则抛异常。
+     *
+     * @param getEntryFuture 待执行的命令
+     * @param partition 分区
+     * @param index entry在Journal中的索引序号
+     * @param batchSize 如果当前entry是一个批量entry，batchSize为这批entry的数量，否则为1；
+     * @param journal 当前的journal
+     * @return 执行结果。See {@link StateResult}
+     */
+    default StateResult execute(EntryFuture getEntryFuture, int partition, long index, int batchSize, RaftJournal journal) {
+        try {
+            return execute(getEntryFuture.get(), partition, index, batchSize, journal);
+        } catch (Throwable e) {
+            throw new StateExecutionException(e);
+        }
+    }
 
     /**
      * 查询

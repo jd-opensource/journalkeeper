@@ -11,18 +11,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.exception;
+package io.journalkeeper.exceptions;
 
 /**
  * @author LiYue
  * Date: 2019-03-25
  */
-public class StateExecutionException extends RuntimeException {
-    public StateExecutionException(String msg) {
+public class StateRecoverException extends RuntimeException {
+    public StateRecoverException(String msg) {
         super(msg);
     }
 
-    public StateExecutionException(Throwable throwable) {
+    public StateRecoverException(Throwable throwable) {
         super(throwable);
     }
 

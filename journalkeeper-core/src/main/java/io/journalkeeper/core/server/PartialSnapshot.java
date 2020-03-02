@@ -38,7 +38,7 @@
  */
 package io.journalkeeper.core.server;
 
-import io.journalkeeper.core.exception.InstallSnapshotException;
+import io.journalkeeper.exceptions.InstallSnapshotException;
 import io.journalkeeper.utils.files.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

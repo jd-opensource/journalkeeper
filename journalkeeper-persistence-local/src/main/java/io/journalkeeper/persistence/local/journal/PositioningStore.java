@@ -343,16 +343,31 @@ public class PositioningStore implements JournalPersistence, MonitoredPersistenc
     public byte[] read(long position, int length) throws IOException {
         if (length == 0) return new byte[0];
         checkReadPosition(position);
-        Map.Entry<Long, StoreFile> storeFileEntry = storeFileMap.floorEntry(position);
-        if (storeFileEntry == null) {
+        StoreFile storeFile = getStoreFile(position);
+        if(null == storeFile) {
             return null;
         }
-
-        StoreFile storeFile = storeFileEntry.getValue();
         int relPosition = (int) (position - storeFile.position());
         return storeFile.read(relPosition, length).array();
     }
 
+    public Long readLong(long position) throws IOException {
+        checkReadPosition(position);
+        StoreFile storeFile = getStoreFile(position);
+        if(null == storeFile) {
+            return null;
+        }
+        int relPosition = (int) (position - storeFile.position());
+        return storeFile.readLong(relPosition);
+    }
+
+    private StoreFile getStoreFile(long position) {
+        Map.Entry<Long, StoreFile> storeFileEntry = storeFileMap.floorEntry(position);
+        if (storeFileEntry == null) {
+            return null;
+        }
+        return storeFileEntry.getValue();
+    }
 
     private void checkReadPosition(long position) {
         long p;

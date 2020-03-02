@@ -29,6 +29,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 
 /**
@@ -46,6 +47,7 @@ public class KvState implements WrappedState<String, String, String, String>, Fl
     private final Gson gson = new Gson();
     private Map<String, String> stateMap = new HashMap<>();
     private Path statePath;
+    private AtomicBoolean isDirty = new AtomicBoolean(false);
 
     @Override
     public void recover(Path statePath, Properties properties) {
@@ -55,6 +57,7 @@ public class KvState implements WrappedState<String, String, String, String>, Fl
                     new TypeToken<HashMap<String, String>>() {
                     }.getType());
             int keys = stateMap == null ? -1 : stateMap.size();
+            isDirty.set(false);
             logger.info("State map recovered from {}, keys {} ", statePath.toString(), keys);
         } catch (NoSuchFileException e) {
             stateMap = new HashMap<>();

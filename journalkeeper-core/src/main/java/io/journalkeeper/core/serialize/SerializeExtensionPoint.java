@@ -1,6 +1,6 @@
 package io.journalkeeper.core.serialize;
 
-import io.journalkeeper.core.exception.SerializeException;
+import io.journalkeeper.exceptions.SerializeException;
 
 /**
  * 序列化扩展点

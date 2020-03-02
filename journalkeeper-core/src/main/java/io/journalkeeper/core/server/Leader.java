@@ -194,7 +194,7 @@ class Leader extends ServerStateMachine implements StateServer {
         this.journal = journal;
         this.heartbeatIntervalMs = heartbeatIntervalMs;
         this.journalTransactionManager = new JournalTransactionManager(journal, server, scheduledExecutor, transactionTimeoutMs);
-        this.journalTransactionInterceptor = (journalEntry, index) -> journalTransactionManager.applyEntry(journalEntry);
+        this.journalTransactionInterceptor = (entryHeader, entryFuture, index) -> journalTransactionManager.applyEntry(entryHeader, entryFuture);
         this.leaderAnnouncementInterceptor = (type, internalEntry) -> {
             if (type == InternalEntryType.TYPE_LEADER_ANNOUNCEMENT) {
                 LeaderAnnouncementEntry leaderAnnouncementEntry = InternalEntriesSerializeSupport.parse(internalEntry);
@@ -516,6 +516,7 @@ class Leader extends ServerStateMachine implements StateServer {
             long N = 0L;
             if (finalFollowers.isEmpty()) {
                 N = journal.maxIndex();
+                onCommitted();
             } else {
 
 
@@ -931,10 +932,6 @@ class Leader extends ServerStateMachine implements StateServer {
 
     Collection<JournalKeeperTransactionContext> getOpeningTransactions() {
         return journalTransactionManager.getOpeningTransactions();
-    }
-
-    void applyReservedPartition(JournalEntry journalEntry, long index) {
-        journalTransactionManager.applyEntry(journalEntry);
     }
 
     // for monitor only

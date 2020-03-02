@@ -16,7 +16,7 @@ package io.journalkeeper.core.server;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.StateFactory;
-import io.journalkeeper.core.exception.InstallSnapshotException;
+import io.journalkeeper.exceptions.InstallSnapshotException;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.exceptions.NotVoterException;
 import io.journalkeeper.metric.JMetric;

@@ -105,6 +105,14 @@ public interface JournalPersistence extends Closeable {
     byte[] read(long position, int length) throws IOException;
 
     /**
+     * 读取long
+     * @param position 起始位置
+     * @return long值
+     * @throws IOException 发生IO异常时抛出
+     */
+    Long readLong(long position) throws IOException;
+
+    /**
      * 从指定Path恢复Journal，如果没有则创建一个空的。
      * @param path journal存放路径
      * @param min 逻辑最小位置

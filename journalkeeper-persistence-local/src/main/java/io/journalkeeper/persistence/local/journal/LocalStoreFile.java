@@ -241,6 +241,33 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         }
     }
 
+    @Override
+    public Long readLong(int position) throws IOException{
+        touch();
+        long stamp = bufferLock.readLock();
+        try {
+            while (!hasPage()) {
+                long ws = bufferLock.tryConvertToWriteLock(stamp);
+                if (ws != 0L) {
+                    // 升级成写锁成功
+                    stamp = ws;
+                    loadRoUnsafe();
+                } else {
+                    bufferLock.unlockRead(stamp);
+                    stamp = bufferLock.writeLock();
+                }
+            }
+            long rs = bufferLock.tryConvertToReadLock(stamp);
+            if (rs != 0L) {
+                stamp = rs;
+            }
+
+            return pageBuffer.getLong(position);
+        } finally {
+            bufferLock.unlock(stamp);
+        }
+    }
+
     // Not thread safe!
     private int appendToPageBuffer(ByteBuffer byteBuffer) {
         pageBuffer.position(writePosition);

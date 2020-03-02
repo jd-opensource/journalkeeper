@@ -124,4 +124,6 @@ public interface StoreFile extends Timed {
      * @throws IOException 发生IO异常时抛出
      */
     void force() throws IOException;
+
+    Long readLong(int position) throws IOException;
 }

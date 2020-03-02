@@ -11,22 +11,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.exception;
+package io.journalkeeper.exceptions;
 
-public class InstallSnapshotException extends RuntimeException {
-    public InstallSnapshotException(String message) {
+public class TransactionException extends RuntimeException {
+    public TransactionException(String message) {
         super(message);
     }
 
-    public InstallSnapshotException() {
+    public TransactionException() {
         super();
     }
 
-    public InstallSnapshotException(String message, Throwable t) {
+    public TransactionException(String message, Throwable t) {
         super(message, t);
     }
 
-    public InstallSnapshotException(Throwable t) {
+    public TransactionException(Throwable t) {
         super(t);
     }
 }

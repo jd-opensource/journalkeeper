@@ -13,13 +13,14 @@
  */
 package io.journalkeeper.core.transaction;
 
+import io.journalkeeper.core.api.EntryFuture;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.UpdateRequest;
 import io.journalkeeper.core.api.transaction.JournalKeeperTransactionContext;
 import io.journalkeeper.core.api.transaction.UUIDTransactionId;
-import io.journalkeeper.core.exception.JournalException;
-import io.journalkeeper.core.exception.TransactionException;
+import io.journalkeeper.exceptions.JournalException;
+import io.journalkeeper.exceptions.TransactionException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
@@ -118,10 +119,10 @@ public class JournalTransactionManager extends ServerStateMachine {
         return transactionState.getOpeningTransactions();
     }
 
-    public void applyEntry(JournalEntry journalEntry) {
-        int partition = journalEntry.getPartition();
+    public void applyEntry(JournalEntry entryHeader, EntryFuture entryFuture) {
+        int partition = entryHeader.getPartition();
         if (transactionState.isTransactionPartition(partition)) {
-            TransactionEntry transactionEntry = transactionEntrySerializer.parse(journalEntry.getPayload().getBytes());
+            TransactionEntry transactionEntry = transactionEntrySerializer.parse(entryFuture.get());
             transactionState.applyEntry(transactionEntry, partition, pendingCompleteTransactionFutures);
         }
     }

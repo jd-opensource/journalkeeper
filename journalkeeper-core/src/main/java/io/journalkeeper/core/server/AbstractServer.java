@@ -29,8 +29,9 @@ import io.journalkeeper.core.entry.internal.ReservedPartition;
 import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.internal.UpdateVotersS1Entry;
 import io.journalkeeper.core.entry.internal.UpdateVotersS2Entry;
-import io.journalkeeper.core.exception.JournalException;
-import io.journalkeeper.core.exception.RecoverException;
+import io.journalkeeper.core.state.EntryFutureImpl;
+import io.journalkeeper.exceptions.JournalException;
+import io.journalkeeper.exceptions.RecoverException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.journal.JournalSnapshot;
 import io.journalkeeper.core.metric.DummyMetric;
@@ -163,8 +164,8 @@ public abstract class AbstractServer
     protected final JournalEntryParser journalEntryParser;
     protected final VoterConfigManager voterConfigManager;
     private final Map<Integer, ReplicableIterator> snapshotIteratorMap = new ConcurrentHashMap<>();
-    private final JMetricFactory metricFactory;
-    private final Map<String, JMetric> metricMap;
+    private  JMetricFactory metricFactory;
+    private  Map<String, JMetric> metricMap;
     private final JMetric applyEntriesMetric;
     private final AtomicInteger nextSnapshotIteratorId = new AtomicInteger();
     /**
@@ -225,10 +226,17 @@ public abstract class AbstractServer
         logger.info("Using JournalCompactionStrategy: {}.", journalCompactionStrategy.getClass().getCanonicalName());
         // init metrics
         if (config.isEnableMetric()) {
-            this.metricFactory = ServiceSupport.load(JMetricFactory.class);
-            this.metricMap = new ConcurrentHashMap<>();
-            if (config.getPrintMetricIntervalSec() > 0) {
-                this.threads.createThread(buildPrintMetricThread());
+            try {
+                this.metricFactory = ServiceSupport.load(JMetricFactory.class);
+                this.metricMap = new ConcurrentHashMap<>();
+                if (config.getPrintMetricIntervalSec() > 0) {
+                    this.threads.createThread(buildPrintMetricThread());
+                }
+            } catch (ServiceLoadException se) {
+                logger.warn("No metric extension found in the classpath, Metric will disabled!");
+                config.setEnableMetric(false);
+                this.metricFactory = null;
+                this.metricMap = null;
             }
         } else {
             this.metricFactory = null;
@@ -375,17 +383,32 @@ public abstract class AbstractServer
      */
     private void applyEntries() {
         while (state.lastApplied() < journal.commitIndex()) {
-            applyEntriesMetric.start();
+//            applyEntriesMetric.start();
+            long t0 = System.nanoTime();
+            long offset = journal.readOffset(state.lastApplied());
+            JournalEntry entryHeader = journal.readEntryHeaderByOffset(offset);
+            long t1 = System.nanoTime();
 
-            JournalEntry journalEntry = journal.read(state.lastApplied());
-            StateResult stateResult = state.applyEntry(journalEntry, journal);
+            StateResult stateResult = state.applyEntry(entryHeader, new EntryFutureImpl(journal, offset), journal);
+            long t2 = System.nanoTime();
+
             afterStateChanged(stateResult.getUserResult());
+            long t3 = System.nanoTime();
 
-            Map<String, String> parameters = new HashMap<>(stateResult.getEventData().size() + 1);
-            stateResult.getEventData().forEach(parameters::put);
-            parameters.put("lastApplied", String.valueOf(state.lastApplied()));
-            fireEvent(EventType.ON_STATE_CHANGE, parameters);
-            applyEntriesMetric.end(() -> (long) journalEntry.getLength());
+            if(stateResult.getEventData().size() > 0) {
+                Map<String, String> parameters = new HashMap<>(stateResult.getEventData().size() + 1);
+                stateResult.getEventData().forEach(parameters::put);
+                parameters.put("lastApplied", String.valueOf(state.lastApplied()));
+                fireEvent(EventType.ON_STATE_CHANGE, parameters);
+            }
+            long t4 = System.nanoTime();
+
+//            if(t4 - t0 > 1000000) {
+//                logger.info("{} + {} + {} + {} = {} ns.",
+//                        t1 - t0, t2 - t1, t3 - t2, t4 - t3, t4 - t0);
+//            }
+
+//            applyEntriesMetric.end(() -> (long) entryHeader.getLength());
         }
     }
 
@@ -506,7 +529,9 @@ public abstract class AbstractServer
                     snapshot.recover(tempSnapshotPath, properties);
 
                     while (snapshot.lastApplied() < request.getIndex()) {
-                        snapshot.applyEntry(journal.read(snapshot.lastApplied()), journal);
+                        long offset = journal.readOffset(snapshot.lastApplied());
+                        JournalEntry header = journal.readEntryHeaderByOffset(offset);
+                        snapshot.applyEntry(header, new EntryFutureImpl(journal, offset), journal);
                     }
                     snapshot.flush();
 
@@ -542,15 +567,10 @@ public abstract class AbstractServer
 
     protected void doRecoverSnapshot(JournalKeeperState targetSnapshot) throws IOException {
         logger.info("recover snapshot, target snapshot: {}", targetSnapshot.getPath());
-
-        threads.stopThread(threadName(ThreadNames.FLUSH_JOURNAL_THREAD));
-
         state.closeUnsafe();
         state.clearUserState();
         targetSnapshot.dumpUserState(statePath());
         state.recoverUserStateUnsafe();
-
-        threads.startThread(threadName(ThreadNames.FLUSH_JOURNAL_THREAD));
         logger.info("recover snapshot success, target snapshot: {}", targetSnapshot.getPath());
     }
 

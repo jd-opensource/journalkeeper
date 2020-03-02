@@ -50,7 +50,7 @@ import io.journalkeeper.core.api.transaction.UUIDTransactionId;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.InternalEntryType;
 import io.journalkeeper.core.entry.internal.UpdateVotersS1Entry;
-import io.journalkeeper.core.exception.UpdateConfigurationException;
+import io.journalkeeper.exceptions.UpdateConfigurationException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.core.state.JournalKeeperState;

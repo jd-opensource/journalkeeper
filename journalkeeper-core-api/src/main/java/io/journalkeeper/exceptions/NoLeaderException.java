@@ -11,22 +11,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core.exception;
+package io.journalkeeper.exceptions;
 
-public class UpdateConfigurationException extends RuntimeException {
-    public UpdateConfigurationException(String message) {
-        super(message);
-    }
-
-    public UpdateConfigurationException() {
-        super();
-    }
-
-    public UpdateConfigurationException(String message, Throwable t) {
-        super(message, t);
-    }
-
-    public UpdateConfigurationException(Throwable t) {
-        super(t);
+/**
+ * 当前集群没有Leader
+ * @author LiYue
+ * Date: 2019-04-03
+ */
+public class NoLeaderException extends RuntimeException {
+    @Override
+    public String getMessage() {
+        return "No leader!";
     }
 }
