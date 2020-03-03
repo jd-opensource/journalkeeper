@@ -281,6 +281,9 @@ public class JournalStoreTest {
 
             long t1 = System.nanoTime();
             long takesMs = (t1 - t0) / 1000000;
+            if(takesMs == 0) {
+                takesMs = 1;
+            }
             logger.info("Write finished, total write {}. " +
                             "Write takes: {}ms, {}ps, tps: {}.",
                     Format.formatSize(currentBytes),
@@ -296,6 +299,9 @@ public class JournalStoreTest {
 
             t1 = System.nanoTime();
             takesMs = (t1 - t0) / 1000000;
+            if(takesMs == 0) {
+                takesMs = 1;
+            }
             logger.info("All entries applied, " +
                             "takes: {}ms, {}ps, tps: {}.",
                     takesMs,
@@ -321,6 +327,9 @@ public class JournalStoreTest {
                 }
                 t1 = System.nanoTime();
                 takesMs = (t1 - t0) / 1000000;
+                if(takesMs == 0) {
+                    takesMs = 1;
+                }
                 logger.info("Read " +
                                 "takes: {}ms, {}ps, tps: {}.",
                         takesMs,

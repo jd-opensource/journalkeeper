@@ -430,7 +430,7 @@ class Leader extends ServerStateMachine implements StateServer {
     }
 
     private void leaderOnAppendEntriesResponse(ReplicationDestination follower, AsyncAppendEntriesRequest request, AsyncAppendEntriesResponse response) {
-        if (response.success()) {
+        if (response.success()) { // 只是RPC响应成功，不代表复制成功
             if (logger.isDebugEnabled()) {
                 logger.debug("Update lastHeartbeatResponseTime of {}, {}.", follower.getUri(), voterInfo());
             }
