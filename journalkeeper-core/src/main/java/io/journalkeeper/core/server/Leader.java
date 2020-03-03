@@ -516,7 +516,6 @@ class Leader extends ServerStateMachine implements StateServer {
             long N = 0L;
             if (finalFollowers.isEmpty()) {
                 N = journal.maxIndex();
-                onCommitted();
             } else {
 
 

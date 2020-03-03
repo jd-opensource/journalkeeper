@@ -41,21 +41,21 @@ public class LocalClientRpc implements ClientRpc {
     private final ClientServerRpc localServer;
     private final CompletableRetry<URI> completableRetry;
     private final CheckRetry<BaseResponse> checkRetry = new LocalClientCheckRetry();
-    private final Executor executor;
     private final ScheduledExecutorService scheduledExecutor;
-
-    public LocalClientRpc(ClientServerRpc localServer, RetryPolicy retryPolicy, Executor executor, ScheduledExecutorService scheduledExecutor) {
+    private final URI localUri;
+    public LocalClientRpc(ClientServerRpc localServer, RetryPolicy retryPolicy, ScheduledExecutorService scheduledExecutor) {
         this.localServer = localServer;
         this.scheduledExecutor = scheduledExecutor;
-        DestinationSelector<URI> uriSelector = uriSet -> localServer.serverUri();
-        this.executor = executor;
+        localUri = localServer.serverUri();
+        DestinationSelector<URI> uriSelector = uriSet -> localUri;
+
         this.completableRetry = new CompletableRetry<>(retryPolicy, uriSelector);
 
     }
 
     @Override
     public <O extends BaseResponse> CompletableFuture<O> invokeClientServerRpc(CompletableRetry.RpcInvoke<O, ClientServerRpc> invoke) {
-        return completableRetry.retry(uri -> invoke.invoke(localServer), checkRetry, executor, scheduledExecutor);
+        return completableRetry.retry(uri -> invoke.invoke(localServer), checkRetry, localUri, null, scheduledExecutor);
     }
 
     @Override

@@ -79,6 +79,10 @@ public class JournalStoreServer implements StateServer {
         bootStrap.getServer().init(uri, voters, partitions);
     }
 
+    public void init(URI uri, List<URI> voters, Set<Integer> partitions, URI preferredleader) throws IOException {
+        bootStrap.getServer().init(uri, voters, partitions, preferredleader);
+    }
+
     public boolean isInitialized() {
         return bootStrap.getServer().isInitialized();
     }

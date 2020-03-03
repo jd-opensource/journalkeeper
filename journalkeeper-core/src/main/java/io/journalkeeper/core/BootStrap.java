@@ -221,7 +221,7 @@ public class BootStrap implements ClusterAccessPoint {
         }
 
         if (this.server != null) {
-            return new LocalClientRpc(server, remoteRetryPolicy, clientAsyncExecutor, clientScheduledExecutor);
+            return new LocalClientRpc(server, remoteRetryPolicy, clientScheduledExecutor);
         } else {
             throw new IllegalStateException("No local server!");
         }

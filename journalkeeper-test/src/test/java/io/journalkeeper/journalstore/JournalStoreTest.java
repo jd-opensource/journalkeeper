@@ -22,6 +22,7 @@ import io.journalkeeper.core.api.transaction.TransactionContext;
 import io.journalkeeper.core.entry.DefaultJournalEntryParser;
 import io.journalkeeper.core.entry.JournalEntryParseSupport;
 import io.journalkeeper.exceptions.ServerBusyException;
+import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
 import io.journalkeeper.utils.format.Format;
 import io.journalkeeper.utils.net.NetworkingUtils;
 import io.journalkeeper.utils.test.ByteUtils;
@@ -30,7 +31,9 @@ import io.journalkeeper.utils.threads.NamedThreadFactory;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
+import org.mockito.internal.util.collections.Sets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,25 +83,38 @@ public class JournalStoreTest {
         TestPathUtils.destroyBaseDir(base.toFile());
     }
 
-
     @Test
-    public void writeReadSyncOneNode() throws Exception {
-        writeReadTest(1, Stream.of(2).collect(Collectors.toSet()), 1024, 1, 32, false);
-    }
+    public void writeReadTest() throws Exception {
+        // 单分区和多分区
+        List<Set<Integer>> partitionsList = Arrays.asList(
+                Sets.newSet(0),
+                Sets.newSet(0, 1, 2, 3, 4)
+        );
 
-    @Test
-    public void writeReadSyncTripleNodes() throws Exception {
-        writeReadTest(3, Stream.of(2, 3, 4, 5, 6).collect(Collectors.toSet()), 1024, 32, 32, false);
-    }
+        // Raft 节点数量
+        List<Integer> nodesList = Arrays.asList(
+                1, 2, 3, 4, 5
+        );
 
-    @Test
-    public void writeReadAsyncOneNode() throws Exception {
-        writeReadTest(1, Stream.of(2).collect(Collectors.toSet()), 1024, 1, 32, true);
-    }
+        // 响应类型
 
-    @Test
-    public void writeReadAsyncTripleNodes() throws Exception {
-        writeReadTest(3, Stream.of(2, 3, 4, 5, 6).collect(Collectors.toSet()), 1024, 32, 32, true);
+        List<ResponseConfig> responseConfigList = Arrays.asList(
+          ResponseConfig.RECEIVE, ResponseConfig.PERSISTENCE, ResponseConfig.REPLICATION, ResponseConfig.ALL
+        );
+
+        for (Set<Integer> partitions : partitionsList) {
+            for (Integer nodes : nodesList) {
+                for (ResponseConfig responseConfig : responseConfigList) {
+                    writeReadTest(nodes, partitions, 1024, 10, 10L * 1024 * 1024, false, responseConfig, true);
+                    after();
+                    before();
+                    writeReadTest(nodes, partitions, 1024, 10, 10L * 1024 * 1024, true, responseConfig, true);
+                    after();
+                    before();
+                }
+            }
+        }
+
     }
 
     @Test
@@ -204,64 +220,113 @@ public class JournalStoreTest {
 
 
     }
+    @Ignore
+    @Test
+    public void writePerformanceTest() throws Exception {
+        Set<Integer> partitions = Sets.newSet(0, 1, 2, 3, 4);
+        writeReadTest(3, partitions,1024, 10, 1L * 1024 * 1024 * 1024, false, ResponseConfig.REPLICATION, true);
+    }
 
     /**
      * 读写测试
      * @param nodes 节点数量
-     * @param partitions 分区数量
-     * @param entrySize 数据大小
+     * @param partitions 分区
+     * @param entrySize 每条数据大小
      * @param batchSize 每批数据条数
-     * @param batchCount 批数
+     * @param totalBytes 总计写入字节数
+     * @param responseConfig 响应类型
      */
-    private void writeReadTest(int nodes, Set<Integer> partitions, int entrySize, int batchSize, int batchCount, boolean async) throws Exception {
-        List<JournalStoreServer> servers = createServers(nodes, base);
-        try {
-            JournalStoreClient client = servers.get(0).createClient();
-            client.waitForClusterReady();
-            AdminClient adminClient = servers.get(0).getAdminClient();
-            adminClient.scalePartitions(partitions).get();
+    private void writeReadTest(int nodes, Set<Integer> partitions, int entrySize, int batchSize, long totalBytes, boolean async, ResponseConfig responseConfig, boolean enableRead) throws Exception {
+        logger.info("Start write read test, nodes: {}, partitions: {}, entrySize: {}, batchSize: {}, totalBytes: {}, response config: {}, async: {}.",
+                nodes, partitions,entrySize, batchSize,Format.formatSize(totalBytes), responseConfig, async);
+        List<JournalStoreServer> servers = createServers(nodes, base, partitions);
+        JournalEntryParser journalEntryParser = new DefaultJournalEntryParser();
+        List<Integer> partitionList = new ArrayList<>(partitions);
+        byte[] rawEntryBytes = ByteUtils.createFixedSizeBytes(entrySize);
 
-            // Wait for all node to finish scale partitions.
-            Thread.sleep(1000L);
+        try {
+            JournalStoreClient client;
+            if(servers.size() == 1) {
+                client = servers.get(0).createLocalClient();
+            } else {
+                client = servers.get(0).createClient();
+            }
+            AdminClient adminClient = servers.get(0).getAdminClient();
+            client.waitForClusterReady();
+            long startApplied = adminClient.getServerStatus(adminClient.getClusterConfiguration().get().getLeader()).get().getLastApplied();
+            List<UpdateRequest> entries = new ArrayList<>(batchSize);
+            for (int i = 0; i < batchSize; i++) {
+                byte [] entry = journalEntryParser.createJournalEntry(rawEntryBytes).getSerializedBytes();
+                int partition = partitionList.get(i % partitionList.size());
+                UpdateRequest updateRequest = new UpdateRequest(entry, partition, 1);
+                entries.add(updateRequest);
+            }
+            UpdateClusterStateRequest request = new UpdateClusterStateRequest(entries, true, responseConfig);
+            long bytesOfRequest = request.getRequests().stream().mapToLong(r -> r.getEntry().length).sum();
+            Thread.sleep(100);
 
             long t0 = System.nanoTime();
-            byte[] rawEntries = new byte[entrySize];
-            for (int i = 0; i < rawEntries.length; i++) {
-                rawEntries[i] = (byte) (i % Byte.MAX_VALUE);
+
+            long currentBytes = 0L;
+            long writeCount = 0L;
+
+            while (currentBytes < totalBytes) {
+                CompletableFuture<List<Long>> resultFuture = client.append(entries, true, responseConfig);
+                if(!async && responseConfig != ResponseConfig.ONE_WAY) {
+                    resultFuture.get();
+                }
+                currentBytes += bytesOfRequest;
+                writeCount += batchSize;
             }
-            if (async) {
-                asyncWrite(partitions, batchSize, batchCount, client, rawEntries);
-            } else {
-                syncWrite(partitions, batchSize, batchCount, client, rawEntries);
-            }
+
             long t1 = System.nanoTime();
-            logger.info("Replication finished. " +
+            long takesMs = (t1 - t0) / 1000000;
+            logger.info("Write finished, total write {}. " +
                             "Write takes: {}ms, {}ps, tps: {}.",
-                    (t1 - t0) / 1000000,
-                    Format.formatSize(1000000000L * partitions.size() * entrySize * batchCount / (t1 - t0)),
-                    1000000000L * partitions.size() * batchCount / (t1 - t0));
+                    Format.formatSize(currentBytes),
+                    takesMs,
+                    Format.formatSize(1000L * currentBytes / takesMs),
+                    1000L * writeCount / takesMs);
 
-
-            // read
-
-            t0 = System.nanoTime();
-            for (int partition : partitions) {
-                for (int i = 0; i < batchCount; i++) {
-                    List<JournalEntry> raftEntries = client.get(partition, i * batchSize, batchSize).get();
-                    Assert.assertEquals(raftEntries.size(), 1);
-                    JournalEntry entry = raftEntries.get(0);
-                    Assert.assertEquals(partition, entry.getPartition());
-                    Assert.assertEquals(batchSize, entry.getBatchSize());
-                    Assert.assertEquals(0, entry.getOffset());
-                    Assert.assertArrayEquals(rawEntries, entry.getPayload().getBytes());
+            if(async) {
+                while (adminClient.getServerStatus(adminClient.getClusterConfiguration().get().getLeader()).get().getLastApplied() < startApplied + writeCount) {
+                    Thread.sleep(1);
                 }
             }
+
             t1 = System.nanoTime();
-            logger.info("Read finished. " +
-                            "Takes: {}ms {}ps, tps: {}.",
-                    (t1 - t0) / 1000000,
-                    Format.formatSize(1000000000L * partitions.size() * entrySize * batchCount / (t1 - t0)),
-                    1000000000L * partitions.size() * batchCount / (t1 - t0));
+            takesMs = (t1 - t0) / 1000000;
+            logger.info("All entries applied, " +
+                            "takes: {}ms, {}ps, tps: {}.",
+                    takesMs,
+                    Format.formatSize(1000L * currentBytes / takesMs),
+                    1000L * writeCount / takesMs);
+
+            // read
+            if (enableRead) {
+                t0 = System.nanoTime();
+                Map<Integer, Long> maxIndices = client.maxIndices().get();
+                for (int partition : partitions) {
+                    long maxIndex = maxIndices.get(partition);
+                    for (int i = 0; i < maxIndex; i += batchSize) {
+                        int batchReadCount = Math.min((int) (maxIndex - i), batchSize);
+                        List<JournalEntry> raftEntries = client.get(partition, i, batchReadCount).get();
+                        for (JournalEntry journalEntry : raftEntries) {
+                            Assert.assertEquals(partition, journalEntry.getPartition());
+                            Assert.assertEquals(1, journalEntry.getBatchSize());
+                            Assert.assertEquals(0, journalEntry.getOffset());
+                            Assert.assertArrayEquals(rawEntryBytes, journalEntry.getPayload().getBytes());
+                        }
+                    }
+                }
+                t1 = System.nanoTime();
+                takesMs = (t1 - t0) / 1000000;
+                logger.info("Read " +
+                                "takes: {}ms, {}ps, tps: {}.",
+                        takesMs,
+                        Format.formatSize(1000L * currentBytes / takesMs),
+                        1000L * writeCount / takesMs);
+            }
         } finally {
             stopServers(servers);
 
@@ -628,7 +693,7 @@ public class JournalStoreTest {
                 .whenCompleteAsync((v, e) -> {
 
                     if (e instanceof CompletionException && e.getCause() instanceof ServerBusyException) {
-//                        logger.info("AbstractServer busy!");
+                        logger.info("AbstractServer busy!");
                         Thread.yield();
                         asyncAppend(client, rawEntries, partition, batchSize, latch, executorService, exceptions);
 
@@ -682,8 +747,9 @@ public class JournalStoreTest {
             Properties properties = new Properties();
             properties.setProperty("working_dir", workingDir.toString());
             properties.setProperty("snapshot_step", "0");
-            properties.setProperty("rpc_timeout_ms", "600000");
-            properties.setProperty("cache_requests", String.valueOf(1024L * 1024));
+            properties.setProperty("cache_requests", String.valueOf(10L * 1024));
+            properties.setProperty("enable_events", String.valueOf(false));
+            properties.setProperty("disable_logo", "true");
 
             if (null != props) {
                 properties.putAll(props);
