@@ -56,21 +56,18 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
@@ -84,7 +81,7 @@ import static io.journalkeeper.core.server.MetricNames.METRIC_APPEND_ENTRIES_RPC
 import static io.journalkeeper.core.server.ThreadNames.FLUSH_JOURNAL_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.LEADER_APPEND_ENTRY_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.LEADER_CALLBACK_THREAD;
-import static io.journalkeeper.core.server.ThreadNames.LEADER_REPLICATION_RESPONSES_HANDLER_THREAD;
+import static io.journalkeeper.core.server.ThreadNames.LEADER_COMMIT_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.LEADER_REPLICATION_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
 
@@ -117,7 +114,6 @@ class Leader extends ServerStateMachine implements StateServer {
     private final AtomicLong journalFlushIndex = new AtomicLong(0L);
     private final Threads threads;
     private final long heartbeatIntervalMs;
-    private final int replicationParallelism;
     private final int replicationBatchSize;
     private final long rpcTimeoutMs;
     private final Journal journal;
@@ -130,11 +126,9 @@ class Leader extends ServerStateMachine implements StateServer {
     private final int currentTerm;
     private final Map<URI, JMetric> appendEntriesRpcMetricMap;
     private final ServerRpcProvider serverRpcProvider;
-    private final ExecutorService asyncExecutor;
     private final ScheduledExecutorService scheduledExecutor;
     private final VoterConfigManager voterConfigManager;
     private final MetricProvider metricProvider;
-    private final CheckTermInterceptor checkTermInterceptor;
     private final AtomicBoolean writeEnabled = new AtomicBoolean(true);
     private final JournalEntryParser journalEntryParser;
     private final JournalTransactionManager journalTransactionManager;
@@ -150,22 +144,20 @@ class Leader extends ServerStateMachine implements StateServer {
     private AtomicLong leaderShipDeadLineMs = new AtomicLong(0L);
     private JMetric updateClusterStateMetric;
     private JMetric appendJournalMetric;
-    private ScheduledFuture heartbeatScheduledFuture;
     private ScheduledFuture takeSnapshotFuture;
+    private AtomicBoolean isAnyFollowerNextIndexUpdated = new AtomicBoolean(false);
 
     Leader(Journal journal, JournalKeeperState state, Map<Long, JournalKeeperState> immutableSnapshots,
            int currentTerm,
            URI serverUri,
-           int cacheRequests, long heartbeatIntervalMs, long rpcTimeoutMs, int replicationParallelism, int replicationBatchSize,
+           int cacheRequests, long heartbeatIntervalMs, long rpcTimeoutMs, int replicationBatchSize,
            int snapshotIntervalSec,
            Threads threads,
            ServerRpcProvider serverRpcProvider,
            ClientServerRpc server,
-           ExecutorService asyncExecutor,
            ScheduledExecutorService scheduledExecutor,
            VoterConfigManager voterConfigManager,
            MetricProvider metricProvider,
-           CheckTermInterceptor checkTermInterceptor,
            JournalEntryParser journalEntryParser,
            long transactionTimeoutMs, NavigableMap<Long, JournalKeeperState> snapshots) {
 
@@ -173,7 +165,6 @@ class Leader extends ServerStateMachine implements StateServer {
         this.pendingUpdateStateRequests = new LinkedBlockingQueue<>(cacheRequests);
         this.state = state;
         this.serverUri = serverUri;
-        this.replicationParallelism = replicationParallelism;
         this.replicationBatchSize = replicationBatchSize;
         this.rpcTimeoutMs = rpcTimeoutMs;
         this.currentTerm = currentTerm;
@@ -181,11 +172,9 @@ class Leader extends ServerStateMachine implements StateServer {
         this.snapshotIntervalSec = snapshotIntervalSec;
         this.threads = threads;
         this.serverRpcProvider = serverRpcProvider;
-        this.asyncExecutor = asyncExecutor;
         this.scheduledExecutor = scheduledExecutor;
         this.voterConfigManager = voterConfigManager;
         this.metricProvider = metricProvider;
-        this.checkTermInterceptor = checkTermInterceptor;
         this.journalEntryParser = journalEntryParser;
         this.snapshots = snapshots;
         this.replicationCallbacks = new RingBufferBelt(rpcTimeoutMs, cacheRequests);
@@ -208,10 +197,6 @@ class Leader extends ServerStateMachine implements StateServer {
         this.callbackBarrier.set(journal.maxIndex());
     }
 
-    private static String getMetricName(String prefix, URI followerUri) {
-        return prefix + "_" + followerUri.toString();
-    }
-
     private AsyncLoopThread buildLeaderAppendJournalEntryThread() {
         return ThreadBuilder.builder()
                 .name(threadName(LEADER_APPEND_ENTRY_THREAD))
@@ -222,22 +207,13 @@ class Leader extends ServerStateMachine implements StateServer {
                 .build();
     }
 
-    private AsyncLoopThread buildLeaderReplicationThread() {
-        return ThreadBuilder.builder()
-                .name(threadName(LEADER_REPLICATION_THREAD))
-                .doWork(this::replication)
-                .sleepTime(heartbeatIntervalMs, heartbeatIntervalMs)
-                .onException(new DefaultExceptionListener(LEADER_REPLICATION_THREAD))
-                .daemon(true)
-                .build();
-    }
 
     private AsyncLoopThread buildLeaderReplicationResponseThread() {
         return ThreadBuilder.builder()
-                .name(threadName(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD))
-                .doWork(this::leaderUpdateCommitIndex)
+                .name(threadName(LEADER_COMMIT_THREAD))
+                .doWork(this::commit)
                 .sleepTime(heartbeatIntervalMs, heartbeatIntervalMs)
-                .onException(new DefaultExceptionListener(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD))
+                .onException(new DefaultExceptionListener(LEADER_COMMIT_THREAD))
                 .daemon(true)
                 .build();
     }
@@ -268,7 +244,7 @@ class Leader extends ServerStateMachine implements StateServer {
 
             if (request.getRequests().size() == 1 && voterConfigManager.maybeUpdateLeaderConfig(request.getRequests().get(0),
                     state.getConfigState(), journal, () -> doAppendJournalEntryCallable(request, responseFuture),
-                    serverUri, followers, replicationParallelism, appendEntriesRpcMetricMap)) {
+                    serverUri, this)) {
                 return;
             }
             doAppendJournalEntry(request, responseFuture);
@@ -308,9 +284,22 @@ class Leader extends ServerStateMachine implements StateServer {
             journalEntries.add(entry);
         }
         appendAndCallback(journalEntries, request.getResponseConfig(), responseFuture);
-        threads.wakeupThread(threadName(LEADER_REPLICATION_THREAD));
+        wakeupReplicationThreads();
         threads.wakeupThread(threadName(FLUSH_JOURNAL_THREAD));
         appendJournalMetric.end(() -> journalEntries.stream().mapToLong(JournalEntry::getLength).sum());
+    }
+
+    private void wakeupReplicationThreads() {
+        for (ReplicationDestination follower : followers) {
+            try {
+                threads.wakeupThread(follower.getReplicationThreadName());
+            } catch (NoSuchElementException e) {
+                logger.warn("Wake up {} failed, follower {} maybe removed.", follower.getReplicationThreadName(), follower.getUri());
+            }
+        }
+        if (followers.isEmpty()) {
+            threads.wakeupThread(threadName(LEADER_COMMIT_THREAD));
+        }
     }
 
     private void appendAndCallback(List<JournalEntry> journalEntries, ResponseConfig responseConfig, ResponseFuture responseFuture) throws InterruptedException {
@@ -335,145 +324,6 @@ class Leader extends ServerStateMachine implements StateServer {
             flushCallbacks.put(new Callback(offset, responseFuture));
         }
         callbackBarrier.set(offset);
-    }
-
-    /**
-     * 反复检查每个FOLLOWER的下一条复制位置nextIndex和本地日志log[]的最大位置，
-     * 如果存在差异，发送asyncAppendEntries请求，同时更新对应FOLLOWER的nextIndex。
-     * 复制发送线程只负责发送asyncAppendEntries请求，不处理响应。
-     */
-    private void replication() {
-        // 如果是单节点，直接唤醒leaderReplicationResponseHandlerThread，减少响应时延。
-        if (serverState() == ServerState.RUNNING && followers.isEmpty()) {
-            threads.wakeupThread(threadName(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD));
-            leaderShipDeadLineMs.set(System.currentTimeMillis() + heartbeatIntervalMs);
-        }
-
-        boolean hasData;
-        do {
-            hasData = false;
-
-            for (ReplicationDestination follower : followers) {
-                long maxIndex = journal.maxIndex();
-                if (follower.nextIndex < maxIndex) {
-                    List<byte[]> entries = journal.readRaw(follower.getNextIndex(), this.replicationBatchSize);
-                    AsyncAppendEntriesRequest request =
-                            new AsyncAppendEntriesRequest(currentTerm, serverUri,
-                                    follower.getNextIndex() - 1, getPreLogTerm(follower.getNextIndex()),
-                                    entries, journal.commitIndex(), maxIndex);
-                    sendAppendEntriesRequest(follower, request);
-                    follower.setNextIndex(follower.getNextIndex() + entries.size());
-                    hasData = true;
-                }
-            }
-
-        } while (serverState() == ServerState.RUNNING &&
-                !Thread.currentThread().isInterrupted() &&
-                hasData);
-
-    }
-
-    private void sendHeartbeat() {
-        for (ReplicationDestination follower : followers) {
-            // Send heartbeat
-            if (System.currentTimeMillis() - follower.getLastHeartbeatRequestTime() >= heartbeatIntervalMs) {
-                AsyncAppendEntriesRequest request =
-                        new AsyncAppendEntriesRequest(currentTerm, serverUri,
-                                follower.getNextIndex() - 1, getPreLogTerm(follower.getNextIndex()),
-                                Collections.emptyList(), journal.commitIndex(), journal.maxIndex());
-                sendAppendEntriesRequest(follower, request);
-            }
-        }
-
-    }
-
-    private void sendAppendEntriesRequest(ReplicationDestination follower, AsyncAppendEntriesRequest request) {
-        if (serverState() != ServerState.RUNNING || request.getTerm() != currentTerm) {
-            logger.warn("Drop AsyncAppendEntries Request: follower: {}, term: {}, " +
-                            "prevLogIndex: {}, prevLogTerm: {}, entries: {}, " +
-                            "leader: {}, leaderCommit: {}, {}.",
-                    follower.getUri(), request.getTerm(), request.getPrevLogIndex(),
-                    request.getPrevLogTerm(), request.getEntries().size(),
-                    request.getLeader(), request.getLeaderCommit(),
-                    voterInfo());
-            return;
-        }
-        if (logger.isDebugEnabled()) {
-            final boolean isHeartbeat = null == request.getEntries() || request.getEntries().isEmpty();
-            logger.debug("Send {}, " +
-                            "follower: {}, " +
-                            "term: {}, leader: {}, prevLogIndex: {}, prevLogTerm: {}, " +
-                            "entries: {}, leaderCommit: {}, {}.",
-                    isHeartbeat ? "heartbeat" : "appendEntriesRequest",
-                    follower.getUri(),
-                    request.getTerm(), request.getLeader(), request.getPrevLogIndex(), request.getPrevLogTerm(),
-                    request.getEntries().size(), request.getLeaderCommit(), voterInfo());
-        }
-        follower.setLastHeartbeatRequestTime(System.currentTimeMillis());
-
-        final JMetric metric = appendEntriesRpcMetricMap.get(follower.getUri());
-
-        long start = metric == null ? 0L : System.nanoTime();
-
-        serverRpcProvider.getServerRpc(follower.getUri())
-                .thenCompose(serverRpc -> serverRpc.asyncAppendEntries(request))
-                .exceptionally(AsyncAppendEntriesResponse::new)
-                .thenApply(response -> {
-                    if (null != metric) {
-                        metric.mark(() -> System.nanoTime() - start, () -> request.getEntries().stream().mapToLong(e -> e.length).sum());
-                    }
-                    return response;
-                })
-                .thenAccept(response -> leaderOnAppendEntriesResponse(follower, request, response));
-
-
-    }
-
-    private void leaderOnAppendEntriesResponse(ReplicationDestination follower, AsyncAppendEntriesRequest request, AsyncAppendEntriesResponse response) {
-        if (response.success()) { // 只是RPC响应成功，不代表复制成功
-            if (logger.isDebugEnabled()) {
-                logger.debug("Update lastHeartbeatResponseTime of {}, {}.", follower.getUri(), voterInfo());
-            }
-            follower.setLastHeartbeatResponseTime(System.currentTimeMillis());
-
-            // 计算leader有效期
-            long[] sortedHeartbeatResponseTimes = followers.stream().mapToLong(ReplicationDestination::getLastHeartbeatResponseTime)
-                    .sorted().toArray();
-
-            leaderShipDeadLineMs.set(
-                    (sortedHeartbeatResponseTimes[sortedHeartbeatResponseTimes.length / 2]) + heartbeatIntervalMs);
-
-
-            if (response.getTerm() == currentTerm) {
-                if (response.getEntryCount() > 0) {
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("Handle appendEntriesResponse, success: {}, journalIndex: {}, " +
-                                        "entryCount: {}, term: {}, follower: {}, {}.",
-                                response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
-                                follower.getUri(), voterInfo());
-                    }
-                    follower.addResponse(response);
-                    threads.wakeupThread(threadName(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD));
-                } else if (logger.isDebugEnabled()) {
-                    logger.debug("Ignore heartbeat response, success: {}, journalIndex: {}, " +
-                                    "entryCount: {}, term: {}, follower: {}, {}.",
-                            response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
-                            follower.getUri(), voterInfo());
-                }
-
-            } else {
-                logger.warn("Drop outdated AsyncAppendEntries Response: follower: {}, term: {}, index: {}, {}.",
-                        follower.getUri(), response.getTerm(), response.getJournalIndex(), voterInfo());
-            }
-        } else if (request.getEntries().size() > 0) { // 心跳不重试
-
-            logger.warn("Replication response error: {}.", response.errorString());
-            delaySendAsyncAppendEntriesRpc(follower, request);
-        }
-    }
-
-    private void delaySendAsyncAppendEntriesRpc(ReplicationDestination follower, AsyncAppendEntriesRequest request) {
-        this.scheduledExecutor.schedule(() -> sendAppendEntriesRequest(follower, request), heartbeatIntervalMs, TimeUnit.MILLISECONDS);
     }
 
     private int getPreLogTerm(long currentLogIndex) {
@@ -505,12 +355,12 @@ class Leader extends ServerStateMachine implements StateServer {
      * 5.2 N > commitIndex
      * 5.3 log[N].term == currentTerm
      */
-    private void leaderUpdateCommitIndex() throws InterruptedException, ExecutionException, IOException {
-        long lastCommit = -1;
-
-        while ((journal.commitIndex() > lastCommit && (lastCommit = journal.commitIndex()) < journal.maxIndex()) ||
-                (followers.stream().anyMatch(f -> !f.pendingResponses.isEmpty()))  // 有待处理的AsyncAppendEntries响应
-                ) {
+    private void commit() throws IOException {
+        while (serverState() == ServerState.RUNNING &&
+                !Thread.currentThread().isInterrupted() &&
+                (journal.commitIndex()< journal.maxIndex() && (
+                        followers.isEmpty() || isAnyFollowerNextIndexUpdated.get()
+                        ))) {
             ConfigState configState = state.getConfigState();
             List<ReplicationDestination> finalFollowers = new ArrayList<>(followers);
             long N = 0L;
@@ -518,21 +368,7 @@ class Leader extends ServerStateMachine implements StateServer {
                 N = journal.maxIndex();
             } else {
 
-
-                List<Callable<Boolean>> callables =
-                        finalFollowers.stream()
-                                .map(follower -> (Callable<Boolean>) () -> leaderHandleAppendEntriesResponse(follower))
-                                .collect(Collectors.toList());
-
-                boolean isAnyFollowerMatchIndexUpdated = false;
-                for (Future<Boolean> future : asyncExecutor.invokeAll(callables)) {
-                    if (future.get()) {
-                        isAnyFollowerMatchIndexUpdated = true;
-                        break;
-                    }
-                }
-
-                if (isAnyFollowerMatchIndexUpdated) {
+                if (isAnyFollowerNextIndexUpdated.compareAndSet(true, false)) {
                     if (configState.isJointConsensus()) {
                         long[] sortedMatchIndexInOldConfig = finalFollowers.stream()
                                 .filter(follower -> configState.getConfigOld().contains(follower.getUri()))
@@ -574,96 +410,7 @@ class Leader extends ServerStateMachine implements StateServer {
     private void onCommitted() {
         // 唤醒状态机线程
         threads.wakeupThread(threadName(STATE_MACHINE_THREAD));
-        threads.wakeupThread(threadName(LEADER_REPLICATION_THREAD));
-    }
-
-    /**
-     * 处理follower中所有AppendEntriesRPC的响应
-     * @param follower follower
-     * @return 是否更新了follower的matchIndex
-     */
-    private boolean leaderHandleAppendEntriesResponse(ReplicationDestination follower) {
-        boolean isMatchIndexUpdated = false;
-        AsyncAppendEntriesResponse response;
-        while (serverState() == ServerState.RUNNING &&
-                (response = follower.pendingResponses.poll()) != null) {
-            if (response.getEntryCount() > 0) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Received appendEntriesResponse, success: {}, journalIndex: {}, " +
-                                    "entryCount: {}, term: {}, follower: {}, {}.",
-                            response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
-                            follower.getUri(), voterInfo());
-                }
-            } else {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Received heartbeat response, success: {}, journalIndex: {}, " +
-                                    "entryCount: {}, term: {}, follower: {}, {}.",
-                            response.isSuccess(), response.getJournalIndex(), response.getEntryCount(), response.getTerm(),
-                            follower.getUri(), voterInfo());
-                }
-            }
-            if (currentTerm == response.getTerm()) {
-                if (response.isSuccess()) {
-
-                    if (follower.getRepStartIndex() == response.getJournalIndex()) {
-                        follower.setRepStartIndex(follower.getRepStartIndex() + response.getEntryCount());
-                        follower.setMatchIndex(response.getJournalIndex() + response.getEntryCount());
-                        isMatchIndexUpdated = true;
-                        if (response.getEntryCount() > 0) {
-                            if (logger.isDebugEnabled()) {
-                                logger.debug("Replication success, RepStartIndex: {}, matchIndex: {}, follower: {}, {}.",
-                                        follower.getRepStartIndex(), follower.getMatchIndex(), follower.getUri(),
-                                        voterInfo());
-                            }
-                        }
-                    } else {
-                        // 出现空洞，重新放回队列，等待后续处理
-                        follower.addResponse(response);
-                        break;
-                    }
-                } else {
-                    // 失败
-                    if (follower.getRepStartIndex() == response.getJournalIndex()) {
-
-                        // 如果回退到最小位置，先安装快照
-                        if (follower.getRepStartIndex() <= snapshots.firstKey()) {
-                            installSnapshot(follower, snapshots.firstEntry().getValue());
-                            follower.setRepStartIndex(snapshots.firstKey());
-                            follower.setNextIndex(snapshots.firstKey());
-
-                        } else {
-                            // 需要回退
-                            int rollbackSize = (int) Math.min(replicationBatchSize, follower.getRepStartIndex() - snapshots.firstKey());
-                            follower.repStartIndex -= rollbackSize;
-
-
-                            sendAppendEntriesRequest(follower,
-                                    new AsyncAppendEntriesRequest(currentTerm, serverUri,
-                                            follower.repStartIndex - 1,
-                                            getTerm(follower.repStartIndex - 1),
-                                            journal.readRaw(follower.repStartIndex, rollbackSize),
-                                            journal.commitIndex(), journal.maxIndex()));
-
-                            if (response.getEntryCount() > 0) {
-                                delaySendAsyncAppendEntriesRpc(follower, new AsyncAppendEntriesRequest(currentTerm, serverUri,
-                                        response.getJournalIndex() - 1,
-                                        journal.getTerm(response.getJournalIndex() - 1),
-                                        journal.readRaw(response.getJournalIndex(), response.getEntryCount()),
-                                        journal.commitIndex(), journal.maxIndex()));
-                            }
-                        }
-
-                    } else if (response.getEntryCount() > 0 && follower.getRepStartIndex() < response.getJournalIndex()) {
-                        delaySendAsyncAppendEntriesRpc(follower, new AsyncAppendEntriesRequest(currentTerm, serverUri,
-                                response.getJournalIndex() - 1,
-                                journal.getTerm(response.getJournalIndex() - 1),
-                                journal.readRaw(response.getJournalIndex(), response.getEntryCount()),
-                                journal.commitIndex(), journal.maxIndex()));
-                    }
-                }
-            }
-        }
-        return isMatchIndexUpdated;
+        wakeupReplicationThreads();
     }
 
     private int getTerm(long index) {
@@ -706,6 +453,9 @@ class Leader extends ServerStateMachine implements StateServer {
 
     private void callback() {
         long callbackIndex = journalFlushIndex.get();
+        if (callbackIndex > callbackBarrier.get()) {
+            flushCallbacks.callbackBefore(callbackBarrier.get());
+        }
         while (callbackIndex > callbackBarrier.get()) {
             Thread.yield();
         }
@@ -757,26 +507,25 @@ class Leader extends ServerStateMachine implements StateServer {
         // 初始化followers
         this.followers.addAll(state.getConfigState().voters().stream()
                 .filter(uri -> !uri.equals(serverUri))
-                .map(uri -> new ReplicationDestination(uri, journal.maxIndex(), replicationParallelism))
+                .map(uri -> new ReplicationDestination(uri, journal.maxIndex()))
                 .collect(Collectors.toList()));
 
         this.followers.forEach(follower ->
                 appendEntriesRpcMetricMap.put(
                         follower.getUri(),
-                        metricProvider.getMetric(getMetricName(METRIC_APPEND_ENTRIES_RPC, follower.getUri()))));
+                        metricProvider.getMetric(MetricNames.compose(METRIC_APPEND_ENTRIES_RPC, follower.getUri()))));
         this.appendJournalMetric = metricProvider.getMetric(MetricNames.METRIC_APPEND_JOURNAL);
         this.updateClusterStateMetric = metricProvider.getMetric(MetricNames.METRIC_UPDATE_CLUSTER_STATE);
 
 
         this.threads.createThread(buildLeaderAppendJournalEntryThread());
-        this.threads.createThread(buildLeaderReplicationThread());
         this.threads.createThread(buildLeaderReplicationResponseThread());
         this.threads.createThread(buildCallbackThread());
-        this.threads.startThread(threadName(LEADER_APPEND_ENTRY_THREAD));
+        this.threads.startThread(threadName(LEADER_COMMIT_THREAD));
+        this.followers.forEach(ReplicationDestination::start);
         this.threads.startThread(threadName(LEADER_CALLBACK_THREAD));
-        this.threads.startThread(threadName(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD));
-        this.threads.startThread(threadName(LEADER_REPLICATION_THREAD));
-        heartbeatScheduledFuture = scheduledExecutor.scheduleAtFixedRate(this::sendHeartbeat, heartbeatIntervalMs, heartbeatIntervalMs, TimeUnit.MILLISECONDS);
+        this.threads.startThread(threadName(LEADER_APPEND_ENTRY_THREAD));
+
         journalTransactionManager.start();
         state.addInterceptor(this.journalTransactionInterceptor);
         state.addInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT, this.leaderAnnouncementInterceptor);
@@ -826,21 +575,17 @@ class Leader extends ServerStateMachine implements StateServer {
         }
 
         state.removeInterceptor(InternalEntryType.TYPE_LEADER_ANNOUNCEMENT, leaderAnnouncementInterceptor);
-        ;
         state.removeInterceptor(this.journalTransactionInterceptor);
         journalTransactionManager.stop();
         this.threads.stopThread(threadName(LEADER_APPEND_ENTRY_THREAD));
+        this.followers.forEach(ReplicationDestination::stop);
+
         this.threads.stopThread(threadName(LEADER_CALLBACK_THREAD));
         failAllPendingCallbacks();
-        this.threads.stopThread(threadName(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD));
-        this.threads.stopThread(threadName(LEADER_REPLICATION_THREAD));
+        this.threads.stopThread(threadName(LEADER_COMMIT_THREAD));
         this.threads.removeThread(threadName(LEADER_APPEND_ENTRY_THREAD));
         this.threads.removeThread(threadName(LEADER_CALLBACK_THREAD));
-        this.threads.removeThread(threadName(LEADER_REPLICATION_RESPONSES_HANDLER_THREAD));
-        this.threads.removeThread(threadName(LEADER_REPLICATION_THREAD));
-        if (null != heartbeatScheduledFuture) {
-            heartbeatScheduledFuture.cancel(false);
-        }
+        this.threads.removeThread(threadName(LEADER_COMMIT_THREAD));
         removeAppendEntriesRpcMetrics();
         metricProvider.removeMetric(MetricNames.METRIC_APPEND_JOURNAL);
         metricProvider.removeMetric(MetricNames.METRIC_UPDATE_CLUSTER_STATE);
@@ -867,7 +612,7 @@ class Leader extends ServerStateMachine implements StateServer {
 
     private void removeAppendEntriesRpcMetrics() {
         appendEntriesRpcMetricMap.forEach((followerUri, metric) ->
-                metricProvider.removeMetric(getMetricName(METRIC_APPEND_ENTRIES_RPC, followerUri)));
+                metricProvider.removeMetric(MetricNames.compose(METRIC_APPEND_ENTRIES_RPC, followerUri)));
     }
 
     void callback(long lastApplied, byte[] result) {
@@ -917,8 +662,26 @@ class Leader extends ServerStateMachine implements StateServer {
      * 否则反复重新检查（这段时间有可能会有新的心跳响应回来更新上次心跳时间），直到成功或者超时。
      */
     private boolean checkLeadership() {
+        if (!isLeaderAnnouncementApplied.get()) {
+            return false;
+        }
 
-        return isLeaderAnnouncementApplied.get() && System.currentTimeMillis() <= leaderShipDeadLineMs.get();
+        if (followers.isEmpty()) {
+            return true;
+        }
+
+        if (System.currentTimeMillis() <= leaderShipDeadLineMs.get()) {
+            return true;
+        } else {
+            // 重新计算leaderShipDeadLineMs
+
+            long[] sortedHeartbeatResponseTimes = followers.stream().mapToLong(ReplicationDestination::getLastHeartbeatResponseTime)
+                    .sorted().toArray();
+
+            leaderShipDeadLineMs.set(
+                    (sortedHeartbeatResponseTimes[sortedHeartbeatResponseTimes.length / 2]) + heartbeatIntervalMs);
+            return System.currentTimeMillis() <= leaderShipDeadLineMs.get();
+        }
     }
 
     CompletableFuture<JournalKeeperTransactionContext> createTransaction(Map<String, String> context) {
@@ -946,12 +709,29 @@ class Leader extends ServerStateMachine implements StateServer {
         return Collections.unmodifiableList(followers);
     }
 
+    void addFollower(URI followerUri) {
+        ReplicationDestination follower = new Leader.ReplicationDestination(followerUri, journal.maxIndex());
+        follower.start();
+        followers.add(follower);
+    }
+
+    void removeFollower(URI followerUri) {
+        ReplicationDestination follower = followers.stream().filter(f -> Objects.equals(f.getUri(), followerUri)).findAny().orElse(null);
+        if(null != follower) {
+            follower.stop();
+            appendEntriesRpcMetricMap.remove(followerUri);
+            followers.remove(follower);
+        }
+    }
+
+    Collection<URI> getFollowerUris() {
+        return followers.stream().map(ReplicationDestination::getUri).collect(Collectors.toSet());
+    }
 
     private static class UpdateStateRequestResponse {
         private final UpdateClusterStateRequest request;
         private final ResponseFuture responseFuture;
         private final long start = System.nanoTime();
-        private long logIndex;
 
         UpdateStateRequestResponse(UpdateClusterStateRequest request, JMetric metric) {
             this.request = request;
@@ -970,25 +750,14 @@ class Leader extends ServerStateMachine implements StateServer {
         ResponseFuture getResponseFuture() {
             return this.responseFuture;
         }
-
-        public long getLogIndex() {
-            return logIndex;
-        }
-
-        public void setLogIndex(long logIndex) {
-            this.logIndex = logIndex;
-        }
     }
 
 
-    static class ReplicationDestination {
+    class ReplicationDestination {
 
 
         private final URI uri;
-        /**
-         * 仅LEADER使用，待处理的asyncAppendEntries Response，按照Response中的logIndex排序。
-         */
-        private final BlockingQueue<AsyncAppendEntriesResponse> pendingResponses;
+
         /**
          * 需要发给它的下一个日志条目的索引（初始化为领导人上一条日志的索引值 +1）
          */
@@ -997,28 +766,124 @@ class Leader extends ServerStateMachine implements StateServer {
          * 已经复制到该服务器的日志的最高索引值（从 0 开始递增）
          */
         private long matchIndex = 0L;
-        /**
-         * 所有在途的日志复制请求中日志位置的最小值（初始化为nextIndex）
-         */
-        private long repStartIndex;
+
         /**
          * 上次从FOLLOWER收到心跳（asyncAppendEntries）成功响应的时间戳
          */
         private long lastHeartbeatResponseTime;
         private long lastHeartbeatRequestTime = 0L;
 
-        ReplicationDestination(URI uri, long nextIndex, int replicationParallelism) {
+        private final String replicationThreadName;
+        private final JMetric metric;
+
+
+        ReplicationDestination(URI uri, long nextIndex) {
             this.uri = uri;
             this.nextIndex = nextIndex;
-            this.repStartIndex = nextIndex;
             this.lastHeartbeatResponseTime = 0L;
-            pendingResponses =
-                    new PriorityBlockingQueue<>(replicationParallelism * 2,
-                            Comparator.comparing(AsyncAppendEntriesResponse::getTerm)
-                                    .thenComparing(AsyncAppendEntriesResponse::getJournalIndex)
-                    );
+            replicationThreadName = LEADER_REPLICATION_THREAD + "-" + serverUri +  "->" + uri;
+            metric = Leader.this.appendEntriesRpcMetricMap.get(uri);
         }
 
+        private AsyncLoopThread buildLeaderReplicationThread() {
+            return ThreadBuilder.builder()
+                    .name(replicationThreadName)
+                    .doWork(this::replication)
+                    .sleepTime(heartbeatIntervalMs, heartbeatIntervalMs)
+                    .onException(new DefaultExceptionListener(replicationThreadName))
+                    .daemon(true)
+                    .build();
+        }
+
+        String getReplicationThreadName() {
+            return replicationThreadName;
+        }
+
+        private void start() {
+            Leader.this.threads.createThread(buildLeaderReplicationThread());
+            Leader.this.threads.startThread(replicationThreadName);
+        }
+
+        private void stop() {
+            Leader.this.threads.stopThread(replicationThreadName);
+            Leader.this.threads.removeThread(replicationThreadName);
+        }
+
+        private void replication() {
+            long maxIndex;
+            while (serverState() == ServerState.RUNNING &&
+                    !Thread.currentThread().isInterrupted() &&
+                    (nextIndex < (maxIndex = journal.maxIndex()) // 还有需要复制的数据
+                    ||
+                    System.currentTimeMillis() - lastHeartbeatRequestTime >= heartbeatIntervalMs) // 距离上次复制/心跳已经超过一个心跳超时了
+            ) {
+                long start = metric == null ? 0L : System.nanoTime();
+
+                // 如果有必要，先安装第一个快照
+                Map.Entry<Long, JournalKeeperState> fistSnapShotEntry = snapshots.firstEntry();
+                maybeInstallSnapshotFirst(fistSnapShotEntry);
+
+                // 读取需要复制的Entry
+                List<byte[]> entries;
+                if (nextIndex < maxIndex) { // 复制
+                    entries = journal.readRaw(nextIndex, Leader.this.replicationBatchSize);
+                } else { // 心跳
+                    entries = Collections.emptyList();
+                }
+
+                // 构建请求并发送
+                AsyncAppendEntriesRequest request =
+                        new AsyncAppendEntriesRequest(Leader.this.currentTerm, Leader.this.serverUri,
+                                nextIndex - 1, Leader.this.getPreLogTerm(nextIndex),
+                                entries, journal.commitIndex(), maxIndex);
+                AsyncAppendEntriesResponse response = null;
+                try {
+                    response = serverRpcProvider.getServerRpc(uri)
+                            .thenCompose(serverRpc -> serverRpc.asyncAppendEntries(request)).get();
+                    lastHeartbeatRequestTime = System.currentTimeMillis();
+                } catch (InterruptedException ie) {
+                    logger.warn("Replication was interrupted, from {} to {}.", Leader.this.serverUri, uri);
+                    Thread.currentThread().interrupt();
+                    break;
+                } catch (ExecutionException e) {
+                    logger.warn("Replication execution exception, from {} to {}, cause: {}.", Leader.this.serverUri, uri, null == e.getCause()? e.getMessage() : e.getCause().getMessage());
+                } catch (Throwable t) {
+                    logger.warn("Replication exception, from {} to {}, cause: {}.", Leader.this.serverUri, uri, t.getMessage());
+                }
+
+                // 处理返回的响应
+                if(null != response && response.success()) { // 成功收到响应响应
+                    lastHeartbeatResponseTime = System.currentTimeMillis();
+
+                    if (response.isSuccess()) { // 复制成功
+                        if (entries.size() > 0) {
+                            nextIndex += entries.size();
+                            matchIndex = nextIndex;
+                            isAnyFollowerNextIndexUpdated.compareAndSet(false, true);
+                            Leader.this.threads.wakeupThread(Leader.this.threadName(LEADER_COMMIT_THREAD));
+                        }
+                    } else {
+                        // 不匹配，回退
+                        int rollbackSize = (int) Math.min(replicationBatchSize, nextIndex - fistSnapShotEntry.getKey());
+                        nextIndex -= rollbackSize;
+                    }
+                    if (null != metric) {
+                        metric.mark(() -> System.nanoTime() - start, () -> request.getEntries().stream().mapToLong(e -> e.length).sum());
+                    }
+                } else { // 没收到响应或者请求失败
+                    // 等下一个心跳超时之后，再进入这个方法会自动重试
+                    break;
+                }
+
+            }
+        }
+
+        private void maybeInstallSnapshotFirst(Map.Entry<Long, JournalKeeperState> fistSnapShotEntry) {
+            if (nextIndex <= fistSnapShotEntry.getKey()) {
+                installSnapshot(this, fistSnapShotEntry.getValue());
+                nextIndex = fistSnapShotEntry.getKey();
+            }
+        }
 
         URI getUri() {
             return uri;
@@ -1028,44 +893,16 @@ class Leader extends ServerStateMachine implements StateServer {
             return nextIndex;
         }
 
-        void setNextIndex(long nextIndex) {
-            this.nextIndex = nextIndex;
-        }
-
         long getMatchIndex() {
             return matchIndex;
-        }
-
-        void setMatchIndex(long matchIndex) {
-            this.matchIndex = matchIndex;
-        }
-
-        long getRepStartIndex() {
-            return repStartIndex;
-        }
-
-        void setRepStartIndex(long repStartIndex) {
-            this.repStartIndex = repStartIndex;
         }
 
         long getLastHeartbeatResponseTime() {
             return lastHeartbeatResponseTime;
         }
 
-        void setLastHeartbeatResponseTime(long lastHeartbeatResponseTime) {
-            this.lastHeartbeatResponseTime = lastHeartbeatResponseTime;
-        }
-
-        void addResponse(AsyncAppendEntriesResponse response) {
-            pendingResponses.add(response);
-        }
-
-        public long getLastHeartbeatRequestTime() {
+        long getLastHeartbeatRequestTime() {
             return lastHeartbeatRequestTime;
-        }
-
-        public void setLastHeartbeatRequestTime(long lastHeartbeatRequestTime) {
-            this.lastHeartbeatRequestTime = lastHeartbeatRequestTime;
         }
 
         @Override
@@ -1074,7 +911,6 @@ class Leader extends ServerStateMachine implements StateServer {
                     "uri=" + uri +
                     ", nextIndex=" + nextIndex +
                     ", matchIndex=" + matchIndex +
-                    ", repStartIndex=" + repStartIndex +
                     '}';
         }
     }

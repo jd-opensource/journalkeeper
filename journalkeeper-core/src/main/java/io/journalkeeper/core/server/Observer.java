@@ -71,6 +71,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 import static io.journalkeeper.core.server.MetricNames.METRIC_OBSERVER_REPLICATION;
@@ -178,7 +179,7 @@ class Observer extends AbstractServer {
 
     }
 
-    private void installSnapshot(long index) throws InterruptedException, ExecutionException, IOException {
+    private void installSnapshot(long index) throws InterruptedException, ExecutionException, IOException, TimeoutException {
         // Observer的提交位置已经落后目标节点太多，这时需要安装快照：
         // 复制远端服务器的最新状态到当前状态
         long lastIncludedIndex = index - 1;

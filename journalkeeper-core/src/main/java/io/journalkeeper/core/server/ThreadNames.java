@@ -48,9 +48,9 @@ class ThreadNames {
      */
     static final String LEADER_REPLICATION_THREAD = "LeaderReplicationThread";
     /**
-     * Leader 处理AppendEntries RPC Response 线程
+     * Leader 提交线程
      */
-    static final String LEADER_REPLICATION_RESPONSES_HANDLER_THREAD = "LeaderReplicationResponsesHandlerThread";
+    static final String LEADER_COMMIT_THREAD = "leaderCommitThread";
 
     /**
      * Observer 从其它节点拉取消息线程

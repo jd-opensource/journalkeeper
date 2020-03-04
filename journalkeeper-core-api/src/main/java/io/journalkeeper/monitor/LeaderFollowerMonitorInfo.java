@@ -27,8 +27,6 @@ public class LeaderFollowerMonitorInfo {
     private long nextIndex = -1L;
     // 已复制索引序号	已经复制到该FOLLOWER的日志的最高索引值（从 0 开始递增）
     private long matchIndex = -1L;
-    // 在途复制请求索引起始值	所有在途的日志复制请求中日志位置的最小值（初始化为nextIndex）
-    private long repStartIndex = -1L;
     // 心跳响应时间	上次从FOLLOWER收到心跳（asyncAppendEntries）成功响应的时间戳
     private long lastHeartbeatResponseTime = -1L;
     // 心跳发送时间	上次发给FOLLOWER心跳（asyncAppendEntries）的时间戳
@@ -58,14 +56,6 @@ public class LeaderFollowerMonitorInfo {
         this.matchIndex = matchIndex;
     }
 
-    public long getRepStartIndex() {
-        return repStartIndex;
-    }
-
-    public void setRepStartIndex(long repStartIndex) {
-        this.repStartIndex = repStartIndex;
-    }
-
     public long getLastHeartbeatResponseTime() {
         return lastHeartbeatResponseTime;
     }
@@ -88,7 +78,6 @@ public class LeaderFollowerMonitorInfo {
                 "uri=" + uri +
                 ", nextIndex=" + nextIndex +
                 ", matchIndex=" + matchIndex +
-                ", repStartIndex=" + repStartIndex +
                 ", lastHeartbeatResponseTime=" + lastHeartbeatResponseTime +
                 ", lastHeartbeatRequestTime=" + lastHeartbeatRequestTime +
                 '}';

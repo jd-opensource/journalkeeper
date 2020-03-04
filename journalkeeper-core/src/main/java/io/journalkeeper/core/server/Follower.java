@@ -54,10 +54,6 @@ class Follower extends ServerStateMachine implements StateServer {
     private final VoterConfigManager voterConfigManager;
     private final Threads threads;
     private final NavigableMap<Long, JournalKeeperState> snapshots;
-    /**
-     * 待处理的asyncAppendEntries Request，按照request中的preLogTerm和prevLogIndex排序。
-     */
-    private final BlockingQueue<ReplicationRequestResponse> pendingAppendEntriesRequests;
 
     /**
      * Leader 日志当前的最大位置
@@ -73,23 +69,9 @@ class Follower extends ServerStateMachine implements StateServer {
         this.voterConfigManager = voterConfigManager;
         this.threads = threads;
         this.snapshots = snapshots;
-        pendingAppendEntriesRequests = new PriorityBlockingQueue<>(cachedRequests,
-                Comparator.comparing(ReplicationRequestResponse::getPrevLogTerm)
-                        .thenComparing(ReplicationRequestResponse::getPrevLogIndex));
-
         this.journal = journal;
         this.serverUri = serverUri;
         this.currentTerm = currentTerm;
-    }
-
-    private AsyncLoopThread buildVoterReplicationHandlerThread() {
-        return ThreadBuilder.builder()
-                .name(threadName(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD))
-                .doWork(this::followerHandleAppendEntriesRequest)
-                .sleepTime(0L, 0L)
-                .onException(new DefaultExceptionListener(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD))
-                .daemon(true)
-                .build();
     }
 
     private String threadName(String staticThreadName) {
@@ -124,11 +106,7 @@ class Follower extends ServerStateMachine implements StateServer {
      * 添加任何在已有的日志中不存在的条目
      * 如果leaderCommit > commitIndex，将commitIndex设置为leaderCommit和最新日志条目索引号中较小的一个
      */
-    private void followerHandleAppendEntriesRequest() throws InterruptedException, IOException {
-
-        ReplicationRequestResponse rr = pendingAppendEntriesRequests.take();
-        AsyncAppendEntriesRequest request = rr.getRequest();
-        AsyncAppendEntriesResponse response = null;
+    AsyncAppendEntriesResponse handleAppendEntriesRequest(AsyncAppendEntriesRequest request) {
 
         boolean notHeartBeat = null != request.getEntries() && request.getEntries().size() > 0;
         // Reply false if log does not contain an entry at prevLogIndex
@@ -136,12 +114,10 @@ class Follower extends ServerStateMachine implements StateServer {
         if (notHeartBeat &&
                 (request.getPrevLogIndex() < journal.minIndex() - 1 ||
                 request.getPrevLogIndex() >= journal.maxIndex() ||
-                getTerm(rr.getPrevLogIndex()) != request.getPrevLogTerm())
+                getTerm(request.getPrevLogIndex()) != request.getPrevLogTerm())
         ) {
-            response = new AsyncAppendEntriesResponse(false, rr.getPrevLogIndex() + 1,
+            return new AsyncAppendEntriesResponse(false, request.getPrevLogIndex() + 1,
                     request.getTerm(), request.getEntries().size());
-            rr.getResponseFuture().complete(response);
-            return;
         }
 
         try {
@@ -173,9 +149,9 @@ class Follower extends ServerStateMachine implements StateServer {
             if (leaderMaxIndex < request.getMaxIndex()) {
                 leaderMaxIndex = request.getMaxIndex();
             }
-            response = new AsyncAppendEntriesResponse(true, rr.getPrevLogIndex() + 1,
+            return new AsyncAppendEntriesResponse(true, request.getPrevLogIndex() + 1,
                     currentTerm, request.getEntries().size());
-            rr.getResponseFuture().complete(response);
+
         } catch (Throwable t) {
 
             logger.warn("Exception when handle AsyncReplicationRequest, " +
@@ -184,30 +160,9 @@ class Follower extends ServerStateMachine implements StateServer {
                     request.getTerm(), request.getLeader(), request.getPrevLogIndex(),
                     request.getPrevLogTerm(), request.getEntries().size(),
                     request.getLeaderCommit(), voterInfo(), t);
-            rr.responseFuture.complete(new AsyncAppendEntriesResponse(t));
+            return new AsyncAppendEntriesResponse(t);
         }
 
-    }
-
-
-    CompletableFuture<AsyncAppendEntriesResponse> addAppendEntriesRequest(AsyncAppendEntriesRequest request) {
-
-        ReplicationRequestResponse requestResponse = new ReplicationRequestResponse(request);
-        if (serverState() == ServerState.RUNNING) {
-            pendingAppendEntriesRequests.add(requestResponse);
-//            if (request.getEntries() == null || request.getEntries().size() == 0) {
-//                // 心跳直接返回成功
-//                requestResponse.getResponseFuture().complete(new AsyncAppendEntriesResponse(true, request.getPrevLogIndex() + 1,
-//                        currentTerm, request.getEntries().size()));
-//            }
-        } else {
-            requestResponse.getResponseFuture().complete(
-                    new AsyncAppendEntriesResponse(
-                            new IllegalStateException(String.format("Follower not running! state: %s.",
-                                    serverState().toString()))));
-        }
-
-        return requestResponse.getResponseFuture();
     }
 
     long getLeaderMaxIndex() {
@@ -217,22 +172,10 @@ class Follower extends ServerStateMachine implements StateServer {
     @Override
     protected void doStart() {
         super.doStart();
-        threads.createThread(buildVoterReplicationHandlerThread());
-        threads.startThread(threadName(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD));
     }
 
     @Override
     protected void doStop() {
-        // 等待所有的请求都处理完成
-        while (!pendingAppendEntriesRequests.isEmpty()) {
-            try {
-                Thread.sleep(50L);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }
-        threads.stopThread(threadName(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD));
-        threads.removeThread(threadName(VOTER_REPLICATION_REQUESTS_HANDLER_THREAD));
         super.doStop();
     }
 
@@ -244,34 +187,4 @@ class Follower extends ServerStateMachine implements StateServer {
         this.readyForStartPreferredLeaderElection = readyForStartPreferredLeaderElection;
     }
 
-    int getReplicationQueueSize() {
-        return pendingAppendEntriesRequests.size();
-    }
-
-    static class ReplicationRequestResponse {
-        private final AsyncAppendEntriesRequest request;
-        private final CompletableFuture<AsyncAppendEntriesResponse> responseFuture;
-
-
-        ReplicationRequestResponse(AsyncAppendEntriesRequest request) {
-            this.request = request;
-            responseFuture = new CompletableFuture<>();
-        }
-
-        AsyncAppendEntriesRequest getRequest() {
-            return request;
-        }
-
-        CompletableFuture<AsyncAppendEntriesResponse> getResponseFuture() {
-            return responseFuture;
-        }
-
-        int getPrevLogTerm() {
-            return request.getPrevLogTerm();
-        }
-
-        long getPrevLogIndex() {
-            return request.getPrevLogIndex();
-        }
-    }
 }

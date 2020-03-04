@@ -87,13 +87,12 @@ public class JournalStoreTest {
     public void writeReadTest() throws Exception {
         // 单分区和多分区
         List<Set<Integer>> partitionsList = Arrays.asList(
-                Sets.newSet(0),
                 Sets.newSet(0, 1, 2, 3, 4)
         );
 
         // Raft 节点数量
         List<Integer> nodesList = Arrays.asList(
-                1, 2, 3, 4, 5
+                1, 3
         );
 
         // 响应类型
@@ -105,15 +104,26 @@ public class JournalStoreTest {
         for (Set<Integer> partitions : partitionsList) {
             for (Integer nodes : nodesList) {
                 for (ResponseConfig responseConfig : responseConfigList) {
-                    writeReadTest(nodes, partitions, 1024, 10, 10L * 1024 * 1024, false, responseConfig, true);
+                    writeReadTest(nodes, partitions, 1024, 10, 10L * 1024 * 1024, false, responseConfig, true, null);
                     after();
                     before();
-                    writeReadTest(nodes, partitions, 1024, 10, 10L * 1024 * 1024, true, responseConfig, true);
+                    writeReadTest(nodes, partitions, 1024, 10, 10L * 1024 * 1024, true, responseConfig, true, null);
                     after();
                     before();
                 }
             }
         }
+
+    }
+    @Test
+    public void tempTest() throws Exception {
+        // 单分区和多分区
+        List<Set<Integer>> partitionsList = Arrays.asList(
+                Sets.newSet(0, 1, 2, 3, 4)
+        );
+
+        writeReadTest(1, Sets.newSet(0, 1, 2, 3, 4), 1024, 10, 10L * 1024 * 1024, true, ResponseConfig.PERSISTENCE, true, null);
+
 
     }
 
@@ -224,7 +234,15 @@ public class JournalStoreTest {
     @Test
     public void writePerformanceTest() throws Exception {
         Set<Integer> partitions = Sets.newSet(0, 1, 2, 3, 4);
-        writeReadTest(3, partitions,1024, 10, 1L * 1024 * 1024 * 1024, false, ResponseConfig.REPLICATION, true);
+        Properties properties = new Properties();
+        properties.setProperty("cache_requests", String.valueOf(10L * 1024));
+        properties.setProperty("enable_events", String.valueOf(false));
+        properties.setProperty("print_state_interval_sec", String.valueOf(5));
+        properties.setProperty("enable_metric", String.valueOf(true));
+        properties.setProperty("print_metric_interval_sec", String.valueOf(5));
+        properties.setProperty("replication_batch_size", String.valueOf( 1024));
+
+        writeReadTest(2, partitions,1024, 10, 2L * 1024 * 1024 * 1024, true, ResponseConfig.RECEIVE, false, properties);
     }
 
     /**
@@ -236,10 +254,10 @@ public class JournalStoreTest {
      * @param totalBytes 总计写入字节数
      * @param responseConfig 响应类型
      */
-    private void writeReadTest(int nodes, Set<Integer> partitions, int entrySize, int batchSize, long totalBytes, boolean async, ResponseConfig responseConfig, boolean enableRead) throws Exception {
+    private void writeReadTest(int nodes, Set<Integer> partitions, int entrySize, int batchSize, long totalBytes, boolean async, ResponseConfig responseConfig, boolean enableRead, Properties properties) throws Exception {
         logger.info("Start write read test, nodes: {}, partitions: {}, entrySize: {}, batchSize: {}, totalBytes: {}, response config: {}, async: {}.",
                 nodes, partitions,entrySize, batchSize,Format.formatSize(totalBytes), responseConfig, async);
-        List<JournalStoreServer> servers = createServers(nodes, base, partitions);
+        List<JournalStoreServer> servers = createServers(nodes, base, partitions,properties);
         JournalEntryParser journalEntryParser = new DefaultJournalEntryParser();
         List<Integer> partitionList = new ArrayList<>(partitions);
         byte[] rawEntryBytes = ByteUtils.createFixedSizeBytes(entrySize);
@@ -756,16 +774,16 @@ public class JournalStoreTest {
             Properties properties = new Properties();
             properties.setProperty("working_dir", workingDir.toString());
             properties.setProperty("snapshot_step", "0");
-            properties.setProperty("cache_requests", String.valueOf(10L * 1024));
-            properties.setProperty("enable_events", String.valueOf(false));
             properties.setProperty("disable_logo", "true");
+
+
 
             if (null != props) {
                 properties.putAll(props);
             }
 //            properties.setProperty("print_metric_interval_sec", String.valueOf(5));
 //            properties.setProperty("enable_metric", String.valueOf(true));
-//            properties.setProperty("print_state_interval_sec", String.valueOf(5));
+            properties.setProperty("print_state_interval_sec", String.valueOf(5));
 //            properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
 //            properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
             propertiesList.add(properties);

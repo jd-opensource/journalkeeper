@@ -210,10 +210,6 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
                 properties.getProperty(
                         Config.REPLICATION_BATCH_SIZE_KEY,
                         String.valueOf(Config.DEFAULT_REPLICATION_BATCH_SIZE))));
-        config.setReplicationParallelism(Integer.parseInt(
-                properties.getProperty(
-                        Config.REPLICATION_PARALLELISM_KEY,
-                        String.valueOf(Config.DEFAULT_REPLICATION_PARALLELISM))));
         config.setCacheRequests(Integer.parseInt(
                 properties.getProperty(
                         Config.CACHE_REQUESTS_KEY,
@@ -402,9 +398,9 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
 
             this.leader = new Leader(journal, state, snapshots, currentTerm.get(),
                     uri, config.getCacheRequests(), config.getHeartbeatIntervalMs(), config.getRpcTimeoutMs(),
-                    config.getReplicationParallelism(), config.getReplicationBatchSize(),
+                    config.getReplicationBatchSize(),
                     config.getSnapshotIntervalSec(), threads,
-                    this, this, asyncExecutor, scheduledExecutor, voterConfigManager, this, this,
+                    this, this, scheduledExecutor, voterConfigManager, this,
                     this.journalEntryParser, config.getTransactionTimeoutMs(), snapshots);
             leader.start();
             this.leaderUri = this.uri;
@@ -498,7 +494,7 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
             leaderUri = request.getLeader();
         }
 
-        return follower.addAppendEntriesRequest(request);
+        return CompletableFuture.completedFuture(follower.handleAppendEntriesRequest(request));
     }
 
     /**
@@ -596,10 +592,10 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
     //snapshot’s cluster configuration)
     @Override
     public CompletableFuture<InstallSnapshotResponse> installSnapshot(InstallSnapshotRequest request) {
-        JournalKeeperState snapshot;
         if (checkTerm(request.getTerm())) {
             return CompletableFuture.completedFuture(new InstallSnapshotResponse(currentTerm.get()));
         }
+        lastHeartbeat = System.currentTimeMillis();
         return installSnapshotAsync(request);
     }
 
@@ -1017,7 +1013,6 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         public final static long DEFAULT_HEARTBEAT_INTERVAL_MS = 100L;
         public final static long DEFAULT_ELECTION_TIMEOUT_MS = 300L;
         public final static int DEFAULT_REPLICATION_BATCH_SIZE = 128;
-        public final static int DEFAULT_REPLICATION_PARALLELISM = 16;
         public final static int DEFAULT_CACHE_REQUESTS = 1024;
         public final static long DEFAULT_TRANSACTION_TIMEOUT_MS = 10L * 60 * 1000;
         public final static int DEFAULT_PRINT_STATE_INTERVAL_SEC = 0;
@@ -1025,7 +1020,6 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         public final static String HEARTBEAT_INTERVAL_KEY = "heartbeat_interval_ms";
         public final static String ELECTION_TIMEOUT_KEY = "election_timeout_ms";
         public final static String REPLICATION_BATCH_SIZE_KEY = "replication_batch_size";
-        public final static String REPLICATION_PARALLELISM_KEY = "replication_parallelism";
         public final static String CACHE_REQUESTS_KEY = "cache_requests";
         public final static String TRANSACTION_TIMEOUT_MS_KEY = "transaction_timeout_ms";
         public final static String PRINT_STATE_INTERVAL_SEC_KEY = "print_state_interval_sec";
@@ -1033,7 +1027,6 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         private long heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS;
         private long electionTimeoutMs = DEFAULT_ELECTION_TIMEOUT_MS;  // 最小选举超时
         private int replicationBatchSize = DEFAULT_REPLICATION_BATCH_SIZE;
-        private int replicationParallelism = DEFAULT_REPLICATION_PARALLELISM;
         private int cacheRequests = DEFAULT_CACHE_REQUESTS;
         private long transactionTimeoutMs = DEFAULT_TRANSACTION_TIMEOUT_MS;
         private int printStateIntervalSec = DEFAULT_PRINT_STATE_INTERVAL_SEC;
@@ -1061,14 +1054,6 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
 
         public void setElectionTimeoutMs(long electionTimeoutMs) {
             this.electionTimeoutMs = electionTimeoutMs;
-        }
-
-        public int getReplicationParallelism() {
-            return replicationParallelism;
-        }
-
-        public void setReplicationParallelism(int replicationParallelism) {
-            this.replicationParallelism = replicationParallelism;
         }
 
         public int getCacheRequests() {

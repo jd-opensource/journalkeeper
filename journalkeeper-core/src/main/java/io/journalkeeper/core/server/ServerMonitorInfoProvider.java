@@ -122,7 +122,6 @@ public class ServerMonitorInfoProvider implements MonitoredServer {
         if (null != follower) {
             followerMonitorInfo = new FollowerMonitorInfo();
             followerMonitorInfo.setState(follower.serverState());
-            followerMonitorInfo.setReplicationQueueSize(follower.getReplicationQueueSize());
             followerMonitorInfo.setLeaderMaxIndex(follower.getLeaderMaxIndex());
         }
         return followerMonitorInfo;
@@ -154,7 +153,6 @@ public class ServerMonitorInfoProvider implements MonitoredServer {
         destInfo.setUri(destination.getUri());
         destInfo.setNextIndex(destination.getNextIndex());
         destInfo.setMatchIndex(destination.getMatchIndex());
-        destInfo.setRepStartIndex(destination.getRepStartIndex());
         destInfo.setLastHeartbeatResponseTime(destination.getLastHeartbeatResponseTime());
         destInfo.setLastHeartbeatRequestTime(destination.getLastHeartbeatRequestTime());
         return destInfo;

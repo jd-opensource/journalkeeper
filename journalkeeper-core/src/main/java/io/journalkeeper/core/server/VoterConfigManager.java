@@ -32,6 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -59,10 +60,7 @@ public class VoterConfigManager {
                                     ConfigState votersConfigStateMachine,
                                     Journal journal,
                                     Callable appendEntryCallable,
-                                    URI serverUri,
-                                    List<Leader.ReplicationDestination> followers,
-                                    int replicationParallelism,
-                                    Map<URI, JMetric> appendEntriesRpcMetricMap) throws Exception {
+                                    URI serverUri, Leader leader) throws Exception {
         // 如果是配置变更请求，立刻更新当前配置
         if (request.getPartition() == INTERNAL_PARTITION) {
             InternalEntryType entryType = InternalEntriesSerializeSupport.parseEntryType(request.getEntry());
@@ -72,11 +70,11 @@ public class VoterConfigManager {
                 waitingForAllEntriesCommitted(journal);
 
                 votersConfigStateMachine.toJointConsensus(updateVotersS1Entry.getConfigNew(), appendEntryCallable);
-                List<URI> oldFollowerUriList = followers.stream().map(Leader.ReplicationDestination::getUri).collect(Collectors.toList());
+                Collection<URI> followerUris = leader.getFollowerUris();
                 for (URI uri : updateVotersS1Entry.getConfigNew()) {
                     if (!serverUri.equals(uri) && // uri was not me
-                            !oldFollowerUriList.contains(uri)) { // and not included in the old followers collection
-                        followers.add(new Leader.ReplicationDestination(uri, journal.maxIndex(), replicationParallelism));
+                            !followerUris.contains(uri)) { // and not included in the old followers collection
+                        leader.addFollower(uri);
                     }
                 }
                 return true;
@@ -84,16 +82,12 @@ public class VoterConfigManager {
                 // 等待所有日志都被提交才能进行配置变更
                 waitingForAllEntriesCommitted(journal);
                 votersConfigStateMachine.toNewConfig(appendEntryCallable);
-
-
-                followers.removeIf(follower -> {
-                    if (!votersConfigStateMachine.voters().contains(follower.getUri())) {
-                        appendEntriesRpcMetricMap.remove(follower.getUri());
-                        return true;
-                    } else {
-                        return false;
+                Collection<URI> followerUris = leader.getFollowerUris();
+                for (URI uri : followerUris) {
+                    if (!votersConfigStateMachine.voters().contains(uri)) {
+                        leader.removeFollower(uri);
                     }
-                });
+                }
                 return true;
             }
         }

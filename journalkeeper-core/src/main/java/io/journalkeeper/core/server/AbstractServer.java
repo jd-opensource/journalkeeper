@@ -1105,7 +1105,7 @@ public abstract class AbstractServer
         return journal;
     }
 
-    void installSnapshot(long offset, long lastIncludedIndex, int lastIncludedTerm, byte[] data, boolean isDone) throws IOException {
+    void installSnapshot(long offset, long lastIncludedIndex, int lastIncludedTerm, byte[] data, boolean isDone) throws IOException, TimeoutException {
         synchronized (partialSnapshot) {
             logger.info("Install snapshot, offset: {}, lastIncludedIndex: {}, lastIncludedTerm: {}, data length: {}, isDone: {}... " +
                             "journal minIndex: {}, maxIndex: {}, commitIndex: {}...",
@@ -1148,27 +1148,37 @@ public abstract class AbstractServer
 
                 logger.info("Compact journal entries, journal: {}...", journal);
                 threads.stopThread(threadName(ThreadNames.FLUSH_JOURNAL_THREAD));
-                if (journal.minIndex() >= lastIncludedIndex &&
-                        lastIncludedIndex < journal.maxIndex() &&
-                        journal.getTerm(lastIncludedIndex) == lastIncludedTerm) {
-                    journal.compact(snapshot.getJournalSnapshot());
+                try {
+                    if (journal.minIndex() >= lastIncludedIndex &&
+                            lastIncludedIndex < journal.maxIndex() &&
+                            journal.getTerm(lastIncludedIndex) == lastIncludedTerm) {
+                        journal.compact(snapshot.getJournalSnapshot());
 
-                } else {
-                    journal.clear(snapshot.getJournalSnapshot());
+                    } else {
+                        journal.clear(snapshot.getJournalSnapshot());
+                    }
+                } finally {
+                    threads.startThread(threadName(ThreadNames.FLUSH_JOURNAL_THREAD));
                 }
-                threads.startThread(threadName(ThreadNames.FLUSH_JOURNAL_THREAD));
                 logger.info("Compact journal finished, journal: {}.", journal);
 
                 // Reset state machine using snapshot contents (and load
                 // snapshot’s cluster configuration)
 
                 logger.info("Use the new installed snapshot as server's state...");
+                stopAndWaitScheduledFeature(flushStateFuture, 1000L);
                 threads.stopThread(threadName(ThreadNames.STATE_MACHINE_THREAD));
-                state.close();
-                state.clear();
-                snapshot.dump(statePath());
-                state.recover(statePath(), properties);
-                threads.startThread(threadName(ThreadNames.STATE_MACHINE_THREAD));
+                try {
+                    state.close();
+                    state.clear();
+                    snapshot.dump(statePath());
+                    state.recover(statePath(), properties);
+                } finally {
+                    threads.startThread(threadName(ThreadNames.STATE_MACHINE_THREAD));
+                    flushStateFuture = scheduledExecutor.scheduleAtFixedRate(this::flushState,
+                            ThreadLocalRandom.current().nextLong(10L, 50L),
+                            config.getFlushIntervalMs(), TimeUnit.MILLISECONDS);
+                }
                 logger.info("Install snapshot successfully!");
             }
         }
