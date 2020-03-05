@@ -108,7 +108,7 @@ public class JournalStoreServer implements StateServer {
     }
 
     public JournalStoreClient createClient() {
-        return new JournalStoreClient(bootStrap.getClient());
+        return new JournalStoreClient(bootStrap.getClient(), bootStrap.getJournalEntryParser());
     }
 
     public AdminClient getAdminClient() {
@@ -116,7 +116,7 @@ public class JournalStoreServer implements StateServer {
     }
 
     public JournalStoreClient createLocalClient() {
-        return new JournalStoreClient(bootStrap.getLocalClient());
+        return new JournalStoreClient(bootStrap.getLocalClient(), bootStrap.getJournalEntryParser());
     }
 
     public AdminClient getLocalAdminClient() {

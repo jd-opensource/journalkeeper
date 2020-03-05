@@ -1068,7 +1068,6 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                 "commitIndex=" + commitIndex +
                 ", indexPersistence=" + indexPersistence +
                 ", journalPersistence=" + journalPersistence +
-                ", partitionMap=" + partitionMap +
                 ", basePath=" + basePath +
                 '}';
     }

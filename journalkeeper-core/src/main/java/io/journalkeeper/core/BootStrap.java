@@ -312,4 +312,8 @@ public class BootStrap implements ClusterAccessPoint {
             executor.shutdown();
         }
     }
+
+    public JournalEntryParser getJournalEntryParser() {
+        return this.journalEntryParser;
+    }
 }

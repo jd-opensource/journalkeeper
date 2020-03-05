@@ -56,11 +56,11 @@ public class JournalStoreClient implements PartitionedJournalStore, Transactiona
     private final Serializer<JournalStoreQuery> querySerializer;
     private final Serializer<JournalStoreQueryResult> queryResultSerializer;
 
-    JournalStoreClient(RaftClient raftClient) {
+    JournalStoreClient(RaftClient raftClient, JournalEntryParser journalEntryParser) {
         this.raftClient = raftClient;
         this.appendResultSerializer = new LongSerializer();
         this.querySerializer = new JournalStoreQuerySerializer();
-        this.queryResultSerializer = new JournalStoreQueryResultSerializer(new DefaultJournalEntryParser());
+        this.queryResultSerializer = new JournalStoreQueryResultSerializer(journalEntryParser);
 
     }
 
