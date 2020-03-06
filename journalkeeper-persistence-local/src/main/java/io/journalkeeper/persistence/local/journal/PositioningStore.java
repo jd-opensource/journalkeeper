@@ -14,11 +14,12 @@
 package io.journalkeeper.persistence.local.journal;
 
 
+import io.journalkeeper.persistence.local.cache.MemoryCacheManager;
 import io.journalkeeper.persistence.JournalPersistence;
 import io.journalkeeper.persistence.MonitoredPersistence;
 import io.journalkeeper.persistence.TooManyBytesException;
 import io.journalkeeper.utils.ThreadSafeFormat;
-import io.journalkeeper.utils.buffer.PreloadBufferPool;
+import io.journalkeeper.utils.spi.ServiceSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,7 +46,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class PositioningStore implements JournalPersistence, MonitoredPersistence, Closeable {
     private final Logger logger = LoggerFactory.getLogger(PositioningStore.class);
-    private final PreloadBufferPool bufferPool;
+    private final MemoryCacheManager bufferPool;
     private final NavigableMap<Long, StoreFile> storeFileMap = new ConcurrentSkipListMap<>();
     // 删除和回滚不能同时操作fileMap，需要做一下互斥。
     private final Object fileMapMutex = new Object();    // 正在写入的
@@ -57,7 +58,7 @@ public class PositioningStore implements JournalPersistence, MonitoredPersistenc
     private Config config = null;
 
     public PositioningStore() {
-        this.bufferPool = PreloadBufferPool.getInstance();
+        this.bufferPool = ServiceSupport.load(MemoryCacheManager.class);
     }
 
 

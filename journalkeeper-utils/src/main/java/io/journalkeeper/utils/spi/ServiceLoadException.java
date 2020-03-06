@@ -18,4 +18,10 @@ package io.journalkeeper.utils.spi;
  * Date: 2019-03-20
  */
 public class ServiceLoadException extends RuntimeException {
+    public ServiceLoadException (Class service) {
+        super("No implementation class found of service " + service.getCanonicalName() + "!");
+    }
+    public ServiceLoadException(Throwable throwable) {
+        super(throwable);
+    }
 }

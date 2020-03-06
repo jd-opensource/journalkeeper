@@ -11,9 +11,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.utils.buffer;
+package io.journalkeeper.persistence.local.cache;
 
 import io.journalkeeper.utils.format.Format;
+import io.journalkeeper.utils.spi.Singleton;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
 import io.journalkeeper.utils.threads.Threads;
@@ -45,23 +46,28 @@ import java.util.stream.Stream;
  * @author LiYue
  * Date: 2018-12-20
  */
-public class PreloadBufferPool {
+@Singleton
+public class PreloadBufferPool implements MemoryCacheManager {
     private static final Logger logger = LoggerFactory.getLogger(PreloadBufferPool.class);
     private static final String PRELOAD_THREAD = "PreloadBuffer-PreloadThread";
     private static final String EVICT_THREAD = "PreloadBuffer-EvictThread";
     // 缓存比率：如果非堆内存使用率超过这个比率，就不再申请内存，抛出OOM。
     // 由于jvm在读写文件的时候会用到少量DirectBuffer作为缓存，必须预留一部分。
-    private final static double CACHE_RATIO = 0.9d;
+    private final static double DEFAULT_CACHE_RATIO = 0.9d;
     /**
      * 缓存清理比率阈值，超过这个阈值执行缓存清理。
      */
-    private static final double EVICT_RATIO = 0.9d;
+    private static final float DEFAULT_EVICT_RATIO = 0.9f;
     /**
      * 缓存核心利用率，系统会尽量将这个比率以内的内存用满。
      */
-    private static final double CORE_RATIO = 0.8d;
+    private static final float DEFAULT_CORE_RATIO = 0.8f;
     private final static long INTERVAL_MS = 50L;
-    private final static String MAX_MEMORY_KEY = "PreloadBufferPool.MaxMemory";
+
+    private final static String MAX_MEMORY_KEY = "memory_cache.max_memory";
+    private final static String EVICT_RATIO_KEY = "memory_cache.evict_ratio";
+    private final static String CORE_RATIO_KEY = "memory_cache.core_ratio";
+
     private static PreloadBufferPool instance = null;
     private final Threads threads = ThreadsFactory.create();
     // 可用的堆外内存上限，这个上限可以用JVM参数"PreloadBufferPool.MaxMemory"指定，
@@ -76,11 +82,13 @@ public class PreloadBufferPool {
     private final Set<BufferHolder> mMapBufferHolders = ConcurrentHashMap.newKeySet();
     private Map<Integer, PreLoadCache> bufferCache = new ConcurrentHashMap<>();
 
-    private PreloadBufferPool() {
+    public PreloadBufferPool() {
 
-        maxMemorySize = Format.parseSize(System.getProperty(MAX_MEMORY_KEY), Math.round(VM.maxDirectMemory() * CACHE_RATIO));
-        evictMemorySize = Math.round(maxMemorySize * EVICT_RATIO);
-        coreMemorySize = Math.round(maxMemorySize * CORE_RATIO);
+        maxMemorySize = Format.parseSize(System.getProperty(MAX_MEMORY_KEY), Math.round(VM.maxDirectMemory() * DEFAULT_CACHE_RATIO));
+        float evictRatio = getFloatProperty(EVICT_RATIO_KEY, DEFAULT_EVICT_RATIO);
+        evictMemorySize = Math.round(maxMemorySize * evictRatio);
+        float coreRatio = getFloatProperty(CORE_RATIO_KEY, DEFAULT_CORE_RATIO);
+        coreMemorySize = Math.round(maxMemorySize * coreRatio);
 
         threads.createThread(buildPreloadThread());
         threads.createThread(buildEvictThread());
@@ -92,32 +100,12 @@ public class PreloadBufferPool {
                 Format.formatSize(evictMemorySize));
     }
 
-    public static PreloadBufferPool getInstance() {
-        if (null == instance) {
-            instance = new PreloadBufferPool();
+    private static float getFloatProperty(String key, float defaultValue) {
+        try {
+            return Float.parseFloat(System.getProperty(key, String.valueOf(defaultValue)));
+        } catch (NumberFormatException e) {
+            return defaultValue;
         }
-        return instance;
-    }
-
-    public static void close() {
-        if (null != instance) {
-            instance.threads.stop();
-            instance.bufferCache.values().forEach(p -> {
-                while (!p.cache.isEmpty()) {
-                    instance.destroyOne(p.cache.remove());
-
-                }
-            });
-            instance.directBufferHolders.parallelStream().forEach(BufferHolder::evict);
-            instance.mMapBufferHolders.parallelStream().forEach(BufferHolder::evict);
-            instance.bufferCache.values().forEach(p -> {
-                while (!p.cache.isEmpty()) {
-                    instance.destroyOne(p.cache.remove());
-
-                }
-            });
-        }
-        logger.info("Preload buffer pool closed.");
     }
 
     private AsyncLoopThread buildPreloadThread() {
@@ -134,7 +122,7 @@ public class PreloadBufferPool {
         return ThreadBuilder.builder()
                 .name(EVICT_THREAD)
                 .sleepTime(INTERVAL_MS, INTERVAL_MS)
-                .condition(() -> usedSize.get() > maxMemorySize * EVICT_RATIO)
+                .condition(() -> usedSize.get() > evictMemorySize)
                 .doWork(this::evict)
                 .onException(e -> logger.warn("{} exception:", EVICT_THREAD, e))
                 .daemon(true)
@@ -178,7 +166,8 @@ public class PreloadBufferPool {
         }
     }
 
-    private void printMetric() {
+    @Override
+    public void printMetric() {
         long totalUsed = usedSize.get();
         long plUsed = bufferCache.values().stream().mapToLong(preLoadCache -> {
             long cached = preLoadCache.cache.size();
@@ -213,6 +202,7 @@ public class PreloadBufferPool {
         return usedSize.get() < coreMemorySize;
     }
 
+    @Override
     public synchronized void addPreLoad(int bufferSize, int coreCount, int maxCount) {
         PreLoadCache preLoadCache = bufferCache.putIfAbsent(bufferSize, new PreLoadCache(bufferSize, coreCount, maxCount));
         if (null != preLoadCache) {
@@ -220,6 +210,7 @@ public class PreloadBufferPool {
         }
     }
 
+    @Override
     public synchronized void removePreLoad(int bufferSize) {
         PreLoadCache preLoadCache = bufferCache.get(bufferSize);
         if (null != preLoadCache) {
@@ -317,11 +308,13 @@ public class PreloadBufferPool {
         }
     }
 
+    @Override
     public void allocateMMap(BufferHolder bufferHolder) {
         reserveMemory(bufferHolder.size());
         mMapBufferHolders.add(bufferHolder);
     }
 
+    @Override
     public ByteBuffer allocateDirect(int bufferSize, BufferHolder bufferHolder) {
         ByteBuffer buffer = allocateDirect(bufferSize);
         directBufferHolders.add(bufferHolder);
@@ -354,6 +347,7 @@ public class PreloadBufferPool {
         }
     }
 
+    @Override
     public void releaseDirect(ByteBuffer byteBuffer, BufferHolder bufferHolder) {
         directBufferHolders.remove(bufferHolder);
         int size = byteBuffer.capacity();
@@ -372,34 +366,61 @@ public class PreloadBufferPool {
     }
 
 
+    @Override
     public void releaseMMap(BufferHolder bufferHolder) {
         mMapBufferHolders.remove(bufferHolder);
         usedSize.getAndAdd(-1 * bufferHolder.size());
 
     }
 
-    public Collection<PreLoadCache> getCaches() {
+    @Override
+    public Collection<PreloadCacheMetric> getCaches() {
         return new ArrayList<>(bufferCache.values());
     }
 
+    @Override
     public long getMaxMemorySize() {
         return maxMemorySize;
     }
 
+    @Override
     public long getTotalUsedMemorySize() {
         return usedSize.get();
     }
 
+    @Override
     public long getDirectUsedMemorySize() {
         return directBufferHolders.stream().mapToLong(BufferHolder::size).sum() +
                 bufferCache.values().stream().mapToLong(c -> c.getBufferSize() * c.getCachedCount()).sum();
     }
 
+    @Override
+    public void close() {
+        if (null != PreloadBufferPool.instance) {
+            PreloadBufferPool.instance.threads.stop();
+            PreloadBufferPool.instance.bufferCache.values().forEach(p -> {
+                while (!p.cache.isEmpty()) {
+                    PreloadBufferPool.instance.destroyOne(p.cache.remove());
+
+                }
+            });
+            PreloadBufferPool.instance.directBufferHolders.parallelStream().forEach(BufferHolder::evict);
+            PreloadBufferPool.instance.mMapBufferHolders.parallelStream().forEach(BufferHolder::evict);
+            PreloadBufferPool.instance.bufferCache.values().forEach(p -> {
+                while (!p.cache.isEmpty()) {
+                    PreloadBufferPool.instance.destroyOne(p.cache.remove());
+
+                }
+            });
+        }
+        PreloadBufferPool.logger.info("Preload buffer pool closed.");
+    }
+    @Override
     public long getMapUsedMemorySize() {
         return mMapBufferHolders.stream().mapToLong(BufferHolder::size).sum();
     }
 
-    public static class PreLoadCache {
+    public static class PreLoadCache implements PreloadCacheMetric {
         private final int bufferSize;
         private final int coreCount, maxCount;
         private final Queue<ByteBuffer> cache = new ConcurrentLinkedQueue<>();

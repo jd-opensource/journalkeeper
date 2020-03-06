@@ -17,7 +17,6 @@ import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ServerStatus;
 import io.journalkeeper.core.api.VoterState;
-import io.journalkeeper.core.monitor.PreloadBufferMonitorInfo;
 import io.journalkeeper.core.monitor.SimpleMonitorCollector;
 import io.journalkeeper.core.serialize.WrappedBootStrap;
 import io.journalkeeper.core.serialize.WrappedRaftClient;
@@ -709,7 +708,7 @@ public class KvTest {
 
         int nodes = 5;
         Path path = TestPathUtils.prepareBaseDir("monitorTest");
-        SimpleMonitorCollector simpleMonitorCollector = ServiceSupport.load(MonitorCollector.class, SimpleMonitorCollector.class.getCanonicalName());
+        SimpleMonitorCollector simpleMonitorCollector = ServiceSupport.load(MonitorCollector.class, SimpleMonitorCollector.class);
         Assert.assertNotNull(simpleMonitorCollector);
         for (MonitoredServer monitoredServer : simpleMonitorCollector.getMonitoredServers()) {
             simpleMonitorCollector.removeServer(monitoredServer);
@@ -724,9 +723,6 @@ public class KvTest {
         for (ServerMonitorInfo monitorInfo : monitorInfos) {
             logger.info("ServerMonitorInfo: {}.", monitorInfo);
         }
-
-        PreloadBufferMonitorInfo bufferMonitorInfo = simpleMonitorCollector.collectPreloadBuffer();
-        logger.info("PreloadBufferPool: {}.", bufferMonitorInfo);
 
         stopServers(servers);
 

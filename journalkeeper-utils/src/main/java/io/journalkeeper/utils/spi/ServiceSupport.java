@@ -16,9 +16,11 @@ package io.journalkeeper.utils.spi;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 /**
@@ -27,28 +29,39 @@ import java.util.stream.StreamSupport;
  * Date: 2019-03-26
  */
 public class ServiceSupport {
-    private final static Map<String, Object> singletonServices = new HashMap<>();
+    private final static Map<String /* Instance full class name */, Object /* Instance */> singletonServices = new HashMap<>();
 
     @SuppressWarnings("unchecked")
-    public synchronized static <S> S load(Class<? super S> service, String className) {
-        return (S) StreamSupport.
+    public synchronized static <S> S load(Class<? super S> service, String implClassName) {
+        try {
+            return load(service, (Class<S>) Class.forName(implClassName));
+        } catch (ClassNotFoundException e) {
+            throw new ServiceLoadException(e);
+        }
+    }
+    @SuppressWarnings("unchecked")
+    public synchronized static <S> S load(Class<? super S> service, Class<S> implClass) {
+        return (S) singletonServices.getOrDefault(implClass.getCanonicalName(),
+         StreamSupport.
                 stream(ServiceLoader.load(service).spliterator(), false)
-                .filter(s -> s.getClass().getCanonicalName().equals(className))
+                .filter(implClass::isInstance)
                 .map(ServiceSupport::singletonFilter)
-                .findFirst().orElseThrow(ServiceLoadException::new);
+                .findFirst().orElseThrow(() -> new ServiceLoadException(implClass)));
     }
 
     public synchronized static <S> S load(Class<S> service) {
-        return StreamSupport.
-                stream(ServiceLoader.load(service).spliterator(), false)
-                .map(ServiceSupport::singletonFilter)
-                .findFirst().orElseThrow(ServiceLoadException::new);
+        return tryLoad(service).orElseThrow(() -> new ServiceLoadException(service));
     }
 
+    @SuppressWarnings("unchecked")
     public synchronized static <S> Optional<S> tryLoad(Class<S> service) {
-        return StreamSupport.
+        return Stream.concat(
+                singletonServices.values().stream()
+                .filter(o -> service.isAssignableFrom(o.getClass()))
+                .map(o -> (S) o),
+        StreamSupport.
                 stream(ServiceLoader.load(service).spliterator(), false)
-                .map(ServiceSupport::singletonFilter)
+                .map(ServiceSupport::singletonFilter))
                 .findFirst();
     }
 

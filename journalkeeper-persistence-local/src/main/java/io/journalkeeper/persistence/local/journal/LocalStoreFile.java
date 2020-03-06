@@ -14,8 +14,8 @@
 package io.journalkeeper.persistence.local.journal;
 
 
-import io.journalkeeper.utils.buffer.BufferHolder;
-import io.journalkeeper.utils.buffer.PreloadBufferPool;
+import io.journalkeeper.persistence.local.cache.BufferHolder;
+import io.journalkeeper.persistence.local.cache.MemoryCacheManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sun.misc.Cleaner;
@@ -58,7 +58,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     private ByteBuffer pageBuffer = null;
     private int bufferType = NO_BUFFER;
 
-    private PreloadBufferPool bufferPool;
+    private MemoryCacheManager bufferPool;
     private int capacity;
     private long lastAccessTime = System.currentTimeMillis();
 
@@ -71,7 +71,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     private AtomicBoolean flushGate = new AtomicBoolean(false);
 
 
-    LocalStoreFile(long filePosition, File base, int headerSize, PreloadBufferPool bufferPool, int maxFileDataLength) {
+    LocalStoreFile(long filePosition, File base, int headerSize, MemoryCacheManager bufferPool, int maxFileDataLength) {
         this.filePosition = filePosition;
         this.headerSize = headerSize;
         this.bufferPool = bufferPool;
