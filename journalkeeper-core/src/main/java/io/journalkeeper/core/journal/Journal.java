@@ -648,7 +648,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         recoverPartitions(partitionPath, journalSnapshot.partitionMinIndices(), indexProperties);
 
         flush();
-        logger.info("Journal recovered, minIndex: {}, maxIndex: {}, partitions: {}, path: {}.",
+        logger.debug("Journal recovered, minIndex: {}, maxIndex: {}, partitions: {}, path: {}.",
                 minIndex(), maxIndex(), partitionMap.keySet(), path.toAbsolutePath().toString());
     }
 
@@ -906,7 +906,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                 for (Integer partition : toBeRemoved) {
                     removePartition(partition);
                 }
-                logger.info("Journal repartitioned, partitions: {}, path: {}.",
+                logger.debug("Journal repartitioned, partitions: {}, path: {}.",
                         partitionMap.keySet(), basePath.toAbsolutePath().toString());
 
             }

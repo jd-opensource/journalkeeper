@@ -1107,7 +1107,7 @@ public abstract class AbstractServer
 
     void installSnapshot(long offset, long lastIncludedIndex, int lastIncludedTerm, byte[] data, boolean isDone) throws IOException, TimeoutException {
         synchronized (partialSnapshot) {
-            logger.info("Install snapshot, offset: {}, lastIncludedIndex: {}, lastIncludedTerm: {}, data length: {}, isDone: {}... " +
+            logger.debug("Install snapshot, offset: {}, lastIncludedIndex: {}, lastIncludedTerm: {}, data length: {}, isDone: {}... " +
                             "journal minIndex: {}, maxIndex: {}, commitIndex: {}...",
                     ThreadSafeFormat.formatWithComma(offset),
                     ThreadSafeFormat.formatWithComma(lastIncludedIndex),
@@ -1125,7 +1125,7 @@ public abstract class AbstractServer
             partialSnapshot.installTrunk(offset, data, snapshotPath);
 
             if (isDone) {
-                logger.info("All snapshot files received, discard any existing snapshot with a same or smaller index...");
+                logger.debug("All snapshot files received, discard any existing snapshot with a same or smaller index...");
                 // discard any existing snapshot with a same or smaller index
                 NavigableMap<Long, JournalKeeperState> headMap = snapshots.headMap(lastApplied, true);
                 while (!headMap.isEmpty()) {
@@ -1134,19 +1134,19 @@ public abstract class AbstractServer
                     snapshot.close();
                     snapshot.clear();
                 }
-                logger.info("add the installed snapshot to snapshots: {}...", snapshotPath);
+                logger.debug("add the installed snapshot to snapshots: {}...", snapshotPath);
                 partialSnapshot.finish();
                 // add the installed snapshot to snapshots.
                 snapshot = new JournalKeeperState(stateFactory, metadataPersistence);
                 snapshot.recover(snapshotPath, properties);
                 snapshots.put(lastApplied, snapshot);
 
-                logger.info("New installed snapshot: {}.", snapshot.getJournalSnapshot());
+                logger.debug("New installed snapshot: {}.", snapshot.getJournalSnapshot());
                 // If existing log entry has same index and term as snapshot’s
                 // last included entry, retain log entries following it.
                 // Discard the entire log
 
-                logger.info("Compact journal entries, journal: {}...", journal);
+                logger.debug("Compact journal entries, journal: {}...", journal);
                 threads.stopThread(threadName(ThreadNames.FLUSH_JOURNAL_THREAD));
                 try {
                     if (journal.minIndex() >= lastIncludedIndex &&
@@ -1160,12 +1160,12 @@ public abstract class AbstractServer
                 } finally {
                     threads.startThread(threadName(ThreadNames.FLUSH_JOURNAL_THREAD));
                 }
-                logger.info("Compact journal finished, journal: {}.", journal);
+                logger.debug("Compact journal finished, journal: {}.", journal);
 
                 // Reset state machine using snapshot contents (and load
                 // snapshot’s cluster configuration)
 
-                logger.info("Use the new installed snapshot as server's state...");
+                logger.debug("Use the new installed snapshot as server's state...");
                 stopAndWaitScheduledFeature(flushStateFuture, 1000L);
                 threads.stopThread(threadName(ThreadNames.STATE_MACHINE_THREAD));
                 try {
@@ -1179,7 +1179,7 @@ public abstract class AbstractServer
                             ThreadLocalRandom.current().nextLong(10L, 50L),
                             config.getFlushIntervalMs(), TimeUnit.MILLISECONDS);
                 }
-                logger.info("Install snapshot successfully!");
+                logger.debug("Install snapshot successfully!");
             }
         }
     }

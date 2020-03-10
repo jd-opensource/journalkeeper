@@ -116,6 +116,7 @@ public class KvTest {
             properties.setProperty("working_dir", workingDir.toString());
             properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
+            properties.setProperty("disable_logo", "true");
             propertiesList.add(properties);
         }
         List<WrappedBootStrap<String, String, String, String>> kvServers = createServers(serverURIs, propertiesList, RaftServer.Roll.VOTER, true);
@@ -268,6 +269,7 @@ public class KvTest {
             properties.setProperty("working_dir", workingDir.toString());
             properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
+            properties.setProperty("disable_logo", "true");
 //            properties.setProperty("enable_metric", "true");
 //            properties.setProperty("print_metric_interval_sec", "3");
             properties.setProperty("observer.parents", String.join(",", oldConfig.stream().map(URI::toString).toArray(String[]::new)));
@@ -403,7 +405,8 @@ public class KvTest {
             properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
             properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
             properties.setProperty("observer.parents", String.join(",", newConfig.stream().map(URI::toString).toArray(String[]::new)));
-            properties.setProperty("print_state_interval_sec", String.valueOf(5));
+            properties.setProperty("disable_logo", "true");
+//            properties.setProperty("print_state_interval_sec", String.valueOf(5));
 
 //            properties.setProperty("enable_metric", "true");
 //            properties.setProperty("print_metric_interval_sec", "3");
@@ -791,9 +794,9 @@ public class KvTest {
         Collection<ServerMonitorInfo> monitorInfos = simpleMonitorCollector.collectAll();
         Assert.assertEquals(nodes, monitorInfos.size());
 
-        for (ServerMonitorInfo monitorInfo : monitorInfos) {
-            logger.info("ServerMonitorInfo: {}.", monitorInfo);
-        }
+//        for (ServerMonitorInfo monitorInfo : monitorInfos) {
+//            logger.info("ServerMonitorInfo: {}.", monitorInfo);
+//        }
 
         stopServers(servers);
 
@@ -829,7 +832,7 @@ public class KvTest {
 
 //            properties.setProperty("enable_metric", "true");
 //            properties.setProperty("print_metric_interval_sec", "3");
-            properties.setProperty("print_state_interval_sec", String.valueOf(5));
+//            properties.setProperty("print_state_interval_sec", String.valueOf(5));
 
             propertiesList.add(properties);
         }

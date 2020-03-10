@@ -530,7 +530,7 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
     public CompletableFuture<RequestVoteResponse> requestVote(RequestVoteRequest request) {
         return CompletableFuture.supplyAsync(() -> {
             synchronized (voteRequestMutex) {
-                logger.info("RequestVoteRpc received: term: {}, candidate: {}, " +
+                logger.debug("RequestVoteRpc received: term: {}, candidate: {}, " +
                                 "lastLogIndex: {}, lastLogTerm: {}, fromPreferredLeader: {}, isPreVote: {}, {}.",
                         request.getTerm(), request.getCandidate(),
                         request.getLastLogIndex(), request.getLastLogTerm(), request.isFromPreferredLeader(), request.isPreVote(),
@@ -577,9 +577,9 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
                 }
 
                 if(request.isPreVote()) {
-                    logger.info("Grant pre vote to candidate {}, {}.", request.getCandidate(), voterInfo());
+                    logger.debug("Grant pre vote to candidate {}, {}.", request.getCandidate(), voterInfo());
                 } else {
-                    logger.info("Grant vote to candidate {}, {}.", request.getCandidate(), voterInfo());
+                    logger.debug("Grant vote to candidate {}, {}.", request.getCandidate(), voterInfo());
                     this.votedFor = request.getCandidate();
                 }
                 return new RequestVoteResponse(currentTerm, true);
@@ -588,7 +588,7 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
     }
 
     private RequestVoteResponse rejectAndResponse(int term, URI candidate, String rejectMessage) {
-        logger.info("Reject vote request from candidate {}, cause: [{}], {}.", candidate, rejectMessage, voterInfo());
+        logger.debug("Reject vote request from candidate {}, cause: [{}], {}.", candidate, rejectMessage, voterInfo());
         return new RequestVoteResponse(term, false);
     }
 
