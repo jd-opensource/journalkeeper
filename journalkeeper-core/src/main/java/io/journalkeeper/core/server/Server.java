@@ -230,6 +230,8 @@ public class Server
         return server.getOpeningTransactions();
     }
 
+
+
     @Override
     public CompletableFuture<GetSnapshotsResponse> getSnapshots() {
         return server.getSnapshots();
@@ -331,6 +333,7 @@ public class Server
         return server.serverState();
     }
 
+    // for test only!
     AbstractServer getServer() {
         return server;
     }

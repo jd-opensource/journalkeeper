@@ -583,7 +583,7 @@ public class RpcTest {
                 URI.create("jk://candidate.host:8888"),
                 6666666L,
                 87,
-                false);
+                false, false);
         ServerRpc serverRpc = serverRpcAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
         RequestVoteResponse response, serverResponse;
         serverResponse = new RequestVoteResponse(88, false);

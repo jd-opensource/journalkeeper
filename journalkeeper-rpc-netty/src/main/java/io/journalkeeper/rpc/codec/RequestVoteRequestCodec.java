@@ -32,6 +32,7 @@ public class RequestVoteRequestCodec extends GenericPayloadCodec<RequestVoteRequ
         CodecSupport.encodeLong(buffer, request.getLastLogIndex());
         CodecSupport.encodeInt(buffer, request.getLastLogTerm());
         CodecSupport.encodeBoolean(buffer, request.isFromPreferredLeader());
+        CodecSupport.encodeBoolean(buffer, request.isPreVote());
     }
 
     @Override
@@ -41,6 +42,7 @@ public class RequestVoteRequestCodec extends GenericPayloadCodec<RequestVoteRequ
                 CodecSupport.decodeUri(buffer),
                 CodecSupport.decodeLong(buffer),
                 CodecSupport.decodeInt(buffer),
+                CodecSupport.decodeBoolean(buffer),
                 CodecSupport.decodeBoolean(buffer));
     }
 

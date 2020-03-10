@@ -257,16 +257,17 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
     private void checkElectionTimeout() {
         try {
             if (voterState() == VoterState.FOLLOWER && System.currentTimeMillis() - lastHeartbeat > electionTimeoutMs) {
-                convertToCandidate();
+                convertToPreVoting();
                 nextElectionTime = System.currentTimeMillis() + electionTimeoutMs;
             }
 
-            if (voterState() == VoterState.CANDIDATE && System.currentTimeMillis() > nextElectionTime) {
+            if ((voterState() == VoterState.PRE_VOTING || voterState() == VoterState.CANDIDATE) && System.currentTimeMillis() > nextElectionTime) {
 
                 startElection(false);
             }
 
             if (checkPreferredLeader()) {
+                convertToPreVoting();
                 convertToCandidate();
                 startElection(true);
             }
@@ -297,13 +298,20 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
 
         nextElectionTime = Long.MAX_VALUE;
         votedFor = uri;
-        currentTerm.incrementAndGet();
-        logger.info("Start election, {}", voterInfo());
+        boolean isPreVote = voterState.getState() == VoterState.PRE_VOTING;
+        int term ;
+        if (!isPreVote) {
+            term = currentTerm.incrementAndGet();
+            logger.info("Start election, {}", voterInfo());
+        } else {
+            term = currentTerm.get() + 1;
+            logger.info("Start pre vote, {}", voterInfo());
+        }
 
         long lastLogIndex = journal.maxIndex() - 1;
         int lastLogTerm = journal.getTerm(lastLogIndex);
 
-        RequestVoteRequest request = new RequestVoteRequest(currentTerm.get(), uri, lastLogIndex, lastLogTerm, fromPreferredLeader);
+        RequestVoteRequest request = new RequestVoteRequest(term, uri, lastLogIndex, lastLogTerm, fromPreferredLeader, isPreVote);
         List<URI> destinations = state.getConfigState().voters().stream()
                 .filter(uri -> !uri.equals(this.uri)).collect(Collectors.toList());
 
@@ -317,37 +325,38 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
             final AtomicInteger pendingRequests = new AtomicInteger(destinations.size());
             for (URI destination : destinations) {
                 getServerRpc(destination)
-                        .thenComposeAsync(serverRpc -> {
-                            if (null != serverRpc) {
-                                logger.info("Request vote, dest uri: {}, {}...", serverRpc.serverUri(), voterInfo());
-                                return serverRpc.requestVote(request)
-                                        .thenApply(response -> {
-                                            response.setUri(serverRpc.serverUri());
-                                            return response;
-                                        });
-                            } else {
-                                return CompletableFuture.completedFuture(null);
+                    .thenComposeAsync(serverRpc -> {
+                        if (null != serverRpc) {
+                            logger.info("Request vote, dest uri: {}, {}...", serverRpc.serverUri(), voterInfo());
+                            return serverRpc.requestVote(request)
+                                    .thenApply(response -> {
+                                        response.setUri(serverRpc.serverUri());
+                                        return response;
+                                    });
+                        } else {
+                            return CompletableFuture.completedFuture(null);
+                        }
+                    }, asyncExecutor)
+                    .thenAccept(response -> {
+                        if (null != response) {
+                            logger.info("Request vote result {}, dest uri: {}, {}...",
+                                    response.isVoteGranted(),
+                                    response.getUri(),
+                                    voterInfo());
+                            if (response.isVoteGranted()) {
+                                updateVotes(isWinTheElection, votesGrantedInNewConfig, votesGrantedInOldConfig, response.getUri());
                             }
-                        }, asyncExecutor)
-                        .thenAccept(response -> {
-                            if (null != response) {
-                                logger.info("Request vote result {}, dest uri: {}, {}...",
-                                        response.isVoteGranted(),
-                                        response.getUri(),
-                                        voterInfo());
-                                if (response.isVoteGranted()) {
-                                    updateVotes(isWinTheElection, votesGrantedInNewConfig, votesGrantedInOldConfig, response.getUri());
-                                }
-                            }
-                        }).exceptionally(e -> {
-                    logger.warn("Request vote exception: {}!", e.getMessage());
-                    return null;
-                }).thenRun(() -> {
-                    if (pendingRequests.decrementAndGet() == 0 && !isWinTheElection.get()) {
-                        electionTimeoutMs = config.getElectionTimeoutMs() + randomInterval(config.getElectionTimeoutMs());
-                        nextElectionTime = System.currentTimeMillis() + electionTimeoutMs;
-                    }
-                });
+                        }
+                    })
+                    .exceptionally(e -> {
+                        logger.warn("Request vote exception: {}!", e.getMessage());
+                        return null;
+                    }).thenRun(() -> {
+                        if (pendingRequests.decrementAndGet() == 0 && !isWinTheElection.get()) {
+                            electionTimeoutMs = config.getElectionTimeoutMs() + randomInterval(config.getElectionTimeoutMs());
+                            nextElectionTime = System.currentTimeMillis() + electionTimeoutMs;
+                        }
+                    });
             }
         }
     }
@@ -369,8 +378,13 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         } else {
             win = votesGrantedInNewConfig.get() >= configState.getConfigNew().size() / 2 + 1;
         }
-        if (isWinTheElection.compareAndSet(false, win) && win) {
-            convertToLeader();
+        if (win && isWinTheElection.compareAndSet(false, true)) {
+            if (voterState.getState() == VoterState.PRE_VOTING) {
+                convertToCandidate();
+                startElection(false);
+            } else if (voterState.getState() == VoterState.CANDIDATE) {
+                convertToLeader();
+            }
         }
     }
 
@@ -378,12 +392,21 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
     private void convertToCandidate() {
         synchronized (voterState) {
             VoterState oldState = voterState.getState();
+            voterState.convertToCandidate();
+            logger.info("Convert voter state from {} to CANDIDATE, electionTimeout: {}, {}.", oldState, electionTimeoutMs, voterInfo());
+        }
+    }
+
+
+    private void convertToPreVoting() {
+        synchronized (voterState) {
+            VoterState oldState = voterState.getState();
             if (oldState == VoterState.FOLLOWER && null != follower) {
                 follower.stop();
                 follower = null;
             }
-            voterState.convertToCandidate();
-            logger.info("Convert voter state from {} to CANDIDATE, electionTimeout: {}, {}.", oldState, electionTimeoutMs, voterInfo());
+            voterState.convertToPreVoting();
+            logger.info("Convert voter state from {} to PRE_VOTING, electionTimeout: {}, {}.", oldState, electionTimeoutMs, voterInfo());
         }
     }
 
@@ -508,10 +531,11 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         return CompletableFuture.supplyAsync(() -> {
             synchronized (voteRequestMutex) {
                 logger.info("RequestVoteRpc received: term: {}, candidate: {}, " +
-                                "lastLogIndex: {}, lastLogTerm: {}, fromPreferredLeader: {}, {}.",
+                                "lastLogIndex: {}, lastLogTerm: {}, fromPreferredLeader: {}, isPreVote: {}, {}.",
                         request.getTerm(), request.getCandidate(),
-                        request.getLastLogIndex(), request.getLastLogTerm(), request.isFromPreferredLeader(), voterInfo());
-                String rejectMsg = null;
+                        request.getLastLogIndex(), request.getLastLogTerm(), request.isFromPreferredLeader(), request.isPreVote(),
+                        voterInfo());
+                String rejectMsg;
                 int currentTerm = this.currentTerm.get();
                 // 来自推荐Leader的投票请求例外
                 if (!request.isFromPreferredLeader()) {
@@ -527,20 +551,22 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
                         return rejectAndResponse(currentTerm, request.getCandidate(), rejectMsg);
                     }
                 }
+                // 如果候选人的term 比我的term小，拒绝投票
                 if (request.getTerm() < currentTerm) {
                     rejectMsg = String.format("The candidate's term %d less than my term %d.",
                             request.getTerm(), currentTerm);
                     return rejectAndResponse(currentTerm, request.getCandidate(), rejectMsg);
                 }
-
-                checkTerm(request.getTerm());
-                currentTerm = this.currentTerm.get();
-
-                if (votedFor != null && !votedFor.equals(request.getCandidate())) {
+                if (!request.isPreVote()) {
+                    checkTerm(request.getTerm());
+                    currentTerm = this.currentTerm.get();
+                }
+                // 如果已经投票给其它候选人，拒绝投票
+                if (votedFor != null && currentTerm == request.getTerm() && !votedFor.equals(request.getCandidate())) {
                     rejectMsg = "Already vote to " + votedFor.toString();
                     return rejectAndResponse(currentTerm, request.getCandidate(), rejectMsg);
                 }
-
+                // 如果term相同，候选人的日志比我的短，拒绝投票
                 final long finalMaxJournalIndex = journal.maxIndex();
                 final int lastLogTerm = journal.getTerm(finalMaxJournalIndex - 1);
                 if ((request.getLastLogTerm() <= lastLogTerm
@@ -550,11 +576,12 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
                     return rejectAndResponse(currentTerm, request.getCandidate(), rejectMsg);
                 }
 
-
-                logger.info("Grant vote to candidate {}, {}.", request.getCandidate(), voterInfo());
-                this.votedFor = request.getCandidate();
-                // 重置选举超时
-//                lastHeartbeat = System.currentTimeMillis();
+                if(request.isPreVote()) {
+                    logger.info("Grant pre vote to candidate {}, {}.", request.getCandidate(), voterInfo());
+                } else {
+                    logger.info("Grant vote to candidate {}, {}.", request.getCandidate(), voterInfo());
+                    this.votedFor = request.getCandidate();
+                }
                 return new RequestVoteResponse(currentTerm, true);
             }
         }, asyncExecutor);
@@ -839,6 +866,7 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
     @Override
     public void doStart() {
         if (isSingleNodeCluster()) {
+            convertToPreVoting();
             convertToCandidate();
             convertToLeader();
         } else {
@@ -981,6 +1009,10 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         return nextElectionTime;
     }
 
+    int getTerm() {
+        return currentTerm.get();
+    }
+
     private static class VoterStateMachine {
         private VoterState state = VoterState.FOLLOWER;
 
@@ -997,8 +1029,16 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         }
 
         private void convertToCandidate() {
-            if (state == VoterState.CANDIDATE || state == VoterState.FOLLOWER) {
+            if (state == VoterState.PRE_VOTING) {
                 state = VoterState.CANDIDATE;
+            } else {
+                throw new IllegalStateException(String.format("Change voter state from %s to %s is not allowed!", state, VoterState.FOLLOWER));
+            }
+        }
+
+        private void convertToPreVoting() {
+            if (state == VoterState.PRE_VOTING || state == VoterState.FOLLOWER) {
+                state = VoterState.PRE_VOTING;
             } else {
                 throw new IllegalStateException(String.format("Change voter state from %s to %s is not allowed!", state, VoterState.FOLLOWER));
             }

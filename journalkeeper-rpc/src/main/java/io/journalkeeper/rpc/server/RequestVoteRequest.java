@@ -25,13 +25,15 @@ public class RequestVoteRequest implements Termed {
     private final long lastLogIndex;
     private final int lastLogTerm;
     private final boolean fromPreferredLeader;
+    private final boolean preVote;
 
-    public RequestVoteRequest(int term, URI candidate, long lastLogIndex, int lastLogTerm, boolean fromPreferredLeader) {
+    public RequestVoteRequest(int term, URI candidate, long lastLogIndex, int lastLogTerm, boolean fromPreferredLeader, boolean preVote) {
         this.term = term;
         this.candidate = candidate;
         this.lastLogIndex = lastLogIndex;
         this.lastLogTerm = lastLogTerm;
         this.fromPreferredLeader = fromPreferredLeader;
+        this.preVote = preVote;
     }
 
     public int getTerm() {
@@ -52,5 +54,9 @@ public class RequestVoteRequest implements Termed {
 
     public boolean isFromPreferredLeader() {
         return fromPreferredLeader;
+    }
+
+    public boolean isPreVote() {
+        return preVote;
     }
 }

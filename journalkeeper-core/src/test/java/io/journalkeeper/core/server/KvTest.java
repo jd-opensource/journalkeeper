@@ -11,8 +11,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.journalkeeper.core;
+package io.journalkeeper.core.server;
 
+import io.journalkeeper.core.BootStrap;
 import io.journalkeeper.core.api.AdminClient;
 import io.journalkeeper.core.api.RaftServer;
 import io.journalkeeper.core.api.ServerStatus;
@@ -587,7 +588,7 @@ public class KvTest {
         });
 
         // 可能发生选举，需要等待选举完成。
-        newAdminClient.waitForClusterReady(0L);
+        newAdminClient.waitForClusterReady();
 
         // 验证所有节点都成功完成了配置变更
         for (URI uri : newConfig) {
@@ -698,6 +699,76 @@ public class KvTest {
 
         Assert.assertEquals(newPreferredLeader, adminClient.getClusterConfiguration().get().getLeader());
 
+
+        stopServers(servers);
+        TestPathUtils.destroyBaseDir(path.toFile());
+    }
+
+    @Test
+    public void preVoteTest() throws Exception {
+        // 启动5个节点的集群
+        int serverCount = 3;
+        logger.info("Creating {} nodes cluster...", serverCount);
+
+        Path path = TestPathUtils.prepareBaseDir("preVoteTest");
+        List<WrappedBootStrap<String, String, String, String>> servers = createServers(serverCount, path);
+
+        WrappedBootStrap<String, String, String, String> clientBootStrap = new WrappedBootStrap<>(
+                servers.stream().map(s -> s.getServer().serverUri()).collect(Collectors.toList()), new Properties()
+        );
+        WrappedRaftClient<String, String, String, String> kvClient = clientBootStrap.getClient();
+        AdminClient adminClient = clientBootStrap.getAdminClient();
+        kvClient.waitForClusterReady();
+
+        logger.info("Write some data...");
+        // 写入一些数据
+        for (int i = 0; i < 10; i++) {
+            Assert.assertNull(kvClient.update("SET key" + i + " " + i).get());
+        }
+
+        // 获取当前leader节点
+        URI leaderUri = adminClient.getClusterConfiguration().get().getLeader();
+
+        Assert.assertNotNull(leaderUri);
+        logger.info("Current leader is {}.", leaderUri);
+
+        // 从2个follower中挑选任意一个，停掉
+        WrappedBootStrap<String, String, String, String> toBeShutdown = servers.stream().filter(s -> !s.getServer().serverUri().equals(leaderUri)).findAny().orElse(null);
+        Assert.assertNotNull(toBeShutdown);
+        logger.info("Shutdown server: {}...", toBeShutdown.getServer().serverUri());
+        toBeShutdown.shutdown();
+        servers.remove(toBeShutdown);
+        Properties propertiesOfShutdown = toBeShutdown.getProperties();
+
+        // 记录leader的term，然后停掉leader
+        WrappedBootStrap<String, String, String, String> leader = servers.stream().filter(s -> s.getServer().serverUri().equals(leaderUri)).findAny().orElse(null);
+        Assert.assertNotNull(leader);
+        int term = ((Voter )((Server)leader.getServer()).getServer()).getTerm();
+        logger.info("Shutdown leader: {}, term: {}...", leader.getServer().serverUri(), term);
+        leader.shutdown();
+        servers.remove(leader);
+        Properties propertiesOfLeader = leader.getProperties();
+
+        logger.info("Sleep 5 seconds...");
+        Thread.sleep(5000L);
+
+        // 重启刚刚2个节点
+
+        logger.info("Restart server {}...", toBeShutdown.getServer().serverUri());
+        servers.add(recoverServer(propertiesOfShutdown));
+
+        logger.info("Restart server {}...", leader.getServer().serverUri());
+        servers.add(recoverServer(propertiesOfLeader));
+        logger.info("Waiting for cluster ready...");
+        adminClient.waitForClusterReady();
+
+        // 查看新的Leader上的term
+        URI newLeaderUri = adminClient.getClusterConfiguration().get().getLeader();
+        leader = servers.stream().filter(s -> s.getServer().serverUri().equals(newLeaderUri)).findAny().orElse(null);
+        Assert.assertNotNull(leader);
+        int newTerm = ((Voter )((Server)leader.getServer()).getServer()).getTerm();
+        // 检查term是否只增加了1
+        Assert.assertEquals(term + 1, newTerm);
 
         stopServers(servers);
         TestPathUtils.destroyBaseDir(path.toFile());

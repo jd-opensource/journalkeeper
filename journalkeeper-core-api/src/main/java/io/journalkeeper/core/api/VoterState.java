@@ -18,5 +18,5 @@ package io.journalkeeper.core.api;
  * Date: 2019-09-04
  */
 public enum VoterState {
-    LEADER, FOLLOWER, CANDIDATE
+    LEADER, FOLLOWER, CANDIDATE, PRE_VOTING
 }
