@@ -165,14 +165,13 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         this.config = toConfig(properties);
 
         state.addInterceptor(InternalEntryType.TYPE_UPDATE_VOTERS_S1, this::applyUpdateVotersInternalEntry);
-        state.addInterceptor(InternalEntryType.TYPE_UPDATE_VOTERS_S2, this::applyUpdateVotersInternalEntry);
 
         electionTimeoutMs = config.getElectionTimeoutMs() + randomInterval(config.getElectionTimeoutMs());
     }
 
     private void applyUpdateVotersInternalEntry(InternalEntryType type, byte[] internalEntry) {
         voterConfigManager.applyReservedEntry(type, internalEntry, voterState(), state.getConfigState(),
-                this, serverUri(), this);
+                this);
 
     }
 

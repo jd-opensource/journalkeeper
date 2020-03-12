@@ -43,6 +43,9 @@ package io.journalkeeper.core.state;
  * Date: 2019/11/20
  */
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
@@ -58,6 +61,7 @@ import java.util.stream.Stream;
  * 共同一致状态：变更进群配置过程中的中间状态。
  */
 public class ConfigState {
+    private static final Logger logger = LoggerFactory.getLogger(ConfigState.class);
     private final List<URI> configNew = new ArrayList<>(3);
     private final List<URI> configOld = new ArrayList<>(3);
     private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
@@ -127,6 +131,7 @@ public class ConfigState {
             if (!jointConsensus) {
                 throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == true, actual: false.");
             }
+            logger.info("Config changed from joint consensus to new, ({}, {}) -> {}.", configOld, configNew, configNew);
             appendEntryCallable.call();
             jointConsensus = false;
             configOld.clear();
@@ -137,16 +142,16 @@ public class ConfigState {
         }
     }
 
-    public void toJointConsensus(List<URI> configNew, Callable appendEntryCallable) throws Exception {
+    public void toJointConsensus(List<URI> configOld, List<URI> configNew, Callable appendEntryCallable) throws Exception {
         rwLock.writeLock().lock();
         try {
             if (jointConsensus) {
                 throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == false, actual: true.");
             }
-
+            logger.info("Config changed to joint consensus, {} -> ({}, {}).", this.configNew, configOld, configNew);
             appendEntryCallable.call();
             jointConsensus = true;
-            this.configOld.addAll(this.configNew);
+            this.configOld.addAll(configOld);
             this.configNew.clear();
             this.configNew.addAll(configNew);
             buildAllVoters();
@@ -198,6 +203,8 @@ public class ConfigState {
             if (!jointConsensus) {
                 throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == true, actual: false.");
             }
+            logger.info("Config rollback from joint consensus to old, ({}, {}) -> {}.", configOld, configNew, configOld);
+
             jointConsensus = false;
             configNew.clear();
             configNew.addAll(configOld);
@@ -215,6 +222,7 @@ public class ConfigState {
             if (jointConsensus) {
                 throw new IllegalStateException("Invalid joint consensus state! expected: jointConsensus == false, actual: true.");
             }
+            logger.info("Config rollback to joint consensus, {} -> ({}, {}).", configNew, configOld, configNew);
 
             jointConsensus = true;
             this.configOld.addAll(configOld);

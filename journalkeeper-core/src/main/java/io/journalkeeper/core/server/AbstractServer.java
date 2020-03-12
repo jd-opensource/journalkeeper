@@ -802,6 +802,7 @@ public abstract class AbstractServer
                 flushAll();
                 journal.close();
                 this.serverState = ServerState.STOPPED;
+                logger.info("Server {} stopped.", serverUri());
             }
         } catch (Throwable t) {
             t.printStackTrace();

@@ -69,7 +69,7 @@ public class VoterConfigManager {
                 // 等待所有日志都被提交才能进行配置变更
                 waitingForAllEntriesCommitted(journal);
 
-                votersConfigStateMachine.toJointConsensus(updateVotersS1Entry.getConfigNew(), appendEntryCallable);
+                votersConfigStateMachine.toJointConsensus(updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew(), appendEntryCallable);
                 Collection<URI> followerUris = leader.getFollowerUris();
                 for (URI uri : updateVotersS1Entry.getConfigNew()) {
                     if (!serverUri.equals(uri) && // uri was not me
@@ -141,7 +141,7 @@ public class VoterConfigManager {
                 if (entryType == TYPE_UPDATE_VOTERS_S1) {
                     UpdateVotersS1Entry updateVotersS1Entry = InternalEntriesSerializeSupport.parse(rawEntry, headerLength, rawEntry.length - headerLength);
 
-                    votersConfigStateMachine.toJointConsensus(updateVotersS1Entry.getConfigNew(),
+                    votersConfigStateMachine.toJointConsensus(updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew(),
                             () -> null);
                 } else if (entryType == TYPE_UPDATE_VOTERS_S2) {
                     votersConfigStateMachine.toNewConfig(() -> null);
@@ -152,43 +152,30 @@ public class VoterConfigManager {
 
     void applyReservedEntry(InternalEntryType type, byte[] reservedEntry, VoterState voterState,
                             ConfigState votersConfigStateMachine,
-                            ClientServerRpc clientServerRpc, URI serverUri, StateServer server) {
-        switch (type) {
-            case TYPE_UPDATE_VOTERS_S1:
-                if (voterState == VoterState.LEADER) {
-                    byte[] s2Entry = InternalEntriesSerializeSupport.serialize(new UpdateVotersS2Entry(votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew()));
-                    try {
-                        if (votersConfigStateMachine.isJointConsensus()) {
-                            clientServerRpc.updateClusterState(new UpdateClusterStateRequest(
-                                    Collections.singletonList(
-                                            new UpdateRequest(
-                                                    s2Entry, INTERNAL_PARTITION, 1
-                                            )
-                                    )
-                                    , false, ResponseConfig.ONE_WAY));
-                        } else {
-                            throw new IllegalStateException();
-                        }
-                    } catch (Exception e) {
-                        UpdateVotersS1Entry updateVotersS1Entry = InternalEntriesSerializeSupport.parse(reservedEntry);
-                        logger.warn("Failed to update voter config in step 1! Config in the first step entry from: {} To: {}, " +
-                                        "voter config old: {}, new: {}.",
-                                updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew(),
-                                votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew(), e);
+                            ClientServerRpc clientServerRpc) {
+        if (type == TYPE_UPDATE_VOTERS_S1) {
+            if (voterState == VoterState.LEADER) {
+                byte[] s2Entry = InternalEntriesSerializeSupport.serialize(new UpdateVotersS2Entry(votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew()));
+                try {
+                    if (votersConfigStateMachine.isJointConsensus()) {
+                        clientServerRpc.updateClusterState(new UpdateClusterStateRequest(
+                                Collections.singletonList(
+                                        new UpdateRequest(
+                                                s2Entry, INTERNAL_PARTITION, 1
+                                        )
+                                )
+                                , false, ResponseConfig.ONE_WAY));
+                    } else {
+                        throw new IllegalStateException();
                     }
-                } else if (!votersConfigStateMachine.voters().contains(serverUri)) {
-                    // Stop myself if I'm no longer a member of the cluster. Any follower can be stopped safely on this stage.
-                    server.stopAsync();
+                } catch (Exception e) {
+                    UpdateVotersS1Entry updateVotersS1Entry = InternalEntriesSerializeSupport.parse(reservedEntry);
+                    logger.warn("Failed to update voter config in step 1! Config in the first step entry from: {} To: {}, " +
+                                    "voter config old: {}, new: {}.",
+                            updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew(),
+                            votersConfigStateMachine.getConfigOld(), votersConfigStateMachine.getConfigNew(), e);
                 }
-                break;
-            case TYPE_UPDATE_VOTERS_S2:
-                // Stop myself if I'm no longer a member of the cluster.
-                // Leader can be stopped on this stage, a new leader will be elected in the new configuration.
-                if (!votersConfigStateMachine.voters().contains(serverUri)) {
-                    server.stopAsync();
-                }
-                break;
-            default:
+            }
         }
     }
 
