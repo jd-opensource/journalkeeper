@@ -25,7 +25,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class InstallSnapshotResponseCodec extends ResponseCodec<InstallSnapshotResponse> implements Type {
     @Override
-    protected void encodeResponse(InstallSnapshotResponse response, ByteBuf buffer) throws Exception {
+    protected void encodeResponse(JournalKeeperHeader header, InstallSnapshotResponse response, ByteBuf buffer) throws Exception {
 
         CodecSupport.encodeInt(buffer, response.getTerm());
     }

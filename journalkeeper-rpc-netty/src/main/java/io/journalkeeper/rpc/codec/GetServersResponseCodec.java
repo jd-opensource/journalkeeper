@@ -29,7 +29,7 @@ import java.util.List;
  */
 public class GetServersResponseCodec extends ResponseCodec<GetServersResponse> implements Type {
     @Override
-    protected void encodeResponse(GetServersResponse response, ByteBuf buffer) throws Exception {
+    protected void encodeResponse(JournalKeeperHeader header, GetServersResponse response, ByteBuf buffer) throws Exception {
         ClusterConfiguration clusterConfiguration = response == null ? new ClusterConfiguration() : response.getClusterConfiguration();
         if (null == clusterConfiguration) clusterConfiguration = new ClusterConfiguration();
 

@@ -25,7 +25,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class LastAppliedResponseCodec extends LeaderResponseCodec<LastAppliedResponse> implements Type {
     @Override
-    protected void encodeLeaderResponse(LastAppliedResponse leaderResponse, ByteBuf buffer) throws Exception {
+    protected void encodeLeaderResponse(JournalKeeperHeader header, LastAppliedResponse leaderResponse, ByteBuf buffer) throws Exception {
         CodecSupport.encodeLong(buffer, leaderResponse.getLastApplied());
     }
 

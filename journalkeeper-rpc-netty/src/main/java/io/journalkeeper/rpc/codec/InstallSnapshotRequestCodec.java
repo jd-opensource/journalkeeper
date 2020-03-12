@@ -25,7 +25,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class InstallSnapshotRequestCodec extends GenericPayloadCodec<InstallSnapshotRequest> implements Type {
     @Override
-    protected void encodePayload(InstallSnapshotRequest request, ByteBuf buffer) throws Exception {
+    protected void encodePayload(JournalKeeperHeader header, InstallSnapshotRequest request, ByteBuf buffer) throws Exception {
         CodecSupport.encodeInt(buffer, request.getTerm());
         CodecSupport.encodeUri(buffer, request.getLeaderId());
         CodecSupport.encodeLong(buffer, request.getLastIncludedIndex());

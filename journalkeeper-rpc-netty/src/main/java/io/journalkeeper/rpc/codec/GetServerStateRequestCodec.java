@@ -25,7 +25,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class GetServerStateRequestCodec extends GenericPayloadCodec<GetServerStateRequest> implements Type {
     @Override
-    protected void encodePayload(GetServerStateRequest request, ByteBuf buffer) throws Exception {
+    protected void encodePayload(JournalKeeperHeader header, GetServerStateRequest request, ByteBuf buffer) throws Exception {
         // long lastIncludedIndex, long offset
         CodecSupport.encodeLong(buffer, request.getLastIncludedIndex());
         CodecSupport.encodeInt(buffer, request.getIteratorId());

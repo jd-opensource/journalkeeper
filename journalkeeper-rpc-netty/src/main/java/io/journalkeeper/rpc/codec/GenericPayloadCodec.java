@@ -30,11 +30,11 @@ public abstract class GenericPayloadCodec<P> implements PayloadCodec<JournalKeep
     }
 
     @Override
-    public final void encode(GenericPayload<P> payload, ByteBuf buffer) throws Exception {
-        encodePayload(payload.getPayload(), buffer);
+    public final void encode(GenericPayload<P> payload, ByteBuf buffer, JournalKeeperHeader header) throws Exception {
+        encodePayload(header, payload.getPayload(), buffer);
     }
 
-    protected abstract void encodePayload(P payload, ByteBuf buffer) throws Exception;
+    protected abstract void encodePayload(JournalKeeperHeader header, P payload, ByteBuf buffer) throws Exception;
 
     protected abstract P decodePayload(JournalKeeperHeader header, ByteBuf buffer) throws Exception;
 }

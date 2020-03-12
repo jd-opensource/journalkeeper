@@ -30,7 +30,7 @@ public class CompleteTransactionResponseCodec extends ResponseCodec<CompleteTran
     }
 
     @Override
-    protected void encodeResponse(CompleteTransactionResponse response, ByteBuf buffer) throws Exception {
+    protected void encodeResponse(JournalKeeperHeader header, CompleteTransactionResponse response, ByteBuf buffer) throws Exception {
 
     }
 

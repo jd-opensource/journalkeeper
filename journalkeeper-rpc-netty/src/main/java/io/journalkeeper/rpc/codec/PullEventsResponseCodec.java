@@ -29,7 +29,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class PullEventsResponseCodec extends ResponseCodec<PullEventsResponse> implements Type {
     @Override
-    protected void encodeResponse(PullEventsResponse response, ByteBuf buffer) {
+    protected void encodeResponse(JournalKeeperHeader header, PullEventsResponse response, ByteBuf buffer) {
         //boolean success, long journalIndex, int term, int entryCount
         CodecSupport.encodeList(buffer, response.getPullEvents(),
                 (obj, buffer1) -> {

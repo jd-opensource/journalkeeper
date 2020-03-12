@@ -30,7 +30,7 @@ public class VoidPayloadCodec implements PayloadCodec<JournalKeeperHeader, VoidP
     }
 
     @Override
-    public void encode(VoidPayload payload, ByteBuf buffer) throws Exception {
+    public void encode(VoidPayload payload, ByteBuf buffer, JournalKeeperHeader header) throws Exception {
 
     }
 }

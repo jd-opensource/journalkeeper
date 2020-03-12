@@ -13,6 +13,7 @@
  */
 package io.journalkeeper.rpc.remoting.transport.codec;
 
+import io.journalkeeper.rpc.remoting.transport.command.Header;
 import io.journalkeeper.rpc.remoting.transport.command.Payload;
 import io.netty.buffer.ByteBuf;
 
@@ -22,7 +23,7 @@ import io.netty.buffer.ByteBuf;
  *
  * date: 2018/8/21
  */
-public interface PayloadEncoder<T extends Payload> {
+public interface PayloadEncoder<H extends Header, T extends Payload> {
 
-    public void encode(T payload, ByteBuf buffer) throws Exception;
+    void encode(T payload, ByteBuf buffer, H header) throws Exception;
 }

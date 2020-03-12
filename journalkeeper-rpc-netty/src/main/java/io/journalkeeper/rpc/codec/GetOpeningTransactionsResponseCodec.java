@@ -27,7 +27,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class GetOpeningTransactionsResponseCodec extends LeaderResponseCodec<GetOpeningTransactionsResponse> implements Type {
     @Override
-    protected void encodeLeaderResponse(GetOpeningTransactionsResponse response, ByteBuf buffer) throws Exception {
+    protected void encodeLeaderResponse(JournalKeeperHeader header, GetOpeningTransactionsResponse response, ByteBuf buffer) throws Exception {
         CodecSupport.encodeCollection(buffer, response.getTransactionContexts(),
                 (obj, buffer1) -> {
                     JournalKeeperTransactionContext context = (JournalKeeperTransactionContext) obj;

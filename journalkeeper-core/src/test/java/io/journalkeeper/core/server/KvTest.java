@@ -162,6 +162,71 @@ public class KvTest {
         TestPathUtils.destroyBaseDir(path.toFile());
     }
 
+    /**
+     * 验证禁用PreVote时，选举是否成功
+     */
+    @Test
+    public void disablePreVoteTest() throws IOException, InterruptedException, ExecutionException, TimeoutException {
+        final int nodes = 3;
+        logger.info("{} nodes disable pre vote test.", nodes);
+        Path path = TestPathUtils.prepareBaseDir("disablePreVote" + nodes);
+        List<URI> serverURIs = new ArrayList<>(nodes);
+        List<Properties> propertiesList = new ArrayList<>(nodes);
+        for (int i = 0; i < nodes; i++) {
+            URI uri = URI.create("local://test" + i);
+            serverURIs.add(uri);
+            Path workingDir = path.resolve("server" + i);
+            Properties properties = new Properties();
+            properties.setProperty("working_dir", workingDir.toString());
+            properties.setProperty("persistence.journal.file_data_size", String.valueOf(128 * 1024));
+            properties.setProperty("persistence.index.file_data_size", String.valueOf(16 * 1024));
+            properties.setProperty("disable_logo", "true");
+            properties.setProperty("enable_pre_vote", "false");
+            propertiesList.add(properties);
+        }
+        List<WrappedBootStrap<String, String, String, String>> kvServers = createServers(serverURIs, propertiesList, RaftServer.Roll.VOTER, true);
+        int keyNum = 0;
+        while (!kvServers.isEmpty()) {
+            WrappedRaftClient<String, String, String, String> kvClient = kvServers.get(0).getClient();
+            if (kvServers.size() > nodes / 2) {
+                kvClient.update("SET key" + keyNum + " value" + keyNum);
+            }
+
+
+            WrappedBootStrap<String, String, String, String> toBeRemoved = kvServers.get(0);
+
+            logger.info("Shutting down server: {}.", toBeRemoved.getServer().serverUri());
+            toBeRemoved.shutdown();
+            kvServers.remove(toBeRemoved);
+            if (kvServers.size() > nodes / 2) {
+                // 等待新的Leader选出来
+                logger.info("Wait for new leader...");
+                AdminClient adminClient = kvServers.get(0).getAdminClient();
+                adminClient.waitForClusterReady(0L);
+                Assert.assertEquals("value" + keyNum, kvServers.get(0).getClient().query("GET key" + keyNum).get());
+                keyNum++;
+            }
+        }
+
+        for (int j = 0; j < nodes; j++) {
+
+            WrappedBootStrap<String, String, String, String> kvServer = recoverServer(propertiesList.get(j));
+            kvServers.add(kvServer);
+            if (kvServers.size() > nodes / 2) {
+                // 等待新的Leader选出来
+                logger.info("Wait for new leader...");
+                AdminClient adminClient = kvServers.get(0).getAdminClient();
+                adminClient.waitForClusterReady(0L);
+                for (int i = 0; i < keyNum; i++) {
+                    Assert.assertEquals("value" + i, kvServers.get(0).getClient().query("GET key" + i).get());
+                }
+            }
+        }
+
+        stopServers(kvServers);
+        TestPathUtils.destroyBaseDir(path.toFile());
+    }
+
 
     private WrappedBootStrap<String, String, String, String> recoverServer(String serverPath, Path path) throws IOException {
         Path workingDir = path.resolve(serverPath);

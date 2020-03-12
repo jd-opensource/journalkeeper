@@ -27,7 +27,7 @@ public class JournalKeeperHeader implements Header {
 
     public final static int MAGIC = 0x3f4e93d7;
     private static final AtomicInteger requestIdGenerator = new AtomicInteger(0);
-    private final static int DEFAULT_VERSION = 1;
+    public final static int DEFAULT_VERSION = 2;
     private boolean oneWay;
     private int status;
     private String error;
@@ -41,12 +41,12 @@ public class JournalKeeperHeader implements Header {
     public JournalKeeperHeader() {
     }
 
-    public JournalKeeperHeader(Direction direction, int type, URI destination) {
-        this(DEFAULT_VERSION, false, direction, nextRequestId(), type, System.currentTimeMillis(), destination, 0, null);
+    public JournalKeeperHeader(int version, Direction direction, int type, URI destination) {
+        this(version, false, direction, nextRequestId(), type, System.currentTimeMillis(), destination, 0, null);
     }
 
-    public JournalKeeperHeader(Direction direction, int requestId, int type, URI destination) {
-        this(DEFAULT_VERSION, false, direction, requestId, type, System.currentTimeMillis(), destination, 0, null);
+    public JournalKeeperHeader(int version, Direction direction, int requestId, int type, URI destination) {
+        this(version, false, direction, requestId, type, System.currentTimeMillis(), destination, 0, null);
     }
 
     public JournalKeeperHeader(int version, boolean oneWay, Direction direction, int requestId, int type, long sendTime, URI destination, int status, String error) {

@@ -10,31 +10,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * <p>
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * <p>
- * http://www.apache.org/licenses/LICENSE-2.0
- * <p>
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-/**
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * <p>
- * http://www.apache.org/licenses/LICENSE-2.0
- * <p>
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 package io.journalkeeper.core.server;
 
@@ -213,6 +188,11 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
                 properties.getProperty(
                         Config.CACHE_REQUESTS_KEY,
                         String.valueOf(Config.DEFAULT_CACHE_REQUESTS))));
+        config.setEnablePreVote(Boolean.parseBoolean(
+                properties.getProperty(
+                        Config.ENABLE_PRE_VOTE_KEY,
+                        String.valueOf(Config.DEFAULT_ENABLE_EVENTS))));
+
         config.setRpcTimeoutMs(Long.parseLong(
                 properties.getProperty(
                         AbstractServer.Config.RPC_TIMEOUT_MS_KEY,
@@ -257,6 +237,10 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         try {
             if (voterState() == VoterState.FOLLOWER && System.currentTimeMillis() - lastHeartbeat > electionTimeoutMs) {
                 convertToPreVoting();
+                // 如果不开启PreVote，直接转换成候选人
+                if(!config.isEnablePreVote()) {
+                    convertToCandidate();
+                }
                 nextElectionTime = System.currentTimeMillis() + electionTimeoutMs;
             }
 
@@ -1055,6 +1039,7 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         public final static int DEFAULT_CACHE_REQUESTS = 1024;
         public final static long DEFAULT_TRANSACTION_TIMEOUT_MS = 10L * 60 * 1000;
         public final static int DEFAULT_PRINT_STATE_INTERVAL_SEC = 0;
+        public final static boolean DEFAULT_ENABLE_PRE_VOTE = true;
 
         public final static String HEARTBEAT_INTERVAL_KEY = "heartbeat_interval_ms";
         public final static String ELECTION_TIMEOUT_KEY = "election_timeout_ms";
@@ -1062,6 +1047,7 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         public final static String CACHE_REQUESTS_KEY = "cache_requests";
         public final static String TRANSACTION_TIMEOUT_MS_KEY = "transaction_timeout_ms";
         public final static String PRINT_STATE_INTERVAL_SEC_KEY = "print_state_interval_sec";
+        public final static String ENABLE_PRE_VOTE_KEY = "enable_pre_vote";
 
         private long heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS;
         private long electionTimeoutMs = DEFAULT_ELECTION_TIMEOUT_MS;  // 最小选举超时
@@ -1069,7 +1055,7 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         private int cacheRequests = DEFAULT_CACHE_REQUESTS;
         private long transactionTimeoutMs = DEFAULT_TRANSACTION_TIMEOUT_MS;
         private int printStateIntervalSec = DEFAULT_PRINT_STATE_INTERVAL_SEC;
-
+        private boolean enablePreVote = DEFAULT_ENABLE_PRE_VOTE;
         public int getReplicationBatchSize() {
             return replicationBatchSize;
         }
@@ -1117,6 +1103,14 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
 
         public void setPrintStateIntervalSec(int printStateIntervalSec) {
             this.printStateIntervalSec = printStateIntervalSec;
+        }
+
+        public boolean isEnablePreVote() {
+            return enablePreVote;
+        }
+
+        public void setEnablePreVote(boolean enablePreVote) {
+            this.enablePreVote = enablePreVote;
         }
     }
 

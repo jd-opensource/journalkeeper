@@ -27,7 +27,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class UpdateClusterStateRequestCodec extends GenericPayloadCodec<UpdateClusterStateRequest> implements Type {
     @Override
-    protected void encodePayload(UpdateClusterStateRequest request, ByteBuf buffer) throws Exception {
+    protected void encodePayload(JournalKeeperHeader header, UpdateClusterStateRequest request, ByteBuf buffer) throws Exception {
         CodecSupport.encodeUUID(buffer, request.getTransactionId());
         CodecSupport.encodeList(buffer, request.getRequests(), (obj, buffer1) -> {
             UpdateRequest request1 = (UpdateRequest) obj;

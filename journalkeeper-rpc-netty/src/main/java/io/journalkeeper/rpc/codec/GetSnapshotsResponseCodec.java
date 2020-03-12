@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 public class GetSnapshotsResponseCodec extends LeaderResponseCodec<GetSnapshotsResponse> implements Type {
 
     @Override
-    protected void encodeLeaderResponse(GetSnapshotsResponse leaderResponse, ByteBuf buffer) throws Exception {
+    protected void encodeLeaderResponse(JournalKeeperHeader header, GetSnapshotsResponse leaderResponse, ByteBuf buffer) throws Exception {
         CodecSupport.encodeCollection(buffer, leaderResponse.getSnapshots().getSnapshots(),
                 (obj, entryBuffer) -> {
                     SnapshotEntry entry = (SnapshotEntry) obj;

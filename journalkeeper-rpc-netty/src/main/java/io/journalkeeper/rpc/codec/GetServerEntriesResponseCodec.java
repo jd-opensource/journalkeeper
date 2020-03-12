@@ -25,7 +25,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class GetServerEntriesResponseCodec extends ResponseCodec<GetServerEntriesResponse> implements Type {
     @Override
-    protected void encodeResponse(GetServerEntriesResponse response, ByteBuf buffer) throws Exception {
+    protected void encodeResponse(JournalKeeperHeader header, GetServerEntriesResponse response, ByteBuf buffer) throws Exception {
         // List<byte []> entries, long minIndex, long lastApplied
         CodecSupport.encodeList(buffer, response.getEntries(),
                 (obj, buffer1) -> CodecSupport.encodeBytes(buffer1, (byte[]) obj));

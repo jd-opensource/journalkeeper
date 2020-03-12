@@ -25,25 +25,37 @@ import io.netty.buffer.ByteBuf;
  */
 public class RequestVoteRequestCodec extends GenericPayloadCodec<RequestVoteRequest> implements Type {
     @Override
-    protected void encodePayload(RequestVoteRequest request, ByteBuf buffer) throws Exception {
+    protected void encodePayload(JournalKeeperHeader header, RequestVoteRequest request, ByteBuf buffer) {
 //        int term, URI candidate, long lastLogIndex, int lastLogTerm
         CodecSupport.encodeInt(buffer, request.getTerm());
         CodecSupport.encodeUri(buffer, request.getCandidate());
         CodecSupport.encodeLong(buffer, request.getLastLogIndex());
         CodecSupport.encodeInt(buffer, request.getLastLogTerm());
         CodecSupport.encodeBoolean(buffer, request.isFromPreferredLeader());
-        CodecSupport.encodeBoolean(buffer, request.isPreVote());
+        if(header.getVersion() > 1) {
+            CodecSupport.encodeBoolean(buffer, request.isPreVote());
+        }
     }
 
     @Override
-    protected RequestVoteRequest decodePayload(JournalKeeperHeader header, ByteBuf buffer) throws Exception {
-        return new RequestVoteRequest(
-                CodecSupport.decodeInt(buffer),
-                CodecSupport.decodeUri(buffer),
-                CodecSupport.decodeLong(buffer),
-                CodecSupport.decodeInt(buffer),
-                CodecSupport.decodeBoolean(buffer),
-                CodecSupport.decodeBoolean(buffer));
+    protected RequestVoteRequest decodePayload(JournalKeeperHeader header, ByteBuf buffer) {
+        if(header.getVersion() > 1) {
+            return new RequestVoteRequest(
+                    CodecSupport.decodeInt(buffer),
+                    CodecSupport.decodeUri(buffer),
+                    CodecSupport.decodeLong(buffer),
+                    CodecSupport.decodeInt(buffer),
+                    CodecSupport.decodeBoolean(buffer),
+                    CodecSupport.decodeBoolean(buffer));
+        } else {
+            return new RequestVoteRequest(
+                    CodecSupport.decodeInt(buffer),
+                    CodecSupport.decodeUri(buffer),
+                    CodecSupport.decodeLong(buffer),
+                    CodecSupport.decodeInt(buffer),
+                    CodecSupport.decodeBoolean(buffer),
+                    false);
+        }
     }
 
     @Override

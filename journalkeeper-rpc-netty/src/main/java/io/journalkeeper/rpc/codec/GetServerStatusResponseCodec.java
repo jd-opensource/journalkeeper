@@ -28,7 +28,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class GetServerStatusResponseCodec extends ResponseCodec<GetServerStatusResponse> implements Type {
     @Override
-    protected void encodeResponse(GetServerStatusResponse response, ByteBuf buffer) throws Exception {
+    protected void encodeResponse(JournalKeeperHeader header, GetServerStatusResponse response, ByteBuf buffer) throws Exception {
         ServerStatus serverStatus = response.getServerStatus();
         if (null == serverStatus) serverStatus = new ServerStatus();
         CodecSupport.encodeString(buffer, serverStatus.getRoll() == null ? "" : serverStatus.getRoll().name());

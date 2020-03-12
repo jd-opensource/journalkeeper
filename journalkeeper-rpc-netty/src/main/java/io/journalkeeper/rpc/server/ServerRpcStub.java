@@ -27,8 +27,8 @@ import java.util.concurrent.CompletableFuture;
  * Date: 2019-03-30
  */
 public class ServerRpcStub extends ClientServerRpcStub implements ServerRpc {
-    public ServerRpcStub(TransportClient transportClient, URI uri, InetSocketAddress inetSocketAddress) {
-        super(transportClient, uri, inetSocketAddress);
+    public ServerRpcStub(TransportClient transportClient, URI uri, InetSocketAddress inetSocketAddress, int version) {
+        super(transportClient, uri, inetSocketAddress, version);
     }
 
     @Override

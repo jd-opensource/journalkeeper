@@ -65,7 +65,7 @@ public class DefaultEncoder implements Encoder {
                     throw new TransportException.CodecException(String.format("unsupported encode payload type, header: %s", header));
                 }
 
-                encoder.encode((Payload) payload, buffer);
+                encoder.encode((Payload) payload, buffer, header);
             } else {
                 headerCodec.encode(header, buffer);
             }

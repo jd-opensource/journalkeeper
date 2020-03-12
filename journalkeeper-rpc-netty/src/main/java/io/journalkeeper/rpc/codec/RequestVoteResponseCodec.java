@@ -25,7 +25,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class RequestVoteResponseCodec extends ResponseCodec<RequestVoteResponse> implements Type {
     @Override
-    protected void encodeResponse(RequestVoteResponse response, ByteBuf buffer) throws Exception {
+    protected void encodeResponse(JournalKeeperHeader header, RequestVoteResponse response, ByteBuf buffer) throws Exception {
         // int term, boolean voteGranted
         CodecSupport.encodeInt(buffer, response.getTerm());
         CodecSupport.encodeBoolean(buffer, response.isVoteGranted());

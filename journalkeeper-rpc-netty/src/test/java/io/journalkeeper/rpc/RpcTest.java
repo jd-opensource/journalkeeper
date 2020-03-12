@@ -607,6 +607,46 @@ public class RpcTest {
     }
 
     @Test
+    public void testProtocolVersion() throws ExecutionException, InterruptedException {
+        Properties properties = new Properties();
+        properties.setProperty("protocol.version", "1");
+        ServerRpcAccessPoint oldVersionAccessPoint = new JournalKeeperRpcAccessPointFactory().createServerRpcAccessPoint(properties);
+
+
+        logger.info("Running test {}.", Thread.currentThread()
+                .getStackTrace()[1]
+                .getMethodName());
+        RequestVoteRequest request = new RequestVoteRequest(
+                88,
+                URI.create("jk://candidate.host:8888"),
+                6666666L,
+                87,
+                false, true);
+        ServerRpc serverRpc = oldVersionAccessPoint.getServerRpcAgent(serverRpcMock.serverUri());
+
+        RequestVoteResponse response, serverResponse;
+        serverResponse = new RequestVoteResponse(88, false);
+        // Test success response
+        when(serverRpcMock.requestVote(any(RequestVoteRequest.class)))
+                .thenReturn(CompletableFuture.supplyAsync(() -> serverResponse));
+        response = serverRpc.requestVote(request).get();
+        Assert.assertTrue(response.success());
+        Assert.assertEquals(serverResponse.isVoteGranted(), response.isVoteGranted());
+        Assert.assertEquals(serverResponse.getTerm(), response.getTerm());
+
+        verify(serverRpcMock).requestVote(
+                argThat((RequestVoteRequest r) ->
+                        r.getTerm() == request.getTerm() &&
+                                r.getCandidate().equals(request.getCandidate()) &&
+                                r.getLastLogIndex() == request.getLastLogIndex() &&
+                                r.getLastLogTerm() == request.getLastLogTerm() &&
+                                r.isFromPreferredLeader() == request.isFromPreferredLeader() &&
+                                r.isPreVote() == false
+                ));
+
+    }
+
+    @Test
     public void testGetServerEntries() throws ExecutionException, InterruptedException {
         logger.info("Running test {}.", Thread.currentThread()
                 .getStackTrace()[1]

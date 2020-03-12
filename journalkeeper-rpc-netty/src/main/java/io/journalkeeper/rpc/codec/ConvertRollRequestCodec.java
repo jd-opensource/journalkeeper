@@ -26,7 +26,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class ConvertRollRequestCodec extends GenericPayloadCodec<ConvertRollRequest> implements Type {
     @Override
-    protected void encodePayload(ConvertRollRequest request, ByteBuf buffer) throws Exception {
+    protected void encodePayload(JournalKeeperHeader header, ConvertRollRequest request, ByteBuf buffer) throws Exception {
 //        long index, int maxSize
         CodecSupport.encodeString(buffer, request.getRoll() == null ? "" : request.getRoll().name());
     }

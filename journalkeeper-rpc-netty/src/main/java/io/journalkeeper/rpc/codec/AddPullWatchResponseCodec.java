@@ -25,7 +25,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class AddPullWatchResponseCodec extends ResponseCodec<AddPullWatchResponse> implements Type {
     @Override
-    protected void encodeResponse(AddPullWatchResponse response, ByteBuf buffer) throws Exception {
+    protected void encodeResponse(JournalKeeperHeader header, AddPullWatchResponse response, ByteBuf buffer) throws Exception {
         //boolean success, long journalIndex, int term, int entryCount
         CodecSupport.encodeLong(buffer, response.getPullWatchId());
         CodecSupport.encodeLong(buffer, response.getPullIntervalMs());

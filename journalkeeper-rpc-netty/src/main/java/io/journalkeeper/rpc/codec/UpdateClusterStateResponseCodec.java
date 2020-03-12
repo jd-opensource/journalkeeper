@@ -25,17 +25,25 @@ import io.netty.buffer.ByteBuf;
  */
 public class UpdateClusterStateResponseCodec extends LeaderResponseCodec<UpdateClusterStateResponse> implements Type {
     @Override
-    protected void encodeLeaderResponse(UpdateClusterStateResponse leaderResponse, ByteBuf buffer) {
+    protected void encodeLeaderResponse(JournalKeeperHeader header, UpdateClusterStateResponse leaderResponse, ByteBuf buffer) {
         CodecSupport.encodeList(buffer, leaderResponse.getResults(), (obj, buffer1) -> CodecSupport.encodeBytes(buffer, (byte[]) obj));
-        CodecSupport.encodeLong(buffer, leaderResponse.getLastApplied());
+        if(header.getVersion() > 1) {
+            CodecSupport.encodeLong(buffer, leaderResponse.getLastApplied());
+        }
     }
 
     @Override
     protected UpdateClusterStateResponse decodeLeaderResponse(JournalKeeperHeader header, ByteBuf buffer) {
-        return new UpdateClusterStateResponse(
-                CodecSupport.decodeList(buffer, CodecSupport::decodeBytes),
-                CodecSupport.decodeLong(buffer)
-        );
+        if (header.getVersion() > 1) {
+            return new UpdateClusterStateResponse(
+                    CodecSupport.decodeList(buffer, CodecSupport::decodeBytes),
+                    CodecSupport.decodeLong(buffer)
+            );
+        } else {
+            return new UpdateClusterStateResponse(
+                    CodecSupport.decodeList(buffer, CodecSupport::decodeBytes), -1
+            );
+        }
     }
 
     @Override

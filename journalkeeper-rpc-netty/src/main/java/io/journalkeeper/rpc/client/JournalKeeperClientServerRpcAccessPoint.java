@@ -15,6 +15,7 @@ package io.journalkeeper.rpc.client;
 
 import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.UriSupport;
+import io.journalkeeper.rpc.header.JournalKeeperHeader;
 import io.journalkeeper.rpc.remoting.transport.TransportClient;
 
 import java.net.URI;
@@ -30,6 +31,8 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     private final Properties properties;
     private final TransportClient transportClient;
     private Map<URI, ClientServerRpcStub> serverInstances = new ConcurrentHashMap<>();
+    public final String PROTOCOL_VERSION_KEY = "protocol.version";
+    private final int protocolVersion;
 
     public JournalKeeperClientServerRpcAccessPoint(TransportClient transportClient, Properties properties) {
         this.transportClient = transportClient;
@@ -39,6 +42,8 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
             throw new RpcException(e);
         }
         this.properties = properties;
+        protocolVersion = Integer.parseInt(properties.getProperty(PROTOCOL_VERSION_KEY, String.valueOf(JournalKeeperHeader.DEFAULT_VERSION)));
+
     }
 
 
@@ -58,7 +63,7 @@ public class JournalKeeperClientServerRpcAccessPoint implements ClientServerRpcA
     }
 
     private ClientServerRpcStub createClientServerRpc(URI server) {
-        return new ClientServerRpcStub(transportClient, server, UriSupport.parseUri(server));
+        return new ClientServerRpcStub(transportClient, server, UriSupport.parseUri(server), protocolVersion);
     }
 
     private void disconnect(ClientServerRpcStub clientServerRpc) {

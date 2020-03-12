@@ -25,7 +25,7 @@ import io.netty.buffer.ByteBuf;
  */
 public class QueryStateResponseCodec extends LeaderResponseCodec<QueryStateResponse> implements Types {
     @Override
-    protected void encodeLeaderResponse(QueryStateResponse response, ByteBuf buffer) throws Exception {
+    protected void encodeLeaderResponse(JournalKeeperHeader header, QueryStateResponse response, ByteBuf buffer) throws Exception {
         CodecSupport.encodeLong(buffer, response.getLastApplied());
         CodecSupport.encodeBytes(buffer, response.getResult());
     }

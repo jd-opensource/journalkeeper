@@ -32,7 +32,7 @@ public class CreateTransactionRequestCodec extends GenericPayloadCodec<CreateTra
     }
 
     @Override
-    protected void encodePayload(CreateTransactionRequest request, ByteBuf buffer) throws Exception {
+    protected void encodePayload(JournalKeeperHeader header, CreateTransactionRequest request, ByteBuf buffer) throws Exception {
         CodecSupport.encodeMap(buffer, request.getContext(),
                 (obj, buffer1) -> CodecSupport.encodeString(buffer1, (String) obj),
                 (obj, buffer1) -> CodecSupport.encodeString(buffer1, (String) obj));

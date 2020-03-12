@@ -42,6 +42,7 @@ import io.journalkeeper.exceptions.RequestTimeoutException;
 import io.journalkeeper.rpc.BaseResponse;
 import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.codec.RpcTypes;
+import io.journalkeeper.rpc.header.JournalKeeperHeader;
 import io.journalkeeper.rpc.remoting.transport.Transport;
 import io.journalkeeper.rpc.remoting.transport.TransportClient;
 import io.journalkeeper.rpc.remoting.transport.TransportState;
@@ -50,7 +51,6 @@ import io.journalkeeper.rpc.utils.CommandSupport;
 import io.journalkeeper.utils.event.EventBus;
 import io.journalkeeper.utils.event.EventWatcher;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
-import io.journalkeeper.utils.threads.NamedThreadFactory;
 import io.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,8 +59,6 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -74,19 +72,20 @@ public class ClientServerRpcStub implements ClientServerRpc {
     protected final TransportClient transportClient;
     protected final InetSocketAddress inetSocketAddress;
     protected final URI uri;
-    private final Executor responseExecutor;
     protected Transport transport;
     protected EventBus eventBus = null;
     protected AsyncLoopThread pullEventThread = null;
     protected long pullWatchId = -1L;
     protected long ackSequence = -1L;
     protected AtomicBoolean lastRequestSuccess = new AtomicBoolean(true);
+    protected final int version;
 
-    public ClientServerRpcStub(TransportClient transportClient, URI uri, InetSocketAddress inetSocketAddress) {
+    public ClientServerRpcStub(TransportClient transportClient, URI uri, InetSocketAddress inetSocketAddress, int version) {
         this.transportClient = transportClient;
         this.uri = uri;
+        this.version = version;
         this.inetSocketAddress = inetSocketAddress;
-        this.responseExecutor = Executors.newFixedThreadPool(4, new NamedThreadFactory("Response-Handler-executor"));
+        logger.info("Using protocol version {}, supported versions up to {}.", version, JournalKeeperHeader.DEFAULT_VERSION);
     }
 
 
@@ -101,7 +100,7 @@ public class ClientServerRpcStub implements ClientServerRpc {
                 closeTransport();
                 transport = createTransport();
             }
-            CompletableFuture<R> future = CommandSupport.sendRequest(request, rpcType, transport, uri);
+            CompletableFuture<R> future = CommandSupport.sendRequest(request, rpcType, transport, uri, version);
 
             future.whenCompleteAsync((response, exception) -> {
                 if (null != exception) {

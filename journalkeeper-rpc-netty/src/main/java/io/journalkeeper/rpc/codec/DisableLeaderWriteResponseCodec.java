@@ -26,7 +26,7 @@ import io.netty.buffer.ByteBuf;
 public class DisableLeaderWriteResponseCodec extends LeaderResponseCodec<DisableLeaderWriteResponse> implements Type {
 
     @Override
-    protected void encodeLeaderResponse(DisableLeaderWriteResponse leaderResponse, ByteBuf buffer) throws Exception {
+    protected void encodeLeaderResponse(JournalKeeperHeader header, DisableLeaderWriteResponse leaderResponse, ByteBuf buffer) throws Exception {
         CodecSupport.encodeInt(buffer, leaderResponse.getTerm());
 
     }

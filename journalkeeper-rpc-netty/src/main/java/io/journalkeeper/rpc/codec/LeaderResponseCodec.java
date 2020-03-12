@@ -26,8 +26,8 @@ import java.net.URI;
  */
 public abstract class LeaderResponseCodec<R extends LeaderResponse> extends ResponseCodec<R> {
     @Override
-    protected final void encodeResponse(R response, ByteBuf buffer) throws Exception {
-        encodeLeaderResponse(response, buffer);
+    protected final void encodeResponse(JournalKeeperHeader header, R response, ByteBuf buffer) throws Exception {
+        encodeLeaderResponse(header, response, buffer);
         CodecSupport.encodeString(buffer, response.getLeader() == null ? null : response.getLeader().toString());
     }
 
@@ -41,7 +41,7 @@ public abstract class LeaderResponseCodec<R extends LeaderResponse> extends Resp
         return response;
     }
 
-    protected abstract void encodeLeaderResponse(R leaderResponse, ByteBuf buffer) throws Exception;
+    protected abstract void encodeLeaderResponse(JournalKeeperHeader header,R leaderResponse, ByteBuf buffer) throws Exception;
 
     protected abstract R decodeLeaderResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception;
 }

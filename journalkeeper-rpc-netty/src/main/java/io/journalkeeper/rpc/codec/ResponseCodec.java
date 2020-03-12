@@ -32,11 +32,11 @@ public abstract class ResponseCodec<R extends BaseResponse> extends GenericPaylo
     }
 
     @Override
-    public final void encodePayload(R response, ByteBuf buffer) throws Exception {
-        encodeResponse(response, buffer);
+    public final void encodePayload(JournalKeeperHeader header, R response, ByteBuf buffer) throws Exception {
+        encodeResponse(header, response, buffer);
     }
 
-    protected abstract void encodeResponse(R response, ByteBuf buffer) throws Exception;
+    protected abstract void encodeResponse(JournalKeeperHeader header, R response, ByteBuf buffer) throws Exception;
 
     protected abstract R decodeResponse(JournalKeeperHeader header, ByteBuf buffer) throws Exception;
 }

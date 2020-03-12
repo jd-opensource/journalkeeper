@@ -35,27 +35,20 @@ import java.util.concurrent.CompletableFuture;
  * Date: 2019-04-01
  */
 public class CommandSupport {
-    private static <T> Command newRequestCommand(int type, T request, URI destination) {
-        JournalKeeperHeader header = new JournalKeeperHeader(Direction.REQUEST, type, destination);
+    private static <T> Command newRequestCommand(int type, T request, URI destination, int version) {
+        JournalKeeperHeader header = new JournalKeeperHeader(version, Direction.REQUEST, type, destination);
         return new Command(header, new GenericPayload<>(request));
     }
 
-    private static Command newRequestCommand(int type, URI destination) {
-        JournalKeeperHeader header = new JournalKeeperHeader(Direction.REQUEST, type, destination);
+    private static Command newRequestCommand(int type, URI destination, int version) {
+        JournalKeeperHeader header = new JournalKeeperHeader(version, Direction.REQUEST, type, destination);
         return new Command(header, new VoidPayload());
     }
 
-    public static <Q, R extends BaseResponse> CompletableFuture<R> sendRequest(Q request, int requestType, Transport transport, URI destination) {
+    public static <Q, R extends BaseResponse> CompletableFuture<R> sendRequest(Q request, int requestType, Transport transport, URI destination, int version) {
         CompletableFuture<R> future = new CompletableFuture<>();
-//        try {
-//            Command response = transport.sync(null == request ? newRequestCommand(requestType, destination): newRequestCommand(requestType, request, destination));
-//            future.complete(GenericPayload.get(response.getPayload()));
-//        } catch (Exception e) {
-//            future.completeExceptionally(e);
-//        }
-
         transport.async(
-                null == request ? newRequestCommand(requestType, destination) : newRequestCommand(requestType, request, destination),
+                null == request ? newRequestCommand(requestType, destination, version) : newRequestCommand(requestType, request, destination, version),
                 new CommandCallback() {
                     @Override
                     public void onSuccess(Command request, Command response) {
@@ -95,7 +88,7 @@ public class CommandSupport {
 
     public static Command newResponseCommand(BaseResponse response, int responseType, Command requestCommand) {
         Header requestHeader = requestCommand.getHeader();
-        JournalKeeperHeader header = new JournalKeeperHeader(Direction.RESPONSE, requestHeader.getRequestId(), responseType, null);
+        JournalKeeperHeader header = new JournalKeeperHeader(requestHeader.getVersion(), Direction.RESPONSE, requestHeader.getRequestId(), responseType, null);
         header.setStatus(response.getStatusCode().getCode());
         header.setError(response.getError());
 
@@ -104,7 +97,7 @@ public class CommandSupport {
 
     public static Command newVoidPayloadResponse(int status, String error, Command requestCommand) {
         Header requestHeader = requestCommand.getHeader();
-        JournalKeeperHeader header = new JournalKeeperHeader(Direction.RESPONSE, requestHeader.getRequestId(), RpcTypes.VOID_PAYLOAD, null);
+        JournalKeeperHeader header = new JournalKeeperHeader(requestHeader.getVersion(), Direction.RESPONSE, requestHeader.getRequestId(), RpcTypes.VOID_PAYLOAD, null);
         header.setStatus(status);
         header.setError(error);
 
