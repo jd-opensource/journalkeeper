@@ -47,6 +47,7 @@ import io.journalkeeper.metric.JMetric;
 import io.journalkeeper.metric.JMetricFactory;
 import io.journalkeeper.metric.JMetricSupport;
 import io.journalkeeper.persistence.BufferPool;
+import io.journalkeeper.persistence.LockablePersistence;
 import io.journalkeeper.persistence.MetadataPersistence;
 import io.journalkeeper.persistence.PersistenceFactory;
 import io.journalkeeper.persistence.ServerMetadata;
@@ -140,6 +141,7 @@ public abstract class AbstractServer
     private static final String SNAPSHOTS_PATH = "snapshots";
     private static final String METADATA_PATH = "metadata";
     private static final String METADATA_FILE = "metadata";
+    private static final String LOCK_FILE = "lock";
     private static final String PARTIAL_SNAPSHOT_PATH = "partial_snapshot";
     private static final int COMPACT_PERIOD_SEC = 60;
     private final static JMetric DUMMY_METRIC = new DummyMetric();
@@ -168,6 +170,7 @@ public abstract class AbstractServer
     private  Map<String, JMetric> metricMap;
     private final JMetric applyEntriesMetric;
     private final AtomicInteger nextSnapshotIteratorId = new AtomicInteger();
+    private LockablePersistence lockablePersistence;
     /**
      * 当前Server URI
      */
@@ -308,25 +311,54 @@ public abstract class AbstractServer
                 .build();
     }
 
+    private void acquireFileLock() {
+        if (null == this.lockablePersistence) {
+            this.lockablePersistence = persistenceFactory.createLock(lockFilePath());
+            try {
+                this.lockablePersistence.lock();
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        } else {
+            throw new IllegalStateException("File lock should be null!");
+        }
+    }
+
+    private void releaseFileLock() {
+        if (null != this.lockablePersistence) {
+            try {
+                this.lockablePersistence.unlock();
+            } catch (IOException e) {
+                logger.warn("Unlock file {} failed, cause: {}.", lockFilePath(), e.getMessage());
+            }
+            this.lockablePersistence = null;
+        }
+    }
+
     @Override
     public synchronized void init(URI uri, List<URI> voters, Set<Integer> userPartitions, URI preferredLeader) throws IOException {
-        if(null == userPartitions) {
-            userPartitions = new HashSet<>();
-        }
+        try {
+            acquireFileLock();
+            if (null == userPartitions) {
+                userPartitions = new HashSet<>();
+            }
 
-        if(userPartitions.isEmpty()) {
-            userPartitions.add(DEFAULT_PARTITION);
-        }
+            if (userPartitions.isEmpty()) {
+                userPartitions.add(DEFAULT_PARTITION);
+            }
 
-        ReservedPartition.validatePartitions(userPartitions);
-        this.uri = uri;
-        Set<Integer> partitions = new HashSet<>(userPartitions);
-        partitions.add(INTERNAL_PARTITION);
-        partitions.addAll(IntStream.range(TRANSACTION_PARTITION_START, TRANSACTION_PARTITION_START + TRANSACTION_PARTITION_COUNT).boxed().collect(Collectors.toSet()));
-        state.init(statePath(), voters, partitions, preferredLeader);
-        createFistSnapshot(voters, partitions, preferredLeader);
-        lastSavedServerMetadata = createServerMetadata();
-        metadataPersistence.save(metadataFile(), lastSavedServerMetadata);
+            ReservedPartition.validatePartitions(userPartitions);
+            this.uri = uri;
+            Set<Integer> partitions = new HashSet<>(userPartitions);
+            partitions.add(INTERNAL_PARTITION);
+            partitions.addAll(IntStream.range(TRANSACTION_PARTITION_START, TRANSACTION_PARTITION_START + TRANSACTION_PARTITION_COUNT).boxed().collect(Collectors.toSet()));
+            state.init(statePath(), voters, partitions, preferredLeader);
+            createFistSnapshot(voters, partitions, preferredLeader);
+            lastSavedServerMetadata = createServerMetadata();
+            metadataPersistence.save(metadataFile(), lastSavedServerMetadata);
+        } finally {
+            releaseFileLock();
+        }
     }
 
     @Override
@@ -370,6 +402,10 @@ public abstract class AbstractServer
 
     protected Path metadataFile() {
         return workingDir().resolve(METADATA_PATH).resolve(METADATA_FILE);
+    }
+
+    private Path lockFilePath() {
+        return workingDir().resolve(LOCK_FILE);
     }
 
     /**
@@ -718,6 +754,7 @@ public abstract class AbstractServer
             throw new IllegalStateException("AbstractServer can only start once!");
         }
         this.serverState = ServerState.STARTING;
+        acquireFileLock();
         doStart();
         this.threads.createThread(buildStateMachineThread());
         this.threads.createThread(buildFlushJournalThread());
@@ -801,6 +838,7 @@ public abstract class AbstractServer
                 }
                 flushAll();
                 journal.close();
+                releaseFileLock();
                 this.serverState = ServerState.STOPPED;
                 logger.info("Server {} stopped.", serverUri());
             }
@@ -843,18 +881,23 @@ public abstract class AbstractServer
      */
     @Override
     public synchronized void recover() throws IOException {
-        lastSavedServerMetadata = metadataPersistence.load(metadataFile(), ServerMetadata.class);
-        if (lastSavedServerMetadata == null || !lastSavedServerMetadata.isInitialized()) {
-            throw new RecoverException(
-                    String.format("Recover failed! Cause: metadata is not initialized. Metadata path: %s.",
-                            metadataFile().toString()));
+        try {
+            acquireFileLock();
+            lastSavedServerMetadata = metadataPersistence.load(metadataFile(), ServerMetadata.class);
+            if (lastSavedServerMetadata == null || !lastSavedServerMetadata.isInitialized()) {
+                throw new RecoverException(
+                        String.format("Recover failed! Cause: metadata is not initialized. Metadata path: %s.",
+                                metadataFile().toString()));
+            }
+            onMetadataRecovered(lastSavedServerMetadata);
+            state.recover(statePath(), properties);
+            recoverSnapshots();
+            recoverJournal(state.getPartitions(), snapshots.firstEntry().getValue().getJournalSnapshot(), lastSavedServerMetadata.getCommitIndex());
+            onJournalRecovered(journal);
+            logger.info(getStartupInfo());
+        } finally {
+            releaseFileLock();
         }
-        onMetadataRecovered(lastSavedServerMetadata);
-        state.recover(statePath(), properties);
-        recoverSnapshots();
-        recoverJournal(state.getPartitions(), snapshots.firstEntry().getValue().getJournalSnapshot(), lastSavedServerMetadata.getCommitIndex());
-        onJournalRecovered(journal);
-        logger.info(getStartupInfo());
     }
 
     private String getStartupInfo() {

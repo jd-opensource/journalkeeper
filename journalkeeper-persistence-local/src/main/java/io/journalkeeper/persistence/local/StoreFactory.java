@@ -14,10 +14,14 @@
 package io.journalkeeper.persistence.local;
 
 import io.journalkeeper.persistence.JournalPersistence;
+import io.journalkeeper.persistence.LockablePersistence;
 import io.journalkeeper.persistence.MetadataPersistence;
 import io.journalkeeper.persistence.PersistenceFactory;
 import io.journalkeeper.persistence.local.journal.PositioningStore;
+import io.journalkeeper.persistence.local.lock.FileLock;
 import io.journalkeeper.persistence.local.metadata.JsonDoubleCopiesPersistence;
+
+import java.nio.file.Path;
 
 public class StoreFactory implements PersistenceFactory {
 
@@ -29,6 +33,11 @@ public class StoreFactory implements PersistenceFactory {
     @Override
     public JournalPersistence createJournalPersistenceInstance() {
         return new PositioningStore();
+    }
+
+    @Override
+    public LockablePersistence createLock(Path lockPath) {
+        return new FileLock(lockPath);
     }
 
 }

@@ -1,10 +1,12 @@
 /**
+ * Copyright 2019 The JoyQueue Authors.
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * <p>
- * http://www.apache.org/licenses/LICENSE-2.0
- * <p>
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,17 +15,12 @@
  */
 package io.journalkeeper.persistence;
 
-
-import java.nio.file.Path;
-
 /**
- * @author LiYue
- * Date: 2019-03-20
+ * @author liyue25
+ * Date: 2018/8/13
  */
-public interface PersistenceFactory {
-    MetadataPersistence createMetadataPersistenceInstance();
-
-    JournalPersistence createJournalPersistenceInstance();
-
-    LockablePersistence createLock(Path lockPath);
+public class PersistenceLockedException extends RuntimeException {
+    public PersistenceLockedException(String msg) {
+        super(msg);
+    }
 }
