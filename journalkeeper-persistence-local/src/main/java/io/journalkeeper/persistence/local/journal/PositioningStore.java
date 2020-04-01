@@ -313,10 +313,14 @@ public class PositioningStore implements JournalPersistence, MonitoredPersistenc
             if (null == entry) return;
             StoreFile storeFile = entry.getValue();
             if (!storeFile.isClean()) {
-                storeFile.flush();
-                if (storeFile.position() < storeFileMap.lastKey()) {
-                    storeFile.force();
+                // 在文件第一次刷盘之前，需要把上一个文件fsync到磁盘上，避免服务器宕机导致文件不连续
+                if (storeFile.flushPosition() == 0) {
+                    Map.Entry<Long, StoreFile> prevEntry = storeFileMap.floorEntry(entry.getKey() - 1);
+                    if(null != prevEntry) {
+                        prevEntry.getValue().force();
+                    }
                 }
+                storeFile.flush();
             }
             if (flushPosition.get() < storeFile.position() + storeFile.flushPosition()) {
                 flushPosition.set(storeFile.position() + storeFile.flushPosition());

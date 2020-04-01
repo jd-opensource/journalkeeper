@@ -69,7 +69,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
 
     private long timestamp = -1L;
     private AtomicBoolean flushGate = new AtomicBoolean(false);
-
+    private AtomicBoolean forced = new AtomicBoolean(false);
 
     LocalStoreFile(long filePosition, File base, int headerSize, MemoryCacheManager bufferPool, int maxFileDataLength) {
         this.filePosition = filePosition;
@@ -103,6 +103,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
             pageBuffer = loadBuffer;
             bufferType = MAPPED_BUFFER;
             pageBuffer.clear();
+            forced.set(true);
         } catch (ClosedByInterruptException cie) {
             throw cie;
         } catch (Throwable t) {
@@ -138,6 +139,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         }
         this.pageBuffer = buffer;
         bufferType = DIRECT_BUFFER;
+        forced.set(false);
     }
 
     public long timestamp() {
@@ -488,8 +490,13 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
 
     @Override
     public void force() throws IOException {
-        try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
-            fileChannel.force(true);
+        if(forced.compareAndSet(false, true)) {
+            try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
+                fileChannel.force(true);
+            } catch (Throwable t) {
+                forced.set(false);
+                throw t;
+            }
         }
     }
 
