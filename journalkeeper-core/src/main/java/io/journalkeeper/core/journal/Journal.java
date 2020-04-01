@@ -17,9 +17,9 @@ package io.journalkeeper.core.journal;
 import io.journalkeeper.core.api.JournalEntry;
 import io.journalkeeper.core.api.JournalEntryParser;
 import io.journalkeeper.core.api.RaftJournal;
-import io.journalkeeper.exceptions.JournalException;
 import io.journalkeeper.exceptions.IndexOverflowException;
 import io.journalkeeper.exceptions.IndexUnderflowException;
+import io.journalkeeper.exceptions.JournalException;
 import io.journalkeeper.persistence.BufferPool;
 import io.journalkeeper.persistence.JournalPersistence;
 import io.journalkeeper.persistence.PersistenceFactory;
@@ -43,8 +43,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
@@ -89,6 +91,11 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     private final JournalEntryParser journalEntryParser;
     private Path basePath = null;
     private Properties indexProperties;
+    private Properties journalProperties;
+
+    // Journal 读写锁。
+    // 所有对Journal的Read、Append、Flush操作加读锁
+    // 其它对Journal的写操作加写锁
     private ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
     public Journal(PersistenceFactory persistenceFactory, BufferPool bufferPool, JournalEntryParser journalEntryParser) {
@@ -158,8 +165,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                     long minPartitionIndices = partitionMinIndices.get(entry.getKey());
                     partitionPersistence.compact(minPartitionIndices * INDEX_STORAGE_SIZE);
                 } else {
-                    journalPersistence.close();
-                    journalPersistence.delete();
+                    partitionPersistence.close();
+                    partitionPersistence.delete();
                     iterator.remove();
                 }
 
@@ -197,7 +204,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         // 记录当前最大位置，也是写入的Journal的offset
         long offset = journalPersistence.max();
         byte[] serializedEntry = entry.getSerializedBytes();
-        try {
+        withReadLock(() -> {
             // 写入Journal header
             journalPersistence.append(serializedEntry);
 
@@ -205,11 +212,8 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             indexBuffer.clear();
             indexBuffer.putLong(offset);
             indexPersistence.append(indexBytes);
-
-        } catch (IOException e) {
-            throw new JournalException(e);
-        }
-
+            return null;
+        });
         return maxIndex();
     }
 
@@ -228,10 +232,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             Iterator<Map.Entry<Integer, JournalPersistence>> iterator = partitionMap.entrySet().iterator();
             while (iterator.hasNext()) {
                 Map.Entry<Integer, JournalPersistence> entry = iterator.next();
-                int partition = entry.getKey();
                 JournalPersistence partitionPersistence = entry.getValue();
-                journalPersistence.close();
-                journalPersistence.delete();
+                partitionPersistence.close();
+                partitionPersistence.delete();
                 iterator.remove();
             }
 
@@ -244,6 +247,18 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                 partitionMap.put(partition, partitionPersistence);
             }
         }
+        Path indexPath = basePath.resolve(INDEX_PATH);
+
+        // 删除全局索引
+        indexPersistence.close();
+        indexPersistence.delete();
+        indexPersistence.recover(indexPath, snapshot.minIndex() * INDEX_STORAGE_SIZE, indexProperties);
+
+        // 删除Journal
+        indexPersistence.close();
+        indexPersistence.delete();
+        journalPersistence.recover(basePath, snapshot.minOffset(), journalProperties);
+
     }
 
     /**
@@ -306,12 +321,10 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     }
 
     public JournalEntry readEntryHeaderByOffset(long offset) {
-        try {
+        return withReadLock(() -> {
             byte[] headerBytes = journalPersistence.read(offset, journalEntryParser.headerLength());
             return journalEntryParser.parseHeader(headerBytes);
-        } catch (IOException e) {
-            throw new JournalException(e);
-        }
+        });
     }
 
     /**
@@ -327,9 +340,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         if (!partitionMap.containsKey(partition)) {
             addPartition(partition, 0L);
         }
-        JournalPersistence partitionPersistence = getPartitionPersistence(partition);
+        byte[] bytes;
         if (batchSize > 1) {
-            byte[] bytes = new byte[batchSize * INDEX_STORAGE_SIZE];
+            bytes = new byte[batchSize * INDEX_STORAGE_SIZE];
             ByteBuffer pb = ByteBuffer.wrap(bytes);
             int j = 0;
             while (j < batchSize) {
@@ -340,10 +353,12 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                 }
                 j++;
             }
-            partitionPersistence.append(bytes);
         } else {
-            partitionPersistence.append(offset);
+            bytes = offset;
         }
+
+        JournalPersistence partitionPersistence = getPartitionPersistence(partition);
+        withReadLock(() -> partitionPersistence.append(bytes));
     }
 
 
@@ -369,8 +384,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             offset += storageEntries.get(i).length;
         }
 
-
-        try {
+        withReadLock(() -> {
             // 写入Journal
             for (byte[] storageEntry : storageEntries) {
                 journalPersistence.append(storageEntry);
@@ -394,13 +408,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                     indexPersistence.append(buffer.array());
                 }
             }
-
-            // 在commit()提交时才写入分区索引
-//            appendPartitionIndices(storageEntries, offsets);
-
-        } catch (IOException e) {
-            throw new JournalException(e);
-        }
+        });
 
         return maxIndex();
     }
@@ -450,27 +458,17 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     }
 
     private byte[] readRaw(long index) {
-        readWriteLock.readLock().lock();
         checkIndex(index);
-        try {
-            long offset = readOffset(index);
-            return readRawByOffset(offset);
-        } finally {
-            readWriteLock.readLock().unlock();
-        }
+        long offset = readOffset(index);
+        return readRawByOffset(offset);
     }
 
     private byte[] readRawByOffset(long offset) {
-        readWriteLock.readLock().lock();
-        try {
+        return withReadLock(() -> {
             int length = readEntryLengthByOffset(offset);
             return journalPersistence
                     .read(offset, length);
-        } catch (IOException e) {
-            throw new JournalException(e);
-        } finally {
-            readWriteLock.readLock().unlock();
-        }
+        });
     }
 
     private int readEntryLengthByOffset(long offset) {
@@ -482,11 +480,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     }
 
     private long readOffset(JournalPersistence indexPersistence, long index) {
-        try {
-            return indexPersistence.readLong(index * INDEX_STORAGE_SIZE);
-        } catch (IOException e) {
-            throw new JournalException(e);
-        }
+        return withReadLock(() -> indexPersistence.readLong(index * INDEX_STORAGE_SIZE));
     }
 
     public List<JournalEntry> batchRead(long index, int size) {
@@ -526,15 +520,10 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * @throws IndexOverflowException 如果index 不小于 maxIndex()
      */
     public int getTerm(long index) {
-        readWriteLock.readLock().lock();
-        try {
-            if (index == -1) return -1;
-            checkIndex(index);
-            long offset = readOffset(index);
-            return readEntryHeaderByOffset(offset).getTerm();
-        } finally {
-            readWriteLock.readLock().unlock();
-        }
+        if (index == -1) return -1;
+        checkIndex(index);
+        long offset = readOffset(index);
+        return readEntryHeaderByOffset(offset).getTerm();
     }
 
 
@@ -557,12 +546,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
             long index = startIndex;
             for (int i = 0; i < entries.size(); i++, index++) {
                 if (index < maxIndex() && getTerm(index) != entries.get(i).getTerm()) {
-                    readWriteLock.writeLock().lock();
-                    try {
-                        truncate(index);
-                    } finally {
-                        readWriteLock.writeLock().unlock();
-                    }
+                    truncate(index);
                 }
                 if (index == maxIndex()) {
                     appendBatchRaw(rawEntries.subList(i, entries.size()));
@@ -582,10 +566,12 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      */
     private void truncate(long index) throws IOException {
 
-        long journalOffset = readOffset(index);
-        truncatePartitions(journalOffset);
-        indexPersistence.truncate(index * INDEX_STORAGE_SIZE);
-        journalPersistence.truncate(journalOffset);
+        withWriteLock(() -> {
+            long journalOffset = readOffset(index);
+            truncatePartitions(journalOffset);
+            indexPersistence.truncate(index * INDEX_STORAGE_SIZE);
+            journalPersistence.truncate(journalOffset);
+        });
 
         // 安全更新commitIndex
         long finalCommitIndex;
@@ -624,7 +610,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         this.basePath = path;
         Path indexPath = path.resolve(INDEX_PATH);
         Path partitionPath = path.resolve(PARTITION_PATH);
-        Properties journalProperties = replacePropertiesNames(properties,
+        journalProperties = replacePropertiesNames(properties,
                 JOURNAL_PROPERTIES_PATTERN, DEFAULT_JOURNAL_PROPERTIES);
         journalPersistence.recover(path, journalSnapshot.minOffset(), journalProperties);
         // 截掉末尾半条数据
@@ -860,20 +846,28 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     public void flush() {
         long flushed;
         do {
-            flushed = Stream.concat(Stream.of(journalPersistence, indexPersistence), partitionMap.values().stream())
-                    .filter(p -> p.flushed() < p.max())
-                    .peek(p -> {
-                        try {
-                            p.flush();
-                        } catch (IOException e) {
-                            logger.warn("Flush {} exception: ", p.getBasePath(), e);
-                            throw new JournalException(e);
-                        }
-                    }).count();
+            if(readWriteLock.readLock().tryLock()) {
+                try {
+                    flushed = Stream.concat(Stream.of(journalPersistence, indexPersistence), partitionMap.values().stream())
+                            .filter(p -> p.flushed() < p.max())
+                            .peek(p -> {
+                                try {
+                                    p.flush();
+                                } catch (IOException e) {
+                                    logger.warn("Flush {} exception: ", p.getBasePath(), e);
+                                    throw new JournalException(e);
+                                }
+                            }).count();
+                } finally {
+                    readWriteLock.readLock().unlock();
+                }
+            } else {
+                flushed = 0;
+            }
         } while (flushed > 0);
     }
 
-    public boolean isDirty() {
+    boolean isDirty() {
         return Stream.concat(Stream.of(journalPersistence, indexPersistence), partitionMap.values().stream())
                 .anyMatch(p -> p.flushed() < p.max());
     }
@@ -985,7 +979,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         addPartition(partition, 0L);
     }
 
-    public void addPartition(int partition, long minIndex) throws IOException {
+    private void addPartition(int partition, long minIndex) throws IOException {
         synchronized (partitionMap) {
             if (!partitionMap.containsKey(partition)) {
                 JournalPersistence partitionPersistence = persistenceFactory.createJournalPersistenceInstance();
@@ -1062,6 +1056,44 @@ public class Journal implements RaftJournal, Flushable, Closeable {
         return partitionIndices;
     }
 
+    private <T> T withReadLock(Callable<T> callable) {
+        return withLock(callable, readWriteLock.readLock());
+    }
+
+    private void withReadLock(LockedCode lockedCode) {
+        withLock(lockedCode, readWriteLock.readLock());
+    }
+
+    private <T> T withWriteLock(Callable<T> callable) {
+        return withLock(callable, readWriteLock.writeLock());
+    }
+
+    private void withWriteLock(LockedCode lockedCode) {
+        withLock(lockedCode, readWriteLock.writeLock());
+    }
+
+    private <T> T withLock(Callable<T> callable, Lock lock) {
+        lock.lock();
+        try {
+            return callable.call();
+        } catch (Exception e) {
+            throw new JournalException(e);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private void withLock(LockedCode lockedCode, Lock lock) {
+        lock.lock();
+        try {
+            lockedCode.call();
+        } catch (Exception e) {
+            throw new JournalException(e);
+        } finally {
+            lock.unlock();
+        }
+    }
+
     @Override
     public String toString() {
         return "Journal{" +
@@ -1070,5 +1102,9 @@ public class Journal implements RaftJournal, Flushable, Closeable {
                 ", journalPersistence=" + journalPersistence +
                 ", basePath=" + basePath +
                 '}';
+    }
+    @FunctionalInterface
+    private interface LockedCode {
+        void call() throws Exception;
     }
 }
