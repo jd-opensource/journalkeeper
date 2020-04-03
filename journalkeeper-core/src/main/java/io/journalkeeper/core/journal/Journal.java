@@ -537,24 +537,18 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * @throws IndexOverflowException 如果 startIndex 不小于 maxIndex()
      */
     public void compareOrAppendRaw(List<byte[]> rawEntries, long startIndex) {
-
-
         List<JournalEntry> entries = rawEntries.stream()
                 .map(journalEntryParser::parse)
                 .collect(Collectors.toList());
-        try {
-            long index = startIndex;
-            for (int i = 0; i < entries.size(); i++, index++) {
-                if (index < maxIndex() && getTerm(index) != entries.get(i).getTerm()) {
-                    truncate(index);
-                }
-                if (index == maxIndex()) {
-                    appendBatchRaw(rawEntries.subList(i, entries.size()));
-                    break;
-                }
+        long index = startIndex;
+        for (int i = 0; i < entries.size(); i++, index++) {
+            if (index < maxIndex() && getTerm(index) != entries.get(i).getTerm()) {
+                truncate(index);
             }
-        } catch (IOException e) {
-            throw new JournalException(e);
+            if (index == maxIndex()) {
+                appendBatchRaw(rawEntries.subList(i, entries.size()));
+                break;
+            }
         }
     }
 
@@ -564,7 +558,7 @@ public class Journal implements RaftJournal, Flushable, Closeable {
      * @throws IndexUnderflowException 如果 index < minIndex()
      * @throws IndexOverflowException 如果 index >= maxIndex()
      */
-    private void truncate(long index) throws IOException {
+    private void truncate(long index) {
 
         withWriteLock(() -> {
             long journalOffset = readOffset(index);

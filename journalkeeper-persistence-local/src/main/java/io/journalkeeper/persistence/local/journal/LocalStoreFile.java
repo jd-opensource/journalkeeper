@@ -16,6 +16,7 @@ package io.journalkeeper.persistence.local.journal;
 
 import io.journalkeeper.persistence.local.cache.BufferHolder;
 import io.journalkeeper.persistence.local.cache.MemoryCacheManager;
+import io.journalkeeper.utils.locks.CasLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sun.misc.Cleaner;
@@ -28,7 +29,6 @@ import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.FileChannel;
-import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.StampedLock;
@@ -54,6 +54,9 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     // 访问(包括读和写）buffer时加读锁；
     // 加载、释放buffer时加写锁；
     private final StampedLock bufferLock = new StampedLock();
+
+    // 文件锁，读写文件时加锁
+    private final CasLock fileLock = new CasLock();
     // 缓存页
     private ByteBuffer pageBuffer = null;
     private int bufferType = NO_BUFFER;
@@ -68,7 +71,6 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     private int writePosition = 0;
 
     private long timestamp = -1L;
-    private AtomicBoolean flushGate = new AtomicBoolean(false);
     private AtomicBoolean forced = new AtomicBoolean(false);
 
     LocalStoreFile(long filePosition, File base, int headerSize, MemoryCacheManager bufferPool, int maxFileDataLength) {
@@ -357,20 +359,20 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     public int flush() throws IOException {
         long stamp = bufferLock.readLock();
         try {
-            if (writePosition > flushPosition) {
-                if (flushGate.compareAndSet(false, true)) {
+            if (writePosition > flushPosition && fileLock.tryLock()) {
+
+                try {
                     if (!file.exists()) {
                         // 第一次创建文件写入头部预留128字节中0位置开始的前8字节长度:文件创建时间戳
                         writeTimestamp();
                     }
                     try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
                         return flushPageBuffer(fileChannel);
-                    } finally {
-                        flushGate.compareAndSet(true, false);
                     }
-                } else {
-                    throw new ConcurrentModificationException();
+                } finally {
+                    fileLock.unlock();
                 }
+
             }
             return 0;
         } finally {
@@ -400,16 +402,14 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
             writePosition = position;
         }
         if (position < flushPosition) {
-            while (!flushGate.compareAndSet(false, true)) {
-                Thread.yield();
-            }
+            fileLock.waitAndLock();
             try {
                 flushPosition = position;
                 try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
                     fileChannel.truncate(position + headerSize);
                 }
             } finally {
-                flushGate.compareAndSet(true, false);
+                fileLock.unlock();
             }
         }
     }
@@ -491,11 +491,14 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     @Override
     public void force() throws IOException {
         if(forced.compareAndSet(false, true)) {
+            fileLock.waitAndLock();
             try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
                 fileChannel.force(true);
             } catch (Throwable t) {
                 forced.set(false);
                 throw t;
+            } finally {
+                fileLock.unlock();
             }
         }
     }
