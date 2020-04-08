@@ -48,9 +48,14 @@ public class JsonDoubleCopiesPersistence implements MetadataPersistence {
     @Override
     public <M> M load(Path path, Class<M> mClass) throws IOException {
         try {
-            return gson.fromJson(new String(Files.readAllBytes(getCopy(path, FIRST_COPY)), StandardCharsets.UTF_8), mClass);
+            M m = tryParseFile(getCopy(path, FIRST_COPY), mClass);
+            return null != m ? m : tryParseFile(getCopy(path, SECOND_COPY), mClass);
         } catch (Throwable ignored) {
-            return gson.fromJson(new String(Files.readAllBytes(getCopy(path, SECOND_COPY)), StandardCharsets.UTF_8), mClass);
+            return tryParseFile(getCopy(path, SECOND_COPY), mClass);
         }
+    }
+
+    private <M> M tryParseFile(Path path, Class<M> mClass) throws IOException {
+        return gson.fromJson(new String(Files.readAllBytes(path), StandardCharsets.UTF_8), mClass);
     }
 }
