@@ -38,6 +38,9 @@
  */
 package io.journalkeeper.utils.files;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -51,6 +54,7 @@ import java.util.stream.Stream;
  * Date: 2019/11/22
  */
 public class FileUtils {
+    private static final Logger logger = LoggerFactory.getLogger(FileUtils.class);
     public static void deleteFolder(Path path) throws IOException {
         File folder = path.toFile();
         if (!folder.exists()) return;
@@ -66,6 +70,7 @@ public class FileUtils {
                                     String.format("Delete failed: %s!", f.getAbsolutePath())
                             );
                         }
+                        logger.info("File: {} deleted.", f.getAbsolutePath());
                     }
                 }
             }
@@ -75,6 +80,8 @@ public class FileUtils {
                     String.format("Delete failed: %s!", folder.getAbsolutePath())
             );
         }
+        logger.info("Directory: {} deleted.", folder.getAbsolutePath());
+
     }
 
     public static List<Path> listAllFiles(Path path) throws IOException {
