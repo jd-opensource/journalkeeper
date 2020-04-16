@@ -67,11 +67,11 @@ public class Journal implements RaftJournal, Flushable, Closeable {
     private static final Properties DEFAULT_INDEX_PROPERTIES = new Properties();
 
     static {
-        DEFAULT_JOURNAL_PROPERTIES.put("file_data_size", String.valueOf(128 * 1024 * 1024));
+        DEFAULT_JOURNAL_PROPERTIES.put("file_data_size", String.valueOf(32 * 1024 * 1024));
         DEFAULT_JOURNAL_PROPERTIES.put("cached_file_core_count", String.valueOf(3));
         DEFAULT_JOURNAL_PROPERTIES.put("cached_file_max_count", String.valueOf(10));
         DEFAULT_JOURNAL_PROPERTIES.put("max_dirty_size", String.valueOf(128 * 1024 * 1024));
-        DEFAULT_INDEX_PROPERTIES.put("file_data_size", String.valueOf(16 * 1024 * 1024));
+        DEFAULT_INDEX_PROPERTIES.put("file_data_size", String.valueOf(4 * 1024 * 1024));
         DEFAULT_INDEX_PROPERTIES.put("cached_file_core_count", String.valueOf(12));
         DEFAULT_INDEX_PROPERTIES.put("cached_file_max_count", String.valueOf(40));
     }
