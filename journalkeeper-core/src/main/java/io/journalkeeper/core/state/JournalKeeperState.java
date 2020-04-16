@@ -50,9 +50,10 @@ import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.InternalEntryType;
 import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.internal.SetPreferredLeaderEntry;
-import io.journalkeeper.exceptions.StateRecoverException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.journal.JournalSnapshot;
+import io.journalkeeper.exceptions.StateExecutionException;
+import io.journalkeeper.exceptions.StateRecoverException;
 import io.journalkeeper.persistence.MetadataPersistence;
 import io.journalkeeper.utils.files.FileUtils;
 import org.slf4j.Logger;
@@ -248,6 +249,7 @@ public class JournalKeeperState implements Replicable, Flushable {
         StateResult result = new StateResult(null);
         long stamp = stateLock.writeLock();
         try {
+            maybeRecoverUserState();
             if (partition < RESERVED_PARTITIONS_START) {
                 result = userState.execute(entryFuture, partition, lastApplied(), batchSize, journal);
             } else if (partition == INTERNAL_PARTITION) {
@@ -261,7 +263,10 @@ public class JournalKeeperState implements Replicable, Flushable {
             internalState.setLastIncludedTerm(entryHeader.getTerm());
             internalState.next();
             result.setLastApplied(lastApplied());
-        } finally {
+        }  catch (IOException e) {
+            throw new StateExecutionException(e);
+        }
+        finally {
             stateLock.unlockWrite(stamp);
         }
         return result;
@@ -299,11 +304,13 @@ public class JournalKeeperState implements Replicable, Flushable {
     }
 
     private void maybeRecoverUserState() throws IOException {
-        long stamp = stateLock.writeLock();
-        try {
-            recoverUserStateUnsafe();
-        } finally {
-            stateLock.unlockWrite(stamp);
+        if(isUserStateAvailable.compareAndSet(false, true)) {
+            long stamp = stateLock.writeLock();
+            try {
+                recoverUserStateUnsafe();
+            } finally {
+                stateLock.unlockWrite(stamp);
+            }
         }
     }
 
@@ -317,7 +324,11 @@ public class JournalKeeperState implements Replicable, Flushable {
 
     public StateQueryResult query(byte[] query, RaftJournal journal) {
         StateQueryResult result;
-
+        try {
+            maybeRecoverUserState();
+        } catch (IOException e) {
+            throw new StateRecoverException(e);
+        }
         long stamp = stateLock.tryOptimisticRead();
         result = new StateQueryResult(userState.query(query, journal), lastApplied());
 
