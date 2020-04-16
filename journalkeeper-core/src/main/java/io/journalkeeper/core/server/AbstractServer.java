@@ -72,6 +72,7 @@ import io.journalkeeper.utils.event.Event;
 import io.journalkeeper.utils.event.EventBus;
 import io.journalkeeper.utils.event.EventType;
 import io.journalkeeper.utils.event.EventWatcher;
+import io.journalkeeper.utils.files.FileUtils;
 import io.journalkeeper.utils.spi.ServiceLoadException;
 import io.journalkeeper.utils.spi.ServiceSupport;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
@@ -701,6 +702,7 @@ public abstract class AbstractServer
         logger.info("Creating snapshot at index: {}...", lastApplied);
         Path snapshotPath = snapshotsPath().resolve(String.valueOf(lastApplied));
         try {
+            FileUtils.deleteFolder(snapshotPath);
             state.dump(snapshotPath);
             JournalKeeperState snapshot = new JournalKeeperState(stateFactory, metadataPersistence);
             snapshot.recover(snapshotPath, properties);
