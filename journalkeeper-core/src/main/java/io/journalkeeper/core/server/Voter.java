@@ -28,7 +28,6 @@ import io.journalkeeper.core.entry.internal.UpdateVotersS1Entry;
 import io.journalkeeper.exceptions.UpdateConfigurationException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.state.ConfigState;
-import io.journalkeeper.core.state.JournalKeeperState;
 import io.journalkeeper.exceptions.NotLeaderException;
 import io.journalkeeper.persistence.ServerMetadata;
 import io.journalkeeper.rpc.client.CheckLeadershipResponse;
@@ -468,7 +467,6 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
      * 将请求放到待处理队列中。
      */
     @Override
-    @SuppressWarnings("unchecked")
     public CompletableFuture<AsyncAppendEntriesResponse> asyncAppendEntries(AsyncAppendEntriesRequest request) {
 
         checkTerm(request.getTerm());
@@ -827,8 +825,8 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
             return CompletableFuture.completedFuture(
                     snapshots.values()
                             .stream()
-                            .map((state) ->
-                                    new SnapshotEntry(state.lastApplied(), state.timestamp())).collect(Collectors.toList()))
+                            .map((snapshot) ->
+                                    new SnapshotEntry(snapshot.lastApplied(), snapshot.timestamp())).collect(Collectors.toList()))
                     .thenApply(SnapshotsEntry::new)
                     .thenApply(GetSnapshotsResponse::new);
         } else {

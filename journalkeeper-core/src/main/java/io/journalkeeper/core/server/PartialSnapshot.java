@@ -38,6 +38,7 @@
  */
 package io.journalkeeper.core.server;
 
+import io.journalkeeper.core.state.FolderTrunkIterator;
 import io.journalkeeper.exceptions.InstallSnapshotException;
 import io.journalkeeper.utils.files.FileUtils;
 import org.slf4j.Logger;
@@ -49,6 +50,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 
 /**
  *
@@ -122,22 +124,38 @@ class PartialSnapshot {
             Files.createDirectories(filePath.getParent());
         }
 
-        logger.info("Installing snapshot file: {}...", filePath);
 
-        if (offsetOfFile == 0 || Files.size(filePath) == offsetOfFile) {
-            try (FileOutputStream output = new FileOutputStream(filePath.toFile(), true)) {
-                output.write(data, buffer.position(), buffer.remaining());
-            }
-            this.offset += data.length;
+        if (offsetOfFile == 0 && isDirectory(buffer)) {
+            logger.info("Creating snapshot directory: {}...", filePath);
+            Files.createDirectories(filePath);
         } else {
-            throw new InstallSnapshotException(
-                    String.format(
-                            "Current file size %d should equal trunk offset %d! File: %s",
-                            Files.size(filePath), offsetOfFile, filePath.toString()
-                    )
-            );
+            logger.info("Installing snapshot file: {}...", filePath);
+            if(offsetOfFile == 0 || Files.size(filePath) == offsetOfFile) {
+                try (FileOutputStream output = new FileOutputStream(filePath.toFile(), true)) {
+                    output.write(data, buffer.position(), buffer.remaining());
+                }
+            } else {
+                throw new InstallSnapshotException(
+                        String.format(
+                                "Current file size %d should equal trunk offset %d! File: %s",
+                                Files.size(filePath), offsetOfFile, filePath.toString()
+                        )
+                );
+            }
         }
+        this.offset += data.length;
+    }
 
+    private boolean isDirectory(ByteBuffer buffer) {
+        if(buffer.remaining() == FolderTrunkIterator.DIRECTORY_MAGIC_CODE.length) {
+            for (int i = 0; i < FolderTrunkIterator.DIRECTORY_MAGIC_CODE.length; i++) {
+                if (buffer.get(buffer.position() + i) != FolderTrunkIterator.DIRECTORY_MAGIC_CODE[i]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
     void finish() throws IOException {

@@ -87,7 +87,7 @@ public class FileUtils {
     public static List<Path> listAllFiles(Path path) throws IOException {
         try (Stream<Path> walk = Files.walk(path)) {
 
-            return walk.filter(Files::isRegularFile).collect(Collectors.toList());
+            return walk.collect(Collectors.toList());
 
         }
     }
@@ -104,7 +104,19 @@ public class FileUtils {
             Path srcFile = srcFiles.get(i);
             Path destFile = destFiles.get(i);
             Files.createDirectories(destFile.getParent());
-            Files.copy(srcFile, destFile);
+            if(srcFile.toFile().isDirectory()) {
+                Files.createDirectories(destFile);
+            } else {
+                Files.copy(srcFile, destFile);
+            }
+        }
+    }
+
+    public static void createIfNotExists(Path path) throws IOException{
+        if (!Files.exists(path) &&!path.toFile().createNewFile()) {
+            throw new IOException(
+                    String.format("Touch file failed, file: %s!", path.toString())
+            );
         }
     }
 }

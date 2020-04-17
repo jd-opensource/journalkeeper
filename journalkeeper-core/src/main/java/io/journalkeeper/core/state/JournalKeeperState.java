@@ -50,9 +50,7 @@ import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.InternalEntryType;
 import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.internal.SetPreferredLeaderEntry;
-import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.journal.JournalSnapshot;
-import io.journalkeeper.exceptions.StateExecutionException;
 import io.journalkeeper.exceptions.StateRecoverException;
 import io.journalkeeper.persistence.MetadataPersistence;
 import io.journalkeeper.utils.files.FileUtils;
@@ -76,7 +74,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.StampedLock;
@@ -89,12 +86,11 @@ import static io.journalkeeper.core.api.RaftJournal.RESERVED_PARTITIONS_START;
  * @author LiYue
  * Date: 2019/11/20
  */
-public class JournalKeeperState implements Replicable, Flushable {
+public class JournalKeeperState implements Flushable {
     private static final Logger logger = LoggerFactory.getLogger(JournalKeeperState.class);
-    private static final String USER_STATE_PATH = "user";
+    static final String USER_STATE_PATH = "user";
     private static final String INTERNAL_STATE_PATH = "internal";
     private static final String INTERNAL_STATE_FILE = "state";
-    private static final int MAX_TRUNK_SIZE = 1024 * 1024;
     private final Map<InternalEntryType, List<ApplyInternalEntryInterceptor>> internalEntryInterceptors = new HashMap<>();
     private final List<ApplyReservedEntryInterceptor> reservedEntryInterceptors = new CopyOnWriteArrayList<>();
     private final StateFactory userStateFactory;
@@ -108,11 +104,10 @@ public class JournalKeeperState implements Replicable, Flushable {
      * 读取状态是加乐观锁或读锁，变更状态时加写锁。
      */
     private final StampedLock stateLock = new StampedLock();
-    private Path path;
+    Path path;
     private State userState;
-    private InternalState internalState;
+    InternalState internalState;
     private Properties properties;
-    private AtomicBoolean isUserStateAvailable = new AtomicBoolean(false);
 
     public JournalKeeperState(StateFactory userStateFactory, MetadataPersistence metadataPersistence) {
         this.userStateFactory = userStateFactory;
@@ -144,9 +139,7 @@ public class JournalKeeperState implements Replicable, Flushable {
         try {
             stateFilesLock.writeLock().lock();
             flushInternalState();
-            if(isUserStateAvailable.get()) {
-                flushUserState();
-            }
+            flushUserState();
         } finally {
             stateFilesLock.writeLock().unlock();
         }
@@ -162,7 +155,7 @@ public class JournalKeeperState implements Replicable, Flushable {
         flushUserState(userState);
     }
 
-    private void flushInternalState() throws IOException {
+    void flushInternalState() throws IOException {
         flushInternalState(internalStateFile(path), internalState);
     }
 
@@ -178,7 +171,7 @@ public class JournalKeeperState implements Replicable, Flushable {
         recover(path, properties, false);
     }
 
-    public void recover(Path path, Properties properties, boolean internalStateOnly) {
+    void recover(Path path, Properties properties, boolean internalStateOnly) {
         stateFilesLock.writeLock().lock();
         try {
             recoverUnsafe(path, properties, internalStateOnly);
@@ -187,7 +180,7 @@ public class JournalKeeperState implements Replicable, Flushable {
         }
     }
 
-    public void recoverUnsafe(Path path, Properties properties, boolean internalStateOnly) {
+    private void recoverUnsafe(Path path, Properties properties, boolean internalStateOnly) {
         this.path = path;
         this.properties = properties;
         try {
@@ -249,7 +242,6 @@ public class JournalKeeperState implements Replicable, Flushable {
         StateResult result = new StateResult(null);
         long stamp = stateLock.writeLock();
         try {
-            maybeRecoverUserState();
             if (partition < RESERVED_PARTITIONS_START) {
                 result = userState.execute(entryFuture, partition, lastApplied(), batchSize, journal);
             } else if (partition == INTERNAL_PARTITION) {
@@ -263,8 +255,6 @@ public class JournalKeeperState implements Replicable, Flushable {
             internalState.setLastIncludedTerm(entryHeader.getTerm());
             internalState.next();
             result.setLastApplied(lastApplied());
-        }  catch (IOException e) {
-            throw new StateExecutionException(e);
         }
         finally {
             stateLock.unlockWrite(stamp);
@@ -303,15 +293,15 @@ public class JournalKeeperState implements Replicable, Flushable {
         }
     }
 
-    private void maybeRecoverUserState() throws IOException {
-        if(isUserStateAvailable.compareAndSet(false, true)) {
-            long stamp = stateLock.writeLock();
-            try {
-                recoverUserStateUnsafe();
-            } finally {
-                stateLock.unlockWrite(stamp);
-            }
+
+    void recoverUserState() throws IOException {
+        long stamp = stateLock.writeLock();
+        try {
+            recoverUserStateUnsafe();
+        } finally {
+            stateLock.unlockWrite(stamp);
         }
+
     }
 
     public void recoverUserStateUnsafe() throws IOException {
@@ -319,16 +309,11 @@ public class JournalKeeperState implements Replicable, Flushable {
         Path userStatePath = path.resolve(USER_STATE_PATH);
         Files.createDirectories(userStatePath);
         userState.recover(path.resolve(USER_STATE_PATH), properties);
-        isUserStateAvailable.set(true);
+
     }
 
     public StateQueryResult query(byte[] query, RaftJournal journal) {
         StateQueryResult result;
-        try {
-            maybeRecoverUserState();
-        } catch (IOException e) {
-            throw new StateRecoverException(e);
-        }
         long stamp = stateLock.tryOptimisticRead();
         result = new StateQueryResult(userState.query(query, journal), lastApplied());
 
@@ -354,32 +339,8 @@ public class JournalKeeperState implements Replicable, Flushable {
         }
     }
 
-    public void dumpUserState(Path destPath) throws IOException {
-        flush();
-        try {
-            stateFilesLock.readLock().lock();
-            FileUtils.dump(path.resolve(USER_STATE_PATH), destPath.resolve(USER_STATE_PATH));
-        } finally {
-            stateFilesLock.readLock().unlock();
-        }
-    }
-
-
-    /**
-     * 列出所有复制时需要拷贝的文件。
-     * @return 所有需要复制的文件的Path
-     */
-    private List<Path> listAllFiles(Path path) throws IOException {
-        return FileUtils.listAllFiles(path);
-    }
-
     public List<URI> voters() {
         return internalState.getConfigState().voters();
-    }
-
-    @Override
-    public ReplicableIterator iterator() throws IOException {
-        return new FolderTrunkIterator(path, listAllFiles(path), MAX_TRUNK_SIZE, lastIncludedIndex(), lastIncludedTerm());
     }
 
     public void close() {
@@ -392,10 +353,8 @@ public class JournalKeeperState implements Replicable, Flushable {
     }
 
     public void closeUnsafe() {
-        if(isUserStateAvailable.compareAndSet(true, false)) {
-            if (null != userState) {
-                userState.close();
-            }
+        if (null != userState) {
+            userState.close();
         }
     }
 
@@ -427,20 +386,6 @@ public class JournalKeeperState implements Replicable, Flushable {
         return internalState;
     }
 
-    public void createSnapshot(Journal journal) throws IOException {
-        internalState.setSnapshotTimestamp(System.currentTimeMillis());
-        internalState.setMinOffset(
-                journal.maxIndex() == internalState.minIndex() ? journal.maxOffset() :
-                        journal.readOffset(internalState.minIndex())
-        );
-        Map<Integer, Long> partitionIndices = journal.calcPartitionIndices(internalState.minOffset());
-        internalState.setPartitionIndices(partitionIndices);
-        flushInternalState();
-    }
-
-    public long timestamp() {
-        return internalState.getSnapshotTimestamp();
-    }
 
     @Override
     public String toString() {

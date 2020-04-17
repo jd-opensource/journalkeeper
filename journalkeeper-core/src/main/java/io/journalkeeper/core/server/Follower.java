@@ -16,6 +16,7 @@ package io.journalkeeper.core.server;
 import io.journalkeeper.core.api.VoterState;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.state.JournalKeeperState;
+import io.journalkeeper.core.state.Snapshot;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
@@ -53,7 +54,7 @@ class Follower extends ServerStateMachine implements StateServer {
     private final int currentTerm;
     private final VoterConfigManager voterConfigManager;
     private final Threads threads;
-    private final NavigableMap<Long, JournalKeeperState> snapshots;
+    private final NavigableMap<Long, Snapshot> snapshots;
 
     /**
      * Leader 日志当前的最大位置
@@ -63,7 +64,7 @@ class Follower extends ServerStateMachine implements StateServer {
 
     private boolean readyForStartPreferredLeaderElection = false;
 
-    Follower(Journal journal, JournalKeeperState state, URI serverUri, int currentTerm, VoterConfigManager voterConfigManager, Threads threads, NavigableMap<Long, JournalKeeperState> snapshots, int cachedRequests) {
+    Follower(Journal journal, JournalKeeperState state, URI serverUri, int currentTerm, VoterConfigManager voterConfigManager, Threads threads, NavigableMap<Long, Snapshot> snapshots, int cachedRequests) {
         super(true);
         this.state = state;
         this.voterConfigManager = voterConfigManager;

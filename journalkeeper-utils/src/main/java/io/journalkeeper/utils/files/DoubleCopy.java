@@ -93,9 +93,11 @@ public abstract class DoubleCopy implements Closeable {
     @Override
     public void close() {
         try {
-            flush();
-            raf.close();
-            raf = null;
+            if (null != raf) {
+                flush();
+                raf.close();
+                raf = null;
+            }
         } catch (IOException e) {
             logger.warn("Close file exception: ", e);
         }

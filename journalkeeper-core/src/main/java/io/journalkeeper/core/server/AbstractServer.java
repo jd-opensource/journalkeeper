@@ -30,6 +30,7 @@ import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
 import io.journalkeeper.core.entry.internal.UpdateVotersS1Entry;
 import io.journalkeeper.core.entry.internal.UpdateVotersS2Entry;
 import io.journalkeeper.core.state.EntryFutureImpl;
+import io.journalkeeper.core.state.Snapshot;
 import io.journalkeeper.exceptions.JournalException;
 import io.journalkeeper.exceptions.RecoverException;
 import io.journalkeeper.core.journal.Journal;
@@ -156,7 +157,7 @@ public abstract class AbstractServer
     /**
      * 存放节点上所有状态快照的稀疏数组，数组的索引（key）就是快照对应的日志位置的索引
      */
-    protected final NavigableMap<Long, JournalKeeperState> snapshots = new ConcurrentSkipListMap<>();
+    protected final NavigableMap<Long, Snapshot> snapshots = new ConcurrentSkipListMap<>();
     protected final PartialSnapshot partialSnapshot;
     protected final BufferPool bufferPool;
     protected final Map<URI, ServerRpc> remoteServers = new HashMap<>();
@@ -393,8 +394,13 @@ public abstract class AbstractServer
     }
 
     private void createFistSnapshot(List<URI> voters, Set<Integer> partitions, URI preferredLeader) throws IOException {
-        JournalKeeperState snapshot = new JournalKeeperState(stateFactory, metadataPersistence);
-        snapshot.init(snapshotsPath().resolve(String.valueOf(0L)), voters, partitions, preferredLeader);
+        Snapshot snapshot = new Snapshot(stateFactory, metadataPersistence);
+        Path snapshotPath = snapshotsPath().resolve(String.valueOf(0L));
+        snapshot.init(snapshotPath, voters, partitions, preferredLeader);
+        Snapshot.markComplete(snapshotPath);
+        snapshot.recover(snapshotPath, properties);
+        snapshot.createFirstSnapshot(partitions);
+        snapshot.close();
     }
 
     protected Path statePath() {
@@ -537,8 +543,8 @@ public abstract class AbstractServer
                     }
                 }
 
-                JournalKeeperState snapshot;
-                Map.Entry<Long, JournalKeeperState> nearestSnapshot = snapshots.floorEntry(request.getIndex());
+                Snapshot snapshot;
+                Map.Entry<Long, Snapshot> nearestSnapshot = snapshots.floorEntry(request.getIndex());
                 if (null == nearestSnapshot) {
                     throw new IndexUnderflowException();
                 }
@@ -546,7 +552,7 @@ public abstract class AbstractServer
                 if (request.getIndex() == nearestSnapshot.getKey()) {
                     snapshot = nearestSnapshot.getValue();
                 } else {
-                    snapshot = new JournalKeeperState(stateFactory, metadataPersistence);
+                    snapshot = new Snapshot(stateFactory, metadataPersistence);
                     Path tempSnapshotPath = snapshotsPath().resolve(String.valueOf(request.getIndex()));
                     if (Files.exists(tempSnapshotPath)) {
                         throw new ConcurrentModificationException(String.format("A snapshot of position %d is creating, please retry later.", request.getIndex()));
@@ -578,7 +584,7 @@ public abstract class AbstractServer
 
     private void recoverSnapShot(InternalEntryType type, byte[] internalEntry) {
         RecoverSnapshotEntry recoverSnapshotEntry = InternalEntriesSerializeSupport.parse(internalEntry);
-        JournalKeeperState targetSnapshot = snapshots.get(recoverSnapshotEntry.getIndex());
+        Snapshot targetSnapshot = snapshots.get(recoverSnapshotEntry.getIndex());
         if (targetSnapshot == null) {
             logger.warn("recover snapshot failed, snapshot not exist, index: {}", recoverSnapshotEntry.getIndex());
             return;
@@ -591,7 +597,7 @@ public abstract class AbstractServer
         }
     }
 
-    protected void doRecoverSnapshot(JournalKeeperState targetSnapshot) throws IOException {
+    protected void doRecoverSnapshot(Snapshot targetSnapshot) throws IOException {
         logger.info("recover snapshot, target snapshot: {}", targetSnapshot.getPath());
         state.closeUnsafe();
         state.clearUserState();
@@ -704,9 +710,11 @@ public abstract class AbstractServer
         try {
             FileUtils.deleteFolder(snapshotPath);
             state.dump(snapshotPath);
-            JournalKeeperState snapshot = new JournalKeeperState(stateFactory, metadataPersistence);
+            Snapshot.markComplete(snapshotPath);
+            Snapshot snapshot = new Snapshot(stateFactory, metadataPersistence);
             snapshot.recover(snapshotPath, properties);
             snapshot.createSnapshot(journal);
+
             snapshots.put(snapshot.lastApplied(), snapshot);
             logger.info("Snapshot at index: {} created, {}.", lastApplied, snapshot);
 
@@ -724,7 +732,7 @@ public abstract class AbstractServer
                     iteratorId = request.getIteratorId();
                 } else {
                     long snapshotIndex = request.getLastIncludedIndex() + 1;
-                    JournalKeeperState snapshot = snapshots.get(snapshotIndex);
+                    Snapshot snapshot = snapshots.get(snapshotIndex);
                     if (null != snapshot) {
                         ReplicableIterator iterator = snapshot.iterator();
                         iteratorId = nextSnapshotIteratorId.getAndIncrement();
@@ -738,7 +746,7 @@ public abstract class AbstractServer
                 if (null != iterator) {
                     return new GetServerStateResponse(
                             iterator.lastIncludedIndex(), iterator.lastIncludedTerm(),
-                            iterator.offset(), iterator.nextTrunk(), iterator.hasMoreTrunks(), iteratorId
+                            iterator.offset(), iterator.nextTrunk(), !iterator.hasMoreTrunks(), iteratorId
                     );
                 } else {
                     throw new NoSuchSnapshotException();
@@ -986,15 +994,20 @@ public abstract class AbstractServer
                         entry -> entry.getFileName().toString().matches("\\d+")
                 ).spliterator(), false)
                 .map(path -> {
-                    JournalKeeperState snapshot = new JournalKeeperState(stateFactory, metadataPersistence);
-                    snapshot.recover(path, properties, true);
-                    if (Long.parseLong(path.getFileName().toString()) == snapshot.lastApplied()) {
-                        return snapshot;
-                    } else {
+                    try {
+                        Snapshot snapshot = new Snapshot(stateFactory, metadataPersistence);
+                        snapshot.recover(path, properties);
+                        if (Long.parseLong(path.getFileName().toString()) == snapshot.lastApplied()) {
+                            return snapshot;
+                        } else {
+                            return null;
+                        }
+                    } catch (Throwable t) {
+                        logger.warn("Recover snapshot {} exception: ", path.toString(), t);
                         return null;
                     }
                 }).filter(Objects::nonNull)
-                .peek(JournalKeeperState::close)
+                .peek(Snapshot::close)
                 .forEach(snapshot -> snapshots.put(snapshot.lastApplied(), snapshot));
     }
 
@@ -1078,14 +1091,14 @@ public abstract class AbstractServer
     private void compactJournalToSnapshot(long index) {
         logger.info("Compact journal to index: {}...", index);
         try {
-            JournalKeeperState snapshot = snapshots.get(index);
+            Snapshot snapshot = snapshots.get(index);
             if (null != snapshot) {
                 JournalSnapshot journalSnapshot = snapshot.getJournalSnapshot();
                 logger.info("Compact journal entries, journal snapshot: {}, journal: {}...", journalSnapshot, journal);
                 journal.compact(snapshot.getJournalSnapshot());
                 logger.info("Compact journal finished, journal: {}.", journal);
 
-                NavigableMap<Long, JournalKeeperState> headMap = snapshots.headMap(index, false);
+                NavigableMap<Long, Snapshot> headMap = snapshots.headMap(index, false);
                 while (!headMap.isEmpty()) {
                     snapshot = headMap.remove(headMap.firstKey());
                     logger.info("Discard snapshot: {}.", snapshot.getPath());
@@ -1165,7 +1178,7 @@ public abstract class AbstractServer
                     ThreadSafeFormat.formatWithComma(journal.commitIndex())
             );
 
-            JournalKeeperState snapshot;
+            Snapshot snapshot;
             long lastApplied = lastIncludedIndex + 1;
             Path snapshotPath = snapshotsPath().resolve(String.valueOf(lastApplied));
             partialSnapshot.installTrunk(offset, data, snapshotPath);
@@ -1173,7 +1186,7 @@ public abstract class AbstractServer
             if (isDone) {
                 logger.info("All snapshot files received, discard any existing snapshot with a same or smaller index...");
                 // discard any existing snapshot with a same or smaller index
-                NavigableMap<Long, JournalKeeperState> headMap = snapshots.headMap(lastApplied, true);
+                NavigableMap<Long, Snapshot> headMap = snapshots.headMap(lastApplied, true);
                 while (!headMap.isEmpty()) {
                     snapshot = headMap.remove(headMap.firstKey());
                     logger.info("Discard snapshot: {}.", snapshot.getPath());
@@ -1183,8 +1196,8 @@ public abstract class AbstractServer
                 logger.info("add the installed snapshot to snapshots: {}...", snapshotPath);
                 partialSnapshot.finish();
                 // add the installed snapshot to snapshots.
-                snapshot = new JournalKeeperState(stateFactory, metadataPersistence);
-                snapshot.recover(snapshotPath, properties, true);
+                snapshot = new Snapshot(stateFactory, metadataPersistence);
+                snapshot.recover(snapshotPath, properties);
                 snapshots.put(lastApplied, snapshot);
 
                 logger.info("New installed snapshot: {}.", snapshot.getJournalSnapshot());

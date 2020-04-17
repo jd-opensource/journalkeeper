@@ -30,6 +30,7 @@ import io.journalkeeper.core.state.ApplyInternalEntryInterceptor;
 import io.journalkeeper.core.state.ApplyReservedEntryInterceptor;
 import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.core.state.JournalKeeperState;
+import io.journalkeeper.core.state.Snapshot;
 import io.journalkeeper.core.transaction.JournalTransactionManager;
 import io.journalkeeper.exceptions.IndexUnderflowException;
 import io.journalkeeper.exceptions.NotLeaderException;
@@ -120,7 +121,7 @@ class Leader extends ServerStateMachine implements StateServer {
     /**
      * 存放节点上所有状态快照的稀疏数组，数组的索引（key）就是快照对应的日志位置的索引
      */
-    private final Map<Long, JournalKeeperState> immutableSnapshots;
+    private final Map<Long, Snapshot> immutableSnapshots;
 
     private final URI serverUri;
     private final int currentTerm;
@@ -134,7 +135,7 @@ class Leader extends ServerStateMachine implements StateServer {
     private final JournalTransactionManager journalTransactionManager;
     private final ApplyReservedEntryInterceptor journalTransactionInterceptor;
     private final ApplyInternalEntryInterceptor leaderAnnouncementInterceptor;
-    private final NavigableMap<Long, JournalKeeperState> snapshots;
+    private final NavigableMap<Long, Snapshot> snapshots;
     private final int snapshotIntervalSec;
     private final AtomicBoolean isLeaderAnnouncementApplied = new AtomicBoolean(false);
     private final AtomicLong callbackBarrier = new AtomicLong(0L);
@@ -147,7 +148,7 @@ class Leader extends ServerStateMachine implements StateServer {
     private ScheduledFuture takeSnapshotFuture;
     private AtomicBoolean isAnyFollowerNextIndexUpdated = new AtomicBoolean(false);
 
-    Leader(Journal journal, JournalKeeperState state, Map<Long, JournalKeeperState> immutableSnapshots,
+    Leader(Journal journal, JournalKeeperState state, Map<Long, Snapshot> immutableSnapshots,
            int currentTerm,
            URI serverUri,
            int cacheRequests, long heartbeatIntervalMs, long rpcTimeoutMs, int replicationBatchSize,
@@ -159,7 +160,7 @@ class Leader extends ServerStateMachine implements StateServer {
            VoterConfigManager voterConfigManager,
            MetricProvider metricProvider,
            JournalEntryParser journalEntryParser,
-           long transactionTimeoutMs, NavigableMap<Long, JournalKeeperState> snapshots) {
+           long transactionTimeoutMs, NavigableMap<Long, Snapshot> snapshots) {
 
         super(true);
         this.pendingUpdateStateRequests = new LinkedBlockingQueue<>(cacheRequests);
@@ -425,7 +426,7 @@ class Leader extends ServerStateMachine implements StateServer {
         }
     }
 
-    private void installSnapshot(ReplicationDestination follower, JournalKeeperState snapshot) {
+    private void installSnapshot(ReplicationDestination follower, Snapshot snapshot) {
 
         try {
             logger.info("Install snapshot to {} ...", follower.getUri());
@@ -820,7 +821,7 @@ class Leader extends ServerStateMachine implements StateServer {
                 long start = metric == null ? 0L : System.nanoTime();
 
                 // 如果有必要，先安装第一个快照
-                Map.Entry<Long, JournalKeeperState> fistSnapShotEntry = snapshots.firstEntry();
+                Map.Entry<Long, Snapshot> fistSnapShotEntry = snapshots.firstEntry();
                 maybeInstallSnapshotFirst(fistSnapShotEntry);
 
                 // 读取需要复制的Entry
@@ -878,7 +879,7 @@ class Leader extends ServerStateMachine implements StateServer {
             }
         }
 
-        private void maybeInstallSnapshotFirst(Map.Entry<Long, JournalKeeperState> fistSnapShotEntry) {
+        private void maybeInstallSnapshotFirst(Map.Entry<Long, Snapshot> fistSnapShotEntry) {
             if (nextIndex <= fistSnapShotEntry.getKey()) {
                 installSnapshot(this, fistSnapShotEntry.getValue());
                 nextIndex = fistSnapShotEntry.getKey();

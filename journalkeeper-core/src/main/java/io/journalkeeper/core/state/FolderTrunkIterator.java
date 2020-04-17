@@ -64,6 +64,9 @@ public class FolderTrunkIterator implements ReplicableIterator {
     private long offsetOfCurrentFile = 0;
     private long offset;
 
+    // 标记该文件是目录的魔法值
+    public static final byte [] DIRECTORY_MAGIC_CODE = "Panda&XiGua".getBytes(StandardCharsets.UTF_8);
+
     public FolderTrunkIterator(Path root, List<Path> files, int maxTrunkSize, long lastIncludedIndex, int lastIncludedTerm) {
         this.root = root;
         this.maxTrunkSize = maxTrunkSize;
@@ -103,7 +106,7 @@ public class FolderTrunkIterator implements ReplicableIterator {
     public byte[] nextTrunk() throws IOException {
         Path relFile = files.get(fileIndex);
         Path file = root.resolve(relFile);
-        long fileSize = Files.size(file);
+        long fileSize = Files.isDirectory(file) ? DIRECTORY_MAGIC_CODE.length : Files.size(file);
         long remainingSize;
 
         byte[] trunk;
@@ -122,10 +125,14 @@ public class FolderTrunkIterator implements ReplicableIterator {
         buffer.putLong(offsetOfCurrentFile);
 
         int sizeToRead = buffer.remaining();
-        try (RandomAccessFile raf = new RandomAccessFile(file.toFile(), "r"); FileChannel fc = raf.getChannel()) {
-            fc.position(offsetOfCurrentFile);
-            while (buffer.hasRemaining()) {
-                fc.read(buffer);
+        if(Files.isDirectory(file)) {
+            buffer.put(DIRECTORY_MAGIC_CODE);
+        } else {
+            try (RandomAccessFile raf = new RandomAccessFile(file.toFile(), "r"); FileChannel fc = raf.getChannel()) {
+                fc.position(offsetOfCurrentFile);
+                while (buffer.hasRemaining()) {
+                    fc.read(buffer);
+                }
             }
         }
 
