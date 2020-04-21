@@ -118,6 +118,10 @@ public interface StoreFile extends Timed {
      * @return 文件创建时间
      */
     long timestamp();
+    /**
+     * 结束写入，文件变为只读。
+     */
+    void closeWrite();
 
     /**
      * 强制把PageBuffer的数据写入磁盘

@@ -84,7 +84,7 @@ public class PreloadBufferPool implements MemoryCacheManager {
 
     public PreloadBufferPool() {
 
-        maxMemorySize = Format.parseSize(System.getProperty(MAX_MEMORY_KEY), Math.round(VM.maxDirectMemory() * DEFAULT_CACHE_RATIO));
+        maxMemorySize = calcMaxMemorySize();
         float evictRatio = getFloatProperty(EVICT_RATIO_KEY, DEFAULT_EVICT_RATIO);
         evictMemorySize = Math.round(maxMemorySize * evictRatio);
         float coreRatio = getFloatProperty(CORE_RATIO_KEY, DEFAULT_CORE_RATIO);
@@ -94,7 +94,7 @@ public class PreloadBufferPool implements MemoryCacheManager {
         threads.createThread(buildEvictThread());
         threads.start();
 
-        logger.info("Max direct memory: {}, core direct memory: {}, evict direct memory: {}.",
+        logger.info("JournalKeeper PreloadBufferPool loaded, max direct memory: {}, core direct memory: {}, evict direct memory: {}.",
                 Format.formatSize(maxMemorySize),
                 Format.formatSize(coreMemorySize),
                 Format.formatSize(evictMemorySize));
@@ -153,7 +153,15 @@ public class PreloadBufferPool implements MemoryCacheManager {
             sorted = Stream.concat(directBufferHolders.stream(), mMapBufferHolders.stream())
                     .filter(BufferHolder::isFree)
                     .map(bufferHolder -> new LruWrapper<>(bufferHolder, bufferHolder.lastAccessTime()))
-                    .sorted(Comparator.comparing(LruWrapper::getLastAccessTime))
+                    .sorted((h1, h2) -> {
+                        if (h1.get().writable() != h2.get().writable()) { // 二者只读状态不同
+                            // 优先清理只读的页，避免频繁加载正在写入的页
+                            return h1.get().writable() ? 1 : -1;
+                        } else {
+                            // 只读状态相同，按照最后访问时间排序
+                            return Long.compare(h1.getLastAccessTime(), h2.getLastAccessTime());
+                        }
+                    })
                     .collect(Collectors.toList());
 
             while (needEviction() && !sorted.isEmpty()) {
@@ -392,6 +400,44 @@ public class PreloadBufferPool implements MemoryCacheManager {
     public long getDirectUsedMemorySize() {
         return directBufferHolders.stream().mapToLong(BufferHolder::size).sum() +
                 bufferCache.values().stream().mapToLong(c -> c.getBufferSize() * c.getCachedCount()).sum();
+    }
+
+
+    /**
+     * 计算可供缓存使用的最大堆外内存。
+     *
+     * 1. 如果PreloadBufferPool.MaxMemory设置为数值，直接使用设置值。
+     * 2. 如果PreloadBufferPool.MaxMemory设置为百分比，比如：90%，最大堆外内存 = 物理内存 * 90% - 最大堆内存（由JVM参数-Xmx配置）
+     * 3. 如果PreloadBufferPool.MaxMemory未设置或者设置了非法值，最大堆外内存 = VM.maxDirectMemory() * 90%。
+     * 其中VM.maxDirectMemory()取值为JVM参数-XX:MaxDirectMemorySize，如果未设置-XX:MaxDirectMemorySize，取值为JVM参数-Xmx。
+     *
+     * @return 可使用的最大堆外内存大小。
+     */
+    private long calcMaxMemorySize() {
+        String mmsString = System.getProperty(MAX_MEMORY_KEY);
+        int pct = Format.getPercentage(mmsString);
+        if (pct > 0 && pct < 100) {
+            long physicalMemorySize = getPhysicalMemorySize();
+            long reservedHeapMemorySize = Runtime.getRuntime().maxMemory();
+            if (Long.MAX_VALUE == reservedHeapMemorySize) {
+                logger.warn("Runtime.getRuntime().maxMemory() returns unlimited!");
+                reservedHeapMemorySize = physicalMemorySize / 2;
+            }
+            // 如果设置了百分比，最大可使用堆外内存= 物理内存 * 百分比 - 最大堆内存
+            long mms = physicalMemorySize * pct / 100 - reservedHeapMemorySize;
+            if (mms > 0) {
+                return mms;
+            } else {
+                return Math.round(VM.maxDirectMemory() * DEFAULT_CACHE_RATIO);
+            }
+        }
+        return Format.parseSize(System.getProperty(MAX_MEMORY_KEY), Math.round(VM.maxDirectMemory() * DEFAULT_CACHE_RATIO));
+    }
+
+    private static long getPhysicalMemorySize() {
+        com.sun.management.OperatingSystemMXBean os = (com.sun.management.OperatingSystemMXBean)
+                java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+        return os.getTotalPhysicalMemorySize();
     }
 
     @Override

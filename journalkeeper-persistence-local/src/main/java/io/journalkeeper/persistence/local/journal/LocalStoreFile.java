@@ -72,6 +72,9 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
 
     private long timestamp = -1L;
     private AtomicBoolean forced = new AtomicBoolean(false);
+    private volatile boolean writeClosed = true;
+    private FileChannel fileChannel;
+    private RandomAccessFile raf;
 
     LocalStoreFile(long filePosition, File base, int headerSize, MemoryCacheManager bufferPool, int maxFileDataLength) {
         this.filePosition = filePosition;
@@ -125,23 +128,31 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
 
         ByteBuffer buffer = bufferPool.allocateDirect(capacity, this);
         loadDirectBuffer(buffer);
+        writeClosed = false;
 
     }
 
     private void loadDirectBuffer(ByteBuffer buffer) throws IOException {
-        if (file.exists() && file.length() > headerSize) {
-            try (RandomAccessFile raf = new RandomAccessFile(file, "r"); FileChannel fileChannel = raf.getChannel()) {
-                fileChannel.position(headerSize);
-                int length;
-                do {
-                    length = fileChannel.read(buffer);
-                } while (length > 0);
-            }
+        boolean needLoadFileContent = file.exists() && file.length() > headerSize;
+        boolean writeTimestamp = !file.exists();
+        // 打开文件描述符
+        raf = new RandomAccessFile(file, "rw");
+        fileChannel = raf.getChannel();
+        if (writeTimestamp) {
+            // 第一次创建文件写入头部预留128字节中0位置开始的前8字节长度:文件创建时间戳
+            writeTimestamp();
+        }
+        if (needLoadFileContent) {
+            logger.warn("Reload file for write! size: {}, file: {}.", file.length(), file);
+            fileChannel.position(headerSize);
+            int length;
+            do {
+                length = fileChannel.read(buffer);
+            } while (length > 0);
             buffer.clear();
         }
         this.pageBuffer = buffer;
         bufferType = DIRECT_BUFFER;
-        forced.set(false);
     }
 
     public long timestamp() {
@@ -366,9 +377,8 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
                         // 第一次创建文件写入头部预留128字节中0位置开始的前8字节长度:文件创建时间戳
                         writeTimestamp();
                     }
-                    try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
-                        return flushPageBuffer(fileChannel);
-                    }
+                    return flushPageBuffer();
+
                 } finally {
                     fileLock.unlock();
                 }
@@ -379,8 +389,17 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
             bufferLock.unlockRead(stamp);
         }
     }
-
-    private int flushPageBuffer(FileChannel fileChannel) throws IOException {
+    private void ensureOpen() {
+        if (fileChannel == null || !fileChannel.isOpen()) {
+            throw new IllegalStateException(
+                    String.format(
+                            "File %s is not open!", file.getAbsolutePath()
+                    )
+            );
+        }
+    }
+    private int flushPageBuffer() throws IOException {
+        ensureOpen();
         int flushEnd = writePosition;
         ByteBuffer flushBuffer = pageBuffer.asReadOnlyBuffer();
         flushBuffer.position(flushPosition);
@@ -398,19 +417,24 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     // Not thread safe!
     @Override
     public void rollback(int position) throws IOException {
-        if (position < writePosition) {
-            writePosition = position;
-        }
-        if (position < flushPosition) {
-            fileLock.waitAndLock();
-            try {
-                flushPosition = position;
-                try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
-                    fileChannel.truncate(position + headerSize);
-                }
-            } finally {
-                fileLock.unlock();
+        long stamp = bufferLock.writeLock();
+        try {
+            if (position < writePosition) {
+                writePosition = position;
             }
+            if (position < flushPosition) {
+                fileLock.waitAndLock();
+                try {
+                    loadRwUnsafe();
+                    ensureOpen();
+                    flushPosition = position;
+                    fileChannel.truncate(position + headerSize);
+                } finally {
+                    fileLock.unlock();
+                }
+            }
+        } finally {
+            bufferLock.unlockWrite(stamp);
         }
     }
 
@@ -446,6 +470,12 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         } else if (DIRECT_BUFFER == this.bufferType) {
             unloadDirectBuffer();
         }
+        try {
+            closeFileChannel();
+        } catch (IOException e) {
+            logger.warn("Close file {} exception: ", file.getAbsolutePath(), e);
+        }
+        writeClosed = true;
     }
 
     private void unloadDirectBuffer() {
@@ -453,6 +483,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         pageBuffer = null;
         this.bufferType = NO_BUFFER;
         if (null != direct) bufferPool.releaseDirect(direct, this);
+
     }
 
     private void unloadMappedBuffer() {
@@ -489,10 +520,30 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     }
 
     @Override
+    public void closeWrite() {
+        writeClosed = true;
+    }
+    @Override
+    public boolean writable() {
+        return bufferType == DIRECT_BUFFER && !writeClosed;
+    }
+
+    private void closeFileChannel() throws IOException {
+        force();
+        if (null != fileChannel) {
+            fileChannel.close();
+        }
+        if (null != raf) {
+            raf.close();
+        }
+    }
+
+    @Override
     public void force() throws IOException {
         if(forced.compareAndSet(false, true)) {
             fileLock.waitAndLock();
-            try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
+            ensureOpen();
+            try {
                 fileChannel.force(true);
             } catch (Throwable t) {
                 forced.set(false);
