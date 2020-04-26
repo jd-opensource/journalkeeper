@@ -144,7 +144,7 @@ public class PositioningStore implements JournalPersistence, MonitoredPersistenc
     private void resetWriteStoreFile() {
         if (!storeFileMap.isEmpty()) {
             StoreFile storeFile = storeFileMap.lastEntry().getValue();
-            if (storeFile.position() + config.getFileDataSize() > writePosition.get()) {
+            if (storeFile.position() + storeFile.size() > writePosition.get()) {
                 writeStoreFile = storeFile;
             }
         }
@@ -243,7 +243,7 @@ public class PositioningStore implements JournalPersistence, MonitoredPersistenc
 
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
         if (null == writeStoreFile) writeStoreFile = createStoreFile(writePosition.get());
-        if (config.getFileDataSize() - writeStoreFile.writePosition() < buffer.remaining()) {
+        if (writeStoreFile.size() - writeStoreFile.writePosition() < buffer.remaining()) {
             writeStoreFile.closeWrite();
             writeStoreFile = createStoreFile(writePosition.get());
         }
@@ -272,7 +272,7 @@ public class PositioningStore implements JournalPersistence, MonitoredPersistenc
 
 
         if (null == writeStoreFile) writeStoreFile = createStoreFile(writePosition.get());
-        if (config.getFileDataSize() - writeStoreFile.writePosition() < totalLength) {
+        if (writeStoreFile.size() - writeStoreFile.writePosition() < totalLength) {
             writeStoreFile.closeWrite();
             writeStoreFile = createStoreFile(writePosition.get());
         }

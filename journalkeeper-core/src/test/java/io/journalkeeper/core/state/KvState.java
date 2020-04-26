@@ -47,7 +47,7 @@ public class KvState implements WrappedState<String, String, String, String>, Fl
     private final Gson gson = new Gson();
     private Map<String, String> stateMap = new HashMap<>();
     private Path statePath;
-    private AtomicBoolean isDirty = new AtomicBoolean(false);
+    private final AtomicBoolean isDirty = new AtomicBoolean(false);
 
     @Override
     public void recover(Path statePath, Properties properties) {
@@ -81,13 +81,14 @@ public class KvState implements WrappedState<String, String, String, String>, Fl
             if (CMD_SET.equals(splt[0])) {
                 checkInput(splt, 3);
                 stateMap.put(splt[1], splt[2]);
+                isDirty.compareAndSet(false, true);
                 return null;
             }
 
             if (CMD_DEL.equals(splt[0])) {
                 checkInput(splt, 2);
                 stateMap.remove(splt[1]);
-
+                isDirty.compareAndSet(false, true);
                 return null;
             }
             throw new IllegalArgumentException("Unknown command: " + cmd + "!");
@@ -118,6 +119,8 @@ public class KvState implements WrappedState<String, String, String, String>, Fl
 
     @Override
     public void flush() throws IOException {
-        Files.write(statePath.resolve(FILENAME), gson.toJson(stateMap).getBytes(StandardCharsets.UTF_8));
+        if(isDirty.compareAndSet(true, false)) {
+            Files.write(statePath.resolve(FILENAME), gson.toJson(stateMap).getBytes(StandardCharsets.UTF_8));
+        }
     }
 }

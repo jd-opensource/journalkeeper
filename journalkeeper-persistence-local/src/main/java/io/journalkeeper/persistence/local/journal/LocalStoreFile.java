@@ -62,7 +62,7 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
     private int bufferType = NO_BUFFER;
 
     private MemoryCacheManager bufferPool;
-    private int capacity;
+    private final int capacity;
     private long lastAccessTime = System.currentTimeMillis();
 
     // 当前刷盘位置
@@ -80,12 +80,12 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
         this.filePosition = filePosition;
         this.headerSize = headerSize;
         this.bufferPool = bufferPool;
-        this.capacity = maxFileDataLength;
         this.file = new File(base, String.valueOf(filePosition));
         if (file.exists() && file.length() > headerSize) {
             this.writePosition = (int) (file.length() - headerSize);
             this.flushPosition = writePosition;
         }
+        this.capacity = Math.max(maxFileDataLength, (int )(file.length() - headerSize));
     }
 
     @Override
@@ -425,10 +425,14 @@ public class LocalStoreFile implements StoreFile, BufferHolder {
             if (position < flushPosition) {
                 fileLock.waitAndLock();
                 try {
-                    loadRwUnsafe();
-                    ensureOpen();
                     flushPosition = position;
-                    fileChannel.truncate(position + headerSize);
+                    if (fileChannel != null && fileChannel.isOpen()) {
+                        fileChannel.truncate(position + headerSize);
+                    } else {
+                        try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileChannel fileChannel = raf.getChannel()) {
+                            fileChannel.truncate(position + headerSize);
+                        }
+                    }
                 } finally {
                     fileLock.unlock();
                 }

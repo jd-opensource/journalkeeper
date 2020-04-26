@@ -118,6 +118,9 @@ public interface StoreFile extends Timed {
      * @return 文件创建时间
      */
     long timestamp();
+
+    int size();
+
     /**
      * 结束写入，文件变为只读。
      */
