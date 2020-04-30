@@ -62,13 +62,15 @@ public class PreloadBufferPool implements MemoryCacheManager {
      * 缓存核心利用率，系统会尽量将这个比率以内的内存用满。
      */
     private static final float DEFAULT_CORE_RATIO = 0.8f;
+    private static final long DEFAULT_WRITE_PAGE_EXTRA_WEIGHT_MS = 60000L;
     private final static long INTERVAL_MS = 50L;
 
     private final static String MAX_MEMORY_KEY = "memory_cache.max_memory";
     private final static String EVICT_RATIO_KEY = "memory_cache.evict_ratio";
     private final static String CORE_RATIO_KEY = "memory_cache.core_ratio";
+    private static final String WRITE_PAGE_EXTRA_WEIGHT_MS_KEY="memory_cache.write.weight.ms";
 
-    private static PreloadBufferPool instance = null;
+    private static final PreloadBufferPool instance = null;
     private final Threads threads = ThreadsFactory.create();
     // 可用的堆外内存上限，这个上限可以用JVM参数"PreloadBufferPool.MaxMemory"指定，
     // 默认为虚拟机最大内存（VM.maxDirectMemory()）的90%。
@@ -77,6 +79,13 @@ public class PreloadBufferPool implements MemoryCacheManager {
     private final long coreMemorySize;
     // 堆外内存超过evictMemorySize就会启动清理，清理的策略是LRU
     private final long evictMemorySize;
+
+    // 正在写入的页在置换时有额外的权重，这个权重用时间Ms体现。
+    // 默认是60秒。
+    // 置换权重 = 上次访问时间戳 + 额外权重，优先从内存中驱逐权重小的页。
+    // 例如：一个只读的页，上次访问时间戳是T，一个读写页，上次访问时间是T - 60秒，
+    // 这两个页在置换时有同样的权重
+    private final long writePageExtraWeightMs;
     private final AtomicLong usedSize = new AtomicLong(0L);
     private final Set<BufferHolder> directBufferHolders = ConcurrentHashMap.newKeySet();
     private final Set<BufferHolder> mMapBufferHolders = ConcurrentHashMap.newKeySet();
@@ -89,6 +98,7 @@ public class PreloadBufferPool implements MemoryCacheManager {
         evictMemorySize = Math.round(maxMemorySize * evictRatio);
         float coreRatio = getFloatProperty(CORE_RATIO_KEY, DEFAULT_CORE_RATIO);
         coreMemorySize = Math.round(maxMemorySize * coreRatio);
+        writePageExtraWeightMs = Long.parseLong(System.getProperty(WRITE_PAGE_EXTRA_WEIGHT_MS_KEY,String.valueOf(DEFAULT_WRITE_PAGE_EXTRA_WEIGHT_MS)));
 
         threads.createThread(buildPreloadThread());
         threads.createThread(buildEvictThread());
@@ -152,8 +162,8 @@ public class PreloadBufferPool implements MemoryCacheManager {
             List<LruWrapper<BufferHolder>> sorted;
             sorted = Stream.concat(directBufferHolders.stream(), mMapBufferHolders.stream())
                     .filter(BufferHolder::isFree)
-                    .map(bufferHolder -> new LruWrapper<>(bufferHolder, bufferHolder.lastAccessTime(), bufferHolder.writable()))
-                    .sorted(this::compareBufferHolder)
+                    .map(bufferHolder -> new LruWrapper<>(bufferHolder, bufferHolder.lastAccessTime(), bufferHolder.writable() ? writePageExtraWeightMs : 0L))
+                    .sorted(Comparator.comparing(LruWrapper::getWeight))
                     .collect(Collectors.toList());
 
             while (needEviction() && !sorted.isEmpty()) {
@@ -187,16 +197,6 @@ public class PreloadBufferPool implements MemoryCacheManager {
                 Format.formatSize(mmpUsed),
                 Format.formatSize(totalUsed),
                 Format.formatSize(maxMemorySize));
-    }
-
-    private int compareBufferHolder(LruWrapper<BufferHolder> h1, LruWrapper<BufferHolder> h2) {
-        if (h1.isWritable() != h2.isWritable()) { // 二者只读状态不同
-            // 优先清理只读的页，避免频繁加载正在写入的页
-            return h1.isWritable() ? 1 : -1;
-        } else {
-            // 只读状态相同，按照最后访问时间排序
-            return Long.compare(h1.getLastAccessTime(), h2.getLastAccessTime());
-        }
     }
 
     private boolean needEviction() {
@@ -250,8 +250,8 @@ public class PreloadBufferPool implements MemoryCacheManager {
                     List<LruWrapper<BufferHolder>> outdated = directBufferHolders.stream()
                             .filter(b -> b.size() == preLoadCache.bufferSize)
                             .filter(BufferHolder::isFree)
-                            .map(bufferHolder -> new LruWrapper<>(bufferHolder, bufferHolder.lastAccessTime(), bufferHolder.writable()))
-                            .sorted(this::compareBufferHolder)
+                            .map(bufferHolder -> new LruWrapper<>(bufferHolder, bufferHolder.lastAccessTime(), bufferHolder.writable() ? writePageExtraWeightMs : 0L))
+                            .sorted(Comparator.comparing(LruWrapper::getWeight))
                             .collect(Collectors.toList());
                     while (preLoadCache.cache.size() < preLoadCache.coreCount && !outdated.isEmpty()) {
                         LruWrapper<BufferHolder> wrapper = outdated.remove(0);
@@ -505,13 +505,13 @@ public class PreloadBufferPool implements MemoryCacheManager {
 
     private static class LruWrapper<V> {
         private final long lastAccessTime;
-        private final boolean writable;
+        private final long extraWeight;
         private final V t;
 
-        LruWrapper(V t, long lastAccessTime, boolean writable) {
+        LruWrapper(V t, long lastAccessTime, long extraWeight) {
             this.lastAccessTime = lastAccessTime;
             this.t = t;
-            this.writable = writable;
+            this.extraWeight = extraWeight;
         }
 
         private long getLastAccessTime() {
@@ -522,8 +522,8 @@ public class PreloadBufferPool implements MemoryCacheManager {
             return t;
         }
 
-        public boolean isWritable() {
-            return writable;
+        private long getWeight() {
+            return lastAccessTime + extraWeight;
         }
     }
 }
