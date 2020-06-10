@@ -77,7 +77,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
-import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
 import static io.journalkeeper.core.server.MetricNames.METRIC_APPEND_ENTRIES_RPC;
 import static io.journalkeeper.core.server.ThreadNames.FLUSH_JOURNAL_THREAD;
 import static io.journalkeeper.core.server.ThreadNames.LEADER_APPEND_ENTRY_THREAD;
@@ -540,15 +539,13 @@ class Leader extends ServerStateMachine implements StateServer {
 
     private void appendLeaderAnnouncementEntry() {
         // Leader announcement
-        try {
-            byte[] payload = InternalEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(currentTerm, serverUri));
-            JournalEntry journalEntry = journalEntryParser.createJournalEntry(payload);
-            journalEntry.setTerm(currentTerm);
-            journalEntry.setPartition(INTERNAL_PARTITION);
-            appendAndCallback(Collections.singletonList(journalEntry), null, null);
-        } catch (InterruptedException e) {
-            logger.warn("Exception: ", e);
-        }
+        byte[] payload = InternalEntriesSerializeSupport.serialize(new LeaderAnnouncementEntry(currentTerm, serverUri));
+        updateClusterState(
+                new UpdateClusterStateRequest(
+                        new UpdateRequest(payload, RaftJournal.INTERNAL_PARTITION, 1
+                        )
+                )
+        );
     }
 
     private void takeSnapshotPeriodically() {
