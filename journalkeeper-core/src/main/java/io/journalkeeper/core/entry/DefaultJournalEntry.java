@@ -58,7 +58,8 @@ public class DefaultJournalEntry implements JournalEntry {
     private void checkMagic() {
         short magic = JournalEntryParseSupport.getShort(serializedBuffer(), JournalEntryParseSupport.MAGIC);
         if (magicCode() != magic) {
-            throw new ParseJournalException("Check magic failed！");
+            throw new ParseJournalException(String.format("Check magic failed, magic: %s, current: %s, content: %s",
+                    magicCode(), magic, new String(serializedBytes)));
         }
     }
 

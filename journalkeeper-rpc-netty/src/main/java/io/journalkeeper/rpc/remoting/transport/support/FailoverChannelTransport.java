@@ -30,6 +30,7 @@ import io.netty.channel.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.concurrent.Future;
 
@@ -218,6 +219,9 @@ public class FailoverChannelTransport implements ChannelTransport {
 
     protected boolean reconnect() {
         try {
+            if (address instanceof InetSocketAddress) {
+                address = new InetSocketAddress(((InetSocketAddress) address).getHostString(), ((InetSocketAddress) address).getPort());
+            }
             ChannelTransport newTransport = (ChannelTransport) transportClient.createTransport(address, connectionTimeout);
             ChannelTransport delegate = this.delegate;
             this.delegate = newTransport;
