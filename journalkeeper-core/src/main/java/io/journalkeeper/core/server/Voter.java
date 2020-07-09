@@ -54,6 +54,7 @@ import io.journalkeeper.rpc.server.InstallSnapshotResponse;
 import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
 import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
+import io.journalkeeper.utils.event.EventType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -294,6 +295,10 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         int lastLogTerm = journal.getTerm(lastLogIndex);
 
         RequestVoteRequest request = new RequestVoteRequest(term, uri, lastLogIndex, lastLogTerm, fromPreferredLeader, isPreVote);
+        // 如果是follower 可以安全的移除
+        if(follower!=null&&!state.getConfigState().isJointConsensus()&&!state.getConfigState().getConfigNew().contains(this.uri)){
+            fireConfigStateChangeEvent(state.getConfigState().getConfigNew());
+        }
         List<URI> destinations = state.getConfigState().voters().stream()
                 .filter(uri -> !uri.equals(this.uri)).collect(Collectors.toList());
 
@@ -301,6 +306,7 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         final AtomicInteger votesGrantedInNewConfig = new AtomicInteger(0);
         final AtomicInteger votesGrantedInOldConfig = new AtomicInteger(0);
 
+        //self vote
         updateVotes(isWinTheElection, votesGrantedInNewConfig, votesGrantedInOldConfig, this.uri);
 
         if (!isWinTheElection.get()) {
@@ -409,7 +415,7 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
                     this.journalEntryParser, config.getTransactionTimeoutMs(), snapshots);
             leader.start();
             this.leaderUri = this.uri;
-
+            fireOnLeaderChangeEvent(EventType.ON_LEADER_CHANGE,uri);
             logger.info("Convert voter state from {} to LEADER, {}.", oldState, voterInfo());
 
         }

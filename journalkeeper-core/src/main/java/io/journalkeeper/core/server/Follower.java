@@ -22,22 +22,14 @@ import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
 import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
 import io.journalkeeper.utils.state.ServerStateMachine;
 import io.journalkeeper.utils.state.StateServer;
-import io.journalkeeper.utils.threads.AsyncLoopThread;
-import io.journalkeeper.utils.threads.ThreadBuilder;
 import io.journalkeeper.utils.threads.Threads;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.net.URI;
-import java.util.Comparator;
 import java.util.NavigableMap;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.PriorityBlockingQueue;
 
 import static io.journalkeeper.core.server.ThreadNames.STATE_MACHINE_THREAD;
-import static io.journalkeeper.core.server.ThreadNames.VOTER_REPLICATION_REQUESTS_HANDLER_THREAD;
 
 /**
  * @author LiYue
@@ -135,7 +127,7 @@ class Follower extends ServerStateMachine implements StateServer {
                 voterConfigManager.maybeRollbackConfig(startIndex, journal, state.getConfigState());
 
                 journal.compareOrAppendRaw(request.getEntries(), startIndex);
-
+                logger.info("follower append start {}, end {}",request.getPrevLogIndex(),request.getMaxIndex());
                 // 非Leader（Follower和Observer）复制日志到本地后，如果日志中包含配置变更，则立即变更配置
                 voterConfigManager.maybeUpdateNonLeaderConfig(request.getEntries(), state.getConfigState());
             }

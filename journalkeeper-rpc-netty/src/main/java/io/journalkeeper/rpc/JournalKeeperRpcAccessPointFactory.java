@@ -30,6 +30,8 @@ import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
 import io.journalkeeper.utils.spi.Singleton;
 import io.journalkeeper.utils.state.ServerStateMachine;
 import io.journalkeeper.utils.state.StateServer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
 import java.util.HashMap;
@@ -43,6 +45,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @Singleton
 public class JournalKeeperRpcAccessPointFactory implements RpcAccessPointFactory {
+    private final Logger LOG= LoggerFactory.getLogger(JournalKeeperRpcAccessPointFactory.class);
     private final TransportClientFactory transportClientFactory;
     private final Map<InetSocketAddress /* server port */, TransportServerAndReferenceCount> transportServerMap =
             new HashMap<>();
@@ -80,6 +83,7 @@ public class JournalKeeperRpcAccessPointFactory implements RpcAccessPointFactory
                 TransportServer ts = defaultTransportServerFactory
                         .bind(new ServerConfig(), addr.getHostName(), addr.getPort());
                 ts.start();
+                LOG.info("Bind server on {}:{} ",addr.getHostName(),addr.getPort());
                 return new TransportServerAndReferenceCount(ts);
             } catch (Throwable t) {
                 throw new RpcException(t);

@@ -38,14 +38,7 @@
  */
 package io.journalkeeper.core.state;
 
-import io.journalkeeper.base.Replicable;
-import io.journalkeeper.base.ReplicableIterator;
-import io.journalkeeper.core.api.EntryFuture;
-import io.journalkeeper.core.api.JournalEntry;
-import io.journalkeeper.core.api.RaftJournal;
-import io.journalkeeper.core.api.State;
-import io.journalkeeper.core.api.StateFactory;
-import io.journalkeeper.core.api.StateResult;
+import io.journalkeeper.core.api.*;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.InternalEntryType;
 import io.journalkeeper.core.entry.internal.ScalePartitionsEntry;
@@ -66,13 +59,7 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ConcurrentModificationException;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -231,6 +218,9 @@ public class JournalKeeperState implements Flushable {
         return internalState.getLastIncludedTerm();
     }
 
+    /**
+     * Next apply id
+     **/
     public long lastApplied() {
         return lastIncludedIndex() + 1;
     }

@@ -13,31 +13,25 @@
  */
 package io.journalkeeper.core.server;
 
-import io.journalkeeper.core.api.JournalEntry;
-import io.journalkeeper.core.api.JournalEntryParser;
-import io.journalkeeper.core.api.ResponseConfig;
-import io.journalkeeper.core.api.UpdateRequest;
-import io.journalkeeper.core.api.VoterState;
+import io.journalkeeper.core.api.*;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.InternalEntryType;
 import io.journalkeeper.core.entry.internal.UpdateVotersS1Entry;
 import io.journalkeeper.core.entry.internal.UpdateVotersS2Entry;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.state.ConfigState;
-import io.journalkeeper.metric.JMetric;
+import io.journalkeeper.core.state.ConfigStateChangeListener;
 import io.journalkeeper.rpc.client.ClientServerRpc;
 import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
-import io.journalkeeper.utils.state.StateServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Callable;
-import java.util.stream.Collectors;
 
 import static io.journalkeeper.core.api.RaftJournal.INTERNAL_PARTITION;
 import static io.journalkeeper.core.entry.internal.InternalEntryType.TYPE_UPDATE_VOTERS_S1;
@@ -51,7 +45,7 @@ public class VoterConfigManager {
     private static final Logger logger = LoggerFactory.getLogger(VoterConfigManager.class);
 
     private final JournalEntryParser journalEntryParser;
-
+    private List<ConfigStateChangeListener> listeners=new ArrayList<>();
     VoterConfigManager(JournalEntryParser journalEntryParser) {
         this.journalEntryParser = journalEntryParser;
     }
@@ -83,11 +77,17 @@ public class VoterConfigManager {
                 waitingForAllEntriesCommitted(journal);
                 votersConfigStateMachine.toNewConfig(appendEntryCallable);
                 Collection<URI> followerUris = leader.getFollowerUris();
+                // 如果有被删除follower 需要等待新配置都被提交
+                if(!votersConfigStateMachine.getConfigNew().containsAll(followerUris)) {
+                    logger.warn("Voter config remove node,new {} ",votersConfigStateMachine.getConfigNew());
+                    waitingForAllEntriesCommitted(journal);
+                }
                 for (URI uri : followerUris) {
                     if (!votersConfigStateMachine.voters().contains(uri)) {
                         leader.removeFollower(uri);
                     }
                 }
+                // 处理leader 被移除
                 return true;
             }
         }
@@ -99,6 +99,7 @@ public class VoterConfigManager {
      */
     private void waitingForAllEntriesCommitted(Journal journal) throws InterruptedException {
         long t0 = System.nanoTime();
+        logger.info("Waiting for all entries committed,commit index {},max index {}",journal.commitIndex(),journal.maxIndex());
         while (journal.commitIndex() < journal.maxIndex()) {
             if (System.nanoTime() - t0 < 10000000000L) {
                 Thread.yield();
@@ -144,11 +145,19 @@ public class VoterConfigManager {
                     votersConfigStateMachine.toJointConsensus(updateVotersS1Entry.getConfigOld(), updateVotersS1Entry.getConfigNew(),
                             () -> null);
                 } else if (entryType == TYPE_UPDATE_VOTERS_S2) {
-                    votersConfigStateMachine.toNewConfig(() -> null);
+                    UpdateVotersS2Entry updateVotersS2Entry = InternalEntriesSerializeSupport.parse(rawEntry, headerLength, rawEntry.length - headerLength);
+                    logger.info("Follower received voter config change old {}, new {}",updateVotersS2Entry.getConfigOld(),updateVotersS2Entry.getConfigNew());
+                    votersConfigStateMachine.toNewConfig(() ->null);
+                    // fireVoterChangeEvent(votersConfigStateMachine.getConfigNew());
+                    // 处理 当前节点被移除的情况
                 }
+            }else{
+                logger.info("Entry Partition {}",entryHeader.getPartition());
             }
         }
     }
+
+
 
     void applyReservedEntry(InternalEntryType type, byte[] reservedEntry, VoterState voterState,
                             ConfigState votersConfigStateMachine,
@@ -177,6 +186,17 @@ public class VoterConfigManager {
                 }
             }
         }
+    }
+    /**
+     * Fire a voter config change event
+     **/
+    public void fireVoterChangeEvent(List<URI> voters){
+        for(ConfigStateChangeListener l:listeners){
+            l.onNewConfig(voters);
+        }
+    }
+    public void addListener(ConfigStateChangeListener listener){
+        listeners.add(listener);
     }
 
 }

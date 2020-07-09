@@ -714,6 +714,7 @@ class Leader extends ServerStateMachine implements StateServer {
         ReplicationDestination follower = new Leader.ReplicationDestination(followerUri, journal.maxIndex());
         follower.start();
         followers.add(follower);
+        logger.info("Leader add follower {}",follower);
     }
 
     void removeFollower(URI followerUri) {
@@ -722,6 +723,7 @@ class Leader extends ServerStateMachine implements StateServer {
             follower.stop();
             appendEntriesRpcMetricMap.remove(followerUri);
             followers.remove(follower);
+            logger.info("Leader remove follower {}",follower);
         }
     }
 

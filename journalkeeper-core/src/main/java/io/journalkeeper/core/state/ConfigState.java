@@ -136,7 +136,6 @@ public class ConfigState {
             jointConsensus = false;
             configOld.clear();
             buildAllVoters();
-
         } finally {
             rwLock.writeLock().unlock();
         }

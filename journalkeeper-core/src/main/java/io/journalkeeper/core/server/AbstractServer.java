@@ -90,18 +90,7 @@ import java.nio.channels.ClosedByInterruptException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.ConcurrentModificationException;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.NavigableMap;
-import java.util.Objects;
-import java.util.Properties;
-import java.util.Set;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -440,7 +429,7 @@ public abstract class AbstractServer
         }
     }
 
-    private void fireOnLeaderChangeEvent(int term, URI leaderUri) {
+    protected void fireOnLeaderChangeEvent(int term, URI leaderUri) {
         if(config.isEnableEvents()) {
             Map<String, String> eventData = new HashMap<>();
             eventData.put("leader", String.valueOf(leaderUri));
@@ -452,6 +441,13 @@ public abstract class AbstractServer
     private void announceLeader(InternalEntryType type, byte[] internalEntry) {
         LeaderAnnouncementEntry leaderAnnouncementEntry = InternalEntriesSerializeSupport.parse(internalEntry);
         fireOnLeaderChangeEvent(leaderAnnouncementEntry.getTerm(), leaderAnnouncementEntry.getLeaderUri());
+    }
+
+    protected void fireConfigStateChangeEvent(List<URI> voters){
+        Map<String, String> eventData = new HashMap<>();
+        eventData.put("voters", Arrays.toString(voters.toArray(new URI[0])));
+        eventData.put("currentVoter", uri.toString());
+        fireEvent(EventType.ON_VOTERS_CHANGE, eventData);
     }
 
     private void scalePartitions(InternalEntryType type, byte[] internalEntry) {
@@ -766,6 +762,9 @@ public abstract class AbstractServer
         this.serverState = ServerState.STARTING;
         acquireFileLock();
         doStart();
+        // add listener for config state
+        logger.info("add listener to config state");
+        this.voterConfigManager.addListener(this::fireConfigStateChangeEvent);
         this.threads.createThread(buildStateMachineThread());
         this.threads.createThread(buildFlushJournalThread());
         threads.startThread(threadName(STATE_MACHINE_THREAD));
