@@ -159,8 +159,8 @@ AsyncAppendRequest RPC请求的参数和返回值如下：
 | entries[] | 将要存储的日志条目（表示 heartbeat 时为空，有时会为了效率发送超过一条）|
 | leaderCommit | LEADER上当前的提交位置|
 
-返回值 | 描述
--- | --
+| 返回值 | 描述 | 
+| :--- | :--- | 
 term | 当前的任期号，用于领导人更新自己的任期号
 success | 如果其它服务器包含能够匹配上 prevLogIndex 和 prevLogTerm 的日志时为真
 logIndex | 请求中第一条日志的位置
