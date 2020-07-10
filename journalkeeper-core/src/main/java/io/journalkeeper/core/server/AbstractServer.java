@@ -443,6 +443,11 @@ public abstract class AbstractServer
         fireOnLeaderChangeEvent(leaderAnnouncementEntry.getTerm(), leaderAnnouncementEntry.getLeaderUri());
     }
 
+    /**
+     * Config state change event
+     * @param voters  new voter config
+     *
+     **/
     protected void fireConfigStateChangeEvent(List<URI> voters){
         Map<String, String> eventData = new HashMap<>();
         eventData.put("voters", Arrays.toString(voters.toArray(new URI[0])));

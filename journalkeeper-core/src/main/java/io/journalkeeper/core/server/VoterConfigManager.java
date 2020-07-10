@@ -77,9 +77,9 @@ public class VoterConfigManager {
                 waitingForAllEntriesCommitted(journal);
                 votersConfigStateMachine.toNewConfig(appendEntryCallable);
                 Collection<URI> followerUris = leader.getFollowerUris();
-                // 如果有被删除follower 需要等待新配置都被提交
+                // 如果有follower被删除，需要等待新配置都被提交
                 if(!votersConfigStateMachine.getConfigNew().containsAll(followerUris)) {
-                    logger.warn("Voter config remove node,new {} ",votersConfigStateMachine.getConfigNew());
+                    logger.warn("Leader Voter config remove node,new {} ",votersConfigStateMachine.getConfigNew());
                     waitingForAllEntriesCommitted(journal);
                 }
                 for (URI uri : followerUris) {
@@ -87,7 +87,11 @@ public class VoterConfigManager {
                         leader.removeFollower(uri);
                     }
                 }
-                // 处理leader 被移除
+                // 处理leader被移除
+                if(!votersConfigStateMachine.getConfigNew().contains(serverUri)) {
+                    logger.warn("Leader node is removed,new {} ",votersConfigStateMachine.getConfigNew());
+                    fireVoterChangeEvent(votersConfigStateMachine.getConfigNew());
+                }
                 return true;
             }
         }
@@ -148,11 +152,7 @@ public class VoterConfigManager {
                     UpdateVotersS2Entry updateVotersS2Entry = InternalEntriesSerializeSupport.parse(rawEntry, headerLength, rawEntry.length - headerLength);
                     logger.info("Follower received voter config change old {}, new {}",updateVotersS2Entry.getConfigOld(),updateVotersS2Entry.getConfigNew());
                     votersConfigStateMachine.toNewConfig(() ->null);
-                    // fireVoterChangeEvent(votersConfigStateMachine.getConfigNew());
-                    // 处理 当前节点被移除的情况
                 }
-            }else{
-                logger.info("Entry Partition {}",entryHeader.getPartition());
             }
         }
     }

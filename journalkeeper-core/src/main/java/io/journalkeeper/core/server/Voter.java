@@ -13,48 +13,18 @@
  */
 package io.journalkeeper.core.server;
 
-import io.journalkeeper.core.api.JournalEntry;
-import io.journalkeeper.core.api.JournalEntryParser;
-import io.journalkeeper.core.api.ServerStatus;
-import io.journalkeeper.core.api.SnapshotEntry;
-import io.journalkeeper.core.api.SnapshotsEntry;
-import io.journalkeeper.core.api.StateFactory;
-import io.journalkeeper.core.api.UpdateRequest;
-import io.journalkeeper.core.api.VoterState;
+import io.journalkeeper.core.api.*;
 import io.journalkeeper.core.api.transaction.UUIDTransactionId;
 import io.journalkeeper.core.entry.internal.InternalEntriesSerializeSupport;
 import io.journalkeeper.core.entry.internal.InternalEntryType;
 import io.journalkeeper.core.entry.internal.UpdateVotersS1Entry;
-import io.journalkeeper.exceptions.UpdateConfigurationException;
 import io.journalkeeper.core.journal.Journal;
 import io.journalkeeper.core.state.ConfigState;
 import io.journalkeeper.exceptions.NotLeaderException;
+import io.journalkeeper.exceptions.UpdateConfigurationException;
 import io.journalkeeper.persistence.ServerMetadata;
-import io.journalkeeper.rpc.client.CheckLeadershipResponse;
-import io.journalkeeper.rpc.client.CompleteTransactionRequest;
-import io.journalkeeper.rpc.client.CompleteTransactionResponse;
-import io.journalkeeper.rpc.client.CreateTransactionRequest;
-import io.journalkeeper.rpc.client.CreateTransactionResponse;
-import io.journalkeeper.rpc.client.GetOpeningTransactionsResponse;
-import io.journalkeeper.rpc.client.GetServerStatusResponse;
-import io.journalkeeper.rpc.client.GetSnapshotsResponse;
-import io.journalkeeper.rpc.client.LastAppliedResponse;
-import io.journalkeeper.rpc.client.QueryStateRequest;
-import io.journalkeeper.rpc.client.QueryStateResponse;
-import io.journalkeeper.rpc.client.UpdateClusterStateRequest;
-import io.journalkeeper.rpc.client.UpdateClusterStateResponse;
-import io.journalkeeper.rpc.client.UpdateVotersRequest;
-import io.journalkeeper.rpc.client.UpdateVotersResponse;
-import io.journalkeeper.rpc.server.AsyncAppendEntriesRequest;
-import io.journalkeeper.rpc.server.AsyncAppendEntriesResponse;
-import io.journalkeeper.rpc.server.DisableLeaderWriteRequest;
-import io.journalkeeper.rpc.server.DisableLeaderWriteResponse;
-import io.journalkeeper.rpc.server.InstallSnapshotRequest;
-import io.journalkeeper.rpc.server.InstallSnapshotResponse;
-import io.journalkeeper.rpc.server.RequestVoteRequest;
-import io.journalkeeper.rpc.server.RequestVoteResponse;
-import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
-import io.journalkeeper.utils.event.EventType;
+import io.journalkeeper.rpc.client.*;
+import io.journalkeeper.rpc.server.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,13 +32,7 @@ import java.net.URI;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -295,8 +259,8 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
         int lastLogTerm = journal.getTerm(lastLogIndex);
 
         RequestVoteRequest request = new RequestVoteRequest(term, uri, lastLogIndex, lastLogTerm, fromPreferredLeader, isPreVote);
-        // 如果是follower 可以安全的移除
-        if(follower!=null&&!state.getConfigState().isJointConsensus()&&!state.getConfigState().getConfigNew().contains(this.uri)){
+        // 如果是非Leader 可以安全的移除
+        if(leader==null&&!state.getConfigState().isJointConsensus()&&!state.getConfigState().getConfigNew().contains(this.uri)){
             fireConfigStateChangeEvent(state.getConfigState().getConfigNew());
         }
         List<URI> destinations = state.getConfigState().voters().stream()
@@ -415,7 +379,7 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
                     this.journalEntryParser, config.getTransactionTimeoutMs(), snapshots);
             leader.start();
             this.leaderUri = this.uri;
-            fireOnLeaderChangeEvent(EventType.ON_LEADER_CHANGE,uri);
+            fireOnLeaderChangeEvent(this.currentTerm.get(),uri);
             logger.info("Convert voter state from {} to LEADER, {}.", oldState, voterInfo());
 
         }
