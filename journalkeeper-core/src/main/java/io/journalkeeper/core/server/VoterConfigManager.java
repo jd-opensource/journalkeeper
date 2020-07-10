@@ -150,7 +150,7 @@ public class VoterConfigManager {
                             () -> null);
                 } else if (entryType == TYPE_UPDATE_VOTERS_S2) {
                     UpdateVotersS2Entry updateVotersS2Entry = InternalEntriesSerializeSupport.parse(rawEntry, headerLength, rawEntry.length - headerLength);
-                    logger.info("Follower received voter config change old {}, new {}",updateVotersS2Entry.getConfigOld(),updateVotersS2Entry.getConfigNew());
+                    logger.info("Follower received voter config change. old {}, new {}",updateVotersS2Entry.getConfigOld(),updateVotersS2Entry.getConfigNew());
                     votersConfigStateMachine.toNewConfig(() ->null);
                 }
             }

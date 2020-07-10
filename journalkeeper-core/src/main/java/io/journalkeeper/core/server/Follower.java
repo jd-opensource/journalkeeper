@@ -127,9 +127,7 @@ class Follower extends ServerStateMachine implements StateServer {
                 voterConfigManager.maybeRollbackConfig(startIndex, journal, state.getConfigState());
 
                 journal.compareOrAppendRaw(request.getEntries(), startIndex);
-                if(logger.isDebugEnabled()) {
-                    logger.debug("Follower append start {}, end {}", request.getPrevLogIndex(), request.getMaxIndex());
-                }
+
                 // 非Leader（Follower和Observer）复制日志到本地后，如果日志中包含配置变更，则立即变更配置
                 voterConfigManager.maybeUpdateNonLeaderConfig(request.getEntries(), state.getConfigState());
             }
