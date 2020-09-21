@@ -18,7 +18,7 @@
     <parent>
         <artifactId>journalkeeper</artifactId>
         <groupId>io.journalkeeper</groupId>
-        <version>0.1.11</version>
+        <version>0.1.12-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -63,7 +63,7 @@
         <dependency>
             <groupId>io.journalkeeper</groupId>
             <artifactId>journalkeeper-core-api</artifactId>
-            <version>0.1.11</version>
+            <version>0.1.12-SNAPSHOT</version>
             <scope>compile</scope>
         </dependency>
 

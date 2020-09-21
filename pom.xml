@@ -20,7 +20,7 @@
     <groupId>io.journalkeeper</groupId>
     <artifactId>journalkeeper</artifactId>
     <packaging>pom</packaging>
-    <version>0.1.11</version>
+    <version>0.1.12-SNAPSHOT</version>
     <url>http://journalkeeper.io/</url>
     <name>JournalKeeper</name>
     <description>
@@ -59,7 +59,7 @@
         <connection>scm:git:git@github.com:chubaostream/journalkeeper.git</connection>
         <developerConnection>scm:git:git@github.com:chubaostream/journalkeeper.git</developerConnection>
         <url>https://github.com/chubaostream/journalkeeper.git</url>
-        <tag>0.1.11</tag>
+        <tag>HEAD</tag>
     </scm>
     <modules>
         <module>journalkeeper-docs</module>
