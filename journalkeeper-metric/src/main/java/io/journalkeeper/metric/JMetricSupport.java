@@ -41,7 +41,7 @@ public class JMetricSupport {
         }
 
         return String.format("Metric %s, tps: %s/s, traffic: %s/s, " +
-                        "latency(%s): AVG %.2f, TP50 %.2f, TP90 %.2f, TP9 %.2f, " +
+                        "latency(%s): AVG %.2f, TP50 %.2f, TP90 %.2f, TP95 %.2f, " +
                         "TP99 %.2f, TP999 %.2f, TP9999 %.2f, MAX %.2f, " +
                         "total requests: %s, total traffic: %s",
                 report.name(), Format.formatWithComma(report.requestsPs()), Format.formatSize(report.trafficPs()),
