@@ -29,6 +29,7 @@ import io.journalkeeper.core.server.Server;
 import io.journalkeeper.rpc.RpcAccessPointFactory;
 import io.journalkeeper.rpc.RpcException;
 import io.journalkeeper.rpc.client.ClientServerRpcAccessPoint;
+import io.journalkeeper.utils.retry.ExponentialRetryPolicy;
 import io.journalkeeper.utils.retry.IncreasingRetryPolicy;
 import io.journalkeeper.utils.retry.RetryPolicy;
 import io.journalkeeper.utils.spi.ServiceSupport;
@@ -60,13 +61,7 @@ public class BootStrap implements ClusterAccessPoint {
     private final Server server;
     private final JournalEntryParser journalEntryParser;
     private final RetryPolicy remoteRetryPolicy =
-            new IncreasingRetryPolicy(
-                    new long[]{50, 50, 50, 50, 50,
-                            100, 100, 100, 100, 100, 100,
-                            300, 300, 300, 300, 300, 300,
-                            500, 500, 500, 500, 500, 500,
-                            1000, 1000, 1000, 1000, 1000,
-                            5000, 5000, 5000, 5000, 5000}, 50);
+            new ExponentialRetryPolicy(10L, 3000L, 10);
     private final boolean isExecutorProvided;
     private ScheduledExecutorService serverScheduledExecutor, clientScheduledExecutor;
     private ExecutorService serverAsyncExecutor, clientAsyncExecutor;

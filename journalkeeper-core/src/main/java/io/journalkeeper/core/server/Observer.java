@@ -52,10 +52,7 @@ import io.journalkeeper.rpc.server.RequestVoteRequest;
 import io.journalkeeper.rpc.server.RequestVoteResponse;
 import io.journalkeeper.rpc.server.ServerRpc;
 import io.journalkeeper.rpc.server.ServerRpcAccessPoint;
-import io.journalkeeper.utils.retry.CheckRetry;
-import io.journalkeeper.utils.retry.CompletableRetry;
-import io.journalkeeper.utils.retry.IncreasingRetryPolicy;
-import io.journalkeeper.utils.retry.RandomDestinationSelector;
+import io.journalkeeper.utils.retry.*;
 import io.journalkeeper.utils.threads.AsyncLoopThread;
 import io.journalkeeper.utils.threads.ThreadBuilder;
 import org.slf4j.Logger;
@@ -98,7 +95,7 @@ class Observer extends AbstractServer {
         super(stateFactory, journalEntryParser, scheduledExecutor, asyncExecutor, serverRpcAccessPoint, properties);
         this.config = toConfig(properties);
         this.replicationMetric = getMetric(METRIC_OBSERVER_REPLICATION);
-        serverRpcRetry = new CompletableRetry<>(new IncreasingRetryPolicy(new long[]{100, 500, 3000, 10000}, 50),
+        serverRpcRetry = new CompletableRetry<>(new ExponentialRetryPolicy(10L, 3000L, 10),
                 new RandomDestinationSelector<>(config.getParents()));
     }
 

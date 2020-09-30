@@ -18,6 +18,7 @@ package io.journalkeeper.utils.retry;
  * Date: 2019/10/9
  */
 public interface RetryPolicy {
+    public final static long STOP_RETRY = -1L;
     /**
      * 计算下次重试之前等待的时间（毫秒）
      * @param retries 已重试的次数（不含即将执行的下次重试）
