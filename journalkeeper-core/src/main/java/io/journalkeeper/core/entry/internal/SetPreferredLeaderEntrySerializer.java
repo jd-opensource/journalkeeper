@@ -28,27 +28,25 @@ import java.nio.ByteBuffer;
  * ...
  *
  */
-public class SetPreferredLeaderEntrySerializer implements Serializer<SetPreferredLeaderEntry> {
+public class SetPreferredLeaderEntrySerializer extends InternalEntrySerializer<SetPreferredLeaderEntry> {
     private int sizeOf(SetPreferredLeaderEntry entry) {
-        return Byte.BYTES +  // Type:                              1 byte
+        return
                 Short.BYTES +  // Length of the URI String in bytes: 2 bytes
                 entry.getPreferredLeader().toASCIIString().length(); // URI String in bytes: variable length
     }
 
     @Override
-    public byte[] serialize(SetPreferredLeaderEntry entry) {
-        byte[] bytes = new byte[sizeOf(entry)];
+    protected byte[] serialize(SetPreferredLeaderEntry entry, byte[] header) {
+        byte[] bytes = new byte[header.length + sizeOf(entry)];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
-        buffer.put((byte) entry.getType().value());
+        buffer.put(header);
         UriSerializeSupport.serializerUri(buffer, entry.getPreferredLeader());
         return bytes;
     }
 
-
     @Override
-    public SetPreferredLeaderEntry parse(byte[] bytes) {
-        ByteBuffer buffer = ByteBuffer.wrap(bytes, Byte.BYTES, bytes.length - Byte.BYTES);
-        return new SetPreferredLeaderEntry(UriSerializeSupport.parseUri(buffer));
+    protected SetPreferredLeaderEntry parse(ByteBuffer byteBuffer, int type, int version) {
+        return new SetPreferredLeaderEntry(UriSerializeSupport.parseUri(byteBuffer), version);
     }
 
 }

@@ -18,14 +18,24 @@ package io.journalkeeper.core.entry.internal;
  * Date: 2019-05-09
  */
 public abstract class InternalEntry {
-
+    final static int VERSION_LEGACY = -1;
+    final static int BASE_VERSION = 1;
     private final InternalEntryType type;
 
+    private final int version;
     protected InternalEntry(InternalEntryType type) {
+        this(type, BASE_VERSION);
+    }
+    protected InternalEntry(InternalEntryType type, int version) {
         this.type = type;
+        this.version = version;
     }
 
     public InternalEntryType getType() {
         return type;
+    }
+
+    public int getVersion() {
+        return version;
     }
 }

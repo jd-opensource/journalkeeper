@@ -47,6 +47,7 @@ import java.util.Map;
  * Date: 2019/11/21
  */
 public class PersistInternalState {
+
     private URI preferredLeader = null;
     private Map<Integer /* partition */, Long /* lastIncludedIndex of the partition */> partitionIndices;
     private long lastIncludedIndex;
@@ -54,9 +55,17 @@ public class PersistInternalState {
     private List<URI> configNew;
     private List<URI> configOld;
     private boolean jointConsensus;
+    private long configEpoch = ConfigState.EPOCH_UNKNOWN;
     private long minOffset;
     private long snapshotTimestamp;
 
+    public long getConfigEpoch() {
+        return configEpoch;
+    }
+
+    public void setConfigEpoch(long configEpoch) {
+        this.configEpoch = configEpoch;
+    }
 
     public URI getPreferredLeader() {
         return preferredLeader;
@@ -117,9 +126,9 @@ public class PersistInternalState {
     InternalState toInternalState() {
         ConfigState configState;
         if (isJointConsensus()) {
-            configState = new ConfigState(configOld, configNew);
+            configState = new ConfigState(configOld, configNew, configEpoch);
         } else {
-            configState = new ConfigState(configNew);
+            configState = new ConfigState(configNew, configEpoch);
         }
         InternalState internalState = new InternalState();
         internalState.setConfigState(configState);
@@ -137,6 +146,7 @@ public class PersistInternalState {
         setJointConsensus(configState.isJointConsensus());
         setConfigNew(configState.getConfigNew());
         setConfigOld(configState.getConfigOld());
+        setConfigEpoch(configState.getEpoch());
 
         setLastIncludedIndex(internalState.getLastIncludedIndex());
         setLastIncludedTerm(internalState.getLastIncludedTerm());

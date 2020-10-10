@@ -31,6 +31,11 @@ public class SetPreferredLeaderEntry extends InternalEntry implements Serializab
         this.preferredLeader = preferredLeader;
     }
 
+    public SetPreferredLeaderEntry(URI preferredLeader, int version) {
+        super(TYPE_SET_PREFERRED_LEADER, version);
+        this.preferredLeader = preferredLeader;
+    }
+
     public URI getPreferredLeader() {
         return preferredLeader;
     }

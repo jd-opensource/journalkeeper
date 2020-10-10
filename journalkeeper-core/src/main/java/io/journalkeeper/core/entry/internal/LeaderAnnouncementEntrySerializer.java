@@ -22,24 +22,22 @@ import java.nio.ByteBuffer;
  * @author LiYue
  * Date: 2019-05-09
  */
-public class LeaderAnnouncementEntrySerializer implements Serializer<LeaderAnnouncementEntry> {
+public class LeaderAnnouncementEntrySerializer extends InternalEntrySerializer<LeaderAnnouncementEntry> {
 
     @Override
-    public byte[] serialize(LeaderAnnouncementEntry entry) {
-        byte[] buffer = new byte[Byte.BYTES + Integer.BYTES + UriSerializeSupport.sizeOf(entry.getLeaderUri())];
+    protected byte[] serialize(LeaderAnnouncementEntry entry, byte[] header) {
+        byte[] buffer = new byte[header.length + Integer.BYTES + UriSerializeSupport.sizeOf(entry.getLeaderUri())];
         ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
-        byteBuffer.put((byte) InternalEntryType.TYPE_LEADER_ANNOUNCEMENT.value());
+        byteBuffer.put(header);
         byteBuffer.putInt(entry.getTerm());
         UriSerializeSupport.serializerUri(byteBuffer, entry.getLeaderUri());
         return buffer;
     }
 
     @Override
-    public LeaderAnnouncementEntry parse(byte[] bytes) {
-        ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
-        byteBuffer.position(Byte.BYTES);
+    protected LeaderAnnouncementEntry parse(ByteBuffer byteBuffer, int type, int version) {
         int term = byteBuffer.getInt();
         URI uri = UriSerializeSupport.parseUri(byteBuffer);
-        return new LeaderAnnouncementEntry(term, uri);
+        return new LeaderAnnouncementEntry(term, uri, version);
     }
 }

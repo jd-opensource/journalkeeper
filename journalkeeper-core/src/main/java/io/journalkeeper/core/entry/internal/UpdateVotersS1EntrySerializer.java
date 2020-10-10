@@ -13,7 +13,7 @@
  */
 package io.journalkeeper.core.entry.internal;
 
-import io.journalkeeper.base.Serializer;
+import io.journalkeeper.core.state.ConfigState;
 
 import java.net.URI;
 import java.nio.ByteBuffer;
@@ -29,6 +29,7 @@ import static io.journalkeeper.core.entry.internal.UriSerializeSupport.serialize
  * Date: 2019-05-09
  *
  * Type:                                    1 byte
+ * epoch                                    8 bytes
  * Size of the Old Config List:             2 bytes
  *  URI String
  *    Length of the URI String in bytes:    2 bytes
@@ -43,9 +44,10 @@ import static io.journalkeeper.core.entry.internal.UriSerializeSupport.serialize
  * ...
  *
  */
-public class UpdateVotersS1EntrySerializer implements Serializer<UpdateVotersS1Entry> {
+public class UpdateVotersS1EntrySerializer extends InternalEntrySerializer<UpdateVotersS1Entry> {
     private int sizeOf(UpdateVotersS1Entry entry) {
-        return Byte.BYTES +  // Type:                              1 byte
+        return
+                Long.BYTES + // Size of epoch
                 Short.BYTES * 2 +  // Size of the Old Config List: 2 bytes
                 Short.BYTES * 2 +  // Size of the New Config List: 2 bytes
                 Stream.concat(entry.getConfigNew().stream(), entry.getConfigOld().stream())
@@ -54,13 +56,12 @@ public class UpdateVotersS1EntrySerializer implements Serializer<UpdateVotersS1E
                         .mapToInt(b -> b.length + Short.BYTES)
                         .sum();
     }
-
     @Override
-    public byte[] serialize(UpdateVotersS1Entry entry) {
-        byte[] bytes = new byte[sizeOf(entry)];
+    protected byte[] serialize(UpdateVotersS1Entry entry, byte[] header) {
+        byte[] bytes = new byte[header.length + sizeOf(entry)];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
-        buffer.put((byte) entry.getType().value());
-
+        buffer.put(header);
+        buffer.putLong(entry.getEpoch());
         List<URI> config = entry.getConfigOld();
         serializeUriList(buffer, config);
         config = entry.getConfigNew();
@@ -68,15 +69,16 @@ public class UpdateVotersS1EntrySerializer implements Serializer<UpdateVotersS1E
         return bytes;
     }
 
-
     @Override
-    public UpdateVotersS1Entry parse(byte[] bytes) {
-        ByteBuffer buffer = ByteBuffer.wrap(bytes, Byte.BYTES, bytes.length - Byte.BYTES);
+    protected UpdateVotersS1Entry parse(ByteBuffer byteBuffer, int type, int version) {
+        long epoch = ConfigState.EPOCH_UNKNOWN;
+        if (version != InternalEntry.VERSION_LEGACY) {
+            epoch = byteBuffer.getLong();
+        }
+        List<URI> configOld = parseUriList(byteBuffer);
+        List<URI> configNew = parseUriList(byteBuffer);
 
-        List<URI> configOld = parseUriList(buffer);
-        List<URI> configNew = parseUriList(buffer);
-
-        return new UpdateVotersS1Entry(configOld, configNew);
+        return new UpdateVotersS1Entry(configOld, configNew, epoch, version);
     }
 
 }

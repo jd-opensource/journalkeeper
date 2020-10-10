@@ -33,6 +33,11 @@ public class ScalePartitionsEntry extends InternalEntry implements Serializable 
         this.partitions = partitions;
     }
 
+    public ScalePartitionsEntry(Set<Integer> partitions, int version) {
+        super(TYPE_SCALE_PARTITIONS, version);
+        this.partitions = partitions;
+    }
+
     public Set<Integer> getPartitions() {
         return partitions;
     }

@@ -759,7 +759,7 @@ class Voter extends AbstractServer implements CheckTermInterceptor {
     @Override
     public CompletableFuture<UpdateVotersResponse> updateVoters(UpdateVotersRequest request) {
         return CompletableFuture.supplyAsync(
-                () -> new UpdateVotersS1Entry(request.getOldConfig(), request.getNewConfig()), asyncExecutor)
+                () -> new UpdateVotersS1Entry(request.getOldConfig(), request.getNewConfig(), state.getConfigState().getEpoch() + 1), asyncExecutor)
                 .thenApply(InternalEntriesSerializeSupport::serialize)
                 .thenApply(entry -> new UpdateClusterStateRequest(new UpdateRequest(entry, INTERNAL_PARTITION, 1)))
                 .thenCompose(this::updateClusterState)

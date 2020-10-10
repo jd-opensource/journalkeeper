@@ -62,22 +62,32 @@ import java.util.stream.Stream;
  */
 public class ConfigState {
     private static final Logger logger = LoggerFactory.getLogger(ConfigState.class);
+    public static final long EPOCH_UNKNOWN = -1L;
+    public static final long EPOCH_INIT = 0L;
     private final List<URI> configNew = new ArrayList<>(3);
     private final List<URI> configOld = new ArrayList<>(3);
     private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
     private boolean jointConsensus;
+    private long epoch = EPOCH_UNKNOWN;
     // all voters include configNew and configOld
     private List<URI> allVoters = new ArrayList<>(3);
 
     public ConfigState(List<URI> configOld, List<URI> configNew) {
+        this(configOld, configNew, EPOCH_UNKNOWN);
+    }
+    public ConfigState(List<URI> configOld, List<URI> configNew, long epoch) {
         jointConsensus = true;
+        this.epoch = epoch;
         this.configOld.addAll(configOld);
         this.configNew.addAll(configNew);
-
         buildAllVoters();
     }
 
     public ConfigState(List<URI> configNew) {
+        this(configNew, EPOCH_UNKNOWN);
+    }
+
+    public ConfigState(List<URI> configNew, long epoch) {
         jointConsensus = false;
         this.configNew.addAll(configNew);
         buildAllVoters();
@@ -116,6 +126,10 @@ public class ConfigState {
         }
     }
 
+    public long getEpoch() {
+        return epoch;
+    }
+
     public List<URI> voters() {
         rwLock.readLock().lock();
         try {
@@ -136,7 +150,7 @@ public class ConfigState {
             jointConsensus = false;
             configOld.clear();
             buildAllVoters();
-
+            if(epoch >= EPOCH_INIT) epoch++;
         } finally {
             rwLock.writeLock().unlock();
         }
@@ -155,7 +169,7 @@ public class ConfigState {
             this.configNew.clear();
             this.configNew.addAll(configNew);
             buildAllVoters();
-
+            if(epoch >= EPOCH_INIT) epoch++;
         } finally {
             rwLock.writeLock().unlock();
         }
@@ -181,7 +195,8 @@ public class ConfigState {
         rwLock.readLock().lock();
         try {
             String str = "jointConsensus: " +
-                    jointConsensus + ", ";
+                    jointConsensus + ", " +
+                    "epoch: " + epoch + ", ";
             if (jointConsensus) {
                 str += "old config: [" +
                         configOld.stream().map(URI::toString).collect(Collectors.joining(", ")) + "], ";
@@ -210,7 +225,7 @@ public class ConfigState {
             configNew.addAll(configOld);
             configOld.clear();
             buildAllVoters();
-
+            if(epoch >= EPOCH_INIT) epoch--;
         } finally {
             rwLock.writeLock().unlock();
         }
@@ -227,7 +242,7 @@ public class ConfigState {
             jointConsensus = true;
             this.configOld.addAll(configOld);
             buildAllVoters();
-
+            if(epoch >= EPOCH_INIT) epoch++;
         } finally {
             rwLock.writeLock().unlock();
         }

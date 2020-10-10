@@ -21,18 +21,15 @@ import java.nio.ByteBuffer;
  * @author LiYue
  * Date: 2019-05-09
  */
-public class CreateSnapshotEntrySerializer implements Serializer<CreateSnapshotEntry> {
+public class CreateSnapshotEntrySerializer extends InternalEntrySerializer<CreateSnapshotEntry> {
 
     @Override
-    public byte[] serialize(CreateSnapshotEntry entry) {
-        byte[] buffer = new byte[Byte.BYTES + Integer.BYTES];
-        ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
-        byteBuffer.put((byte) InternalEntryType.TYPE_CREATE_SNAPSHOT.value());
-        return buffer;
+    protected byte[] serialize(CreateSnapshotEntry entry, byte[] header) {
+        return header;
     }
 
     @Override
-    public CreateSnapshotEntry parse(byte[] bytes) {
-        return new CreateSnapshotEntry();
+    protected CreateSnapshotEntry parse(ByteBuffer byteBuffer, int type, int version) {
+        return new CreateSnapshotEntry(version);
     }
 }

@@ -46,4 +46,7 @@ public class CreateSnapshotEntry extends InternalEntry {
     public CreateSnapshotEntry() {
         super(InternalEntryType.TYPE_CREATE_SNAPSHOT);
     }
+    public CreateSnapshotEntry(int version) {
+        super(InternalEntryType.TYPE_CREATE_SNAPSHOT, version);
+    }
 }

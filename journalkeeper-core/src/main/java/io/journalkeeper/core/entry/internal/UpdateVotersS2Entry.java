@@ -26,13 +26,23 @@ import static io.journalkeeper.core.entry.internal.InternalEntryType.TYPE_UPDATE
  */
 public class UpdateVotersS2Entry extends InternalEntry implements Serializable {
     private static final long serialVersionUID = 1L;
+    private final long epoch;
+
     private final List<URI> configNew;
     private final List<URI> configOld;
 
-    public UpdateVotersS2Entry(List<URI> configOld, List<URI> configNew) {
+    public UpdateVotersS2Entry(List<URI> configOld, List<URI> configNew, long epoch) {
         super(TYPE_UPDATE_VOTERS_S2);
         this.configNew = new ArrayList<>(configNew);
         this.configOld = new ArrayList<>(configOld);
+        this.epoch = epoch;
+    }
+
+    public UpdateVotersS2Entry(List<URI> configOld, List<URI> configNew, long epoch, int version) {
+        super(TYPE_UPDATE_VOTERS_S2, version);
+        this.configNew = new ArrayList<>(configNew);
+        this.configOld = new ArrayList<>(configOld);
+        this.epoch = epoch;
     }
 
     public List<URI> getConfigNew() {
@@ -41,5 +51,9 @@ public class UpdateVotersS2Entry extends InternalEntry implements Serializable {
 
     public List<URI> getConfigOld() {
         return configOld;
+    }
+
+    public long getEpoch() {
+        return epoch;
     }
 }

@@ -27,6 +27,12 @@ public class LeaderAnnouncementEntry extends InternalEntry implements Serializab
     private final int term;
     private final URI leaderUri;
 
+    public LeaderAnnouncementEntry(int term, URI leaderUri, int version) {
+        super(TYPE_LEADER_ANNOUNCEMENT, version);
+        this.term = term;
+        this.leaderUri = leaderUri;
+    }
+
     public LeaderAnnouncementEntry(int term, URI leaderUri) {
         super(TYPE_LEADER_ANNOUNCEMENT);
         this.term = term;

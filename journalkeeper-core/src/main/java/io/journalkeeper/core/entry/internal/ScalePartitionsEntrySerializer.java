@@ -30,16 +30,16 @@ import java.util.Set;
  * ...
  *
  */
-public class ScalePartitionsEntrySerializer implements Serializer<ScalePartitionsEntry> {
+public class ScalePartitionsEntrySerializer extends InternalEntrySerializer<ScalePartitionsEntry> {
     private int sizeOf(ScalePartitionsEntry scalePartitionsEntry) {
-        return Byte.BYTES + Short.BYTES * scalePartitionsEntry.getPartitions().size();
+        return Short.BYTES * scalePartitionsEntry.getPartitions().size();
     }
 
     @Override
-    public byte[] serialize(ScalePartitionsEntry entry) {
-        byte[] bytes = new byte[sizeOf(entry)];
+    protected byte[] serialize(ScalePartitionsEntry entry, byte[] header) {
+        byte[] bytes = new byte[header.length + sizeOf(entry)];
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
-        buffer.put((byte) entry.getType().value());
+        buffer.put(header);
         for (int partition : entry.getPartitions()) {
             buffer.putShort((short) partition);
         }
@@ -47,12 +47,11 @@ public class ScalePartitionsEntrySerializer implements Serializer<ScalePartition
     }
 
     @Override
-    public ScalePartitionsEntry parse(byte[] bytes) {
-        ByteBuffer buffer = ByteBuffer.wrap(bytes, Byte.BYTES, bytes.length - Byte.BYTES);
+    protected ScalePartitionsEntry parse(ByteBuffer buffer, int type, int version) {
         Set<Integer> partitions = new HashSet<>();
         while (buffer.hasRemaining()) {
             partitions.add(Short.valueOf(buffer.getShort()).intValue());
         }
-        return new ScalePartitionsEntry(partitions);
+        return new ScalePartitionsEntry(partitions, version);
     }
 }
