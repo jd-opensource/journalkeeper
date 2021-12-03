@@ -16,10 +16,10 @@ import java.nio.ByteBuffer;
  *
  */
 public abstract class InternalEntrySerializer<T extends InternalEntry> implements Serializer<T> {
-    private final static int HEADER_SIZE_ENTRY_TYPE_LEGACY = Byte.BYTES;
-    private final static byte ENTRY_HEADER_MAGIC_CODE = (byte) -233;
-    private final static int HEADER_SIZE_ENTRY_TYPE = Short.BYTES;
-    private final static int HEADER_SIZE_ENTRY_VERSION = Short.BYTES;
+    final static int HEADER_SIZE_ENTRY_TYPE_LEGACY = Byte.BYTES;
+    final static byte ENTRY_HEADER_MAGIC_CODE = (byte) -233;
+    final static int HEADER_SIZE_ENTRY_TYPE = Short.BYTES;
+    final static int HEADER_SIZE_ENTRY_VERSION = Short.BYTES;
     @Override
     public final byte[] serialize(T entry) {
 

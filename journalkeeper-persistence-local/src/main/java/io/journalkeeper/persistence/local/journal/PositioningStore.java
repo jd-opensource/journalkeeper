@@ -51,9 +51,9 @@ public class PositioningStore implements JournalPersistence, MonitoredPersistenc
     // 删除和回滚不能同时操作fileMap，需要做一下互斥。
     private final Object fileMapMutex = new Object();    // 正在写入的
     private File base;
-    private AtomicLong flushPosition = new AtomicLong(0L);
-    private AtomicLong writePosition = new AtomicLong(0L);
-    private AtomicLong leftPosition = new AtomicLong(0L);
+    private final AtomicLong flushPosition = new AtomicLong(0L);
+    private final AtomicLong writePosition = new AtomicLong(0L);
+    private final AtomicLong leftPosition = new AtomicLong(0L);
     private StoreFile writeStoreFile = null;
     private Config config = null;
 

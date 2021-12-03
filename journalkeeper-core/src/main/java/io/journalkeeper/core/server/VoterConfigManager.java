@@ -133,7 +133,7 @@ public class VoterConfigManager {
             JournalEntry entryHeader = journalEntryParser.parseHeader(rawEntry);
             if (entryHeader.getPartition() == INTERNAL_PARTITION) {
                 int headerLength = journalEntryParser.headerLength();
-                InternalEntryType entryType = InternalEntriesSerializeSupport.parseEntryType(rawEntry, headerLength, rawEntry.length - headerLength);
+                InternalEntryType entryType = InternalEntriesSerializeSupport.parseEntryType(rawEntry, headerLength);
                 if (entryType == TYPE_UPDATE_VOTERS_S1) {
                     UpdateVotersS1Entry updateVotersS1Entry = InternalEntriesSerializeSupport.parse(rawEntry, headerLength, rawEntry.length - headerLength);
 

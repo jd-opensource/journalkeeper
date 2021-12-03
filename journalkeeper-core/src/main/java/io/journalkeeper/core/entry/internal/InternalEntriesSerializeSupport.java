@@ -16,6 +16,7 @@ package io.journalkeeper.core.entry.internal;
 import io.journalkeeper.base.Serializer;
 import io.journalkeeper.exceptions.SerializeException;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -72,7 +73,7 @@ public class InternalEntriesSerializeSupport {
     }
 
     public static <E extends InternalEntry> E parse(byte[] buffer, int offset, int length) {
-        InternalEntryType type = parseEntryType(buffer, offset, length);
+        InternalEntryType type = parseEntryType(buffer, offset);
         @SuppressWarnings("unchecked")
         Class<E> eClass = (Class<E>) typeMap.get(type);
         if (null == eClass) {
@@ -93,12 +94,21 @@ public class InternalEntriesSerializeSupport {
         return serializer.serialize(entry);
     }
 
-    public static InternalEntryType parseEntryType(byte[] buffer) {
-        return InternalEntryType.valueOf(buffer[0]);
+    public static InternalEntryType parseEntryType(byte[] bytes) {
+        return parseEntryType(bytes,0);
     }
 
-    public static InternalEntryType parseEntryType(byte[] buffer, int offset, int length) {
-        return InternalEntryType.valueOf(buffer[offset]);
+    public static InternalEntryType parseEntryType(byte[] bytes, int offset) {
+        int type;
+
+        if (bytes[offset] == InternalEntrySerializer.ENTRY_HEADER_MAGIC_CODE) {
+            ByteBuffer buffer = ByteBuffer.wrap(bytes,offset, Byte.BYTES + Short.BYTES);
+            buffer.get(); // magic code
+            type = buffer.getShort();
+        } else {
+            type = bytes[offset];
+        }
+        return InternalEntryType.valueOf(type);
     }
 
     private static <E extends InternalEntry> void registerType(InternalEntryType type, Class<E> eClass, Serializer<E> serializer) {
